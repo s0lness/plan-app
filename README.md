@@ -9,8 +9,8 @@ in French.
 
 No licence yet, so all rights are reserved: the code is readable, not reusable.
 
-This repository is the project root; the deployed site is
-<https://plan.example.com>.
+This repository is the project root. A deployed instance lives behind
+Cloudflare Access, so the link is not public.
 
 ## Status as of 2026-08-10
 
@@ -24,29 +24,59 @@ This repository is the project root; the deployed site is
 - To verify: a 30-minute human session on two real devices. The automated
   suites have replaced it, not proved it.
 
-## Working locally
+## Running it
 
-In PowerShell, from the repository root:
+Open `index.html` in a browser. That is the whole procedure: no install, no
+build, no server, no network. The file is the application, 400 KB of it, and it
+makes no outbound request of any kind.
 
-```powershell
-$node = 'node' # Node must be on PATH
-$npm = 'npm'
-& $npm install                           # install the pinned tools
-& $npm run build -- --dev                # produce index.dev.html and its map
-& 'C:\Program Files\Google\Chrome\Application\chrome.exe' `
-  "$PWD\index.dev.html"                 # open the local copy
-& $node tests/rapide.ts                  # fast loop, under one second
-& $npm run typecheck                     # type-check client, tools, and server
-& $npm run build                         # regenerate index.html
-& $npm run build -- --check              # verify the committable artifact
+```
+git clone https://github.com/<owner>/plan-app.git
+cd plan-app
+# then double-click index.html, or:
+open index.html      # macOS
+xdg-open index.html  # Linux
+start index.html     # Windows
 ```
 
-Under `file://`, synchronization is disabled. For data, geometry, or
-synchronization changes, run the only authorized pre-deploy barrier:
+The setup wizard opens on a blank profile and you can draw an outline, raise
+walls, drop furniture and read the computed rooms straight away. Your work is
+saved in the browser's local storage, and the File menu exports and reimports a
+floor plan as JSON.
 
-```powershell
-& $node tests/all.ts # 36 suites
+What you do NOT get this way is the shared part. Under `file://` the client
+disables synchronization on purpose, so there is no account, no server and no
+second person. The collaborative half needs the Cloudflare pieces described
+under Deploying: a Durable Object for the live wire and a D1 database behind it.
+
+## Developing it
+
+Node 22.18 or newer, because the tooling runs TypeScript directly, with no
+transpile step. From the repository root:
+
 ```
+npm install              # two pinned build tools, nothing at runtime
+npm run build -- --dev   # index.dev.html, unminified, with an inline sourcemap
+npm run build            # regenerate index.html, the deliverable
+npm run build -- --check # fail if index.html no longer matches the source
+npm run typecheck        # client, tools and server, both configurations
+node tests/rapide.ts     # the fast loop, no browser, under a second
+```
+
+Never edit `index.html` by hand: it is built from `src/` and the next build
+overwrites it.
+
+For a change touching data, geometry or synchronization, run the whole
+pre-deploy barrier, which is the project's only gate:
+
+```
+node tests/all.ts        # 36 suites, 4 557 checks
+```
+
+Most suites drive a real Chrome and currently expect it at the standard Windows
+install path, so on macOS or Linux the browser suites will not start yet. The
+browserless ones (`rapide`, `compat-donnees`, `harnais-graine`, `exports-morts`,
+`no-dead-selectors`, `live-worker/test-local`) run anywhere.
 
 ## Deploying
 
