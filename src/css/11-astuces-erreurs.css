@@ -1,0 +1,29 @@
+  /* First-use tip bubble : bottom-center, auto-fading, one at a time, ✕ to dismiss (see showHint). */
+  .tip-hint{position:absolute;left:50%;bottom:46px;transform:translateX(-50%);background:var(--ink);color:#fff;
+    font-size:12px;line-height:1.35;padding:7px 10px 7px 13px;border-radius:16px;z-index:215;opacity:.96;
+    display:flex;align-items:center;gap:8px;max-width:min(420px,92vw);box-shadow:var(--shadow);
+    transition:opacity .5s}
+  .tip-hint b{font-weight:650}
+  .tip-hint.fade{opacity:0}
+  .tip-hint .tip-x{appearance:none;border:0;background:rgba(255,255,255,.16);color:#fff;cursor:pointer;
+    width:18px;height:18px;min-width:18px;border-radius:50%;font-size:12px;line-height:18px;padding:0;flex:none}
+  .tip-hint .tip-x:hover{background:rgba(255,255,255,.3)}
+  @media (pointer:coarse){ .tip-hint .tip-x{width:26px;height:26px;min-width:26px;line-height:26px;font-size:14px} }
+  /* Bootstrap banner: the plan saved on this device was unreadable. It STAYS until it's
+     closed: data loss isn't told in a message that fades away on its own. */
+  .boot-notice{position:absolute;left:16px;right:16px;top:14px;z-index:260;
+    display:flex;align-items:flex-start;gap:10px;
+    background:#fbeeeb;border:1px solid var(--danger);border-radius:var(--radius-chip);padding:10px 12px;
+    color:#7a2f24;font-size:12.5px;line-height:1.45;box-shadow:var(--shadow)}
+  .boot-notice span{flex:1;min-width:0}
+  .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .empty span{color:var(--faint);font-size:13px;background:var(--bg);padding:6px 12px;border-radius:var(--radius-chip)}
+  /* client crash reporter: stack of red toasts, bottom-center */
+  .err-toasts{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;
+    display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+  .err-toast{pointer-events:auto;background:var(--danger);color:#fff;font-family:var(--mono);
+    font-size:11px;line-height:1.35;padding:6px 10px;border-radius:var(--radius-chip);box-shadow:var(--shadow);
+    max-width:min(520px,92vw);display:flex;align-items:flex-start;gap:8px;word-break:break-word}
+  .err-toast .et-x{flex:none;cursor:pointer;font-size:12px;line-height:1;opacity:.85;background:none;border:0;color:#fff;padding:0 2px}
+  .err-toast .et-x:hover{opacity:1}
+

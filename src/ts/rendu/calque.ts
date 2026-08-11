@@ -1,0 +1,379 @@
+// src/ts/rendu/calque.ts — THE LAYER, the SINGLE editing container.
+// Ported from src/js/50-v5-rendu.js (`renderV5`, `v5RenderBack`) and src/js/54-v5-interface.js
+// (`v5RenderOpenings`, `v5RenderLabels`, `v5DrawHandles`).
+//
+// There is only ONE container, `.v5layer`, positioned on the outline's bbox: guides, handles and
+// dimensions anchor to it. No more "focused room", so no more local reference frame.
+//
+// THE BACKGROUND IS CACHED, THE REST IS RECONCILED. Floors, wall bands and hit shapes are only
+// rebuilt when the geometry, scale or layers change (`data-sig` signature). Furniture, openings,
+// labels and handles are reconciled on EVERY render: a drag must not depend on a rebuild, and the
+// DOM nodes hold closures.
+
+import type { BBox } from "../geometrie/polygones.ts";
+import type { Contexte } from "../app/contexte.ts";
+import type { PlanV5, Pt } from "../partage/plan.ts";
+import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
+import { bboxOfPoly, pointInPoly, poleOfInaccessibility } from "../geometrie/polygones.ts";
+import { v5OpeningBox } from "../modele/murs.ts";
+import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
+import { SVGNS, cssId } from "../noyau/dom.ts";
+import { aptToScreen } from "./vue.ts";
+import { floorPatternDefs } from "./sol.ts";
+import { resolveColor, withAlpha } from "./couleurs.ts";
+import { pieceIconSVG } from "./icones.ts";
+import { doorArcSVG, windowArcSVG } from "./arc-porte.ts";
+import { polygoneFaisceau, projection } from "../modele/projection.ts";
+import { renderPieces } from "./meubles.ts";
+import { isSel } from "./selection.ts";
+
+/** The layer, if mounted. */
+export const focusEl = (ctx: Contexte): HTMLElement | null =>
+  ctx.canvas.querySelector<HTMLElement>(".v5layer");
+
+export function renderV5(ctx: Contexte): void {
+  const P = ctx.etat.plan;
+  let layer = ctx.canvas.querySelector<HTMLElement>(".v5layer");
+  if (!P || !Array.isArray(P.outline) || P.outline.length < 3) { if (layer) layer.remove(); return; }
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "v5layer";
+    layer.addEventListener("pointerdown", (e) => ctx.gestes.calquePointerDown?.(e as PointerEvent));
+    layer.addEventListener("dblclick", (e) => ctx.gestes.calqueDblClick?.(e as MouseEvent));
+    ctx.canvas.appendChild(layer);
+  }
+  const bb = bboxOfPoly(P.outline);
+  const sp = aptToScreen(ctx, bb.minX, bb.minY);
+  const S = ctx.vue.scale;
+  layer.style.left = sp.x + "px";
+  layer.style.top = sp.y + "px";
+  layer.style.width = safeDim(bb.w * S) + "px";
+  layer.style.height = safeDim(bb.l * S) + "px";
+  layer.classList.toggle("editing", ctx.wallsMode);
+  layer.classList.toggle("cellpick", !ctx.wallsMode);
+  layer.classList.toggle("drawing", !!ctx.ihm.draw);
+  const o = ctx.etat.opts;
+  const sig = S.toFixed(4) + "|" + ctx.rev + "|" + (o.labels ? 1 : 0) + "|" + (o.layFurn !== false ? 1 : 0)
+    + (o.layLight !== false ? 1 : 0) + (o.layPlug !== false ? 1 : 0)
+    + "|" + (ctx.wallsMode ? 1 : 0) + "|" + (ctx.ihm.selWall || "");
+  if (layer.dataset["sig"] !== sig) { layer.dataset["sig"] = sig; renderFond(ctx, layer, P, bb, S); }
+  renderPieces(ctx, layer, bb);
+  renderOuvertures(ctx, layer, bb, S);
+  renderEtiquettesCellules(ctx, layer, bb, S);
+  renderFaisceaux(ctx, layer, bb, S);
+  drawHandles(ctx, layer, bb, S);
+}
+
+/** Floors per cell, grid, wall bands (ONE per wall only), and hit shapes. */
+export function renderFond(ctx: Contexte, layer: HTMLElement, P: PlanV5, bb: BBox, S: number): void {
+  const old = layer.querySelector("svg.v5svg");
+  if (old) old.remove();
+  const X = (x: number): number => v5R2((x - bb.minX) * S);
+  const Y = (y: number): number => v5R2((y - bb.minY) * S);
+  const pts = (poly: readonly Pt[]): string => poly.map((p) => X(p[0]) + "," + Y(p[1])).join(" ");
+  // R-17, blank-page safeguard: the pattern scale is clamped before any size computation.
+  let gs = S;
+  if (!isFinite(gs) || gs <= 0) gs = 0.5;
+  gs = Math.max(0.01, Math.min(40, gs));
+  const m = 100 * gs, f = m / 10;
+  const css = getComputedStyle(document.documentElement);
+  const cFine = css.getPropertyValue("--grid-fine").trim() || "#e7e9e3";
+  const cM = css.getPropertyValue("--grid-m").trim() || "#cfd3cc";
+  const cWall = css.getPropertyValue("--line-strong").trim() || "#c6c9c2";
+  let defs = `<pattern id="v5gf" width="${f}" height="${f}" patternUnits="userSpaceOnUse">
+        <path d="M ${f} 0 L 0 0 0 ${f}" fill="none" stroke="${cFine}" stroke-width="1"/></pattern>
+      <pattern id="v5gm" width="${m}" height="${m}" patternUnits="userSpaceOnUse">
+        <path d="M ${m} 0 L 0 0 0 ${m}" fill="none" stroke="${cM}" stroke-width="1"/></pattern>`;
+  let body = "";
+  const W = safeDim(bb.w * S), H = safeDim(bb.l * S);
+  (P.cells || []).forEach((c, i) => {
+    const fl = floorPatternDefs(c.floor || "parquet", S, "_v5" + i);
+    defs += fl.defs + `<clipPath id="v5clip${i}"><polygon points="${pts(c.poly)}"/></clipPath>`;
+    const gridOp = (c.floor && c.floor !== "plain") ? 0.45 : 1;
+    body += `<polygon points="${pts(c.poly)}" fill="${fl.fill}"/>
+        <g clip-path="url(#v5clip${i})" opacity="${gridOp}">
+          <rect x="0" y="0" width="${W}" height="${H}" fill="url(#v5gf)"/>
+          <rect x="0" y="0" width="${W}" height="${H}" fill="url(#v5gm)"/></g>`;
+  });
+  // outline band (closed) then one segment per interior wall: never two bands at the same spot
+  const outBand = Math.max(2, WALL * gs);
+  body += `<polygon points="${pts(P.outline)}" fill="none" stroke="#3b3f3d" stroke-width="${outBand}" stroke-linejoin="miter"/>
+      <polygon points="${pts(P.outline)}" fill="none" stroke="${cWall}" stroke-width="1" stroke-linejoin="miter" opacity="0.6"/>`;
+  const selW = ctx.ihm.selWall;
+  (P.walls || []).forEach((w) => {
+    if (w.isOutline) return;
+    const band = Math.max(2, (w.t || WALL) * gs);
+    const cls = "v5band" + (String(selW) === String(w.id) ? " sel" : "");
+    body += `<line class="${cls}" data-wid="${escapeHtml(w.id)}" x1="${X(w.a[0])}" y1="${Y(w.a[1])}" x2="${X(w.b[0])}" y2="${Y(w.b[1])}"
+        stroke="#3b3f3d" stroke-width="${band}" stroke-linecap="square"/>`;
+  });
+  // HIT shapes (transparent): cells first (surface), walls next (on top, a wall always wins over
+  // the cell). In Furniture mode the floor stays TRANSPARENT to the pointer: the rubber-band
+  // selection and the viewport's click-to-deselect must keep working.
+  if (!ctx.ihm.draw && ctx.wallsMode) {
+    (P.cells || []).forEach((c) => {
+      body += `<polygon class="v5hit-cell" data-c="${escapeHtml(c.id)}" points="${pts(c.poly)}"/>`;
+    });
+    (P.walls || []).forEach((w) => {
+      if (w.isOutline) return;
+      const hit = Math.max(14, (w.t || WALL) * gs);
+      body += `<line class="v5hit-wall" data-w="${escapeHtml(w.id)}" x1="${X(w.a[0])}" y1="${Y(w.a[1])}" x2="${X(w.b[0])}" y2="${Y(w.b[1])}" stroke-width="${hit}"/>`;
+    });
+  }
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("class", "v5svg");
+  svg.setAttribute("width", String(W));
+  svg.setAttribute("height", String(H));
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = `<defs>${defs}</defs>${body}`;
+  layer.insertBefore(svg, layer.firstChild);
+}
+
+/**
+ * The openings from the live model, in the SAME container as the furniture.
+ *
+ * R-2: NO NAME IS EVER WRITTEN ON A WALL OBJECT. The icon already says what it is (a door's arc,
+ * a window's broken band, a sconce's half-disk). Measured on the real plan: a single facade
+ * carried four stacked labels, and the living room wall three "Sconce" side by side, unreadable
+ * at working zoom. 15 opening labels before, 0 after. The name STAYS in the model (the sheet, the
+ * furniture list, export, `opening.set` on the wire): we're removing a DISPLAY, not a piece of
+ * data, hence the absence of `op.name` from the cache key.
+ *
+ * R-1, the trap kept here for memory: this `innerHTML` cache key carried NEITHER `side` NOR
+ * `rot`, so flipping a sconce rotated its box 180° without rebuilding its content.
+ */
+export function renderOuvertures(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
+  const P = ctx.etat.plan;
+  const X = (x: number): number => v5R2((x - bb.minX) * S);
+  const Y = (y: number): number => v5R2((y - bb.minY) * S);
+  const seen: Record<string, 1> = {};
+  (P.openings || []).forEach((op) => {
+    const t = TYPEMAP[op.type];
+    if (!t || !pieceVisible(op, ctx.etat.opts)) return;
+    const box = v5OpeningBox(P, op, t.h || WALL);
+    if (!box) return;
+    let el = layer.querySelector<HTMLElement>(`.piece[data-op="1"][data-id="${cssId(op.id)}"]`);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "piece opening";
+      el.dataset["id"] = String(op.id);
+      el.dataset["op"] = "1";
+      const noeud = el;
+      noeud.addEventListener("pointerdown", (ev) => {
+        ctx.gestes.ouverturePointerDown?.(ev as PointerEvent, String(noeud.dataset["id"]));
+      });
+      noeud.addEventListener("dblclick", (ev) => {
+        ctx.gestes.ouvertureDblClick?.(ev as MouseEvent, String(noeud.dataset["id"]));
+      });
+      layer.appendChild(el);
+    }
+    seen[String(op.id)] = 1;
+    const w = box.w, h = box.h, rot = box.rot;
+    el.style.zIndex = "8";
+    el.dataset["paint"] = "-1";   // an opening is ALWAYS below the furniture (cf. `stackedAt`)
+    el.style.left = X(box.cx - w / 2) + "px";
+    el.style.top = Y(box.cy - h / 2) + "px";
+    el.style.width = safeDim(w * S) + "px";
+    el.style.height = safeDim(h * S) + "px";
+    el.style.transform = `rotate(${rot}deg)`;
+    el.style.borderColor = t.color;
+    if (t.opening) { el.style.background = "var(--room-bg)"; el.style.borderWidth = "0"; }
+    else { el.style.background = withAlpha(t.color, 0.14); el.style.borderWidth = "1.5px"; }
+    el.style.borderRadius = t.opening ? "1px" : "3px";
+    el.classList.toggle("sel", isSel(ctx, op.id));
+    // `leaf` IS PART OF THE KEY: without it, switching a window from "fixed" to "double" would
+    // not change the key, so the icon cache would keep the old drawing and the setting would
+    // have no visible effect. Same trap as R-3 on labels.
+    const key = `${op.type}|${Math.round(w)}|${Math.round(h)}|${op.hinge ? 1 : 0}|${Number(op.swing) < 0 ? -1 : 1}|${op.leaf || 0}|${Math.round(S * 100)}`;
+    if (el.dataset["k"] !== key) {
+      el.dataset["k"] = key;
+      let html = "";
+      if (op.type === "door") html += doorArcSVG(w, op.hinge ? 1 : 0, (Number(op.swing) < 0) ? -1 : 1, resolveColor("var(--open)"));
+      else if (op.type === "window") html += windowArcSVG(w, op.hinge ? 1 : 0, (Number(op.swing) < 0) ? -1 : 1, op.leaf || 0, resolveColor("var(--open)"));
+      html += pieceIconSVG(op.type, w, h);
+      el.innerHTML = html;
+      if (op.type === "door" || op.type === "window") {
+        const d = el.querySelector<HTMLElement>(".darc");
+        if (d) {
+          const aw = safeDim(w * S);
+          const sg = (Number(op.swing) < 0) ? -1 : 1;
+          d.style.left = "0px";
+          d.style.top = (sg < 0 ? -aw : 0) + "px";
+          d.style.width = aw + "px";
+          d.style.height = aw + "px";
+        }
+      }
+      if (op.type === "sdoor") {
+        const ic = el.querySelector<HTMLElement>(".picon");
+        if (ic && op.hinge) ic.style.transform = "scaleX(-1)";
+      }
+    }
+  });
+  layer.querySelectorAll<HTMLElement>('.piece[data-op="1"]').forEach((n) => {
+    if (!seen[String(n.dataset["id"])]) n.remove();
+  });
+}
+
+/**
+ * A VIDEOPROJECTOR'S BEAM.
+ *
+ * It is painted BELOW the furniture and above the floor: it is a placement aid, not an object of
+ * the plan, so it must neither cover what's being moved nor be left forgotten. It exists ONLY if
+ * a projection ratio has been entered: a projector that was just placed does not bar the room
+ * with a cone before anything has been told to it.
+ *
+ * No state here: everything comes from `modele/projection.ts`, which is pure and proven without
+ * a browser.
+ */
+export function renderFaisceaux(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
+  const P = ctx.etat.plan;
+  const vieux = layer.querySelector("svg.v5beams");
+  if (vieux) vieux.remove();
+  const projs = (P.pieces || []).filter((p) => p.type === "projector" && Number(p.tr) > 0
+                                            && pieceVisible(p, ctx.etat.opts));
+  if (!projs.length) return;
+  const X = (x: number): number => v5R2((x - bb.minX) * S);
+  const Y = (y: number): number => v5R2((y - bb.minY) * S);
+  let body = "";
+  for (const p of projs) {
+    const ecran = p.pair ? (P.pieces || []).find((q) => String(q.id) === String(p.pair)) : null;
+    const pr = projection(p, ecran || null);
+    const poly = polygoneFaisceau(p, ecran || null);
+    // Red when the image won't be sharp: this is the only case where the beam must ALERT, width
+    // discrepancies are already spelled out in the inspector.
+    const col = resolveColor(pr.tropPres ? "var(--danger)" : "var(--open)");
+    body += `<polygon points="${poly.map((q) => X(q[0]) + "," + Y(q[1])).join(" ")}"`
+      + ` fill="${withAlpha(col, pr.tropPres ? 0.16 : 0.10)}" stroke="${withAlpha(col, 0.45)}"`
+      + ` stroke-width="1" stroke-dasharray="6 4"/>`;
+    // The firing axis: without it, a very wide cone no longer says where the device is AIMING.
+    body += `<line x1="${X(pr.ox)}" y1="${Y(pr.oy)}" x2="${X(pr.ox + pr.ux * pr.distance)}"`
+      + ` y2="${Y(pr.oy + pr.uy * pr.distance)}" stroke="${withAlpha(col, 0.35)}" stroke-width="1"`
+      + ` stroke-dasharray="3 5"/>`;
+  }
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("class", "v5beams");
+  const W = safeDim(bb.w * S), H = safeDim(bb.l * S);
+  svg.setAttribute("width", String(W));
+  svg.setAttribute("height", String(H));
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = body;
+  // Right after the background, so BELOW the furniture: `insertBefore` on the second child.
+  layer.insertBefore(svg, layer.children[1] || null);
+}
+
+/** A cell's name, placed on its POLE OF INACCESSIBILITY (an L-shaped room doesn't have its centroid inside it). */
+export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
+  const P = ctx.etat.plan;
+  const seen: Record<string, 1> = {};
+  (P.cells || []).forEach((c) => {
+    let el = layer.querySelector<HTMLElement>(`.ov-name[data-c="${cssId(c.id)}"]`);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "ov-name ov-name-center";
+      el.dataset["c"] = String(c.id);
+      const noeud = el;
+      noeud.addEventListener("pointerdown", (ev) => {
+        ev.stopPropagation();
+        ctx.gestes.choisirCellule?.(String(noeud.dataset["c"]), true);
+      });
+      layer.appendChild(el);
+    }
+    seen[String(c.id)] = 1;
+    el.textContent = c.name || "";
+    el.classList.toggle("focused", String(ctx.ihm.selCell) === String(c.id));
+    const pl = poleOfInaccessibility(c.poly);
+    el.style.left = ((pl.x - bb.minX) * S) + "px";
+    el.style.top = ((pl.y - bb.minY) * S) + "px";
+    el.style.right = "auto";
+  });
+  layer.querySelectorAll<HTMLElement>(".ov-name[data-c]").forEach((n) => {
+    if (!seen[String(n.dataset["c"])]) n.remove();
+  });
+}
+
+/**
+ * OUTLINE handles (edges, corner insertions, vertices) and the delete cross of the selected wall.
+ * They only exist in Walls mode, and are recreated on every render.
+ *
+ * G-15: the corner-insertion "+" is OFFSET 18 px OUTSIDE the outline. Placed on the facade, it
+ * stole the selection click, and its global recomputation would cut the wall in two and move
+ * 16 pieces of furniture.
+ */
+export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
+  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx").forEach((n) => n.remove());
+  if (!ctx.wallsMode) return;
+  const poly = ctx.etat.plan.outline, np = poly.length;
+  const toC = (x: number, y: number): { x: number; y: number } => ({ x: (x - bb.minX) * S, y: (y - bb.minY) * S });
+  for (let i = 0; i < np; i++) {
+    const a = poly[i]!, b = poly[(i + 1) % np]!;
+    const sa = toC(a[0], a[1]), sb = toC(b[0], b[1]);
+    const s = { x: (sa.x + sb.x) / 2, y: (sa.y + sb.y) / 2 };
+    const lenpx = Math.hypot(sb.x - sa.x, sb.y - sa.y);
+    const ang = Math.atan2(sb.y - sa.y, sb.x - sa.x) * 180 / Math.PI;
+    const eb = document.createElement("div");
+    eb.className = "edge";
+    eb.style.width = Math.max(10, lenpx - 36) + "px";
+    eb.style.left = s.x + "px";
+    eb.style.top = s.y + "px";
+    eb.style.transform = `translate(-50%,-50%) rotate(${ang}deg)`;
+    const aa = ((ang % 180) + 180) % 180;
+    eb.style.cursor = (aa < 20 || aa > 160) ? "ns-resize" : (aa > 70 && aa < 110) ? "ew-resize" : "move";
+    eb.title = "Click to select this facade · drag to move it";
+    const idx = i;
+    eb.addEventListener("pointerdown", (ev) => ctx.gestes.contourAretePointerDown?.(ev as PointerEvent, idx));
+    layer.appendChild(eb);
+    const nOut = outlineOutward(ctx, i);
+    const md = document.createElement("div");
+    md.className = "mid";
+    md.textContent = "+";
+    md.title = "Insert a corner on this facade";
+    md.style.left = (s.x + nOut.x * 18) + "px";
+    md.style.top = (s.y + nOut.y * 18) + "px";
+    md.addEventListener("pointerdown", (ev) => ctx.gestes.contourInsertionPointerDown?.(ev as PointerEvent, idx));
+    layer.appendChild(md);
+  }
+  poly.forEach((v, i) => {
+    const s = toC(v[0], v[1]);
+    const h = document.createElement("div");
+    h.className = "vtx" + ((i === ctx.selVtx) ? " sel" : "");
+    h.style.left = s.x + "px";
+    h.style.top = s.y + "px";
+    h.title = "Drag to move · click then Del to remove";
+    const x = document.createElement("div");
+    x.className = "vx";
+    x.textContent = "×";
+    x.title = "Retirer l'angle";
+    x.addEventListener("pointerdown", (ev) => ctx.gestes.contourSommetSupprimer?.(ev as PointerEvent, i));
+    h.appendChild(x);
+    h.addEventListener("pointerdown", (ev) => ctx.gestes.contourSommetPointerDown?.(ev as PointerEvent, i));
+    layer.appendChild(h);
+  });
+  const w = ctx.ihm.selWall ? (ctx.etat.plan.walls || []).find((q) => String(q.id) === String(ctx.ihm.selWall)) : null;
+  if (w && !w.isOutline) {
+    const s = toC((w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2);
+    const x = document.createElement("div");
+    x.className = "v5wx";
+    x.textContent = "×";
+    x.title = "Delete this wall (the two rooms merge)";
+    x.style.left = s.x + "px";
+    x.style.top = s.y + "px";
+    x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent));
+    layer.appendChild(x);
+  }
+}
+
+/**
+ * OUTWARD normal of the outline's edge `i`, in screen coordinates (y downward). Ported from
+ * `v5OutlineOutward` (src/js/53): rendering needs it to offset the "+" outside the outline, and
+ * that is its only dependency on this utility file.
+ */
+export function outlineOutward(ctx: Contexte, i: number): { x: number; y: number } {
+  const poly = ctx.etat.plan && ctx.etat.plan.outline;
+  if (!poly || poly.length < 3) return { x: 0, y: -1 };
+  const a = poly[i]!, b = poly[(i + 1) % poly.length]!;
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+  let nx = -dy / L, ny = dx / L;
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  if (pointInPoly(mx + nx * 10, my + ny * 10, poly)) { nx = -nx; ny = -ny; }
+  return { x: nx, y: ny };
+}

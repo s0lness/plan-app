@@ -1,0 +1,36 @@
+{
+  "tenu_a_la_main": "ordre de concaténation du CSS et du HTML",
+  "head": "head.html",
+  "css": [
+    "css/01-jetons-base.css",
+    "css/02-rail-palette.css",
+    "css/03-canvas-salles.css",
+    "css/04-scene-barre-outils.css",
+    "css/05-poignees-murs.css",
+    "css/06-modele-v5.css",
+    "css/07-meubles.css",
+    "css/08-inspecteur-fiche.css",
+    "css/09-boutons.css",
+    "css/10-selection-mesure.css",
+    "css/11-astuces-erreurs.css",
+    "css/12-tiroir-tactile.css",
+    "css/13-panneau-circulation.css",
+    "css/14-overlays.css",
+    "css/15-collab.css",
+    "css/16-impression.css",
+    "css/17-etroit.css"
+  ],
+  "html": [
+    "html/01-coque-rail.html",
+    "html/02-scene.html",
+    "html/03-panneau-circulation.html",
+    "html/04-inspecteur.html",
+    "html/05-fiche-piece.html",
+    "html/06-configuration.html",
+    "html/07-transfert.html",
+    "html/08-liste-mobilier.html",
+    "html/09-aide.html",
+    "html/11-plans.html",
+    "html/10-impression.html"
+  ]
+}

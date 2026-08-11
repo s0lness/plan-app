@@ -1,0 +1,18 @@
+{
+  "name": "plan",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Collaborative 2D floor-plan editor. A single-file, dependency-free static app (index.html); the packages below are build-time tools only.",
+  "scripts": {
+    "build": "node build.ts",
+    "build:worker": "node live-worker/build-worker.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.outils.json"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260702.1",
+    "esbuild": "0.28.1",
+    "typescript": "7.0.2",
+    "@types/node": "26.0.0"
+  }
+}

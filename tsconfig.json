@@ -1,0 +1,35 @@
+{
+  // Typing for the NEW client (src/ts). Produces NOTHING: esbuild is what emits the bundle,
+  // tsc only serves to say no. `node_modules/.bin/tsc --noEmit` must exit 0.
+  //
+  // src/js (the old client) is NOT included: it isn't typed, and staying that way is intended
+  // until the switchover happens.
+  "compilerOptions": {
+    "target": "es2019",           // §2: the source uses neither ?. nor ??; the household's iPhone is a real client
+    "lib": ["es2020", "dom", "dom.iterable"],
+    "module": "preserve",         // esbuild bundles; tsc doesn't have to rewrite the modules
+    "moduleResolution": "bundler",
+    "noEmit": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,   // plan[i] is T | undefined: that's the truth of entity arrays
+    "exactOptionalPropertyTypes": true, // `h?: number` doesn't accept `undefined`: the wire distinguishes absent from null
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // Imports carry the `.ts` extension: that's what lets Node (which has been able to strip
+    // types since v22.18) import src/ts DIRECTLY, with no build step, so both browser-less
+    // runners can run AGAINST THE MODULES themselves. esbuild resolves them too.
+    // Allowed because `noEmit` is true: tsc rewrites no path.
+    "allowImportingTsExtensions": true,
+
+    "isolatedModules": true,      // esbuild transpiles file by file: nothing must depend on the whole program
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/ts/**/*.ts"]
+}

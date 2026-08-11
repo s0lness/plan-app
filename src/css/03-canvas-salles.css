@@ -1,0 +1,28 @@
+  /* ---- apartment canvas: ONE single editing container, the .v5layer layer ---- */
+  .ov-guides{position:absolute;left:0;top:0;pointer-events:none;z-index:60}
+  .ov-guides .gline{position:absolute}
+  /* NO shadow on the layer, and NEVER filter: drop-shadow(). A filter forces the surface into
+     an off-screen render, recomputed on every child mutation (layer toggle): on
+     ARM/ANGLE GPUs (Adreno/D3D11) the raster can fail silently and make the whole
+     page disappear (blank page, no JS exception). The definition comes from the wall band, drawn on the
+     polygon in the layer's svg. */
+  /* Murs mode: furniture is dimmed and frozen across the whole canvas */
+  .app.walls .piece{pointer-events:none!important;opacity:.5}
+  /* measure mode: NOTHING on the canvas is grabbable — only measure points get placed. All pieces
+     + shape/resize/rotate handles + cell labels go pointer-inert so left clicks reach the
+     #viewport measure handler (snapping is geometric, it does NOT need the piece DOM to be hit). */
+  .app.measuring .piece,.app.measuring .rsz-handle,.app.measuring .rot-handle,
+  .app.measuring .vtx,.app.measuring .mid,.app.measuring .edge,.app.measuring .ov-name{pointer-events:none!important}
+  /* cell label */
+  .ov-name{position:absolute;left:0;top:0;transform:translateY(-100%);font-family:var(--mono);
+    font-size:12px;font-weight:600;color:var(--ink);background:rgba(255,255,255,.92);
+    border:1px solid rgba(35,39,42,.14);border-radius:3px 3px 0 0;padding:2px 7px;white-space:nowrap;
+    z-index:120;box-shadow:0 1px 1px rgba(20,30,30,.05);cursor:pointer;touch-action:none;user-select:none}
+  /* centered label: placed on the cell's pole of inaccessibility */
+  .ov-name-center{transform:translate(-50%,-50%);border-radius:4px;cursor:pointer;
+    z-index:20;background:rgba(255,255,255,.82)}
+
+  /* undo/redo toolbar buttons */
+  .hbtn{font-size:15px;padding:6px 9px;line-height:1}
+  .hbtn:disabled{opacity:.4;cursor:default;pointer-events:none}
+

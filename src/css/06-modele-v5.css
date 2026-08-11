@@ -1,0 +1,30 @@
+  /* ---- WALLS-ONLY MODEL: an outline + walls, rooms are the cells ----
+     The layer is the SINGLE editing CONTAINER: origin at the outline's bbox corner, vScale scale.
+     Hit shapes (walls/cells) live in the SVG, inert by default, activated to the
+     pointer depending on the mode. */
+  .v5layer{position:absolute;left:0;top:0;pointer-events:none;z-index:1;touch-action:none}
+  .v5layer svg.v5svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+  .v5layer .piece{cursor:grab;pointer-events:auto}
+  .v5layer.editing .piece{pointer-events:none;opacity:.5}
+  .v5layer .rot-handle,.v5layer .rsz-handle,.v5layer .vtx,.v5layer .mid,.v5layer .edge{pointer-events:auto}
+  .v5layer .ov-name{pointer-events:none;cursor:default}
+  .v5layer.cellpick .ov-name{pointer-events:auto;cursor:pointer}
+  /* The beam is not clickable: it's a reading aid, not an object. */
+  .v5beams{position:absolute;left:0;top:0;pointer-events:none;z-index:1}
+  .v5layer.drawing{pointer-events:auto;cursor:crosshair}
+  .v5hit-wall{pointer-events:stroke;cursor:move;stroke:transparent;fill:none}
+  .v5hit-cell{pointer-events:fill;fill:transparent;cursor:pointer}
+  .v5band.sel{stroke:var(--accent)!important}
+  .v5wx{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;z-index:60;
+        background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 13px/16px var(--mono);
+        text-align:center;cursor:pointer;pointer-events:auto;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;
+         font:600 11px/1 var(--mono);color:var(--accent-ink);background:var(--room-bg);
+         border:1px solid var(--accent);border-radius:3px;padding:2px 5px;white-space:nowrap}
+  .shape-warn{margin-top:8px;font-size:11px;color:var(--danger);display:none}
+  .shape-warn.on{display:block}
+
+  .piece{position:absolute;border:1.5px solid;border-radius:3px;display:flex;align-items:center;justify-content:center;
+    cursor:grab;touch-action:none;transition:box-shadow .1s;overflow:visible}
+  .piece:active{cursor:grabbing}
+  .piece .picon{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}

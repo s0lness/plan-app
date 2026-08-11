@@ -1,0 +1,3 @@
+# Exclut les artefacts construits des statistiques de langage et les replie dans les diffs.
+# Ils restent committés et servis : index.html EST le livrable statique du projet.
+index.html        linguist-generated=true

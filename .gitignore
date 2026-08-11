@@ -1,0 +1,35 @@
+.secrets.env
+*.secrets.env
+
+# This agent's gazette identity and repo URL (`agent`, `project`, `post_url` keys).
+# AGENTS.md forbids committing it, and the documented work loop does `git add -A`:
+# without this line, a single loop turn would publish it. Do not rely on .git/info/exclude,
+# which is local to one machine and is not tracked by the repository.
+.gazette
+
+# By-products that `git add -A` would otherwise pick up.
+# `nul`: file created by a redirection to NUL run from a POSIX shell (Windows).
+# `.claude/worktrees/`: agents' isolated working copies, never project content.
+nul
+.claude/worktrees/
+.claude/settings.local.json
+# Sandbox for measurement harnesses (V3-/V4- scripts, PNG captures, work plans).
+tmp/
+
+tmp-diag/
+
+# BUILD tools (typescript, esbuild). package.json and package-lock.json are committed,
+# node_modules is not: the deliverable has no runtime dependency on it.
+node_modules/
+
+# Worker deployment artifact, bundled on demand by `npm run build:worker`.
+live-worker/dist/
+
+# `index.html` is NOT ignored, and that is deliberate: Pages serves the root as static
+# content, with no Cloudflare-side build step, so the deliverable MUST be committed. It is
+# produced by `node build.mjs` (typed client, src/ts) and is never hand-edited;
+# `node build.mjs --check` verifies it.
+#
+# Since the switchover (batch E5c), `index-next.html` no longer exists: the typed client IS
+# `index.html`. What remains ignored is only the tuning artifact, unminified and never served.
+index.dev.html

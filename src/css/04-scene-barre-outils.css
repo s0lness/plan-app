@@ -1,0 +1,47 @@
+  /* ---------- stage ---------- */
+  .stage{display:flex;flex-direction:column;min-width:0;position:relative}
+  .toolbar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);min-width:0;flex-wrap:nowrap}
+  .toolbar .scale{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:12ch;flex:0 1 auto}
+  .toolbar .spacer{flex:1 1 auto;min-width:0}
+  /* collapsible toolbar buttons: text label by default, icon-only fallback at tight widths.
+     .tb-ico stays hidden until a media query flips to icon-only (label -> display:none, icon -> inline). */
+  .tb-ico{display:none}
+  .toolbar .btn.sm,.toolbar .seg .btn.sm{white-space:nowrap;flex:none}
+  /* Progressive collapse between the desktop layout and the 820px mobile block.
+     Order (widest->narrowest): drop scale text, then area chip, then buttons -> icon-only,
+     then (last resort) allow the toolbar to wrap to a 2nd row. */
+  @media (max-width:1400px){ .toolbar .scale{max-width:9ch} }
+  @media (max-width:1240px){ .toolbar .scale{display:none} }
+  @media (max-width:1120px){
+    /* icon-only for the wordy action buttons; keep the seg (Meubles/Murs) readable */
+    #btnFit .tb-label,#btnMeasure .tb-label,#btnOverlay .tb-label,#btnFlow .tb-label{display:none}
+    #btnFit .tb-ico,#btnMeasure .tb-ico,#btnOverlay .tb-ico,#btnFlow .tb-ico{display:inline}
+    #btnFit,#btnMeasure,#btnOverlay,#btnFlow{padding:6px 9px}
+  }
+  @media (max-width:960px){ .toolbar .area-chip{display:none} }
+  @media (max-width:900px){
+    /* very tight (but still >820 non-touch): allow one wrap as the final fallback */
+    .toolbar{flex-wrap:wrap;row-gap:6px}
+  }
+  .sync-chip{font-family:var(--mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;
+    white-space:nowrap;width:17ch;overflow:hidden;text-overflow:ellipsis;text-align:right;flex:none}
+  .sync-chip[hidden]{display:none}
+  .sync-chip.off{color:var(--danger)}
+  /* LOCAL write refused (private browsing, zero quota): nothing is kept on this device.
+     Distinct from the sync chip, which talks about the SHARED plan. Stays shown for as long as it lasts. */
+  .store-chip{font-family:var(--mono);font-size:11px;font-weight:650;color:#fff;background:var(--danger);
+    border-radius:var(--radius-control);padding:2px 7px;white-space:nowrap;flex:none}
+  /* "slow sync": realtime dropped, D1 fallback active. Amber + blinking dot: never confused with lag. */
+  .sync-chip.slow{color:#a8710a;font-weight:650}
+  .sync-chip.slow::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:#d98a12;margin-right:5px;vertical-align:middle;animation:slowpulse 1.2s ease-in-out infinite}
+  @keyframes slowpulse{0%,100%{opacity:.35}50%{opacity:1}}
+  .viewport{flex:1;position:relative;overflow:hidden;background:
+    radial-gradient(circle at 30% 20%,#f0f1ee,var(--bg));touch-action:none}
+  .viewport.panning{cursor:grabbing}
+  .viewport.spaceready{cursor:grab}
+  /* ARMED placement: the plan is waiting for the drop point, the cursor says so */
+  .app.posing .viewport{cursor:crosshair}
+  /* the single canvas carrying the plan layer (positioned in screen px) */
+  #canvas{position:absolute;left:0;top:0}
+  .area-chip{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}

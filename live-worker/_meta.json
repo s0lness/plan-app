@@ -1,0 +1,1 @@
+{"main_module":"worker.mjs","compatibility_date":"2026-07-01","bindings":[{"type":"d1","name":"DB","id":"<d1_database_id>"},{"type":"durable_object_namespace","name":"ROOM","class_name":"PlanRoom"}]}

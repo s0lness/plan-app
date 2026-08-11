@@ -1,0 +1,32 @@
+  /* Print host: hidden on screen, populated + revealed only for window.print(). */
+  #printRoot{display:none}
+  @media print{
+    /* hide ALL live app chrome + the interactive canvas: we print a clean SVG snapshot instead */
+    .app,.setup,.chat-btn,.chat-panel,.peer-cursors{display:none!important}
+    html,body{overflow:visible;background:#fff;margin:0}
+    #printRoot{display:block}
+    .print-plan{page-break-after:always;break-after:page;text-align:center}
+    .print-plan h2{font:600 16px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0 0 10px}
+    .print-plan svg{width:100%;height:auto;max-height:88vh}
+    .print-furni{font:13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1a1e1e}
+    .print-furni h2{font-size:16px;font-weight:600;margin:0 0 12px}
+    .print-furni h3{font-size:14px;font-weight:650;margin:14px 0 4px;border-bottom:1px solid #ccc;
+      padding-bottom:3px;display:flex;justify-content:space-between;break-after:avoid}
+    .print-furni h3 .fa{font:500 12px/1 ui-monospace,Menlo,Consolas,monospace;color:#666}
+    .print-furni table{width:100%;border-collapse:collapse;break-inside:avoid}
+    .print-furni td{padding:2px 0}
+    .print-furni td.q{width:40px;font-family:ui-monospace,Menlo,Consolas,monospace;color:#666}
+    .print-furni td.d{text-align:right;font-family:ui-monospace,Menlo,Consolas,monospace;color:#666;white-space:nowrap}
+    .print-furni .furni-sub{font-size:10.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:#888;margin:6px 0 1px}
+    /* The printed list reuses the modal's HTML (js/30 -> js/32). Three on-screen touches
+       come along with it; we neutralize them so the PDF stays pixel-for-pixel what it was:
+       the title color, the italics on « Aucun meuble. », and the cell alignment
+       (`baseline` was adding 1px per table row). */
+    .print-furni h3{color:#1a1e1e;align-items:stretch;gap:0}
+    .print-furni h3 .fa{font-variant-numeric:normal}
+    .print-furni .furni-empty{color:inherit;font-size:inherit;font-style:normal}
+    .print-furni .furni-tbl td{vertical-align:middle}
+    .print-furni .furni-tbl td.q,.print-furni .furni-tbl td.d{font-variant-numeric:normal}
+    @page{margin:14mm}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}

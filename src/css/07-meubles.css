@@ -1,0 +1,57 @@
+  /* door swing arc: separate SVG sized w×w, anchored on the door box, extends into the room */
+  .piece .darc{position:absolute;pointer-events:none;overflow:visible;z-index:1}
+  /* Label wrapper: child of the furniture piece, so it inherits its rotation. `setLabelSpin` (js/00)
+     CANCELS it exactly: a furniture name is always horizontal, whatever the object's tilt.
+     Centered on the piece. */
+  .piece .plabel-wrap{position:absolute;left:50%;top:50%;transform-origin:50% 50%;
+    pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:2}
+  /* The label is BOUNDED to its furniture piece's local width (max-width set inline by js/12,
+     hence box-sizing:border-box so the border and padding fit within the bound) and whatever
+     overflows is truncated by an ellipsis: a long name on a narrow piece no longer sits
+     across the plan. */
+  /* THE LABEL IS HITTABLE, AND THAT'S LOAD-BEARING: `gestes/branchement.ts` decides "rename or
+     rotate" via an `elementsFromPoint` redone on the fly, and an element with `pointer-events:none`
+     does NOT appear in that stack. The `.plabel-wrap` stays inert though. Dragging doesn't break:
+     a `pointerdown` on the label bubbles up to the `.piece` node, whose handler starts the
+     move as before. */
+  .piece .plabel{pointer-events:auto;font-size:11px;font-weight:600;color:var(--ink);text-align:center;line-height:1.1;
+    background:rgba(255,255,255,.82);border:1px solid rgba(35,39,42,.14);border-radius:2px;
+    padding:1px 5px;white-space:nowrap;box-shadow:0 1px 1px rgba(20,30,30,.05);
+    box-sizing:border-box;overflow:hidden;text-overflow:ellipsis}
+  .piece .pdim{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--ink);
+    background:rgba(255,255,255,.86);border:1px solid rgba(35,39,42,.14);border-radius:2px;
+    padding:0 4px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* opening background is set inline to --room-bg so it carves a gap in the wall band; no !important here */
+  .piece.opening{background:var(--room-bg);border-style:solid;border-width:0}
+  .piece.sel{box-shadow:0 0 0 2px var(--room-bg),0 0 0 4px var(--accent),var(--shadow);z-index:50!important}
+  .rot-handle{position:absolute;left:50%;top:-24px;width:14px;height:14px;margin-left:-7px;border-radius:50%;
+    background:var(--accent);border:2px solid var(--room-bg);cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+  .rot-handle::before{content:"";position:absolute;left:50%;top:12px;width:2px;height:12px;margin-left:-1px;background:var(--accent)}
+  /* bounding-box resize handles: small white squares on a selected single piece; children of the
+     .piece div so the parent's rotate() carries them. Positioned by inline left/top at box corners
+     + edge-midpoints (unrotated local box). Hidden by default; renderRoomPieces reveals the 8. */
+  .rsz-handle{position:absolute;width:9px;height:9px;margin-left:-5px;margin-top:-5px;box-sizing:border-box;
+    background:var(--room-bg);border:1.5px solid var(--accent);border-radius:1px;z-index:60;
+    box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  /* ---- PLACEMENT GHOST: you see the OBJECT, not a box -------------------------------------------
+     Placed on <body> (so outside .app), in position:fixed: it floats over the rail like the plan does. It
+     carries the SAME icon as the plan (.picon / .darc), hence these two rules twinned with the
+     layer's, since `.piece .picon` doesn't reach it, the ghost isn't a .piece.
+     NO filter here: this surface is repainted on every pointer frame (see GPU blank page). */
+  .place-ghost{position:fixed;pointer-events:none;z-index:999;border:1.5px solid;opacity:.92}
+  .place-ghost .picon{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
+  .place-ghost .darc{position:absolute;pointer-events:none;overflow:visible}
+  /* placement impossible: dashed stroke, dimmed drawing, and the reason written just below */
+  .place-ghost.refuse{border-style:dashed;border-color:var(--danger);background:transparent!important}
+  .place-ghost.refuse .picon,.place-ghost.refuse .darc{opacity:.30}
+  /* wall segment targeted by a wall-mounted object: you see WHICH wall it will land on */
+  .place-wall-hl{position:fixed;pointer-events:none;z-index:998;height:0;
+    border-top:4px solid var(--accent);transform-origin:0 50%;opacity:.85;border-radius:2px}
+  .place-say{position:fixed;pointer-events:none;z-index:1000;transform:translateX(-50%);
+    font-size:12px;line-height:1.2;white-space:nowrap;padding:3px 8px;border-radius:12px;
+    background:var(--danger);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.28)}
+  .rsz-handle[data-h="nw"],.rsz-handle[data-h="se"]{cursor:nwse-resize}
+  .rsz-handle[data-h="ne"],.rsz-handle[data-h="sw"]{cursor:nesw-resize}
+  .rsz-handle[data-h="n"],.rsz-handle[data-h="s"]{cursor:ns-resize}
+  .rsz-handle[data-h="e"],.rsz-handle[data-h="w"]{cursor:ew-resize}
+

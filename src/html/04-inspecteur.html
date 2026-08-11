@@ -1,0 +1,91 @@
+<!-- The two floating panels live in ONE column anchored to the bottom right. Before, each was
+     placed at `right:16px;bottom:16px`: opening the room sheet on top of the inspector hid
+     Width, Depth and the four action buttons (checked with `elementFromPoint`). Stacked, they
+     never overlap, on any screen size. -->
+<div class="side-panels" id="sidePanels">
+<!-- Elastic spacer: it pushes the panels toward the BOTTOM of the column and collapses to zero
+     when they no longer fit (anchoring via `justify-content:flex-end` would overflow off the
+     top, out of scrolling's reach; anchoring via `margin-top:auto` on the first child would be
+     lost as soon as the inspector is hidden, since `:first-child` ignores `display:none`). -->
+<div class="side-spacer" aria-hidden="true"></div>
+<div class="inspector" id="inspector" hidden>
+  <div class="insp-head">
+    <span class="sw" id="iSw"></span>
+    <!-- Same field for a piece of FURNITURE and for an OPENING. 80 = what the shared plan
+         keeps (live-worker/ops.ts, NAME_MAX); beyond that it truncates silently. -->
+    <input id="iName" type="text" maxlength="80" aria-label="Object name">
+  </div>
+  <div class="insp-multi" id="iMulti" hidden></div>
+  <!-- The MEASURED GAPS of the selection, then the button that evens them out. Showing the gaps
+       next to the button is what makes the action predictable: you see "12 · 8" before clicking,
+       so you know what "even out" is going to do, and you can also decide not to do it. -->
+  <!-- READ AND WRITE IN THE SAME PLACE. The measured gaps read on the left; the field imposes a
+       value, the button evens them out without picking one. These are two different operations:
+       "the same" doesn't say which, "10" says nothing about the others. -->
+  <div class="insp-spread" id="iSpread" hidden>
+    <span class="gaps" id="iGaps"></span>
+    <div class="in gapset"><input id="iGapSet" type="number" min="0" max="500" step="1" placeholder="gap"><span class="unit">cm</span></div>
+    <button class="btn sm" id="iSpreadGo" title="Give every gap the same size (the two end objects stay put)">Even</button>
+  </div>
+  <div class="insp-grid">
+    <div class="field">
+      <label for="iW">Width</label>
+      <div class="in"><input id="iW" type="number" min="10" max="3000" step="1"><span class="unit">cm</span></div>
+    </div>
+    <div class="field">
+      <label for="iH">Depth</label>
+      <div class="in"><input id="iH" type="number" min="10" max="3000" step="1"><span class="unit">cm</span></div>
+    </div>
+  </div>
+  <div class="insp-grid" id="iWallRow" hidden style="grid-template-columns:1fr">
+    <div class="field">
+      <label for="iWallPos">From the corner</label>
+      <div class="in"><input id="iWallPos" type="number" min="0" max="3000" step="1"><span class="unit">cm</span></div>
+    </div>
+  </div>
+  <!-- HOW THIS WINDOW OPENS. Visible on a window and nowhere else. "None" is the default and
+       covers both fixed AND top-hung (vasistas): both open vertically or not at all, so neither
+       one has a floor footprint to draw. -->
+  <div class="insp-leaf" id="iLeafRow" hidden>
+    <span class="lbl">Opens</span>
+    <span class="seg" role="group" aria-label="How this window opens">
+      <button class="btn sm" id="iLeaf0" data-leaf="0" title="Fixed, or top-hung (vasistas): opens vertically, no floor footprint">None</button>
+      <button class="btn sm" id="iLeaf1" data-leaf="1" title="One casement, hinged on one side">Single</button>
+      <button class="btn sm" id="iLeaf2" data-leaf="2" title="Double window: two casements meeting in the middle">Double</button>
+    </span>
+  </div>
+  <!-- VIDEOPROJECTOR. None of this is a distance: these are the numbers from the spec sheet.
+       The distance itself reads below the fields, it is DERIVED from the position. -->
+  <div class="insp-proj" id="iProjRow" hidden>
+    <div class="insp-grid">
+      <div class="field">
+        <label for="iTr">Throw ratio</label>
+        <div class="in"><input id="iTr" type="number" min="0.1" max="10" step="0.01"><span class="unit">:1</span></div>
+      </div>
+      <div class="field">
+        <label for="iDmin">Min. distance</label>
+        <div class="in"><input id="iDmin" type="number" min="0" max="2000" step="1"><span class="unit">cm</span></div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="iPair">Aimed at</label>
+      <select id="iPair"></select>
+    </div>
+    <p class="proj-out" id="iProjOut"></p>
+  </div>
+  <div class="rotrow">
+    <button class="btn sm" id="iRot90" title="Rotate 90°">Rotate 90°</button>
+    <button class="btn sm" id="iSwing" title="Opens inwards / outwards" hidden>Swing direction</button>
+    <button class="btn sm" id="iHinge" title="Hinge on the left or on the right" hidden>Hinge side</button>
+    <button class="btn sm" id="iSide" title="Put on the other face of the wall (R key)" hidden>Flip side</button>
+    <input id="iRot" type="range" min="0" max="359" step="1" aria-label="Rotation">
+    <span class="rv" id="iRotV">0°</span>
+  </div>
+  <div class="insp-actions">
+    <button class="btn sm" id="iDup">Duplicate</button>
+    <button class="btn sm" id="iLock">Lock</button>
+    <button class="btn sm" id="iFront">Bring to front</button>
+    <button class="btn sm dgr" id="iDel">Delete</button>
+  </div>
+</div>
+

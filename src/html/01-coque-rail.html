@@ -1,0 +1,69 @@
+
+<div class="app">
+  <div class="rail-scrim" id="railScrim" aria-hidden="true"></div>
+  <aside class="rail">
+    <div class="brand">
+      <h1><span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 3.5h17v17h-6.5"/><path d="M9.5 20.5h-6v-17"/><path d="M14 3.5v9.5H3.5"/></svg></span><span class="plan-name" id="planName" title="Double-click to rename this plan">Flat plan</span></h1>
+    </div>
+
+    <div class="grp">
+      <h2>Rooms</h2>
+      <div class="rooms" id="roomsList"></div>
+    </div>
+
+    <div class="grp">
+      <h2>Furniture</h2>
+      <div class="field psearch-field">
+        <div class="in">
+          <input id="palSearch" type="text" placeholder="Search…" aria-label="Search furniture" autocomplete="off" spellcheck="false">
+          <button class="psearch-x" id="palSearchX" type="button" title="Clear" aria-label="Clear the search" hidden>✕</button>
+        </div>
+      </div>
+      <!-- Sort the palette BY ROOM (the default) or BY KIND. A personal setting, like the
+           layers: it never travels through the shared plan (D-7). -->
+      <div class="palby" role="group" aria-label="Group the furniture list">
+        <button class="btn sm" id="palByRoom" data-by="room" aria-pressed="true" title="Group by room: Bedroom, Kitchen…">By room</button>
+        <button class="btn sm" id="palByKind" data-by="kind" aria-pressed="false" title="Group by kind: Seating, Storage, Lighting…">By kind</button>
+      </div>
+      <div class="palette" id="palette"></div>
+      <div class="pnores" id="palNoRes" hidden>No match</div>
+    </div>
+
+    <div class="grp">
+      <h2>Options</h2>
+      <div class="opts">
+        <label class="opt"><input type="checkbox" id="optSnap" checked><span class="box"></span>Snap to the 5 cm grid</label>
+        <label class="opt"><input type="checkbox" id="optLabels" checked><span class="box"></span>Show names &amp; sizes</label>
+        <label class="opt"><input type="checkbox" id="optLayFurn" checked><span class="box"></span>Furniture</label>
+        <label class="opt"><input type="checkbox" id="optLayLight" checked><span class="box"></span>Lighting</label>
+        <label class="opt"><input type="checkbox" id="optLayPlug" checked><span class="box"></span>Sockets</label>
+      </div>
+    </div>
+
+    <div class="rail-foot">
+      <!-- THREE BLOCKS, and nothing more: the file, the paper/image output, and the destructive
+           gesture. Two entries left the menu because they were ALREADY duplicates, down to the
+           same handler: "Help & shortcuts" (that's the "?" in the toolbar, js/31 → openHelp) and
+           "Export as PDF" (js/32 → printPlan, same as "Print / PDF"). -->
+      <div class="foot-menu" id="footMenu" hidden role="menu" aria-label="Plan actions">
+        <button class="btn" id="btnExport" role="menuitem">Save to file…</button>
+        <button class="btn" id="btnImport" role="menuitem">Open from file…</button>
+        <hr class="fm-sep" role="separator">
+        <button class="btn" id="btnPlans" role="menuitem">Plans…</button>
+        <button class="btn" id="btnFurni" role="menuitem">Furniture list…</button>
+        <button class="btn" id="btnExportPNG" role="menuitem">Export as PNG</button>
+        <button class="btn" id="btnPrint" role="menuitem">Print / PDF</button>
+        <hr class="fm-sep" role="separator">
+        <button class="btn dgr" id="btnClear" role="menuitem">Remove all furniture</button>
+      </div>
+      <input type="file" id="fileImport" accept=".json,application/json" hidden>
+      <!-- `#btnExportPDF` carried the same action as "Print / PDF" (js/32: both call
+           `printPlan`). The MENU ENTRY is gone; the button stays, hidden, because js/32 still
+           references it by name. To be removed along with its `addEventListener`, in the same
+           batch. -->
+      <button id="btnExportPDF" hidden></button>
+      <button class="btn wide foot-trigger" id="btnMenu" aria-haspopup="true" aria-expanded="false"
+        >File<span class="ft-chev" aria-hidden="true">▾</span></button>
+    </div>
+  </aside>
+

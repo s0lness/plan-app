@@ -1,0 +1,152 @@
+  /* ---------- floating panels column (inspector + room sheet) ----------
+     The two used to be anchored to the SAME corner (right:16px;bottom:16px): the sheet passed over
+     the inspector and hid Largeur, Profondeur, and the four action buttons. They are now
+     STACKED in a column: two open panels can no longer overlap, at any screen
+     size. The column doesn't catch the pointer, its children do (the plan stays clickable between them).
+     It scrolls if the two don't fit in the viewport height.
+     It's anchored to the bottom by `margin-top:auto` on the first panel, NOT by
+     `justify-content:flex-end`: with the latter, content taller than the column overflows
+     off the TOP and becomes unreachable by scrolling (the inspector started at top:-129 on a
+     phone in landscape). */
+  .side-panels{position:absolute;right:16px;bottom:16px;top:68px;width:238px;z-index:200;
+    display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;gap:0 10px;
+    pointer-events:none;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
+  .side-panels>*{pointer-events:auto;flex:none;margin-bottom:10px}
+  .side-panels>*:last-child{margin-bottom:0}
+  /* THE SPACER CATCHES NOTHING. `.side-panels>*{pointer-events:auto}` made it clickable, and since
+     it takes up the whole remaining height of the column (flex:1), it was swallowing clicks over a
+     238px band to the right of the plan (measured: 12 points probed out of 12, 1680 screen). On a
+     PHONE it's worse: the column becomes full width (css/12), so the spacer covered the whole
+     plan and NO touch reached anything. A gesture with no effect is indistinguishable
+     from a breakage: the spacer only serves to push the panels down, it has nothing to receive. */
+  .side-spacer{flex:1 1 auto;min-height:0;margin:0;pointer-events:none}
+  /* ---------- inspector ---------- */
+  .inspector{position:relative;width:auto;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--shadow);padding:14px}
+  .insp-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .insp-head .sw{width:12px;height:12px;border-radius:3px;flex:none}
+  .insp-head input{flex:1;min-width:0;border:0;background:transparent;font-size:14px;font-weight:600;color:var(--ink);padding:2px 0;border-bottom:1px solid transparent}
+  .insp-head input:focus{outline:none;border-bottom-color:var(--accent)}
+  /* "N selected" chip when a multi-selection is active */
+  .insp-multi{font-family:var(--mono);font-size:11px;font-weight:650;color:var(--accent-ink);
+    background:var(--accent-soft);border-radius:var(--radius-control);padding:4px 8px;margin-bottom:10px;text-align:center}
+  .insp-multi[hidden]{display:none}
+  .insp-spread{display:flex;align-items:center;gap:8px;margin:4px 0 2px}
+  .insp-spread[hidden]{display:none}
+  .insp-spread .gaps{font-family:var(--mono);font-size:11px;color:var(--faint);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+  .insp-spread .btn{flex:none}
+  .insp-spread .gapset{flex:none;width:74px;display:flex;align-items:center;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius-control)}
+  .insp-spread .gapset:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .insp-spread .gapset input{width:100%;border:0;background:transparent;padding:4px 6px;
+    font-family:var(--mono);font-size:11px;color:var(--ink)}
+  .insp-spread .gapset input:focus{outline:none}
+  .insp-spread .gapset input::-webkit-outer-spin-button,
+  .insp-spread .gapset input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .insp-spread .gapset .unit{padding:0 6px 0 0;color:var(--faint);font-family:var(--mono);font-size:10px}
+  .insp-proj{margin:2px 0 8px}
+  .insp-proj[hidden]{display:none}
+  .insp-proj select{width:100%;font:inherit;font-size:12px;padding:6px 8px;color:var(--ink);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius-control)}
+  .insp-proj select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .proj-out{margin:6px 0 0;font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .proj-out.bad{color:var(--danger)}
+  .rc-row{margin:2px 0 8px}
+  .rc-row[hidden]{display:none}
+  .rc-note{margin:2px 0 8px;font-size:11.5px;color:var(--faint);font-style:italic}
+  .rc-note[hidden]{display:none}
+  .rc-free{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
+  .rc-free[hidden]{display:none}
+  .rc-free .lbl{font-size:11px;color:var(--faint);flex:none}
+  .rc-free .seg{display:flex;gap:4px;flex:1}
+  .rc-free .seg .btn{flex:1}
+  .rc-free .seg .btn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent)}
+  .insp-leaf{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
+  .insp-leaf[hidden]{display:none}
+  .insp-leaf .lbl{font-size:11px;color:var(--faint);flex:none}
+  .insp-leaf .seg{display:flex;gap:4px;flex:1}
+  .insp-leaf .seg .btn{flex:1}
+  /* The rename field SITS ON TOP of the label. It lives in the viewport, above the layer, so
+     it survives renders that rebuild the labels underneath it. `translate(-50%,-50%)`
+     centers it on the computed point, like the label it replaces. */
+  .label-edit{position:absolute;transform:translate(-50%,-50%);z-index:400;
+    font-family:inherit;font-size:12px;font-weight:600;text-align:center;color:var(--ink);
+    background:var(--room-bg);border:1.5px solid var(--accent);border-radius:3px;
+    padding:2px 6px;box-shadow:var(--shadow);outline:none}
+  /* The rail's title IS the plan's name. An identifier pill next to a generic title
+     said the same thing twice, and neither one said what you're looking at. */
+  .plan-name{cursor:text}
+  .plan-name-edit{font:inherit;color:var(--ink);background:var(--room-bg);
+    border:1px solid var(--accent);border-radius:3px;padding:0 4px;width:11em;max-width:100%}
+  /* ---------- plan selector ----------
+     SAME GRAMMAR AS THE FURNITURE LIST (14-overlays.css): LINES separated by a rule, not
+     boxes. A box per line looks like an input field and manufactures three borders
+     where one is enough. The current plan is marked by an accent RULE on the left, not by a
+     solid fill: a solid fill on a list row draws the eye like an error. */
+  .plans-card{grid-template-columns:1fr;width:min(420px,100%)}
+  .plans-list{display:flex;flex-direction:column;margin:0 0 2px}
+  .plan-row{display:flex;align-items:baseline;gap:10px;padding:7px 2px 7px 10px;
+    border-bottom:1px solid var(--line);border-left:2px solid transparent;cursor:pointer}
+  .plan-row:last-child{border-bottom:0}
+  .plan-row:hover{background:var(--accent-soft)}
+  .plan-row.here{border-left-color:var(--accent);cursor:default}
+  .plan-row.here:hover{background:transparent}
+  .plan-row .pname{flex:1;font-size:13.5px;font-weight:600;color:var(--ink);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .plan-row.here .pname{color:var(--accent-ink)}
+  .plan-row .pname-edit{flex:1;font:inherit;font-size:13.5px;font-weight:600;padding:1px 4px;
+    border:1px solid var(--accent);border-radius:3px;background:var(--room-bg);color:var(--ink)}
+  .plan-row .pmeta{font-family:var(--mono);font-size:11px;color:var(--faint);
+    font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+  /* The cross only shows on HOVER of its row: a list of plans is not a list of
+     delete buttons. It stays reachable by keyboard (focus-visible). */
+  .plan-row .pdel{flex:none;opacity:0;transition:opacity .12s;font-size:15px;line-height:1}
+  .plan-row:hover .pdel,.plan-row .pdel:focus-visible{opacity:.55}
+  .plan-row .pdel:hover{opacity:1;color:var(--danger,#b04a3d)}
+  .plans-empty{color:var(--muted);font-size:13px;font-style:italic;padding:6px 2px}
+  /* Creation is SEPARATED from the list by a rule: it's not one more plan, it's an
+     action. Without this rule, the field reads as an empty row in the list. */
+  .plans-new{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding-top:14px}
+  .plans-new .in{flex:1}
+  .plans-new .in input{width:100%}
+  .plans-hint{font-size:11.5px;color:var(--faint);margin:6px 0 0;min-height:1em}
+  .palby{display:flex;gap:4px;margin:0 0 8px}
+  .palby .btn{flex:1}
+  .palby .btn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent)}
+  .insp-leaf .seg .btn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent)}
+  .insp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .insp-grid .field .in{background:var(--panel-2)}
+  /* locked piece: greyed-out, non-interactive edit controls */
+  .insp-grid .field .in.disabled,.rotrow .disabled{opacity:.45;pointer-events:none}
+  .rotrow{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .rotrow input[type=range]{flex:1;accent-color:var(--accent)}
+  .rotrow .rv{font-family:var(--mono);font-size:12px;color:var(--muted);width:38px;text-align:right;font-variant-numeric:tabular-nums}
+  .insp-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+
+  /* ---------- room card (walls mode) : same visual family as the inspector ---------- */
+  .roomcard{position:relative;width:auto;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--shadow);padding:14px}
+  .rc-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .rc-head .sw{width:12px;height:12px;border-radius:3px;flex:none;background:var(--accent)}
+  .rc-head input{flex:1;min-width:0;border:0;background:transparent;font-size:14px;font-weight:600;color:var(--ink);padding:2px 0;border-bottom:1px solid transparent}
+  .rc-head input:focus{outline:none;border-bottom-color:var(--accent)}
+  .rc-lbl{font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
+  /* The area is NOT a section label: putting it in capitals displayed « SURFACE
+     15,12 M² », and « M² » is not a unit. */
+  .rc-area{font-family:var(--mono);font-size:12.5px;color:var(--ink);font-variant-numeric:tabular-nums;
+    margin-bottom:10px}
+  .rc-floor{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
+  .rc-warn{margin:0 0 10px;font-size:11px;color:var(--danger);display:none}
+  .rc-warn.on{display:block}
+  .rc-actions{display:grid;grid-template-columns:1fr;gap:6px}
+
+  /* ---- live distance guides (ephemeral, drawn during drag) ---- */
+  .guides{position:absolute;left:0;top:0;pointer-events:none;z-index:60}
+  .guides .gline{position:absolute;background:none}
+  .guides .gline.h{border-top:1px dashed var(--muted)}
+  .guides .gline.v{border-left:1px dashed var(--muted)}
+  .guides .glab{position:absolute;font-family:var(--mono);font-size:11px;color:var(--muted);
+    font-variant-numeric:tabular-nums;background:var(--bg);padding:0 5px;border-radius:4px;
+    white-space:nowrap;transform:translate(-50%,-50%);line-height:1.5}
+

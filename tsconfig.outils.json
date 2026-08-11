@@ -1,0 +1,21 @@
+{
+  // noImplicitAny is the lever that forces real TypeScript signatures onto the tools and the
+  // test suites translated from JavaScript. strict stays off: null-checking the 15,000 lines
+  // of test suites is a separate undertaking, unrelated to this conversion.
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "types": ["node", "@cloudflare/workers-types"],
+    "skipLibCheck": true
+  },
+  "include": ["build.ts", "functions/**/*.ts", "live-worker/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["live-worker/dist/**"]
+}

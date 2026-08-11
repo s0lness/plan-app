@@ -1,0 +1,18 @@
+  /* ---- editing handles for the apartment's CONTOUR (outline) ---- */
+  .vtx{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
+    background:var(--accent);border:2px solid var(--room-bg);box-shadow:0 1px 3px rgba(0,0,0,.3);
+    cursor:grab;z-index:40;touch-action:none}
+  .vtx:hover{background:var(--accent-ink)}
+  .vtx.sel{box-shadow:0 0 0 3px var(--accent-soft),0 1px 3px rgba(0,0,0,.3)}
+  .vtx .vx{position:absolute;right:-9px;top:-9px;width:15px;height:15px;border-radius:50%;
+    background:var(--danger);color:#fff;font-size:11px;line-height:15px;text-align:center;
+    display:none;cursor:pointer;font-family:var(--sans)}
+  .vtx:hover .vx{display:block}
+  .mid{position:absolute;width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;
+    background:var(--room-bg);border:1.5px dashed var(--accent);color:var(--accent);
+    font-size:13px;line-height:12px;text-align:center;cursor:pointer;z-index:39;opacity:.75;touch-action:none}
+  .mid:hover{opacity:1;background:var(--accent-soft)}
+  /* whole-wall drag: grab a side to move the entire line */
+  .edge{position:absolute;height:14px;transform-origin:50% 50%;z-index:38;cursor:move;
+    touch-action:none;border-radius:7px;transition:background .1s}
+  .edge:hover{background:var(--accent-soft)}

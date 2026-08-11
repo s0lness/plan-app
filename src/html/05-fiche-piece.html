@@ -1,0 +1,49 @@
+<div class="roomcard" id="roomCard" hidden>
+  <div class="rc-head">
+    <span class="sw"></span>
+    <!-- 80 = the length the shared plan KEEPS (live-worker/ops.ts, NAME_MAX). Beyond that it
+         truncates silently: without this cap, the screen shows a name the peer will never see. -->
+    <input id="rcName" type="text" maxlength="80" aria-label="Room name">
+    <!-- The card had no way to close: once opened, it stayed there. -->
+    <button class="flow-x" id="rcClose" type="button" title="Close the card" aria-label="Close the card">×</button>
+  </div>
+  <div class="rc-lbl">Flooring</div>
+  <div class="rc-floor" id="rcFloor">
+    <button type="button" class="btn sm floor-opt" data-floor="parquet">Wood</button>
+    <button type="button" class="btn sm floor-opt" data-floor="herringbone">Herringbone</button>
+    <button type="button" class="btn sm floor-opt" data-floor="tile">Tile</button>
+    <button type="button" class="btn sm floor-opt" data-floor="plain">Plain</button>
+  </div>
+  <div class="rc-area" id="rcArea"></div>
+  <div class="rc-warn" id="rcWarn">The walls cross each other; the shape may draw oddly.</div>
+  <!-- Through or free. Visible only when a WALL is selected: a room has no ends. "Free" = the
+       partition stays where it is; "Through" = it stretches to the first barrier, which is the
+       historical behavior and the default. -->
+  <!-- EXACT LENGTH. The dimension already reads out during the drag; here it gets TYPED IN. Only
+       the FREE end stretches: the other one is a junction, and moving it would break the wall
+       across from it. -->
+  <!-- SAME GRAMMAR AS THE INSPECTOR (`.field`: label above, `.in` inline with its unit). A
+       homegrown class here received NONE of the `.field .in` rules, so "cm" wrapped onto its own
+       line below the field. Reuse the structure, don't reinvent it. -->
+  <div class="rc-row" id="rcLenRow" hidden>
+    <div class="field">
+      <label for="rcLen">Length</label>
+      <div class="in"><input id="rcLen" type="number" min="10" max="3000" step="1"><span class="unit">cm</span></div>
+    </div>
+  </div>
+  <div class="rc-row rc-free" id="rcFreeRow" hidden>
+    <span class="lbl">Ends</span>
+    <span class="seg" role="group" aria-label="How this wall ends">
+      <button class="btn sm" id="rcThrough" title="Extend both ends until they meet something">Through</button>
+      <button class="btn sm" id="rcFree" title="Leave both ends where they are (a stub partition)">Free</button>
+    </span>
+  </div>
+  <!-- "An exterior wall can't be deleted" is a NOTE, not a failed action: rendering it as a
+       disabled red button made it read like an application error. -->
+  <p class="rc-note" id="rcNote" hidden></p>
+  <div class="rc-actions">
+    <button class="btn sm dgr" id="rcDel">Delete wall</button>
+  </div>
+</div>
+</div>
+

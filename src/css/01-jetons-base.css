@@ -1,0 +1,42 @@
+  :root{
+    --bg:#e9eae7; --panel:#fbfaf8; --panel-2:#f3f2ee;
+    --ink:#23272a; --muted:#6b7178; --faint:#9aa0a3;
+    --line:#d9dbd5; --line-strong:#c6c9c2;
+    --accent:#1f6f78; --accent-ink:#12474d; --accent-soft:rgba(31,111,120,.12);
+    --room-bg:#fcfcfa; --grid-fine:#e7e9e3; --grid-m:#cfd3cc;
+    --danger:#b04a3d;
+    --seat:#4e7c82; --table:#b98a5e; --store:#7c8a6b; --bed:#8a6e8e;
+    --soft:#c1ac8c; --decor:#6e9a78; --open:#1f6f78; --kitchen:#5f7d8c; --struct:#8a8f8b; --bath:#6d8ba3;
+    --shadow:0 1px 2px rgba(20,30,30,.06),0 6px 18px rgba(20,30,30,.08);
+    /* CHROME RADII: five named steps, like the house recipe (family-budget.css), instead
+       of a dozen literal values. The scale carries the values of THIS application (buttons,
+       inspector, and modals keep exactly the radius they had); whatever
+       fell between two steps was rounded to the nearest, to the pixel. These tokens describe chrome
+       SURFACES: nothing on the canvas uses them, and a radius that is a SHAPE (a 50%
+       circle, a pill, a toggle switch, a 12px color chip) stays literal. */
+    --radius-control:6px;   /* small targets: close cross, sync chip, cartouche */
+    --radius-chip:8px;      /* buttons, fields, thumbnails, menu entries, panels */
+    --radius-popover:10px;  /* floating menus, preview frames */
+    --radius-card:12px;     /* inspector, room sheet, chat panel */
+    --radius-modal:16px;    /* modals */
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  /* `hidden` MEANS hidden, no exceptions. The browser stylesheet sets `[hidden]{display:none}`
+     with zero specificity: the smallest CLASS rule beats it, and the element stays PAINTED even
+     though the code believes it is hidden. Two blocks lived off this bug: « Largeur / Profondeur de l'encoche »
+     (.dims{display:grid}) showed up on the Rectangle shape, and « Depuis l'angle »
+     (.insp-grid{display:grid}), reserved for openings, was painted on the inspector of any ordinary
+     furniture piece: typing a value there did nothing. A dozen `.x[hidden]{display:none}` rules
+     patched it case by case; this one closes the door for good. */
+  [hidden]{display:none!important}
+  /* The app is a fixed 100vh surface: the DOCUMENT must never scroll (only .rail /
+     .flow-list / .chat-list scroll internally). html needs its own overflow:hidden,
+     body's alone doesn't stop programmatic focus() from scrolling the root scroller. */
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;overflow:hidden}
+  .app{display:grid;grid-template-columns:264px 1fr;height:100vh;height:100dvh}
+  .app.flow-open{grid-template-columns:264px 1fr 264px}
+

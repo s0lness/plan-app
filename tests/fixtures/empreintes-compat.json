@@ -1,0 +1,168 @@
+{
+ "quoi": "Empreintes de lecture du corpus de compatibilité. Écrites par `node tests/compat-donnees.ts --figer`. Une empreinte qui bouge sans qu'on l'ait voulu EST une perte de données : ne jamais refiger pour faire taire l'oracle.",
+ "fige": "2026-08-10T23:59:47.541Z",
+ "documents": {
+  "fixture-plan-reel-77": {
+   "quoi": "v4 rooms[]+envelope+opts : le plan du foyer AVANT la conversion murs-seuls (8 salles, 77 objets, D-3)",
+   "lu": true,
+   "fp": "20edcdf65d3b4a84",
+   "octets": "58a24e6a50a68eb0",
+   "local": "a1436518f50a21dc",
+   "setupDone": true,
+   "n": "6/22/30/47/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "fixture-plan-rev177": {
+   "quoi": "v4 rooms[]+envelope, révision 177",
+   "lu": true,
+   "fp": "e35ed63d6163fd95",
+   "octets": "594baca0aa687692",
+   "local": "82c48732621c28e4",
+   "setupDone": true,
+   "n": "6/19/21/21/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "export-cuisine": {
+   "quoi": "export ENVELOPPÉ {app,version,savedAt,note,state} (v4 mono-salle)",
+   "lu": true,
+   "fp": "a836fb8fa309ddff",
+   "octets": "51e22a381e5a8a86",
+   "local": "24a64a6b7605c561",
+   "setupDone": true,
+   "n": "6/6/1/8/1",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "backup-rev246": {
+   "quoi": "v4 rooms[]+envelope, révision 246",
+   "lu": true,
+   "fp": "8ba5f362ab4b1476",
+   "octets": "d50b80c27be50602",
+   "local": "6e8e623c5ae8412e",
+   "setupDone": true,
+   "n": "6/22/30/47/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "backup-prev5-rev242": {
+   "quoi": "v4 + opts + active, révision 242",
+   "lu": true,
+   "fp": "a587c4c800caf4f4",
+   "octets": "1aa0a8c0e023e540",
+   "local": "8d65881e0aa09fec",
+   "setupDone": true,
+   "n": "6/22/30/47/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "prod-main-v5-plat": {
+   "quoi": "v5 À PLAT tel que le GET /api/plan le rend (forme serveur)",
+   "lu": true,
+   "fp": "0768e5c0239de310",
+   "octets": "e4580d4eb7508a44",
+   "local": "07f78e7b615db403",
+   "setupDone": true,
+   "n": "6/22/30/47/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "export-u7": {
+   "quoi": "export ENVELOPPÉ d'une session de travail",
+   "lu": true,
+   "fp": "1fbe498ad98f8d56",
+   "octets": "3cd750ae2bfa1162",
+   "local": "9890f6d69a93ae6e",
+   "setupDone": true,
+   "n": "6/22/30/47/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "d1-rev283": {
+   "quoi": "la ligne D1 de production figée (rev 283, écrite par le snapshot du Worker)",
+   "lu": true,
+   "fp": "af91df0db931eae3",
+   "octets": "b319acd8866e6ce6",
+   "local": "a485610ec7e6bdd0",
+   "setupDone": true,
+   "n": "6/21/37/54/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "local-plan-riche-vs-fil-ancien": {
+   "quoi": "enregistrement local : `plan` imbriqué RICHE + forme à plat AMPUTÉE (précédence D-4)",
+   "lu": true,
+   "fp": "3e2bfa6670a13af8",
+   "octets": "f84e6762160e470c",
+   "local": "786f2563bc3f9f4b",
+   "setupDone": true,
+   "n": "6/22/30/47/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "fil-ancien-seul": {
+   "quoi": "forme à plat SEULE, ouvertures empaquetées (`side` dans le bit 1 de `hinge`)",
+   "lu": true,
+   "fp": "b193bef7fe017651",
+   "octets": "ec2384515b2c0785",
+   "local": "33dbb19efda58522",
+   "setupDone": true,
+   "n": "6/22/30/47/10",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "v3-mono-piece": {
+   "quoi": "v1/v2/v3 mono-pièce {room,pieces,opts} (aucun document réel ne survit)",
+   "lu": true,
+   "fp": "0df7900edbb0d3ac",
+   "octets": "40915923c1900d75",
+   "local": "38584ab558e7f539",
+   "setupDone": false,
+   "n": "4/4/3/0/1",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "v2-pieces-seules": {
+   "quoi": "v1/v2 sans `room` : `pieces[]` seul, contour reconstruit",
+   "lu": true,
+   "fp": "ca41418a0e6c0178",
+   "octets": "a664288e10fcc1f4",
+   "local": "46991f64bc2501f8",
+   "setupDone": false,
+   "n": "4/4/0/1/1",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "__defaut__": {
+   "quoi": "`defaultState()` : appartement neuf 420×360, VIDE (D-17)",
+   "lu": true,
+   "fp": "21dc4588eebaae24",
+   "octets": "b6239f8ecbbd31ca",
+   "local": "ceef159002c7a706",
+   "setupDone": false,
+   "n": "4/4/0/0/1",
+   "pointFixe": true,
+   "sansOpts": true
+  },
+  "refus-vide": {
+   "quoi": "objet vide : `migrate()` refuse (null)",
+   "lu": false
+  },
+  "refus-rooms-vide": {
+   "quoi": "`rooms: []` : `migrate()` refuse (null)",
+   "lu": false
+  },
+  "abime-outline-court": {
+   "quoi": "v5 abîmé (contour de 2 points) : retombe sur le chemin ancien format",
+   "lu": true,
+   "fp": "21dc4588eebaae24",
+   "octets": "b6239f8ecbbd31ca",
+   "local": "ceef159002c7a706",
+   "setupDone": false,
+   "n": "4/4/0/0/1",
+   "pointFixe": true,
+   "sansOpts": true
+  }
+ }
+}

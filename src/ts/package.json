@@ -1,0 +1,4 @@
+{
+  "//": "Déclare src/ts comme des modules ES. Sans ce fichier, Node (qui sait retirer les types depuis v22.18) réanalyse chaque .ts en CommonJS avant de comprendre que c'est un module, et le dit à chaque lancement des suites tests/*.ts. Aucun effet sur esbuild ni sur le livrable : build.ts ne lit que src/manifest.json et le metafile du bundle.",
+  "type": "module"
+}

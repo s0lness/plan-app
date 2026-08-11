@@ -1,0 +1,79 @@
+<div class="setup" id="setup" hidden role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+  <div class="setup-card" role="document">
+    <div class="setup-body">
+      <div class="setup-head">
+        <h2 id="setupTitle">The outline of the flat</h2>
+        <p>Shape, dimensions and flooring. The outline is set once; the walls come after.</p>
+      </div>
+
+      <!-- Filled in by js/46 when the local save turned out to be unreadable: we stop pretending
+           there's a plan, and say where the damaged content was set aside. -->
+      <div class="setup-notice" id="setupNotice" hidden>
+        <span id="setupNoticeText"></span>
+        <button class="btn sm" type="button" id="setupNoticeDl">Download the unreadable content</button>
+      </div>
+
+      <div class="setup-field">
+        <span class="setup-lbl">Shape</span>
+        <div class="shape-cards">
+          <button class="shape-card" id="cardRect" data-shape="rect" aria-pressed="true">
+            <svg viewBox="0 0 60 44" aria-hidden="true"><rect x="6" y="6" width="48" height="32" rx="2"/></svg>
+            <span class="nm">Rectangle</span>
+          </button>
+          <button class="shape-card" id="cardL" data-shape="l" aria-pressed="false">
+            <svg viewBox="0 0 60 44" aria-hidden="true"><path d="M6 6 H36 V22 H54 V38 H6 Z"/></svg>
+            <span class="nm">L-shaped</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="setup-field">
+        <span class="setup-lbl">Dimensions</span>
+        <div class="dims">
+          <div class="field">
+            <label for="suW">Width</label>
+            <div class="in"><input id="suW" type="number" min="100" max="3000" step="10" value="420"><span class="unit">cm</span></div>
+          </div>
+          <div class="field">
+            <label for="suL">Length</label>
+            <div class="in"><input id="suL" type="number" min="100" max="3000" step="10" value="360"><span class="unit">cm</span></div>
+          </div>
+        </div>
+        <div class="dims notch-row" id="notchRow" hidden>
+          <div class="field">
+            <label for="suNW">Notch width</label>
+            <div class="in"><input id="suNW" type="number" min="10" max="3000" step="10"><span class="unit">cm</span></div>
+          </div>
+          <div class="field">
+            <label for="suNL">Notch depth</label>
+            <div class="in"><input id="suNL" type="number" min="10" max="3000" step="10"><span class="unit">cm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-field">
+        <span class="setup-lbl">Flooring</span>
+        <div class="floor-picker" id="setupFloor">
+          <button type="button" class="btn sm floor-opt" data-floor="parquet">Wood</button>
+          <button type="button" class="btn sm floor-opt" data-floor="herringbone">Herringbone</button>
+          <button type="button" class="btn sm floor-opt" data-floor="tile">Tile</button>
+          <button type="button" class="btn sm floor-opt" data-floor="plain">Plain</button>
+        </div>
+      </div>
+
+      <div class="shape-warn" id="shapeWarn">The walls cross each other; the shape may draw oddly.</div>
+
+      <div class="setup-actions">
+        <button class="btn pri" id="setupStart">Start arranging →</button>
+        <button class="btn" id="setupFine" title="Apply, then drag the corners for an irregular room">Adjust the corners</button>
+      </div>
+    </div>
+
+    <aside class="setup-preview">
+      <div class="setup-lbl">Preview</div>
+      <div class="preview-pane"><svg id="setupSvg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-label="Outline preview"></svg></div>
+      <div class="preview-area" id="setupArea">— m²</div>
+    </aside>
+  </div>
+</div>
+

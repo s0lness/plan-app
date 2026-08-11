@@ -1,0 +1,25 @@
+  /* buttons */
+  .btn{appearance:none;border:1px solid var(--line-strong);background:var(--panel-2);color:var(--ink);
+    font-family:var(--sans);font-size:12.5px;font-weight:550;padding:8px 10px;border-radius:var(--radius-chip);cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background .12s,border-color .12s}
+  .btn:hover{background:#fff;border-color:var(--faint)}
+  .btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.pri:hover{background:var(--accent-ink)}
+  .btn.dgr{color:var(--danger);border-color:#e0c4bf}
+  .btn.dgr:hover{background:#fbeeeb;border-color:var(--danger)}
+  .btn.sm{padding:6px 8px;font-size:11.5px}
+  .btn.wide{width:100%}
+  .btn[hidden]{display:none}   /* explicit .btn display would otherwise override the hidden attr */
+  /* segmented two-button mode control (Meubles | Murs) */
+  .seg{display:inline-flex;align-items:stretch}
+  .seg .btn{border-radius:0;margin-left:-1px}
+  .seg .btn:first-child{border-radius:var(--radius-chip) 0 0 var(--radius-chip);margin-left:0}
+  .seg .btn:last-child{border-radius:0 var(--radius-chip) var(--radius-chip) 0}
+  .seg .btn[aria-pressed="true"]{z-index:1}
+  /* palette disabled while editing walls (mirrors the old overview) */
+  .palette.disabled{opacity:.45;pointer-events:none}
+
+  /* never text-selection on the plan (drag was triggering it on labels) */
+  #canvas,#canvas *,.toolbar,.rooms,.peer-cursors{user-select:none;-webkit-user-select:none}

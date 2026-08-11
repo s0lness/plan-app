@@ -1,0 +1,54 @@
+  <section class="stage">
+    <div class="toolbar">
+      <button class="btn sm hbtn railtoggle" id="btnRail" title="Menu" aria-label="Open the menu" aria-expanded="false">☰</button>
+      <button class="btn sm hbtn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">↩</button>
+      <button class="btn sm hbtn" id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo">↪</button>
+      <span class="seg" role="group" aria-label="Edit mode">
+        <button class="btn sm pri" id="btnModeFurn" aria-pressed="true" title="Arrange: place and move furniture">Furniture</button>
+        <button class="btn sm" id="btnModeWalls" aria-pressed="false" title="Change the shape, size and flooring of rooms">Walls</button>
+      </span>
+      <button class="btn sm tb-collapsible" id="btnDrawWall" aria-pressed="false" hidden title="Draw a partition: drag from one wall to another"><span class="tb-ico" aria-hidden="true">▤</span><span class="tb-label">Draw a wall</span></button>
+      <button class="btn sm tb-collapsible" id="btnFit" title="Fit the whole flat in view"><span class="tb-ico" aria-hidden="true">▣</span><span class="tb-label">Fit</span></button>
+      <button class="btn sm tb-collapsible" id="btnMeasure" aria-pressed="false" title="Measure a distance between two points (walls, furniture, corners)"><span class="tb-ico" aria-hidden="true">📏</span><span class="tb-label">Measure</span></button>
+      <span class="scale" id="scaleReadout">–</span>
+      <span class="area-chip" id="areaChip"></span>
+      <span class="spacer"></span>
+      <button class="btn sm tb-collapsible" id="btnOverlay" aria-pressed="false" title="Shade the walkable floor and draw the circulation paths"><span class="tb-ico" aria-hidden="true">◧</span><span class="tb-label">Show circulation</span></button>
+      <button class="btn sm flowtoggle" id="btnFlow" aria-pressed="false" title="Circulation"><span class="tb-ico" aria-hidden="true">↹</span><span class="tb-label">Circulation</span> <span class="pill" id="flowPill" hidden></span></button>
+      <span class="peers" id="peers" hidden></span>
+      <!-- Local write refused (private browsing, quota at zero). Stays shown for as long as it
+           lasts: the write exception used to be swallowed silently and the person thought they
+           were saving. -->
+      <span class="store-chip" id="storeChip" hidden>not saved here</span>
+      <span class="sync-chip" id="syncChip" hidden></span>
+      <button class="btn sm hbtn" id="btnHelp" title="Help (?)" aria-label="Help">?</button>
+    </div>
+    <div class="viewport" id="viewport">
+      <div id="canvas"></div>
+      <canvas id="flowCanvas"></canvas>
+      <div class="peer-cursors" id="peerCursors"></div>
+      <div class="rubber" id="rubber" hidden></div>
+      <div class="ov-measures" id="measures"></div>
+      <div class="ov-cursor-guides" id="cursorGuides"></div>
+      <div class="rsz-readout" id="rszReadout" hidden></div>
+      <div class="empty" id="emptyMsg"><span>Drag an object in from the left and drop it in place. Clicking a thumbnail arms it instead: the next click on the plan drops it.</span></div>
+      <div class="walls-hint" id="wallsHint" hidden>Walls mode: furniture is locked · Esc to go back to furniture</div>
+      <!-- PERSISTENT boot banner: local saving used to be unreadable. It duplicates the
+           assistant's banner, which is only visible if the assistant opens (online, the
+           decision belongs to the server, and in the meantime the screen said nothing at all). -->
+      <div class="boot-notice" id="bootNotice" hidden>
+        <span id="bootNoticeText"></span>
+        <button class="flow-x" type="button" id="bootNoticeX" title="Close" aria-label="Close">×</button>
+      </div>
+      <button class="chat-btn" id="chatBtn" hidden title="Chat" aria-label="Chat">💬<span class="chat-badge" id="chatBadge" hidden>0</span></button>
+      <div class="chat-panel" id="chatPanel" hidden role="dialog" aria-label="Chat">
+        <div class="chat-head"><span class="ct">Chat</span><button class="chat-x" id="chatClose" title="Close" aria-label="Close">×</button></div>
+        <div class="chat-list" id="chatList"></div>
+        <div class="chat-input">
+          <span class="in"><input id="chatText" type="text" maxlength="500" placeholder="Message…" autocomplete="off"></span>
+          <button class="btn sm pri" id="chatSend">Send</button>
+        </div>
+      </div>
+    </div>
+  </section>
+

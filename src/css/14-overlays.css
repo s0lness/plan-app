@@ -1,0 +1,91 @@
+  /* ---------- setup overlay ---------- */
+  .setup{position:fixed;inset:0;z-index:400;display:flex;align-items:center;justify-content:center;
+    padding:24px;background:rgba(26,30,30,.42);backdrop-filter:blur(2px)}
+  .setup[hidden]{display:none}
+  .setup-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-modal);box-shadow:var(--shadow);
+    width:min(760px,100%);max-height:calc(100vh - 48px);overflow:auto;
+    display:grid;grid-template-columns:1fr 260px;gap:0}
+  .setup-body{padding:22px 22px 20px;display:flex;flex-direction:column;gap:18px}
+  .setup-head h2{margin:0;font-size:19px;font-weight:650;letter-spacing:.2px}
+  .setup-head p{margin:4px 0 0;color:var(--muted);font-size:12.5px}
+  /* Assistant's alert banner (unreadable local plan). It explains what happened and where the
+     damaged content was set aside: saying nothing was the real defect. */
+  .setup-notice{background:#fbeeeb;border:1px solid var(--danger);border-radius:var(--radius-chip);padding:10px 12px;
+    color:#7a2f24;font-size:12.5px;line-height:1.45;display:flex;flex-direction:column;
+    align-items:flex-start;gap:8px}
+  .setup-field{display:flex;flex-direction:column;gap:9px}
+  .setup-lbl{font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .shape-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .shape-card{appearance:none;cursor:pointer;background:var(--panel-2);border:1.5px solid var(--line);
+    border-radius:var(--radius-card);padding:12px 10px 10px;display:flex;flex-direction:column;align-items:center;gap:8px;
+    transition:border-color .12s,box-shadow .12s,background .12s}
+  .shape-card:hover{border-color:var(--line-strong);background:#fff}
+  .shape-card svg{width:60px;height:44px}
+  .shape-card svg rect,.shape-card svg path{fill:var(--accent-soft);stroke:var(--muted);stroke-width:2;stroke-linejoin:round}
+  .shape-card .nm{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .shape-card:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+  .shape-card[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);background:#fff}
+  .shape-card[aria-pressed="true"] svg rect,.shape-card[aria-pressed="true"] svg path{fill:var(--accent-soft);stroke:var(--accent)}
+  .setup-actions{display:flex;gap:10px;margin-top:2px}
+  .setup-actions .btn.pri{flex:1}
+  .setup .shape-warn{margin:0}
+  .setup-preview{border-left:1px solid var(--line);background:var(--panel-2);border-radius:0 var(--radius-modal) var(--radius-modal) 0;
+    padding:18px 16px;display:flex;flex-direction:column;gap:10px}
+  .preview-pane{flex:1;min-height:180px;display:flex;align-items:center;justify-content:center;
+    background:var(--room-bg);border:1px solid var(--line);border-radius:var(--radius-popover);overflow:hidden}
+  .preview-pane svg{width:100%;height:100%;max-height:280px}
+  .preview-area{font-family:var(--mono);font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums;text-align:center}
+  @media (max-width:680px){
+    .setup-card{grid-template-columns:1fr}
+    .setup-preview{border-left:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius-modal) var(--radius-modal)}
+    .preview-pane{min-height:140px}
+  }
+
+  /* ---------- transfer modal (embedded save/load fallback) ---------- */
+  .xfer-card{grid-template-columns:1fr;width:min(560px,100%)}
+  .xfer-ta{width:100%;resize:vertical;min-height:180px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:var(--radius-chip);padding:10px 11px;font-family:var(--mono);font-size:12px;color:var(--ink);line-height:1.5}
+  .xfer-ta:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .xfer-hint{margin:0;color:var(--muted);font-size:12px;line-height:1.4}
+  .xfer .setup-actions{justify-content:flex-end}
+  .xfer .setup-actions .btn{flex:0 0 auto}
+
+  /* ---------- furniture list modal ---------- */
+  .furni-card{grid-template-columns:1fr;width:min(620px,100%)}
+  .furni-body{max-height:min(60vh,520px);overflow:auto;display:flex;flex-direction:column;gap:16px}
+  .furni-room h3{margin:0 0 6px;font-size:14px;font-weight:650;color:var(--ink);
+    display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+    border-bottom:1px solid var(--line);padding-bottom:5px}
+  .furni-room h3 .fa{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+  .furni-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .furni-tbl td{padding:3px 0;vertical-align:baseline}
+  .furni-tbl td.q{width:36px;font-family:var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+  .furni-tbl td.d{text-align:right;font-family:var(--mono);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .furni-sub{margin:8px 0 2px;font-size:11px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  .furni-empty{color:var(--muted);font-size:13px;font-style:italic}
+
+  /* ---------- help modal (reuses the setup overlay chrome) ---------- */
+  .help-card{grid-template-columns:1fr;width:min(680px,100%)}
+  .help-body{max-height:min(72vh,640px);overflow:auto;display:flex;flex-direction:column;gap:18px;
+    -webkit-overflow-scrolling:touch}
+  .help-sec h3{margin:0 0 7px;font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .help-dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 14px;align-items:baseline}
+  .help-dl dt{font-weight:600;color:var(--ink);font-size:13px}
+  .help-dl dd{margin:0;color:var(--muted);font-size:12.5px;line-height:1.4}
+  .help-dl dd b{color:var(--ink);font-weight:600}
+  kbd{display:inline-block;font-family:var(--mono);font-size:11px;line-height:1.4;color:var(--ink);
+    background:var(--panel-2);border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:var(--radius-control);
+    padding:1px 6px;min-width:14px;text-align:center;font-variant-numeric:tabular-nums}
+  .help-kbd{width:100%;border-collapse:collapse;font-size:12.5px}
+  .help-kbd td{padding:4px 0;vertical-align:baseline;border-top:1px solid var(--line)}
+  .help-kbd tr:first-child td{border-top:0}
+  .help-kbd td.k{width:150px;white-space:nowrap}
+  .help-kbd td.k kbd{margin-right:3px}
+  .help-kbd td.d{color:var(--muted)}
+  @media (min-width:620px){ .help-cols{columns:2;column-gap:26px} .help-cols .help-sec{break-inside:avoid;margin-bottom:16px} }
+  /* coarse pointer : bottom-sheet like the other overlays get via .setup padding; keep it scrollable */
+  @media (pointer:coarse){
+    .help .setup-card{align-self:flex-end;max-height:calc(100vh - 24px)}
+    .help-body{max-height:78vh}
+  }
+
