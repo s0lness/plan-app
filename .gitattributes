@@ -1,3 +1,8 @@
 # Exclut les artefacts construits des statistiques de langage et les replie dans les diffs.
 # Ils restent committés et servis : index.html EST le livrable statique du projet.
 index.html        linguist-generated=true
+
+# GitHub's language detection treats `.ts` as ambiguous and classifies file by file,
+# which split this repository between TypeScript and JavaScript even though every source
+# file is TypeScript and `npm run typecheck` enforces `noImplicitAny` over all of them.
+*.ts linguist-language=TypeScript
