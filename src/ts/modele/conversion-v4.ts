@@ -231,7 +231,7 @@ export function buildV5FromV4(source: PlanAncien | null | undefined): ResultatCo
     cells[hit]!.name = r.name;
     cells[hit]!.floor = estSolConnu(r.floor) ? r.floor : "parquet";
   });
-  v5AssignNames(cells, []); // "Pièce N" for the remaining cells
+  v5AssignNames(cells, []); // "Room N" for the remaining cells
   const plan: PlanV5 = {
     outline: contour as Pt[], walls, openings, pieces,
     cells: cells.map((c) => ({ id: c.id, poly: c.poly, name: c.name, floor: c.floor })),

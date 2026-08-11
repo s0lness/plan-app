@@ -151,6 +151,72 @@ export function clampCenterToInset(
   return { cx: bx, cy: by, fits: true };
 }
 
+// ---- G-14. A REQUESTED MOVE IS SHORTENED, NEVER BENT ------------------------------------------
+// `clampCenterToInset` answers "what is the NEAREST valid center", one object at a time, by
+// pushing whichever corner penetrates deepest back along ITS OWN inward normal. For an axis-aligned
+// wall that normal is a single axis, so a piece whose diagonal drag makes it graze that wall gets
+// corrected on THAT AXIS ALONE: the other axis, never having penetrated anything itself, is left
+// exactly where the hand put it. Measured: an entry bench (90x30, rotated 90 deg) dragged diagonally
+// by (+60,+40) landed at (+61,-1) — X followed the pointer, Y was cancelled outright, because the
+// piece's rotated footprint (30 wide x 90 TALL) grazed a wall that only bites in Y. Mathematically
+// this is exactly the nearest point in an axis-aligned box, so nothing is "wrong" corner by corner;
+// what's wrong is that nobody asked "how much of the REQUESTED motion can survive", only "where is
+// the closest legal spot". A GROUP has the identical disease one level up: clamping each member to
+// ITS OWN nearest spot deforms the whole selection instead of moving it as one (js/17, feature
+// batch of 2026-08-11).
+//
+// THE FIX IS THE SAME SHAPE FOR ONE PIECE OR TEN: don't project onto the nearest point, SHRINK the
+// request. `deltaScaleMax` finds the LARGEST fraction `t` of the requested delta (dax,day), shared
+// by every member, for which EVERY member (its OWN cell, OWN rotation, OWN tolerated penetration)
+// still fits at `start + t*delta`. Applying that ONE `t` to the whole group keeps its shape; applied
+// to a single piece, it keeps the two axes moving TOGETHER instead of one freezing while the other
+// runs free. An orphaned member (already outside every cell before the gesture, G-7) is exempt: it
+// rides along at full `t`, exactly like `v5ClampPiece`'s `gardeOrphelin`.
+//
+// Binary search, not a closed form: `insetWorst` is piecewise (corners, nearest polygon edge, cell
+// membership can itself change mid-path), so there is no formula for "the last t that still fits".
+// We assume feasibility is monotonic in t along the requested straight line, which holds for the
+// convex-ish cells this engine builds (a straight line leaves a room through its boundary once, not
+// repeatedly) — the same practical assumption `clampCenterToInset`'s own iteration already makes.
+export interface MembreDelta {
+  cx0: number;
+  cy0: number;
+  w: number;
+  h: number;
+  rot: number;
+  /** penetration already tolerated for this member before the gesture (`pieceTol`, G-7). */
+  tol: number;
+  /** this member was already outside every cell before the gesture: it moves freely (G-7). */
+  orphelin: boolean;
+}
+
+export function deltaScaleMax(
+  P: PlanV5 | null | undefined,
+  membres: readonly MembreDelta[],
+  dax: number,
+  day: number,
+): number {
+  if (!dax && !day) return 1;
+  const tient = (t: number): boolean => {
+    for (const m of membres) {
+      if (m.orphelin) continue;
+      const cx = m.cx0 + t * dax, cy = m.cy0 + t * day;
+      const cell = v5CellsAt(P, cx, cy);
+      if (!cell) return false;
+      if (insetWorst(cx, cy, m.w, m.h, m.rot, cell.poly) > Math.max(INSET_TOL, m.tol)) return false;
+    }
+    return true;
+  };
+  if (tient(1)) return 1;             // the common case: the whole request fits, nothing to shrink
+  if (!tient(0)) return 0;            // the group's OWN starting placement doesn't hold: never widen it
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 24; i++) {      // 24 halvings: sub-millimeter precision on a room-scale delta
+    const mid = (lo + hi) / 2;
+    if (tient(mid)) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+
 // Current penetration of a piece of furniture into ITS cell's inset (0 = it is cleanly inside).
 // Serves as a slate: it is the penetration that a gesture is allowed to PRESERVE.
 //

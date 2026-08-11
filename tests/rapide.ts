@@ -251,7 +251,7 @@ test("v5_new_cell_gets_default_name", () => {
   const names = P.cells.map((c) => c.name), floors = P.cells.map((c) => c.floor);
   return expect(names.length === 2, "2 cellules attendues, vu " + names.length)
       && expect(names.indexOf("Salon") >= 0, "Salon doit survivre, vu " + JSON.stringify(names))
-      && expect(names.some((n) => /^Pièce \d+$/.test(n)), "la cellule neuve a besoin d'un défaut « Pièce N » (français ASSUMÉ : cf. modele/cellules.ts), vu " + JSON.stringify(names))
+      && expect(names.some((n) => /^Room \d+$/.test(n)), "la cellule neuve a besoin d'un défaut « Room N » (cf. modele/cellules.ts), vu " + JSON.stringify(names))
       && expect(floors.every((f) => typeof f === "string" && f.length), "chaque cellule a un sol, vu " + JSON.stringify(floors));
 });
 

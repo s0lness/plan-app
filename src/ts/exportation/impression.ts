@@ -67,7 +67,7 @@ export function exportPNG(ctx: Contexte): Promise<RenduPNG> {
 
 export function preparePrint(ctx: Contexte): void {
   const plan = $("printPlan"), furni = $("printFurni");
-  if (plan) plan.innerHTML = `<h2>Plan de l'appartement</h2>` + buildMasterSVG(ctx, { title: "" });
+  if (plan) plan.innerHTML = `<h2>Apartment plan</h2>` + buildMasterSVG(ctx, { title: "" });
   // The printed list is THE SAME as the modal's: one single table factory (`liste-mobilier.ts`),
   // so it's impossible for the screen and the PDF to diverge.
   if (furni) furni.innerHTML = `<h2>Furniture list</h2>` + furnitureListHTML(ctx);

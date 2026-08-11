@@ -177,7 +177,7 @@ export function v5DetectCells(
 // =================================================================================================
 // Matching by largest (exact) area overlap, deterministic: every pair sorted by (decreasing
 // overlap, previous index, new index) and consumed greedily.
-// Fallback rescue by pole containment. The rest gets "Pièce N"/parquet.
+// Fallback rescue by pole containment. The rest gets "Room N"/parquet.
 
 /** What we keep from a cell as it was BEFORE: its label and its shape, nothing else. */
 export interface CellulePrecedente {
@@ -221,24 +221,20 @@ export function v5AssignNames<T extends Cellule>(
       }
     }
   });
-  // Defaults: "Pièce N" with the smallest free N, in order (deterministic).
+  // Defaults: "Room N" with the smallest free N, in order (deterministic).
   //
-  // THIS NAME STAYS IN FRENCH INSIDE AN ENGLISH INTERFACE, AND THAT IS A CHOICE, NOT AN OVERSIGHT.
-  // Measured: changing it to "Room N" sends the FOUR historical v4 documents of the data oracle
-  // into a fingerprint mismatch, with identical entity counts, because this same function names
-  // both NEW cells *and* the ones the v4 conversion manufactures. There is no clean seam between
-  // the two.
-  // The trade-off: the differential oracle ("the typed client reads every historical document
-  // EXACTLY like the old one") runs at every barrier and currently tolerates zero exceptions;
-  // opening one for an interface word would trade a correctness guarantee for cosmetics. The day
-  // `src/js` disappears (legacy/ is kept for only a month), the `--b` differential disappears with
-  // it: THAT is where this name gets translated, for free.
+  // THIS NAME NOW SHIPS IN ENGLISH, DELIBERATELY, AND IT MOVED DATA. It used to stay "Pièce N"
+  // inside an otherwise English interface, because this same function names both NEW cells *and*
+  // the ones the v4 conversion manufactures: changing it therefore moved the fingerprint of every
+  // historical document whose cells carry no stored name (`node tests/compat-donnees.ts --figer`,
+  // frozen deliberately, see its git history for which documents shifted and by what). A finished
+  // translation outweighs a frozen fingerprint that only ever existed to buy time.
   const used = new Set(cells.map((c) => c.name).filter(Boolean));
   let n = 1;
   cells.forEach((c) => {
     if (c.name) return;
-    while (used.has("Pièce " + n)) n++;
-    c.name = "Pièce " + n;
+    while (used.has("Room " + n)) n++;
+    c.name = "Room " + n;
     used.add(c.name);
     c.floor = c.floor || "parquet";
   });

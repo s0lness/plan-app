@@ -15,6 +15,9 @@
 //   pile_de_cinq_entierement_cyclee  the click cycle only went down two notches
 //   gros_meuble_sous_petit_atteint   the counter under the hob was unreachable
 //   echap_qui_quitte_les_murs_le_dit 16 walls clicked with no effect, without a word: Escape had switched modes
+//   poignee_rotation_ne_vole_pas_le_centre_meuble_mince
+//                                     the FIXED-PIXEL rotation handle, on a thin piece zoomed out, covered
+//                                     the piece's own center: a dead-center press rotated instead of moving
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -34,6 +37,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const APP = process.argv[2] || path.join(__dirname, "..", "index.html");
 const SEED = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "plan-reel-77.json"), "utf8"));
+// The repository's own demo apartment (`exemple-appartement.json`), used ONLY by the
+// group-drag case below: it isolates the exact wall geometry that defect needs (a furniture
+// group hugging several different walls by different margins) without depending on the
+// household plan's incidental layout, which is tuned for the OTHER cases in this file. It used
+// to be a separate hand-built fixture (`tests/fixtures/appartement-synthetique.json`); once the
+// demo apartment shipped with the same kitchen corner (same wall ids, same furniture positions),
+// keeping both was redundant, so the dedicated fixture was retired in favor of this one.
+const SEED_APT = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "exemple-appartement.json"), "utf8")).state;
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-precision-"));
 const htmlPath = path.join(dir, "case.html");
@@ -41,6 +52,13 @@ fs.writeFileSync(htmlPath,
   `<!doctype html><html><head><meta charset="utf-8"><script>
 window.__PLAN_TEST__=1;
 try{ localStorage.clear(); localStorage.setItem("room-planner-v4", ${JSON.stringify(JSON.stringify(SEED))}); }catch(e){}
+<\/script></head><body>` + fs.readFileSync(APP, "utf8") + "</body></html>",
+  "utf8");
+const htmlPathApt = path.join(dir, "case-apt.html");
+fs.writeFileSync(htmlPathApt,
+  `<!doctype html><html><head><meta charset="utf-8"><script>
+window.__PLAN_TEST__=1;
+try{ localStorage.clear(); localStorage.setItem("room-planner-v4", ${JSON.stringify(JSON.stringify(SEED_APT))}); }catch(e){}
 <\/script></head><body>` + fs.readFileSync(APP, "utf8") + "</body></html>",
   "utf8");
 
@@ -93,8 +111,8 @@ const J = async (expr: string) => JSON.parse(await evaluate(`JSON.stringify(${ex
 await send("Page.enable");
 await send("Runtime.enable");
 
-async function reload() {
-  await send("Page.navigate", { url: "file:///" + htmlPath.replace(/\\/g, "/") });
+async function navigateTo(path_: string) {
+  await send("Page.navigate", { url: "file:///" + path_.replace(/\\/g, "/") });
   for (let i = 0; i < 200; i++) {
     let st = null;
     try { st = await evaluate("document.readyState + '|' + (window.__plan ? 1 : 0)"); } catch (_) {}
@@ -105,6 +123,9 @@ async function reload() {
   await evaluate("__plan.fitView(); true");
   await new Promise(r => setTimeout(r, 150));
 }
+async function reload() { await navigateTo(htmlPath); }
+// SEED_APT variant, for the one case that needs the demo apartment above.
+async function reloadApt() { await navigateTo(htmlPathApt); }
 
 // ---- REAL mouse ------------------------------------------------------------------------------
 const M = (type: string, x: VerdictSonde, y: VerdictSonde, extra?: Record<string, unknown>) => send("Input.dispatchMouseEvent", Object.assign({
@@ -145,9 +166,10 @@ async function key(name: string, mods?: VerdictSonde) {
 const results: VerdictSonde[] = [];
 let cur: VerdictSonde = null;
 function ok(cond: unknown, msg?: string) { if (!cond) cur.fails.push(msg); return !!cond; }
-async function test(name: string, fn: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>) {
+async function test(name: string, fn: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>,
+  reloadFn: () => Promise<void> = reload) {
   cur = { name, fails: [] };
-  await reload();
+  await reloadFn();
   try { await fn(); } catch (e) { cur.fails.push("EXCEPTION: " + (e && e.stack || e)); }
   const jsErr = await evaluate(`JSON.stringify((JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]).map(function(e){return e&&e.msg}))`);
   if (jsErr && jsErr !== "[]") cur.fails.push("erreurs JS: " + jsErr);
@@ -565,6 +587,120 @@ await test("clic_net_sur_poignee_de_meuble_n_ecrit_rien", async () => {
       `un clic NET sur « ${h.k} » a modifié le meuble : ${avant.w}×${avant.h} @${avant.x},${avant.y} -> ${apres.w}×${apres.h} @${apres.x},${apres.y}`);
   }
 });
+
+// =============================================================================
+//  10. poignee_rotation_ne_vole_pas_le_centre_meuble_mince
+// =============================================================================
+// THIS IS THE DIRECT CASE FOR THE DEFECT THAT CASE #1 ONLY CAUGHT INCIDENTALLY (its round trip
+// re-selects the piece before the return drag, which is what exposed the handle without either
+// test naming it). `.rot-handle` floats ~24 screen PIXELS above the piece's center, in FIXED
+// pixels, and it is only painted once the piece is the PRIMARY selection. For a THIN piece at a
+// zoomed-out scale, that fixed reach comes within, or even past, the piece's own geometric center.
+// `e.target` is real DOM hit-testing: it knows nothing about the piece's APARTMENT box, only about
+// what is painted on top at that pixel, so a press aimed dead-center on an ALREADY-SELECTED thin
+// piece can land on `span.rot-handle` and start a no-op rotation instead of a drag.
+//
+// MEASURED at the bench (`fitView()` on the household plan, scale ~0.517): among the plan's several
+// 13 cm-thick radiators, the 88 cm-wide ones sit RIGHT AT the edge (the handle's nearest reach is
+// under one screen pixel from center, too razor-thin to make a deterministic automated case), but
+// the 49 cm-wide one is solidly inside the handle's painted area at its EXACT geometric
+// center — `document.elementsFromPoint` returns `.rot-handle` there, reliably. That is the target
+// picked here, by its own dimensions rather than by name (the fixture carries several
+// "Radiateur"/"Radiateur N", not all of them reproduce this).
+await test("poignee_rotation_ne_vole_pas_le_centre_meuble_mince", async () => {
+  const cible = await J(`(function(){var p=__plan.plan.pieces.filter(function(q){
+    return q.h===13 && q.w===49 && !q.locked;})[0];
+    return p ? {id:String(p.id), nom:p.name} : null;})()`);
+  ok(!!cible, "le plan de référence doit porter un radiateur mince de 49×13 cm");
+  if (!cible) return;
+  await evaluate(`__plan.selReplace(${JSON.stringify(cible.id)}); __plan.render(); true`);
+  await pause(160);
+  // Precondition: the handle really is painted, and really does cover the piece's own exact
+  // center (otherwise the case tests nothing, or tests a different, unrelated defect).
+  const a0 = await posDe(cible.id);
+  const A0 = await aptPoint(a0.x + a0.w / 2, a0.y + a0.h / 2);   // pixel exact du centre du meuble
+  const surLaPoignee = await J(`(function(){
+    var top = document.elementsFromPoint(${A0.x}, ${A0.y})[0];
+    return !!(top && top.dataset && top.dataset.rot);})()`);
+  ok(surLaPoignee, "précondition : la poignée de rotation doit recouvrir le centre exact du meuble");
+
+  const a = await posDe(cible.id);
+  const A = await aptPoint(a.x + a.w / 2, a.y + a.h / 2);   // pixel exact du centre du meuble
+  const B = { x: A.x + 40, y: A.y + 10 };
+  await drag(A, B, 10);
+  const b = await posDe(cible.id);
+  ok(b.x !== a.x || b.y !== a.y,
+    `un appui dead-center sur un meuble mince déjà sélectionné doit le DÉPLACER, pas le faire pivoter : ` +
+    `avant ${a.x},${a.y}@${a.rot}° après ${b.x},${b.y}@${b.rot}°`);
+  ok(b.rot === a.rot, `le glisser depuis le centre ne doit pas tourner le meuble : ${a.rot}° -> ${b.rot}°`);
+
+  // et l'aller-retour revient exactement, sélection toujours active (la poignée est donc
+  // toujours peinte pour ce second appui, comme dans le cas #1)
+  const C = await aptPoint(b.x + b.w / 2, b.y + b.h / 2);
+  await drag(C, A, 10);
+  const c = await posDe(cible.id);
+  ok(c.x === a.x && c.y === a.y && c.rot === a.rot,
+    `l'aller-retour ne revient pas exactement : ${a.x},${a.y}@${a.rot}° -> ${c.x},${c.y}@${c.rot}°`);
+});
+
+// =============================================================================
+//  11. groupe_de_meubles_bouge_d_un_seul_bloc
+// =============================================================================
+// Real-usage repro (kitchen area of a demo apartment, a lasso over 6 furniture + 4 openings, then
+// dragged and dragged back): each piece of furniture was clamped INDEPENDENTLY at release, so a
+// piece with little clearance to a wall (here the TV unit, ~4 cm before the partition) stopped
+// short while the rest of the group kept going. Measured on the exact scenario replayed here:
+// forward request (+90,+60) landed as sink +90,+96 (drifted 36 cm past the group), TV unit +4,+60
+// (barely moved), everyone else +90,+60 — the SHAPE of the selection broke.
+// THE RULE (`deltaScaleMax`, gestes/contraintes.ts): a group of FURNITURE moves as ONE — the
+// largest fraction of the requested delta every selected piece can accept, shared, applied to
+// ALL of them — never each piece projected to its own nearest valid spot. Openings are excluded
+// from the check: they keep their own (different, allowed) wall-sliding behaviour, already
+// covered by tests/run.ts:523.
+// Uses SEED_APT (the repository's demo apartment, not the household plan): this specific wall
+// geometry — fridge/worktop/sink/hob/oven/TV unit lined up against the kitchen's walls with
+// uneven clearances — is what produces the divergence; it does not occur by accident in the
+// household plan's own kitchen layout, tuned for the other cases in this file.
+await test("groupe_de_meubles_bouge_d_un_seul_bloc", async () => {
+  const furnitureIds = ["p1", "p2", "p3", "p4", "p5", "p6"];
+  const openingIds = ["o2", "o8", "o10", "o15"];
+  await evaluate(`(function(){__plan.clearSel();
+    ${JSON.stringify(furnitureIds.concat(openingIds))}.forEach(function(id){__plan.selAdd(id);});
+    __plan.render(); true;})()`);
+  await pause(150);
+  ok(await evaluate(`String(__plan.selDump().modele.length)`) === String(furnitureIds.length + openingIds.length),
+    "précondition : les 6 meubles et les 4 ouvertures doivent tous être sélectionnés");
+
+  const before: Record<string, VerdictSonde> = {};
+  for (const id of furnitureIds) before[id] = await posDe(id);
+
+  // drag the group by (+90,+60) diagonally-and-deep enough to hit the tightest member's limit,
+  // grabbing the fridge (primary), same numbers as the real-usage measurement.
+  const p0 = before["p1"];
+  const S0 = await aptPoint(p0.x + p0.w / 2, p0.y + p0.h / 2);
+  const scale = await evaluate("__plan.vScale");
+  await drag(S0, { x: S0.x + 90 * scale, y: S0.y + 300 * scale }, 16);
+
+  const after: Record<string, VerdictSonde> = {};
+  for (const id of furnitureIds) after[id] = await posDe(id);
+  const deltas = furnitureIds.map((id) => `${after[id].x - before[id].x},${after[id].y - before[id].y}`);
+  ok(new Set(deltas).size === 1,
+    `le groupe doit bouger d'UN SEUL bloc, tous les meubles avec le même delta : ${JSON.stringify(furnitureIds.map((id, i) => [id, deltas[i]]))}`);
+  ok(/does not fit there/.test(await toastNow()),
+    "un geste de groupe réduit doit se DIRE (banner de geste), une seule fois pour tout le groupe : " + JSON.stringify(await toastNow()));
+
+  // and the round trip: FROM wherever the group landed, back TO the original screen point (not
+  // "by the same pixel delta", since the forward leg may not have moved the full ask) returns
+  // every piece of FURNITURE exactly where it started.
+  const mid = await posDe("p1");
+  const Smid = await aptPoint(mid.x + mid.w / 2, mid.y + mid.h / 2);
+  await drag(Smid, S0, 16);
+  for (const id of furnitureIds) {
+    const a = before[id], b = await posDe(id);
+    ok(a.x === b.x && a.y === b.y,
+      `« ${id} » ne revient pas exactement à sa place de départ : ${a.x},${a.y} -> ${b.x},${b.y}`);
+  }
+}, reloadApt);
 
 // ---- verdict -----------------------------------------------------------------------------------
 const bad = results.filter(r => r.fails.length);

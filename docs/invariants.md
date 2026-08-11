@@ -195,7 +195,7 @@ comment, no type. A seventh site would break it silently.
 **Prevents**: found by the seed harness and proven by it: a pending change at the moment of
 adoption went out right after and republished the adopted state. **The row advanced by one
 revision for nothing, and the neighbor's next PUT, which carried the previous revision, was
-refused with a 409, a "non enregistré" (not saved) banner, and a version set aside, with no real
+refused with a 409, a "not saved" banner, and a version set aside, with no real
 conflict existing.**
 **Where** `serverMirror` / `mirrorOf()` / `noteServerMirror()` (`js/41:32`), `doPut()` bails out
 if the state is identical to the mirror. Subtle guard: `noteServerMirror()` sets
@@ -219,7 +219,7 @@ times out of five.
 **Guarantees** `knownShape()` accepts `rooms[]` (old) **and** `walls`/`outline`/`plan`
 (walls-only).
 **Prevents** the original guard only accepted `rooms`: it refused 100% of the live model's
-writes, the chip announced "sync lent" (slow sync), the two people silently diverged. Proven by
+writes, the chip announced "slow sync", the two people silently diverged. Proven by
 a two-browser test: **the same test with the old guard fails 8 times out of 11**.
 **Where** `functions/api/plan.ts:71`.
 **Verified** `repli-d1-live.ts`, `repli_d1_refuse_toujours_une_forme_inconnue`,
@@ -630,7 +630,7 @@ watchdog, abandoned dimension entry).
 a new gesture from listening to `pointerup` itself. The consequence is silent and total.
 
 ### G-2. The view is not the plan
-**Guarantees** pan, zoom, pinch, « Ajuster » (Fit) and window resize go through
+**Guarantees** pan, zoom, pinch, "Fit" and window resize go through
 `renderView()`, which repaints without persisting anything.
 **Prevents** measured: **a 40-move pan = 40 serializations and 854,520 bytes written.**
 **Where** `js/03:118`.
@@ -781,7 +781,7 @@ delivered.
 
 ### G-14. An armed tool wins, during the capture phase, over all handles
 **Prevents** a partition trace started **on** a wall (exactly what the tooltip asks for,
-« glisser d'un mur à l'autre » (drag from one wall to another)) never reached `v5StartDraw`:
+"drag from one wall to another") never reached `v5StartDraw`:
 **the user dragged the outline wall across the apartment, 15 m² reduced to a 20 cm strip,
 without a word.**
 **Where** `js/53:503`, arbitration at **capture** time. Also applies to Measure and pan:
@@ -830,9 +830,8 @@ clamp `5..3000`, server `1..3000`). And without the typing pause, **typing "3000
 then 30, then 300 along the way**, and the final refusal handed control back at 300, a value
 nobody had wanted.
 **`cfg.raison()`** completes the refusal when the bound comes from somewhere other than the
-field: « Ce mur fait 10 cm d'épaisseur : au-delà, l'ouverture traverserait les deux pièces. »
-("This wall is 10 cm thick: beyond that, the opening would go through both rooms.") Without
-this wording, « entre 1 et 10 cm » (between 1 and 10 cm) reads as an arbitrary software limit.
+field: "This wall is 10 cm thick: any deeper and the opening would go through both rooms."
+Without this wording, "between 1 and 10 cm" reads as an arbitrary software limit.
 **Where** `numField(el, cfg)` (`js/00:100`), the **only** numeric-entry guard.
 **Consequence for tests** a value set programmatically requires ~350 ms of waiting, or a
 `blur`.
@@ -855,7 +854,7 @@ cursor is what moves" is the application's central rule); three bounds (wall len
 the same **face**, server validator 1..600, "beyond that the op is refused and the change is
 lost"); and when it hits a limit, it says so, "without this wording, a handle that no longer
 advances is indistinguishable from a malfunction."
-**Small openings** an outlet is 10 cm, i.e. ~6 px at « Ajuster » (Fit) scale: two 9 px handles
+**Small openings** an outlet is 10 cm, i.e. ~6 px at "Fit" scale: two 9 px handles
 placed on its edges **would cover the entire object and make it unmovable**. The threshold
 applies to **length alone**, because an opening is always thin (12 cm, ~8 px) and a threshold on
 the minimum would declare it compact even at 5 m wide.
@@ -1093,7 +1092,7 @@ be undone."
 ### R-16. The first adoption of the server floor plan reframes, later ones don't
 **Prevents** a new device frames the apartment at the default view (420 × 360) before the real floor
 plan arrives: without reframing it **overflowed by 389 px on the right**, and you'd have to go hunt down
-"Ajuster" to see your own home. A later adoption, though, can land while someone is working. Import and
+"Fit" to see your own home. A later adoption, though, can land while someone is working. Import and
 switching models, on the other hand, reframe every time: those are **deliberate** actions.
 **Detail** during a gesture, `applyReplacedState` queues up, so the "first time" isn't spent for
 nothing.
@@ -1238,14 +1237,14 @@ screen claimed otherwise."
 `v5_err_toast_is_throttled_per_reason`.
 
 ### V-12. The sync chip never lies
-**Guarantees** five states, and **not a sixth**: `live ✓` (WebSocket), `enregistrement…`,
-`sync lent` (D1 fallback), `non enregistré` (the read succeeds, the **write** does not),
-`hors ligne`, `local` (tab detached after restoring a backup).
+**Guarantees** five states, and **not a sixth**: `live ✓` (WebSocket), `saving…`,
+`slow sync` (D1 fallback), `not saved` (the read succeeds, the **write** does not),
+`offline`, `local` (tab detached after restoring a backup).
 **Prevents** the chip used to lie twice. The `GET` poll would succeed every 4s and **repaint
-"sync lent" over every failed send**. And a silent WebSocket failure passed for simple lag.
+"slow sync" over every failed send**. And a silent WebSocket failure passed for simple lag.
 **Why no sixth state for a 409** a revision rejection is not a state of the **transport**: the
-link works, it is the write that was rejected, so "non enregistré" for the duration of the
-rejection, then back to "sync lent" as soon as the reread happens.
+link works, it is the write that was rejected, so "not saved" for the duration of the
+rejection, then back to "slow sync" as soon as the reread happens.
 **Where** `putFailed` and `setSyncChip()` (`js/41:8`, `:79`).
 **Verified** `repli-d1-live.ts` #10 to #12; `repli-conflit.ts` #21.
 

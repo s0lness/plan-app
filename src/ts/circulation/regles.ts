@@ -153,7 +153,7 @@ function runRules(): ResultatAnalyse {
     const seats = cellPieces.filter((p) => PRIMARY_SEAT.has(p.type));
     if (seats.length) {
       let sx = 0, sy = 0; seats.forEach((p) => { const b = pieceAABB(p); sx += b.cx; sy += b.cy; });
-      dests.push({ kind: "seat", name: cl.name, x: sx / seats.length, y: sy / seats.length, label: "les assises" + ofCell(cl.name) });
+      dests.push({ kind: "seat", name: cl.name, x: sx / seats.length, y: sy / seats.length, label: "the seating" + ofCell(cl.name) });
     }
     const dn = cellPieces.find((p) => p.type === "dining");
     if (dn) { const b = pieceAABB(dn); dests.push({ kind: "dining", name: cl.name, x: b.cx, y: b.cy, label: "the dining table" + ofCell(cl.name) }); }
@@ -304,7 +304,7 @@ function runRules(): ResultatAnalyse {
         if (dist < nd) { nd = dist; nearest = t; }
       }
       if (!facesOne && nearest) {
-        const what = nearest.type === "tv" ? "la TV" : "the window";
+        const what = nearest.type === "tv" ? "the TV" : "the window";
         const sid = sofa.id, nid = nearest.id;
         push({
           id: "facewall_" + cl.ci, severity: "tip", title: "The sofa faces a blank wall",
@@ -375,7 +375,7 @@ function runRules(): ResultatAnalyse {
           detail: `<b>${RND(dist)}cm</b> from the sofa to the TV${inCell(cn)}: very close for a TV.`, targets: [tv.id, sofa.id], highlight: { type: "gap", a: tv, b: sofa },
         });
         else if (dist > 400) push({
-          id: "tvdist_" + cl.ci, severity: "tip", title: "TV loin",
+          id: "tvdist_" + cl.ci, severity: "tip", title: "TV far",
           detail: `<b>${RND(dist)}cm</b> from the sofa to the TV${inCell(cn)}: far, fine for a small TV, tight for a big screen.`, targets: [tv.id, sofa.id], highlight: { type: "gap", a: tv, b: sofa },
         });
       }

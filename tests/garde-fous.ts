@@ -487,7 +487,7 @@ await test("surfaces_au_meme_format", URL_BLANK, async () => {
     apercu:document.getElementById("setupArea").textContent})`);
   const m2 = /^\d+,\d\sm²$/;
   ok(m2.test(v.puce), "la puce du rail doit écrire « 15,1 m² » : " + JSON.stringify(v.puce));
-  ok(m2.test(String(v.fiche).replace(/^Surface\s+/, "")), "la fiche aussi : " + JSON.stringify(v.fiche));
+  ok(m2.test(String(v.fiche).replace(/^Area\s+/, "")), "la fiche aussi : " + JSON.stringify(v.fiche));
   ok(m2.test(String(v.barre).replace(/^total\s+/, "").replace(/\s*·.*$/, "")),
     "la barre d'outils aussi : " + JSON.stringify(v.barre));
   ok(m2.test(v.apercu), "et l'aperçu de l'assistant aussi : " + JSON.stringify(v.apercu));

@@ -6,6 +6,8 @@
 //   node tests/compat-donnees.ts --b other/ts # DIFFERENTIAL: src/ts against other modules
 //   node tests/compat-donnees.ts --prod       # adds today's PRODUCTION D1 row
 //   node tests/compat-donnees.ts --graines N  # N documents drawn from the seed generator (def. 200)
+//   node tests/compat-donnees.ts --corpus DIR # adds a PRIVATE corpus from a directory outside the
+//                                              # repo (env PLAN_CORPUS_PRIVE is equivalent); off by default
 //   node tests/compat-donnees.ts --figer      # REWRITES the fingerprints (a deliberate act, see below)
 //
 // WHY. The household's plan is in production, it carries real work, and older shapes of it
@@ -31,6 +33,14 @@
 //   - DIFFERENTIAL (`--b <dir>`): two directories of MODULES, document by document, fingerprint
 //     by fingerprint. It compares a branch or a copy of `src/ts` without resurrecting the old
 //     client's brace-splitting fragile reader.
+//
+// A PRIVATE corpus (`--corpus <dir>`, or the `PLAN_CORPUS_PRIVE` environment variable) adds every
+// `*.json` document found in a directory OUTSIDE this repository to the corpus, run through the
+// exact same battery of checks as the built-in documents. ITS REFERENCE FINGERPRINTS LIVE IN THAT
+// DIRECTORY TOO (`<dir>/empreintes.json`), never in a file inside this repository: `--figer` writes
+// both files when the flag is given, but only the one for the built-in corpus when it is absent.
+// Off by default, and absent, behaviour is byte-for-byte what it is without this feature: the
+// barrier stays reproducible for anyone who clones the repo without such a directory.
 //
 // `--figer` is a DELIBERATE ACT: it prints every fingerprint that moves and refuses to stay quiet.
 // A deliberate reading change gets frozen; a fingerprint that moves without anyone wanting it to is
@@ -62,6 +72,7 @@ const PROD = argv.includes("--prod");
 const DIR_B = opt("--b", null);
 const N_GRAINES = Number(opt("--graines", 200));
 const VERBEUX = argv.includes("--verbeux");
+const CORPUS_PRIVE = opt("--corpus", process.env.PLAN_CORPUS_PRIVE || null);
 
 // =================================================================================================
 //  1. THE CLIENT'S READER, IMPORTED FROM THE MODULES (never recopied)
@@ -224,8 +235,8 @@ ajouterFichier("fixture-plan-reel-77",
   path.join(FIXTURES, "plan-reel-77.json"));
 ajouterFichier("fixture-plan-rev177", "v4 rooms[]+envelope, révision 177",
   path.join(FIXTURES, "plan-rev177.json"));
-ajouterFichier("export-cuisine", "export ENVELOPPÉ {app,version,savedAt,note,state} (v4 mono-salle)",
-  path.join(RACINE, "exemple-cuisine.json"));
+ajouterFichier("export-appartement", "export ENVELOPPÉ {app,version,savedAt,note,state} (v5 murs-seuls, appartement de démonstration)",
+  path.join(RACINE, "exemple-appartement.json"));
 
 // ---- 3b. the household's REAL backups (outside the repo, cannot be reconstructed) ----
 // They are recopied into `tests/fixtures/` on the first run: a proof that depends on a
@@ -349,6 +360,36 @@ if (PROD) {
       docProd = JSON.parse(row.data);
       ajouter("__prod__", `ligne D1 de production DU JOUR (rev ${row.rev}, par ${row.updated_by})`, docProd);
     } catch (e) { manquants.push("ligne D1 de production (" + e.message + ")"); }
+  }
+}
+
+// ---- 3e. an OPTIONAL private corpus, outside the repo, that leaves no trace here ----
+// `--corpus <dir>` (or `PLAN_CORPUS_PRIVE`) points at a directory outside this repository.
+// Every `*.json` document found there joins the corpus and goes through the SAME battery of
+// checks as the built-in fixtures (section 5). Its own frozen fingerprints live NEXT TO IT
+// (`<dir>/empreintes.json`, see section 5b): a private document's name and fingerprint must
+// never reach a file inside this repository. A directory that is missing or empty is a loud
+// failure, not a silently smaller corpus: that silence is exactly what this oracle exists to catch.
+let CORPUS_PRIVE_ABS: string | null = null;
+const NOMS_PRIVES = new Set<string>();
+if (CORPUS_PRIVE) {
+  CORPUS_PRIVE_ABS = path.isAbsolute(CORPUS_PRIVE) ? CORPUS_PRIVE : path.join(process.cwd(), CORPUS_PRIVE);
+  if (!fs.existsSync(CORPUS_PRIVE_ABS) || !fs.statSync(CORPUS_PRIVE_ABS).isDirectory()) {
+    process.stdout.write(`ÉCHEC corpus privé : répertoire introuvable : ${CORPUS_PRIVE_ABS}\n`);
+    process.exit(1);
+  }
+  const fichiers = fs.readdirSync(CORPUS_PRIVE_ABS)
+    .filter((f) => f.endsWith(".json") && f !== "empreintes.json")
+    .filter((f) => fs.statSync(path.join(CORPUS_PRIVE_ABS as string, f)).isFile())
+    .sort();
+  if (!fichiers.length) {
+    process.stdout.write(`ÉCHEC corpus privé : aucun document *.json dans ${CORPUS_PRIVE_ABS}\n`);
+    process.exit(1);
+  }
+  for (const f of fichiers) {
+    const nom = "prive-" + path.basename(f, ".json");
+    const doc = ajouterFichier(nom, "document privé : " + f, path.join(CORPUS_PRIVE_ABS, f));
+    if (doc) NOMS_PRIVES.add(nom);
   }
 }
 
@@ -491,41 +532,60 @@ for (const c of corpus) {
 }
 
 // ---- 5b. REFERENCE mode: against the frozen fingerprints ----
-const fige: DonneeDynamique = fs.existsSync(EMPREINTES) ? JSON.parse(fs.readFileSync(EMPREINTES, "utf8")) : { documents: {} };
-const nouvelles: Record<string, DonneeDynamique> = {};
-for (const c of corpus) {
-  if (c.nom === "__prod__") continue;         // production moves: it doesn't get frozen
-  nouvelles[c.nom] = Object.assign({ quoi: c.quoi }, releves[c.nom]);
-}
-if (FIGER) {
-  let bouge = 0;
-  for (const nom of new Set([...Object.keys(fige.documents || {}), ...Object.keys(nouvelles)])) {
-    const av = (fige.documents || {})[nom], ap = nouvelles[nom];
-    const a = av && canon(Object.assign({}, av, { quoi: undefined }));
-    const b = ap && canon(Object.assign({}, ap, { quoi: undefined }));
-    if (a === b) continue;
-    bouge++;
-    process.stdout.write(`  FIGE ${nom}\n    avant ${a || "(absent)"}\n    après ${b || "(retiré)"}\n`);
+// Split in two independent passes so a private document's fingerprint never lands in
+// `tests/fixtures/empreintes-compat.json`: `estCible` decides which corpus names a given pass
+// owns, `cheminEmpreintes` decides where that pass reads and writes its frozen file. Absent
+// `--corpus`, `NOMS_PRIVES` is empty and this single call reproduces the old behaviour exactly.
+function passeReference(estCible: (nom: string) => boolean, cheminEmpreintes: string, etiquette: string) {
+  const fige: DonneeDynamique = fs.existsSync(cheminEmpreintes) ? JSON.parse(fs.readFileSync(cheminEmpreintes, "utf8")) : { documents: {} };
+  const nouvelles: Record<string, DonneeDynamique> = {};
+  for (const c of corpus) {
+    if (c.nom === "__prod__") continue;         // production moves: it doesn't get frozen
+    if (!estCible(c.nom)) continue;
+    nouvelles[c.nom] = Object.assign({ quoi: c.quoi }, releves[c.nom]);
   }
-  fs.writeFileSync(EMPREINTES, JSON.stringify({
-    quoi: "Empreintes de lecture du corpus de compatibilité. Écrites par `node tests/compat-donnees.ts --figer`."
-        + " Une empreinte qui bouge sans qu'on l'ait voulu EST une perte de données : ne jamais refiger pour faire taire l'oracle.",
-    fige: new Date().toISOString(), documents: nouvelles,
-  }, null, 1) + "\n");
-  process.stdout.write(`\nempreintes figées : ${Object.keys(nouvelles).length} documents, ${bouge} modifié(s)\n`);
-  process.exit(0);
+  if (FIGER) {
+    let bouge = 0;
+    for (const nom of new Set([...Object.keys(fige.documents || {}), ...Object.keys(nouvelles)])) {
+      const av = (fige.documents || {})[nom], ap = nouvelles[nom];
+      const a = av && canon(Object.assign({}, av, { quoi: undefined }));
+      const b = ap && canon(Object.assign({}, ap, { quoi: undefined }));
+      if (a === b) continue;
+      bouge++;
+      process.stdout.write(`  FIGE ${nom}\n    avant ${a || "(absent)"}\n    après ${b || "(retiré)"}\n`);
+    }
+    fs.writeFileSync(cheminEmpreintes, JSON.stringify({
+      quoi: "Empreintes de lecture du corpus de compatibilité. Écrites par `node tests/compat-donnees.ts --figer`."
+          + " Une empreinte qui bouge sans qu'on l'ait voulu EST une perte de données : ne jamais refiger pour faire taire l'oracle.",
+      fige: new Date().toISOString(), documents: nouvelles,
+    }, null, 1) + "\n");
+    process.stdout.write(`\nempreintes figées${etiquette} : ${Object.keys(nouvelles).length} documents, ${bouge} modifié(s)\n`);
+    return;
+  }
+  for (const nom of Object.keys(nouvelles)) {
+    const av = (fige.documents || {})[nom];
+    if (!av) { ok(false, `${nom} : aucune empreinte de référence`, "lancer --figer si ce document est nouveau"); continue; }
+    const a = canon(Object.assign({}, av, { quoi: undefined }));
+    const b = canon(Object.assign({}, nouvelles[nom], { quoi: undefined }));
+    ok(a === b, `${nom} : empreinte de lecture identique à la référence`,
+      a === b ? null : `référence ${a}\n         aujourd'hui ${b}`);
+  }
+  for (const nom of Object.keys(fige.documents || {})) {
+    if (!(nom in nouvelles)) ok(false, `${nom} : document du corpus DISPARU`, "le corpus ne rétrécit pas en silence");
+  }
 }
-for (const nom of Object.keys(nouvelles)) {
-  const av = (fige.documents || {})[nom];
-  if (!av) { ok(false, `${nom} : aucune empreinte de référence`, "lancer --figer si ce document est nouveau"); continue; }
-  const a = canon(Object.assign({}, av, { quoi: undefined }));
-  const b = canon(Object.assign({}, nouvelles[nom], { quoi: undefined }));
-  ok(a === b, `${nom} : empreinte de lecture identique à la référence`,
-    a === b ? null : `référence ${a}\n         aujourd'hui ${b}`);
+
+// `--figer` targets whichever corpus it's asked about: with `--corpus`, it freezes ONLY the
+// private file, so a private-corpus run leaves ZERO trace on `tests/fixtures/empreintes-compat.json`
+// (not even a timestamp). Outside `--figer`, both passes run read-only: a private corpus is
+// checked in full, alongside the built-in one, and neither writes anything.
+if (!(FIGER && CORPUS_PRIVE_ABS)) {
+  passeReference((nom) => !NOMS_PRIVES.has(nom), EMPREINTES, "");
 }
-for (const nom of Object.keys(fige.documents || {})) {
-  if (!(nom in nouvelles)) ok(false, `${nom} : document du corpus DISPARU`, "le corpus ne rétrécit pas en silence");
+if (CORPUS_PRIVE_ABS) {
+  passeReference((nom) => NOMS_PRIVES.has(nom), path.join(CORPUS_PRIVE_ABS, "empreintes.json"), " (corpus privé)");
 }
+if (FIGER) process.exit(0);
 
 // ---- 5c. DIFFERENTIAL mode: two readers, document by document ----
 if (B) {

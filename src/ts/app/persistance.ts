@@ -61,7 +61,7 @@ function notePersistOk(): void {
   if (!persistFailed) return;
   persistFailed = false;
   setStoreChip(false);
-  toast("L'enregistrement local refonctionne.");
+  toast("Local saving works again.");
 }
 
 /** D-7. PERSONAL settings, in their own key, never in the plan. */

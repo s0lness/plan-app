@@ -48,7 +48,7 @@ in `AGENTS.md`, section "The barrier runs at LOW PRIORITY".
 | `tests/model-v5-ancien-plan.ts` | 11/11 | Reading an old plan (overlapping rooms, undo, wall objects) and personal settings that do not carry over. |
 | `tests/rapide.ts` | 48/48 | **No browser, < 1s.** Planar subdivision, opening bounds, sanitization, door arc, Circulation engine, wire shape, server refusals, diff and undo. All client code is imported from `src/ts`. |
 | `tests/model-v5-conversion-rendu.ts` | 6/6 | REAL plan of the user (8 rooms → 10 cells, 21 openings, 21 furniture items), read-only rendering, `serialize`/`migrate` round trip. |
-| `tests/repli-d1-live.ts` | 21/21 | Realtime DOWN, two real browsers: no `/ws`, so D1 fallback. Renaming that carries through in both directions, "sync lent" chip, broken write announced "non enregistré" then restored. |
+| `tests/repli-d1-live.ts` | 21/21 | Realtime DOWN, two real browsers: no `/ws`, so D1 fallback. Renaming that carries through in both directions, "slow sync" chip, broken write announced "not saved" then restored. |
 | `tests/collab-annuler.ts` | 34/34 | Realtime wire: fingerprint, identifiers, field-by-field diff, server mirror, UNDO with two clients, bounding on receipt, banner throttling. |
 | `tests/gestes-usage-reel.ts` | 10/10 | REAL MOUSE: ordinary usage (selection, round trips, stacks of objects). |
 | `tests/repli-conflit.ts` | 25/25 | Two devices write IN FALLBACK AT THE SAME TIME, on a real SQLite: compare-and-swap of the PUT, 409, loser's version set aside, `Ctrl+Z` brings it back, convergence. `--avant` replays the measurement on `HEAD`. |
@@ -66,7 +66,7 @@ in `AGENTS.md`, section "The barrier runs at LOW PRIORITY".
 | `tests/textes-lisibles.ts` | 5/5 | NO UPSIDE-DOWN TEXT: the half-circle rule across all text families, screen + PNG + print. |
 | `tests/boot-vierge.ts` | ok | Blank startup: wizard open on an empty install, closed once a plan is seeded, no JS error. |
 | `tests/harnais-graine.ts` | 2500/2500 | No browser, seed-deterministic: convergence of ops and undo/redo round trip (20,000 green seeds outside the barrier). |
-| `tests/compat-donnees.ts` | 1065/1065 | No browser: THE DATA COMPATIBILITY ORACLE. Rereads the corpus through `src/ts` and compares its fingerprint to `tests/fixtures/empreintes-compat.json`; `--b` compares two module directories. |
+| `tests/compat-donnees.ts` | 1065/1065 | No browser: THE DATA COMPATIBILITY ORACLE. Rereads the corpus through `src/ts` and compares its fingerprint to `tests/fixtures/empreintes-compat.json`; `--b` compares two module directories; `--corpus <dir>` (or `PLAN_CORPUS_PRIVE`) adds a private corpus from a directory outside the repo, off by default, whose fingerprints live next to it (`<dir>/empreintes.json`), never in this repo. |
 | `tests/no-dead-selectors.ts` | 1/1 | Static, instant: every class in `src/css/` has a taker in `src/ts/` or `src/html/`; exceptions carry their reason. |
 | `tests/artefact-autonome.ts` | 6/6 | The deliverable is a self-contained file and triggers no external request. |
 | `tests/etiquette-renommer.ts` | browser | Inline renaming of a label, without a detour through the inspector. |

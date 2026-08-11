@@ -182,8 +182,8 @@ export function syncInspector(ctx: Contexte): void {
   // make sense, it belongs to its wall.
   const rot90 = $("iRot90") as HTMLButtonElement | null;
   if (rot90) {
-    rot90.textContent = !isDoor ? "Pivoter 90°" : (p.type === "sdoor" ? "Flip the direction" : "Flip the leaf");
-    rot90.title = !isDoor ? "Pivoter 90°" : (p.type === "sdoor" ? "Flip the swing side" : "Flip the hinge side");
+    rot90.textContent = !isDoor ? "Rotate 90°" : (p.type === "sdoor" ? "Flip the direction" : "Flip the leaf");
+    rot90.title = !isDoor ? "Rotate 90°" : (p.type === "sdoor" ? "Flip the swing side" : "Flip the hinge side");
     const rot90Off = isDoor ? lk : (op || lk);
     rot90.disabled = rot90Off;
     rot90.classList.toggle("disabled", rot90Off);
@@ -282,7 +282,7 @@ export function syncInspector(ctx: Contexte): void {
   const iDup = $("iDup"), iFront = $("iFront"), iLock = $("iLock");
   if (iDup) iDup.hidden = isOpening;
   if (iFront) iFront.hidden = isOpening;
-  if (iLock) { iLock.textContent = lk ? "Unlock" : "Verrouiller"; iLock.classList.toggle("pri", lk); }
+  if (iLock) { iLock.textContent = lk ? "Unlock" : "Lock"; iLock.classList.toggle("pri", lk); }
   // "From the corner": distance from the wall's starting corner (A) to the nearest edge.
   const wallRow = $("iWallRow");
   if (!wallRow) return;
@@ -369,13 +369,13 @@ export function brancherInspecteur(ctx: Contexte): void {
   });
 
   numField(iW, {
-    label: "La largeur", unit: "cm",
+    label: "The width", unit: "cm",
     bounds: () => dimBounds(ctx, cur(ctx), "w"),
     get: () => { const p = vue(cur(ctx)); return p ? p.w : null; },
     set: (v) => setDim(ctx, "w", v),
   });
   numField(iH, {
-    label: "La profondeur", unit: "cm",
+    label: "The depth", unit: "cm",
     bounds: () => dimBounds(ctx, cur(ctx), "h"),
     get: () => { const p = vue(cur(ctx)); return p ? p.h : null; },
     // An opening's upper bound doesn't come from the field, it comes from the WALL: say so,

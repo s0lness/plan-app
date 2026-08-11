@@ -1,0 +1,1762 @@
+{
+  "app": "room-planner",
+  "version": 4,
+  "savedAt": "2026-08-11T11:45:33.680Z",
+  "note": "Synthetic demo apartment (invented, belongs to no one). Walls-only (v5) model, ~73.8 m2, 7 rooms.",
+  "state": {
+    "setupDone": true,
+    "model": "v5",
+    "plan": {
+      "outline": [
+        [
+          0,
+          0
+        ],
+        [
+          900,
+          0
+        ],
+        [
+          900,
+          820
+        ],
+        [
+          0,
+          820
+        ]
+      ],
+      "walls": [
+        {
+          "id": "w1",
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            900,
+            0
+          ],
+          "t": 20,
+          "isOutline": true
+        },
+        {
+          "id": "w2",
+          "a": [
+            900,
+            0
+          ],
+          "b": [
+            900,
+            820
+          ],
+          "t": 20,
+          "isOutline": true
+        },
+        {
+          "id": "w3",
+          "a": [
+            0,
+            820
+          ],
+          "b": [
+            900,
+            820
+          ],
+          "t": 20,
+          "isOutline": true
+        },
+        {
+          "id": "w4",
+          "a": [
+            0,
+            820
+          ],
+          "b": [
+            0,
+            0
+          ],
+          "t": 20,
+          "isOutline": true
+        },
+        {
+          "id": "w5",
+          "a": [
+            460,
+            0
+          ],
+          "b": [
+            460,
+            820
+          ],
+          "t": 12,
+          "isOutline": false
+        },
+        {
+          "id": "w6",
+          "a": [
+            0,
+            280
+          ],
+          "b": [
+            260,
+            280
+          ],
+          "t": 12,
+          "isOutline": false
+        },
+        {
+          "id": "w7",
+          "a": [
+            260,
+            280
+          ],
+          "b": [
+            260,
+            0
+          ],
+          "t": 12,
+          "isOutline": false
+        },
+        {
+          "id": "w8",
+          "a": [
+            580,
+            0
+          ],
+          "b": [
+            580,
+            560
+          ],
+          "t": 12,
+          "isOutline": false
+        },
+        {
+          "id": "w9",
+          "a": [
+            580,
+            660
+          ],
+          "b": [
+            580,
+            820
+          ],
+          "t": 12,
+          "isOutline": false
+        },
+        {
+          "id": "w10",
+          "a": [
+            580,
+            330
+          ],
+          "b": [
+            900,
+            330
+          ],
+          "t": 12,
+          "isOutline": false
+        },
+        {
+          "id": "w11",
+          "a": [
+            580,
+            560
+          ],
+          "b": [
+            900,
+            560
+          ],
+          "t": 12,
+          "isOutline": false
+        },
+        {
+          "id": "w12",
+          "a": [
+            580,
+            660
+          ],
+          "b": [
+            900,
+            660
+          ],
+          "t": 12,
+          "isOutline": false
+        },
+        {
+          "id": "w13",
+          "a": [
+            740,
+            660
+          ],
+          "b": [
+            740,
+            820
+          ],
+          "t": 12,
+          "isOutline": false
+        }
+      ],
+      "openings": [
+        {
+          "id": "o1",
+          "wallId": "w3",
+          "t0": 475,
+          "w": 90,
+          "h": 12,
+          "type": "door",
+          "side": 1,
+          "name": "Entry door",
+          "hinge": 0,
+          "swing": 1
+        },
+        {
+          "id": "o2",
+          "wallId": "w7",
+          "t0": 95,
+          "w": 90,
+          "h": 12,
+          "type": "sdoor",
+          "side": 1,
+          "name": "Kitchen sliding door"
+        },
+        {
+          "id": "o3",
+          "wallId": "w5",
+          "t0": 405,
+          "w": 90,
+          "h": 12,
+          "type": "door",
+          "side": 0,
+          "name": "Living room door",
+          "hinge": 0,
+          "swing": 1
+        },
+        {
+          "id": "o4",
+          "wallId": "w8",
+          "t0": 120,
+          "w": 90,
+          "h": 12,
+          "type": "door",
+          "side": 1,
+          "name": "Bedroom 1 door",
+          "hinge": 1,
+          "swing": 1
+        },
+        {
+          "id": "o5",
+          "wallId": "w8",
+          "t0": 400,
+          "w": 90,
+          "h": 12,
+          "type": "door",
+          "side": 1,
+          "name": "Bedroom 2 door",
+          "hinge": 0,
+          "swing": -1
+        },
+        {
+          "id": "o6",
+          "wallId": "w12",
+          "t0": 40,
+          "w": 80,
+          "h": 12,
+          "type": "sdoor",
+          "side": 1,
+          "name": "WC sliding door"
+        },
+        {
+          "id": "o7",
+          "wallId": "w12",
+          "t0": 200,
+          "w": 80,
+          "h": 12,
+          "type": "sdoor",
+          "side": 1,
+          "name": "Bathroom sliding door"
+        },
+        {
+          "id": "o8",
+          "wallId": "w1",
+          "t0": 70,
+          "w": 120,
+          "h": 12,
+          "type": "window",
+          "side": 0,
+          "name": "Kitchen window"
+        },
+        {
+          "id": "o9",
+          "wallId": "w1",
+          "t0": 670,
+          "w": 140,
+          "h": 12,
+          "type": "window",
+          "side": 0,
+          "name": "Bedroom 1 window"
+        },
+        {
+          "id": "o10",
+          "wallId": "w4",
+          "t0": 490,
+          "w": 120,
+          "h": 12,
+          "type": "window",
+          "side": 0,
+          "name": "Living room window"
+        },
+        {
+          "id": "o11",
+          "wallId": "w2",
+          "t0": 385,
+          "w": 120,
+          "h": 12,
+          "type": "window",
+          "side": 0,
+          "name": "Bedroom 2 window"
+        },
+        {
+          "id": "o12",
+          "wallId": "w2",
+          "t0": 690,
+          "w": 100,
+          "h": 12,
+          "type": "window",
+          "side": 0,
+          "name": "Bathroom window"
+        },
+        {
+          "id": "o13",
+          "wallId": "w4",
+          "t0": 340,
+          "w": 25,
+          "h": 12,
+          "type": "sconce",
+          "side": 0,
+          "name": "Wall light"
+        },
+        {
+          "id": "o14",
+          "wallId": "w10",
+          "t0": 188,
+          "w": 25,
+          "h": 12,
+          "type": "sconce",
+          "side": 0,
+          "name": "Wall light"
+        },
+        {
+          "id": "o15",
+          "wallId": "w4",
+          "t0": 600,
+          "w": 10,
+          "h": 6,
+          "type": "plug",
+          "side": 0,
+          "name": "Socket"
+        },
+        {
+          "id": "o16",
+          "wallId": "w5",
+          "t0": 100,
+          "w": 10,
+          "h": 6,
+          "type": "plug",
+          "side": 0,
+          "name": "Socket"
+        },
+        {
+          "id": "o17",
+          "wallId": "w4",
+          "t0": 150,
+          "w": 10,
+          "h": 6,
+          "type": "plug",
+          "side": 0,
+          "name": "Socket"
+        },
+        {
+          "id": "o18",
+          "wallId": "w1",
+          "t0": 600,
+          "w": 10,
+          "h": 6,
+          "type": "plug",
+          "side": 0,
+          "name": "Socket"
+        },
+        {
+          "id": "o19",
+          "wallId": "w5",
+          "t0": 650,
+          "w": 10,
+          "h": 6,
+          "type": "rj45",
+          "side": 0,
+          "name": "RJ45"
+        }
+      ],
+      "pieces": [
+        {
+          "id": "p1",
+          "type": "fridge",
+          "name": "Fridge",
+          "x": 10,
+          "y": 10,
+          "w": 60,
+          "h": 60,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p2",
+          "type": "counter",
+          "name": "Worktop",
+          "x": -20,
+          "y": 100,
+          "w": 120,
+          "h": 60,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p3",
+          "type": "sink",
+          "name": "Sink",
+          "x": 10,
+          "y": 190,
+          "w": 60,
+          "h": 60,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p4",
+          "type": "hob",
+          "name": "Hob",
+          "x": 120,
+          "y": 10,
+          "w": 60,
+          "h": 52,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p5",
+          "type": "oven",
+          "name": "Oven",
+          "x": 190,
+          "y": 10,
+          "w": 60,
+          "h": 60,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p6",
+          "type": "tv",
+          "name": "TV unit",
+          "x": 270,
+          "y": 10,
+          "w": 180,
+          "h": 44,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p7",
+          "type": "sofa3",
+          "name": "3-seat sofa",
+          "x": 90,
+          "y": 716,
+          "w": 220,
+          "h": 94,
+          "rot": 180,
+          "locked": false
+        },
+        {
+          "id": "p8",
+          "type": "coffee",
+          "name": "Coffee table",
+          "x": 145,
+          "y": 620,
+          "w": 110,
+          "h": 60,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p9",
+          "type": "dining",
+          "name": "Dining table",
+          "x": 85,
+          "y": 445,
+          "w": 150,
+          "h": 90,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p10",
+          "type": "chair",
+          "name": "Dining chair",
+          "x": 138,
+          "y": 385,
+          "w": 44,
+          "h": 50,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p11",
+          "type": "chair",
+          "name": "Dining chair 2",
+          "x": 138,
+          "y": 545,
+          "w": 44,
+          "h": 50,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p12",
+          "type": "chair",
+          "name": "Dining chair 3",
+          "x": 245,
+          "y": 468,
+          "w": 50,
+          "h": 44,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p13",
+          "type": "chair",
+          "name": "Dining chair 4",
+          "x": 35,
+          "y": 468,
+          "w": 50,
+          "h": 44,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p14",
+          "type": "rug",
+          "name": "Rug",
+          "x": 90,
+          "y": 530,
+          "w": 220,
+          "h": 280,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p15",
+          "type": "arm",
+          "name": "Armchair",
+          "x": 358,
+          "y": 558,
+          "w": 84,
+          "h": 84,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p16",
+          "type": "lamp",
+          "name": "Floor lamp",
+          "x": 260,
+          "y": 630,
+          "w": 40,
+          "h": 40,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p17",
+          "type": "console",
+          "name": "Entry bench",
+          "x": 505,
+          "y": 265,
+          "w": 90,
+          "h": 30,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p18",
+          "type": "bed",
+          "name": "Double bed",
+          "x": 630,
+          "y": 10,
+          "w": 160,
+          "h": 210,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p19",
+          "type": "bedside",
+          "name": "Bedside table",
+          "x": 586,
+          "y": 10,
+          "w": 44,
+          "h": 40,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p20",
+          "type": "bedside",
+          "name": "Bedside table 2",
+          "x": 790,
+          "y": 10,
+          "w": 44,
+          "h": 40,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p21",
+          "type": "armoire",
+          "name": "Wardrobe",
+          "x": 800,
+          "y": 220,
+          "w": 120,
+          "h": 60,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p22",
+          "type": "bed1",
+          "name": "Single bed",
+          "x": 705,
+          "y": 336,
+          "w": 90,
+          "h": 200,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p23",
+          "type": "desk",
+          "name": "Desk",
+          "x": 793,
+          "y": 448,
+          "w": 130,
+          "h": 64,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p24",
+          "type": "dresser",
+          "name": "Chest of drawers",
+          "x": 600,
+          "y": 510,
+          "w": 100,
+          "h": 44,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p25",
+          "type": "wc",
+          "name": "Toilet",
+          "x": 586,
+          "y": 730,
+          "w": 60,
+          "h": 40,
+          "rot": 90,
+          "locked": false
+        },
+        {
+          "id": "p26",
+          "type": "shower",
+          "name": "Shower",
+          "x": 800,
+          "y": 666,
+          "w": 90,
+          "h": 90,
+          "rot": 0,
+          "locked": false
+        },
+        {
+          "id": "p27",
+          "type": "lavabo",
+          "name": "Washbasin",
+          "x": 738,
+          "y": 758,
+          "w": 60,
+          "h": 44,
+          "rot": 90,
+          "locked": false
+        }
+      ],
+      "cells": [
+        {
+          "id": "c1",
+          "poly": [
+            [
+              260,
+              0
+            ],
+            [
+              260,
+              280
+            ],
+            [
+              0,
+              280
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "name": "Kitchen",
+          "floor": "tile"
+        },
+        {
+          "id": "c2",
+          "poly": [
+            [
+              900,
+              0
+            ],
+            [
+              900,
+              330
+            ],
+            [
+              580,
+              330
+            ],
+            [
+              580,
+              0
+            ]
+          ],
+          "name": "Bedroom 1",
+          "floor": "herringbone"
+        },
+        {
+          "id": "c3",
+          "poly": [
+            [
+              900,
+              560
+            ],
+            [
+              580,
+              560
+            ],
+            [
+              580,
+              330
+            ],
+            [
+              900,
+              330
+            ]
+          ],
+          "name": "Bedroom 2",
+          "floor": "parquet"
+        },
+        {
+          "id": "c4",
+          "poly": [
+            [
+              460,
+              0
+            ],
+            [
+              460,
+              820
+            ],
+            [
+              0,
+              820
+            ],
+            [
+              0,
+              280
+            ],
+            [
+              260,
+              280
+            ],
+            [
+              260,
+              0
+            ]
+          ],
+          "name": "Living / dining room",
+          "floor": "herringbone"
+        },
+        {
+          "id": "c5",
+          "poly": [
+            [
+              580,
+              0
+            ],
+            [
+              580,
+              560
+            ],
+            [
+              900,
+              560
+            ],
+            [
+              900,
+              660
+            ],
+            [
+              580,
+              660
+            ],
+            [
+              580,
+              820
+            ],
+            [
+              460,
+              820
+            ],
+            [
+              460,
+              0
+            ]
+          ],
+          "name": "Corridor",
+          "floor": "tile"
+        },
+        {
+          "id": "c6",
+          "poly": [
+            [
+              580,
+              820
+            ],
+            [
+              580,
+              660
+            ],
+            [
+              740,
+              660
+            ],
+            [
+              740,
+              820
+            ]
+          ],
+          "name": "WC",
+          "floor": "tile"
+        },
+        {
+          "id": "c7",
+          "poly": [
+            [
+              900,
+              820
+            ],
+            [
+              740,
+              820
+            ],
+            [
+              740,
+              660
+            ],
+            [
+              900,
+              660
+            ]
+          ],
+          "name": "Bathroom",
+          "floor": "tile"
+        }
+      ]
+    },
+    "outline": [
+      [
+        0,
+        0
+      ],
+      [
+        900,
+        0
+      ],
+      [
+        900,
+        820
+      ],
+      [
+        0,
+        820
+      ]
+    ],
+    "walls": [
+      {
+        "id": "w1",
+        "a": [
+          0,
+          0
+        ],
+        "b": [
+          900,
+          0
+        ],
+        "t": 20,
+        "isOutline": true
+      },
+      {
+        "id": "w2",
+        "a": [
+          900,
+          0
+        ],
+        "b": [
+          900,
+          820
+        ],
+        "t": 20,
+        "isOutline": true
+      },
+      {
+        "id": "w3",
+        "a": [
+          0,
+          820
+        ],
+        "b": [
+          900,
+          820
+        ],
+        "t": 20,
+        "isOutline": true
+      },
+      {
+        "id": "w4",
+        "a": [
+          0,
+          820
+        ],
+        "b": [
+          0,
+          0
+        ],
+        "t": 20,
+        "isOutline": true
+      },
+      {
+        "id": "w5",
+        "a": [
+          460,
+          0
+        ],
+        "b": [
+          460,
+          820
+        ],
+        "t": 12,
+        "isOutline": false
+      },
+      {
+        "id": "w6",
+        "a": [
+          0,
+          280
+        ],
+        "b": [
+          260,
+          280
+        ],
+        "t": 12,
+        "isOutline": false
+      },
+      {
+        "id": "w7",
+        "a": [
+          260,
+          280
+        ],
+        "b": [
+          260,
+          0
+        ],
+        "t": 12,
+        "isOutline": false
+      },
+      {
+        "id": "w8",
+        "a": [
+          580,
+          0
+        ],
+        "b": [
+          580,
+          560
+        ],
+        "t": 12,
+        "isOutline": false
+      },
+      {
+        "id": "w9",
+        "a": [
+          580,
+          660
+        ],
+        "b": [
+          580,
+          820
+        ],
+        "t": 12,
+        "isOutline": false
+      },
+      {
+        "id": "w10",
+        "a": [
+          580,
+          330
+        ],
+        "b": [
+          900,
+          330
+        ],
+        "t": 12,
+        "isOutline": false
+      },
+      {
+        "id": "w11",
+        "a": [
+          580,
+          560
+        ],
+        "b": [
+          900,
+          560
+        ],
+        "t": 12,
+        "isOutline": false
+      },
+      {
+        "id": "w12",
+        "a": [
+          580,
+          660
+        ],
+        "b": [
+          900,
+          660
+        ],
+        "t": 12,
+        "isOutline": false
+      },
+      {
+        "id": "w13",
+        "a": [
+          740,
+          660
+        ],
+        "b": [
+          740,
+          820
+        ],
+        "t": 12,
+        "isOutline": false
+      }
+    ],
+    "openings": [
+      {
+        "id": "o1",
+        "wallId": "w3",
+        "t0": 475,
+        "w": 90,
+        "h": 12,
+        "type": "door",
+        "side": 1,
+        "name": "Entry door",
+        "hinge": 0,
+        "swing": 1
+      },
+      {
+        "id": "o2",
+        "wallId": "w7",
+        "t0": 95,
+        "w": 90,
+        "h": 12,
+        "type": "sdoor",
+        "side": 1,
+        "name": "Kitchen sliding door"
+      },
+      {
+        "id": "o3",
+        "wallId": "w5",
+        "t0": 405,
+        "w": 90,
+        "h": 12,
+        "type": "door",
+        "side": 0,
+        "name": "Living room door",
+        "hinge": 0,
+        "swing": 1
+      },
+      {
+        "id": "o4",
+        "wallId": "w8",
+        "t0": 120,
+        "w": 90,
+        "h": 12,
+        "type": "door",
+        "side": 1,
+        "name": "Bedroom 1 door",
+        "hinge": 1,
+        "swing": 1
+      },
+      {
+        "id": "o5",
+        "wallId": "w8",
+        "t0": 400,
+        "w": 90,
+        "h": 12,
+        "type": "door",
+        "side": 1,
+        "name": "Bedroom 2 door",
+        "hinge": 0,
+        "swing": -1
+      },
+      {
+        "id": "o6",
+        "wallId": "w12",
+        "t0": 40,
+        "w": 80,
+        "h": 12,
+        "type": "sdoor",
+        "side": 1,
+        "name": "WC sliding door"
+      },
+      {
+        "id": "o7",
+        "wallId": "w12",
+        "t0": 200,
+        "w": 80,
+        "h": 12,
+        "type": "sdoor",
+        "side": 1,
+        "name": "Bathroom sliding door"
+      },
+      {
+        "id": "o8",
+        "wallId": "w1",
+        "t0": 70,
+        "w": 120,
+        "h": 12,
+        "type": "window",
+        "side": 0,
+        "name": "Kitchen window"
+      },
+      {
+        "id": "o9",
+        "wallId": "w1",
+        "t0": 670,
+        "w": 140,
+        "h": 12,
+        "type": "window",
+        "side": 0,
+        "name": "Bedroom 1 window"
+      },
+      {
+        "id": "o10",
+        "wallId": "w4",
+        "t0": 490,
+        "w": 120,
+        "h": 12,
+        "type": "window",
+        "side": 0,
+        "name": "Living room window"
+      },
+      {
+        "id": "o11",
+        "wallId": "w2",
+        "t0": 385,
+        "w": 120,
+        "h": 12,
+        "type": "window",
+        "side": 0,
+        "name": "Bedroom 2 window"
+      },
+      {
+        "id": "o12",
+        "wallId": "w2",
+        "t0": 690,
+        "w": 100,
+        "h": 12,
+        "type": "window",
+        "side": 0,
+        "name": "Bathroom window"
+      },
+      {
+        "id": "o13",
+        "wallId": "w4",
+        "t0": 340,
+        "w": 25,
+        "h": 12,
+        "type": "sconce",
+        "side": 0,
+        "name": "Wall light"
+      },
+      {
+        "id": "o14",
+        "wallId": "w10",
+        "t0": 188,
+        "w": 25,
+        "h": 12,
+        "type": "sconce",
+        "side": 0,
+        "name": "Wall light"
+      },
+      {
+        "id": "o15",
+        "wallId": "w4",
+        "t0": 600,
+        "w": 10,
+        "h": 6,
+        "type": "plug",
+        "side": 0,
+        "name": "Socket"
+      },
+      {
+        "id": "o16",
+        "wallId": "w5",
+        "t0": 100,
+        "w": 10,
+        "h": 6,
+        "type": "plug",
+        "side": 0,
+        "name": "Socket"
+      },
+      {
+        "id": "o17",
+        "wallId": "w4",
+        "t0": 150,
+        "w": 10,
+        "h": 6,
+        "type": "plug",
+        "side": 0,
+        "name": "Socket"
+      },
+      {
+        "id": "o18",
+        "wallId": "w1",
+        "t0": 600,
+        "w": 10,
+        "h": 6,
+        "type": "plug",
+        "side": 0,
+        "name": "Socket"
+      },
+      {
+        "id": "o19",
+        "wallId": "w5",
+        "t0": 650,
+        "w": 10,
+        "h": 6,
+        "type": "rj45",
+        "side": 0,
+        "name": "RJ45"
+      }
+    ],
+    "pieces": [
+      {
+        "id": "p1",
+        "type": "fridge",
+        "name": "Fridge",
+        "x": 10,
+        "y": 10,
+        "w": 60,
+        "h": 60,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p2",
+        "type": "counter",
+        "name": "Worktop",
+        "x": -20,
+        "y": 100,
+        "w": 120,
+        "h": 60,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p3",
+        "type": "sink",
+        "name": "Sink",
+        "x": 10,
+        "y": 190,
+        "w": 60,
+        "h": 60,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p4",
+        "type": "hob",
+        "name": "Hob",
+        "x": 120,
+        "y": 10,
+        "w": 60,
+        "h": 52,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p5",
+        "type": "oven",
+        "name": "Oven",
+        "x": 190,
+        "y": 10,
+        "w": 60,
+        "h": 60,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p6",
+        "type": "tv",
+        "name": "TV unit",
+        "x": 270,
+        "y": 10,
+        "w": 180,
+        "h": 44,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p7",
+        "type": "sofa3",
+        "name": "3-seat sofa",
+        "x": 90,
+        "y": 716,
+        "w": 220,
+        "h": 94,
+        "rot": 180,
+        "locked": false
+      },
+      {
+        "id": "p8",
+        "type": "coffee",
+        "name": "Coffee table",
+        "x": 145,
+        "y": 620,
+        "w": 110,
+        "h": 60,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p9",
+        "type": "dining",
+        "name": "Dining table",
+        "x": 85,
+        "y": 445,
+        "w": 150,
+        "h": 90,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p10",
+        "type": "chair",
+        "name": "Dining chair",
+        "x": 138,
+        "y": 385,
+        "w": 44,
+        "h": 50,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p11",
+        "type": "chair",
+        "name": "Dining chair 2",
+        "x": 138,
+        "y": 545,
+        "w": 44,
+        "h": 50,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p12",
+        "type": "chair",
+        "name": "Dining chair 3",
+        "x": 245,
+        "y": 468,
+        "w": 50,
+        "h": 44,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p13",
+        "type": "chair",
+        "name": "Dining chair 4",
+        "x": 35,
+        "y": 468,
+        "w": 50,
+        "h": 44,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p14",
+        "type": "rug",
+        "name": "Rug",
+        "x": 90,
+        "y": 530,
+        "w": 220,
+        "h": 280,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p15",
+        "type": "arm",
+        "name": "Armchair",
+        "x": 358,
+        "y": 558,
+        "w": 84,
+        "h": 84,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p16",
+        "type": "lamp",
+        "name": "Floor lamp",
+        "x": 260,
+        "y": 630,
+        "w": 40,
+        "h": 40,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p17",
+        "type": "console",
+        "name": "Entry bench",
+        "x": 505,
+        "y": 265,
+        "w": 90,
+        "h": 30,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p18",
+        "type": "bed",
+        "name": "Double bed",
+        "x": 630,
+        "y": 10,
+        "w": 160,
+        "h": 210,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p19",
+        "type": "bedside",
+        "name": "Bedside table",
+        "x": 586,
+        "y": 10,
+        "w": 44,
+        "h": 40,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p20",
+        "type": "bedside",
+        "name": "Bedside table 2",
+        "x": 790,
+        "y": 10,
+        "w": 44,
+        "h": 40,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p21",
+        "type": "armoire",
+        "name": "Wardrobe",
+        "x": 800,
+        "y": 220,
+        "w": 120,
+        "h": 60,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p22",
+        "type": "bed1",
+        "name": "Single bed",
+        "x": 705,
+        "y": 336,
+        "w": 90,
+        "h": 200,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p23",
+        "type": "desk",
+        "name": "Desk",
+        "x": 793,
+        "y": 448,
+        "w": 130,
+        "h": 64,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p24",
+        "type": "dresser",
+        "name": "Chest of drawers",
+        "x": 600,
+        "y": 510,
+        "w": 100,
+        "h": 44,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p25",
+        "type": "wc",
+        "name": "Toilet",
+        "x": 586,
+        "y": 730,
+        "w": 60,
+        "h": 40,
+        "rot": 90,
+        "locked": false
+      },
+      {
+        "id": "p26",
+        "type": "shower",
+        "name": "Shower",
+        "x": 800,
+        "y": 666,
+        "w": 90,
+        "h": 90,
+        "rot": 0,
+        "locked": false
+      },
+      {
+        "id": "p27",
+        "type": "lavabo",
+        "name": "Washbasin",
+        "x": 738,
+        "y": 758,
+        "w": 60,
+        "h": 44,
+        "rot": 90,
+        "locked": false
+      }
+    ],
+    "cells": [
+      {
+        "id": "c1",
+        "poly": [
+          [
+            260,
+            0
+          ],
+          [
+            260,
+            280
+          ],
+          [
+            0,
+            280
+          ],
+          [
+            0,
+            0
+          ]
+        ],
+        "name": "Kitchen",
+        "floor": "tile"
+      },
+      {
+        "id": "c2",
+        "poly": [
+          [
+            900,
+            0
+          ],
+          [
+            900,
+            330
+          ],
+          [
+            580,
+            330
+          ],
+          [
+            580,
+            0
+          ]
+        ],
+        "name": "Bedroom 1",
+        "floor": "herringbone"
+      },
+      {
+        "id": "c3",
+        "poly": [
+          [
+            900,
+            560
+          ],
+          [
+            580,
+            560
+          ],
+          [
+            580,
+            330
+          ],
+          [
+            900,
+            330
+          ]
+        ],
+        "name": "Bedroom 2",
+        "floor": "parquet"
+      },
+      {
+        "id": "c4",
+        "poly": [
+          [
+            460,
+            0
+          ],
+          [
+            460,
+            820
+          ],
+          [
+            0,
+            820
+          ],
+          [
+            0,
+            280
+          ],
+          [
+            260,
+            280
+          ],
+          [
+            260,
+            0
+          ]
+        ],
+        "name": "Living / dining room",
+        "floor": "herringbone"
+      },
+      {
+        "id": "c5",
+        "poly": [
+          [
+            580,
+            0
+          ],
+          [
+            580,
+            560
+          ],
+          [
+            900,
+            560
+          ],
+          [
+            900,
+            660
+          ],
+          [
+            580,
+            660
+          ],
+          [
+            580,
+            820
+          ],
+          [
+            460,
+            820
+          ],
+          [
+            460,
+            0
+          ]
+        ],
+        "name": "Corridor",
+        "floor": "tile"
+      },
+      {
+        "id": "c6",
+        "poly": [
+          [
+            580,
+            820
+          ],
+          [
+            580,
+            660
+          ],
+          [
+            740,
+            660
+          ],
+          [
+            740,
+            820
+          ]
+        ],
+        "name": "WC",
+        "floor": "tile"
+      },
+      {
+        "id": "c7",
+        "poly": [
+          [
+            900,
+            820
+          ],
+          [
+            740,
+            820
+          ],
+          [
+            740,
+            660
+          ],
+          [
+            900,
+            660
+          ]
+        ],
+        "name": "Bathroom",
+        "floor": "tile"
+      }
+    ]
+  }
+}

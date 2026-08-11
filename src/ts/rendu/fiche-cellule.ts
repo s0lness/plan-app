@@ -32,7 +32,7 @@ export function syncCellCard(ctx: Contexte): void {
   // Width / Length / Shapes don't make sense on a DERIVED cell: the sheet shows the AREA, in the
   // same format as the chip and the toolbar (R-12).
   const area = $("rcArea");
-  if (area) area.textContent = "Surface " + fmtM2(v5SignedArea(c.poly));
+  if (area) area.textContent = "Area " + fmtM2(v5SignedArea(c.poly));
   // The button used to announce "Delete wall (none selected)" while looking at a ROOM: a red
   // action that spells out, in plain words, that it applies to nothing. And a FACADE can be
   // selected: the sheet must say, on screen, that it can't be deleted (C-13).

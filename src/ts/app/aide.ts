@@ -16,7 +16,7 @@ import type { Contexte } from "./contexte.ts";
 import { $ } from "../noyau/dom.ts";
 
 const HINTS: Record<string, string> = {
-  walls: "Attrapez <b>n'importe quel mur</b> ; <b>Maj</b> force l'axe.",
+  walls: "Grab <b>any wall</b>; <b>Shift</b> forces the axis.",
   multi: "Drag to move the group; <b>Del</b> deletes them all, <b>Ctrl+C</b> copies it.",
   measure: "Click two points; the cursor shows the distances around it.",
   // Placement is a drag-and-drop: the click ARMS it. Said ONE time, on the first click on a thumbnail.
@@ -42,7 +42,7 @@ export function showHint(ctx: Contexte, key: string): void {
   markHintSeen(key);   // counted as soon as it's shown (no repeat even if dismissed)
   const el = document.createElement("div");
   el.className = "tip-hint";
-  el.innerHTML = '<span class="tt">Astuce : ' + msg + '</span><button class="tip-x" type="button" aria-label="Fermer">×</button>';
+  el.innerHTML = '<span class="tt">Tip: ' + msg + '</span><button class="tip-x" type="button" aria-label="Close">×</button>';
   const kill = (): void => { if (_hintT) clearTimeout(_hintT); if (el.parentNode) el.remove(); };
   el.querySelector(".tip-x")?.addEventListener("click", kill);
   ctx.viewport.appendChild(el);

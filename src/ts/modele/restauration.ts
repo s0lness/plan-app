@@ -27,10 +27,10 @@ export type ResultatRestauration =
 
 export function v5RestoreBackup(ctx: Contexte): ResultatRestauration {
   const info = v5BackupInfo();
-  if (!info) return { error: "aucune sauvegarde" };
+  if (!info) return { error: "no backup" };
   let ns: ReturnType<typeof migrate> = null;
   try { ns = migrate(JSON.parse(info.raw), ctx.etat.opts); } catch (_) { ns = null; }
-  if (!ns || !ns.plan) return { error: "sauvegarde illisible" };
+  if (!ns || !ns.plan) return { error: "unreadable backup" };
   // Cut FIRST, replace SECOND. In the other order, the `save()` that `applyReplacedState`
   // triggers would publish the old snapshot to the household before the link is closed.
   ctx.crochets.detacherSynchro?.();

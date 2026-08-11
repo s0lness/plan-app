@@ -247,7 +247,7 @@ export function v5ThroughWall(P: PlanV5 | null | undefined, w: Mur): Mur {
 // Does a wall ALREADY carry the segment a->b? (same support line within `tol`, and at least 60%
 // of the requested length already covered). Serves to refuse a second stroke on an existing
 // partition: two strokes at the same spot = two overlapping walls, the second invisible, and
-// "Supprimer le mur" only removes one (see `v5DedupeWalls`, modele/murs.ts).
+// "Delete wall" only removes one (see `v5DedupeWalls`, modele/murs.ts).
 export function v5WallCovering(
   P: PlanV5 | null | undefined,
   a: Pt,

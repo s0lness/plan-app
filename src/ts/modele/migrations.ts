@@ -124,7 +124,7 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
     cells.push({
       id,
       poly,
-      name: String(c["name"] || "Pièce").slice(0, NAME_MAX),
+      name: String(c["name"] || "Room").slice(0, NAME_MAX),
       floor: estSolConnu(c["floor"]) ? c["floor"] : "parquet",
     });
   });

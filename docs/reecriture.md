@@ -211,7 +211,7 @@ silent and permanent.
 | 2 | **flat** v5 `{outline,walls,openings,pieces,cells,setupDone}` | `GET /api/plan`, Durable Object state | yes |
 | 3 | v4 `{rooms[], envelope, active, opts, setupDone}` | old exports, `tests/fixtures/plan-reel-77.json`, `plan-rev177.json` | yes |
 | 4 | single-room v1/v2/v3 `{room:{poly,w,l,h}, pieces[], opts}` | `localStorage["room-planner-v3"]`, `-v2`, `-v1` | yes |
-| 5 | **wrapped** export `{app:"room-planner", version, savedAt, note, state}` | saved files (`exemple-cuisine.json`) | yes |
+| 5 | **wrapped** export `{app:"room-planner", version, savedAt, note, state}` | saved files (`exemple-appartement.json`) | yes |
 | 6 | `room-planner-v4-backup` | verbatim pre-conversion blob | yes (D-3) |
 | 7 | `room-planner-v4-backup-illisible`, `room-planner-v4-conflit` | safety nets | yes |
 
@@ -246,7 +246,7 @@ To assemble **before writing one line of the new client**:
 
 - `tests/fixtures/plan-reel-77.json` (v4, 8 rooms, 10,084 bytes) and `plan-rev177.json` (v4, 6,049
   bytes), already versioned;
-- `exemple-cuisine.json` (wrapped export, single-room v4);
+- `exemple-appartement.json` (wrapped export, v5 walls-only demo apartment);
 - **the current production D1 row**, read through the REST API (the token already exists, see
   `~/projects/.secrets.env`);
 - the household's local backups (`room-planner-v4-backup`, and the pre-cutover blob mentioned in

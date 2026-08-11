@@ -44,6 +44,10 @@ walls, drop furniture and read the computed rooms straight away. Your work is
 saved in the browser's local storage, and the File menu exports and reimports a
 floor plan as JSON.
 
+A demo floor plan ships with the repository, `exemple-appartement.json`: an
+invented apartment, nobody's home. Load it from the File menu ("Open from
+file…") to see a furnished plan instead of an empty canvas.
+
 What you do NOT get this way is the shared part. Under `file://` the client
 disables synchronization on purpose, so there is no account, no server and no
 second person. The collaborative half needs the Cloudflare pieces described

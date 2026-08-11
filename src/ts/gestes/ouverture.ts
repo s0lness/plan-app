@@ -443,7 +443,7 @@ export function v5StartOpeningResize(
   const readout = $("rszReadout");
   let moved = false;
   _opRszBute = null;
-  const nomDe = (q: Ouverture | null): string => (q && q.name) ? q.name : "un autre objet";
+  const nomDe = (q: Ouverture | null): string => (q && q.name) ? q.name : "another object";
   const montre = (ev: PointerEvent): void => {
     if (!readout) return;
     readout.hidden = false;

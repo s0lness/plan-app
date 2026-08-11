@@ -106,7 +106,7 @@ export function histApplyOp(P: PlanV5 | null | undefined, op: Op | null | undefi
         L("cells").push({
           id: String(op.cellId),
           poly: op.poly.map((p) => [p[0], p[1]] as Pt),
-          name: String(op.name || "Pièce"),
+          name: String(op.name || "Room"),
           floor: op.floor || "parquet",
         });
       }

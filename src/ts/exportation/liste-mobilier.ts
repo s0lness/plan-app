@@ -56,7 +56,7 @@ export function buildFurnitureData(ctx: Contexte): SectionListe[] {
   const P = ctx.etat.plan || ({} as Contexte["etat"]["plan"]);
   const cells: Cellule[] = P.cells || [];
   const secs: SectionBrute[] = cells.map((c) => ({
-    name: c.name || "Pièce", ri: String(c.id),
+    name: c.name || "Room", ri: String(c.id),
     area: Math.abs(v5SignedArea(c.poly)) / 10000, list: [],
   }));
   const byId = new Map<string, SectionBrute>(secs.map((s, i) => [String(cells[i]!.id), s]));
@@ -105,7 +105,7 @@ export function groupPieces(list: readonly ObjetListe[] | null | undefined): { f
 
 /** The HTML of a section, THE ONLY ONE: the screen (modal) and printing both call it. */
 export function furnitureSectionHTML(sec: SectionListe): string {
-  let h = `<div class="furni-room"><h3><span>${escapeHtml(sec.name)}</span><span class="fa">${fmtM2(sec.area * 10000)} · ${sec.total} meuble${sec.total > 1 ? "s" : ""}</span></h3>`;
+  let h = `<div class="furni-room"><h3><span>${escapeHtml(sec.name)}</span><span class="fa">${fmtM2(sec.area * 10000)} · ${sec.total} piece${sec.total > 1 ? "s" : ""}</span></h3>`;
   if (sec.furn.length) {
     h += `<table class="furni-tbl"><tbody>`;
     sec.furn.forEach((x) => { h += `<tr><td class="q">×${x.n}</td><td>${escapeHtml(x.name)}</td><td class="d">${x.w}×${x.h}</td></tr>`; });
@@ -132,7 +132,7 @@ export function furnitureListText(ctx: Contexte, data?: SectionListe[] | null): 
   const d = data || buildFurnitureData(ctx);
   const L: string[] = []; L.push("FURNITURE LIST"); L.push("");
   d.forEach((sec) => {
-    L.push(`${sec.name} : ${fmtM2(sec.area * 10000)}, ${sec.total} meuble${sec.total > 1 ? "s" : ""}`);
+    L.push(`${sec.name}: ${fmtM2(sec.area * 10000)}, ${sec.total} piece${sec.total > 1 ? "s" : ""}`);
     if (sec.furn.length) sec.furn.forEach((x) => L.push(`  ${x.name} ×${x.n} (${x.w}×${x.h} cm)`));
     else L.push("  (no furniture)");
     if (sec.open.length) { L.push("  Openings & electrics:"); sec.open.forEach((x) => L.push(`    ${x.name} ×${x.n} (${x.w}×${x.h} cm)`)); }

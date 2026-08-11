@@ -36,7 +36,7 @@ Why it is built this way, not just how to work in it: `docs/decisions/`.
 | `room-planner-opts` | PERSONAL SETTINGS: layers, labels, snapping, Circulation panel, overlay, collapsed categories, television inches. | the options | **no**, in EITHER direction: `serialize()` does not include them and `makeState()` ignores the `opts` of every received payload (neither realtime nor D1 fallback) |
 | `room-planner-v4-backup` (+ `-at`) | The blob from BEFORE conversion, copied VERBATIM on the first conversion. | `migrate()`, once | no |
 | `room-planner-v4-backup-illisible` (+ `-at`) | The blob that could NOT be read again (interrupted write, truncated JSON, unknown version), set aside BEFORE anything replaces it. | the read that fails | no (downloadable from the banner) |
-| `room-planner-v4-conflit` | The last 5 versions rejected by a 409, so nothing is lost during a concurrent fallback. | `js/41` | no (can be reimported through « Charger un plan… ») |
+| `room-planner-v4-conflit` | The last 5 versions rejected by a 409, so nothing is lost during a concurrent fallback. | `js/41` | no (can be reimported through "Load a plan…") |
 | `room-planner`, `room-planner-v1..v3` | Old formats. **Read only**, never rewritten. | nobody | no |
 
 - **An unreadable floor plan does not pretend to be a floor plan.** When the rescue blob is written,
@@ -58,7 +58,7 @@ edit them.
 plan/
   index.html                THE DELIVERABLE served by Pages. Produced by `node build.ts`, never edited by hand.
   build.ts                 builds index.html from src/ts · `--check` · `--dev` · `--out`
-  exemple-cuisine.json      sample floor plan (a sample kitchen, v4 format)
+  exemple-appartement.json  demo floor plan (invented apartment, v5 walls-only format)
   src/
     manifest.json           manually maintained order of the head, CSS, and HTML
     head.html               the deliverable's <head>
@@ -227,7 +227,7 @@ repository.
 | Suite | Chrome | Covers |
 | --- | --- | --- |
 | `tests/rapide.ts` | 0 | THE WORK LOOP, < 1 s: cells, server bounds, field-by-field diff, undo, and Circulation. All client code is imported from `src/ts`. |
-| `tests/compat-donnees.ts` | 0 | **THE DATA COMPATIBILITY ORACLE**. Reads the corpus again and compares its fingerprints with `tests/fixtures/empreintes-compat.json`. `--b <dir>` compares two module directories; the barrier uses only the frozen reference. `--figer` remains a deliberate act. |
+| `tests/compat-donnees.ts` | 0 | **THE DATA COMPATIBILITY ORACLE**. Reads the corpus again and compares its fingerprints with `tests/fixtures/empreintes-compat.json`. `--b <dir>` compares two module directories; the barrier uses only the frozen reference. `--figer` remains a deliberate act. A private corpus can be pointed at with `--corpus <dir>` (a directory outside the repository), and its fingerprints stay with it. |
 | `tests/harnais-graine.ts` | 0 | Deterministic seeded harness: convergence and undo/redo round trip, client code imported from `src/ts`, real server imported from `live-worker/`. |
 | `tests/no-dead-selectors.ts` | 0 | Static: no CSS class without a consumer in `src/ts` or `src/html`. |
 | `live-worker/test-local.ts` | 0 | 601 SERVER assertions: validator, ops, Durable Object, D1 fallback, sequence, and deduplication by `(tag, n)`. |
@@ -282,7 +282,7 @@ node tests/boot-vierge.ts                                    # repository index.
 node tests/boot-vierge.ts --plan ~/.claude/jobs/d745c367/tmp/backup-rev246.json --png /tmp/boot
 ```
 Pass 1: blank profile, no `localStorage`, no server floor plan (`file://` disables synchronization).
-The « Configurez votre pièce » modal must open, with zero JS errors. Pass 2: a real floor plan is
+The "The outline of the flat" modal must open, with zero JS errors. Pass 2: a real floor plan is
 seeded, furniture must render, with zero JS errors. `--png` writes the screenshots.
 
 ## Deployment
@@ -331,20 +331,20 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   `docs/collab-etat-de-l-art.md`). Covered by `tests/repli-conflit.ts`.
 - **A rejection is READ BACK, never rewritten** (js/41). The rejected version is set aside under
   `room-planner-v4-conflit` (the last 5), announced by a persistent banner with a
-  « Récupérer ma version » button (file reimportable through « Charger un plan… »), and `Ctrl+Z`
+  "Recover my version" button (file reimportable through "Load a plan…"), and `Ctrl+Z`
   returns it to the screen; the winning state is adopted from the 409 body, without a second round
   trip. Until the household floor plan has been read again, no more PUTs leave: otherwise two devices
   would send the same write back and forth forever. **No sixth chip state**: the link works, the
-  write was rejected, so « non enregistré » (with its own title) during the rejection, then back to
-  « sync lent » as soon as it is read again.
+  write was rejected, so "not saved" (with its own title) during the rejection, then back to
+  "slow sync" as soon as it is read again.
 - **This REST FALLBACK is the only safety net when the Worker goes down**: its PUT must accept BOTH
   forms (old `rooms[]`, walls-only `outline`/`walls`/`plan`). A guard that accepts only `rooms`
-  rejects 100% of writes from the live model, the chip says « sync lent », and the two people
+  rejects 100% of writes from the live model, the chip says "slow sync", and the two people
   silently diverge. Covered by `tests/repli-d1-live.ts`.
-- **The synchronization chip must never lie.** States: `live ✓` (WS), `sync lent` (D1 fallback),
-  `non enregistré` (reads work, WRITES do not), `hors ligne`, `local` (detached tab). A successful
+- **The synchronization chip must never lie.** States: `live ✓` (WS), `slow sync` (D1 fallback),
+  `not saved` (reads work, WRITES do not), `offline`, `local` (detached tab). A successful
   GET probe does not prove that writing works: `putFailed` prevents the chip from repainting
-  « sync lent » over a failed PUT.
+  "slow sync" over a failed PUT.
 - **NOTHING LEAVES until the first read has responded** (`bootReconciled`, js/41). The push is
   debounced by one second and did not wait for the boot GET: a change made early on a slow page
   published what that device thought it had. The lock is released by the FIRST successful read
@@ -362,7 +362,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - **`fp` is a CONTENT fingerprint; the counters no longer have the same name.** `hello`, the op
   echo, `state`, and `pong` carry `fp`: it is the ONLY identity to compare on this wire (adoption is
   decided from it). The two counters counted unrelated things under the SAME name, and comparing
-  them produced permanent divergence with two screens showing « live ✓ ». The Durable Object now
+  them produced permanent divergence with two screens showing "live ✓". The Durable Object now
   reports **`opCount`** (its own ops, informational, restarted from zero: it no longer reads D1's
   `rev`, which was the last place the two touched); the D1 row keeps **`rev`** (its own writes), read
   by `serverRev` (js/41), which drives the REST probe. The wire does not even read `opCount`.
@@ -394,7 +394,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   plan, without a banner), and its dot, cursor, and ghosts did not appear. `tag` now accompanies
   `peer`, `op`, `cursor`, and `drag`; `wsPeers` and `wsCursors` are indexed by DEVICE. Rendering
   keeps the PERSON's name and color; my other device is distinguished by an outline
-  (`.peer-dot.self`), the « votre autre appareil » tooltip, and the « Autre appareil » cursor label.
+  (`.peer-dot.self`), the "your other device" tooltip, and the "Other device" cursor label.
   A server WITHOUT `tag` makes the client fall back to email, exactly as before. Covered by
   `tests/deux-appareils.ts`.
 - **A REJECTION CANNOT LEAVE THE SCREEN LYING.** The client numbers its ops (`n`) and retains,
@@ -403,7 +403,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   and mirror return together to the server truth and the next diff sends nothing. Without a number
   (old server), the full state is requested again (`sync`). The chip remains `live ✓`: the link IS
   alive, this specific write was rejected. Measured before: 33 openings on one side, 33 on the other,
-  not the same ones, 30 on the server, two « live ✓ ».
+  not the same ones, 30 on the server, two "live ✓".
 - **A created entity identifier carries a device tag**: `w20-a3f9c1`. A DERIVED entity (outline
   wall) keeps a bare id, otherwise the two floor plans would diverge. Details in `src/README.md`.
 - **An op is a FIELD-BY-FIELD diff**; the server treats "missing field" as "no opinion". Every new
@@ -412,7 +412,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   GET; if the Durable Object `hello` arrives BEFORE the response, that response describes a floor
   plan up to 30 s behind (the D1 snapshot is driven by an alarm). Adopting it means replacing the
   current floor plan with a stale one AND then saving it. Measured: F5 restored the starting floor
-  plan, 20 pieces of furniture lost, the chip showing « live ✓ », without a word. `syncBoot` therefore
+  plan, 20 pieces of furniture lost, the chip showing "live ✓", without a word. `syncBoot` therefore
   returns immediately if `wsLive()`, while still releasing the `bootReconciled` lock (a read did
   succeed). `pollPull` and `doPut` already had this guard.
 - **Bounds belong to the gesture's AUTHOR.** The person pushing a wall applies bounds once, on the
@@ -445,7 +445,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   throttling applies ONLY TO SYSTEM MESSAGES.** A banner that RESPONDS to a deliberate gesture goes
   through `toast(msg, {geste:true})` and returns for EVERY gesture: someone who did not understand
   repeats the gesture, and that is exactly when silence is intolerable (measured:
-  « Cette cloison est déjà là. » appeared only on the first of five attempts, while the next four
+  "That partition is already there." appeared only on the first of five attempts, while the next four
   failed without a word). The grouping unit is the GESTURE (`_gesteEpoch`, advanced by `pointerdown`
   and `keydown`), so a burst within the same gesture does not repeat, and a gesture message never
   accumulates "fatigue". Accepted tradeoff: repeating the same rejected gesture ten times produces
@@ -507,7 +507,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - **The two floating panels are STACKED** in `.side-panels` (`html/04` → `html/05`), never anchored
   to the same corner: they can no longer overlap. The `.side-spacer` spacer pushes them downward and
   collapses when they no longer fit; on a short screen they sit side by side (`css/17`).
-- **The rail footer is `position:sticky`**: the « File » menu is the only access to Save to file,
+- **The rail footer is `position:sticky`**: the "File" menu is the only access to Save to file,
   Open from file, Furniture list, Export as PNG, Print / PDF, and Remove all furniture; it must never
   end up at the bottom of a 3 000 px rail.
 - **A resize that breaks framing reframes** (`js/46`): compare the current transform against the OLD
@@ -524,7 +524,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   REMAINS in the model (sheet, furniture list, export, network wire): a display was removed, not
   data. An opening's dimension was already not displayed on the floor plan; it is read where it is
   changed (sheet field, live `#rszReadout` dimension while dragging a handle).
-  « Afficher noms & tailles » therefore controls FURNITURE. Details: `src/README.md` 22bis.
+  "Show names & sizes" therefore controls FURNITURE. Details: `src/README.md` 22bis.
 - **AND ON FURNITURE, ONLY A CHOSEN NAME IS WRITTEN.** Furniture is created with its type label
   (`mk` → `autoName`, js/07), sometimes numbered: « Table 2 », « Plan de travail 3 »,
   « Lit (160) 2 ». That says nothing the icon does not. A TYPED name (« Homu », « Ikea ») exists
@@ -570,7 +570,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - Why: `gestureActive` makes `save()` return immediately. A gesture that never ended made the
   application **mute** (no local write, no send, no op) and lost ALL session work on reload, without
   a message. Covered by `tests/interactions.ts`.
-- The **VIEW is not the floor plan**: pan, zoom, pinch, « Ajuster », and window resizing go through
+- The **VIEW is not the floor plan**: pan, zoom, pinch, "Fit", and window resizing go through
   **`renderView()`**, which repaints without persisting anything (before: 40 serializations and
   854 KB written for one pan). Never call `render()` for a simple `vScale`/`vOx`/`vOy` change.
 - A complete floor plan replacement received **during** a gesture (`plan5.replace`, pull adoption)

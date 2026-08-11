@@ -402,7 +402,7 @@ test("corridor_gap_becomes_a_cell", (function(){
      && expect(v.cells === 3, "two rooms + the corridor = 3 cells, got " + v.cells + " " + JSON.stringify(v.names))
      && expect(v.homeCell === v.cellName, "the piece must belong to the corridor cell, got " + v.homeCell));
 
-// 12. Flow: a room with NO door -> "Pièce inaccessible" finding.
+// 12. Flow: a room with NO door -> "Room unreachable" finding.
 test("flow_no_door_inaccessible", seedV4(ONE_ROOM_FLOW(false)), `
   window.__plan.analyzeNow();
   var findings = window.__plan.findings || [];

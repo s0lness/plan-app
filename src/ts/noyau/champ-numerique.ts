@@ -77,7 +77,7 @@ export function numField(el: HTMLElement | null, cfg: ConfigChamp): void {
     const b = cfg.bounds ? cfg.bounds() : { min: cfg.min as number, max: cfg.max as number };
     return { min: Math.round(Number(b.min) || 0), max: Math.round(Number(b.max) || 0) };
   };
-  const label = (): string => cfg.label || "Cette valeur";
+  const label = (): string => cfg.label || "This value";
   const refuse = (msg: string): void => {
     mark("bad"); toast(msg, { geste: true });
     if (hold) clearTimeout(hold);

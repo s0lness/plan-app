@@ -45,7 +45,7 @@ export function crumbsSnapshot(): { dt: number; k: string; i: unknown }[] {
 }
 
 const errShortMsg = (m: unknown): string => {
-  const s = String(m == null ? "erreur inconnue" : m);
+  const s = String(m == null ? "unknown error" : m);
   return s.length > 140 ? s.slice(0, 140) + "…" : s;
 };
 
@@ -56,8 +56,8 @@ function errToast(msg: string): void {
     if (!host) { host = document.createElement("div"); host.className = "err-toasts"; document.body.appendChild(host); }
     while (host.children.length >= 2 && host.firstChild) host.removeChild(host.firstChild);
     const t = document.createElement("div"); t.className = "err-toast";
-    const span = document.createElement("span"); span.textContent = "Erreur : " + errShortMsg(msg);
-    const x = document.createElement("button"); x.className = "et-x"; x.textContent = "✕"; x.title = "Fermer";
+    const span = document.createElement("span"); span.textContent = "Error: " + errShortMsg(msg);
+    const x = document.createElement("button"); x.className = "et-x"; x.textContent = "✕"; x.title = "Close";
     const kill = (): void => { try { if (t.parentNode) t.parentNode.removeChild(t); } catch (_) { /* already gone */ } };
     x.addEventListener("click", kill);
     t.appendChild(span); t.appendChild(x); host.appendChild(t);
@@ -181,7 +181,7 @@ export function brancherDiagnostics(ctx: Contexte, recadrer: () => void): void {
 
   window.addEventListener("error", (e) => {
     try {
-      reportError(e.message || (e.error && e.error.message) || "erreur",
+      reportError(e.message || (e.error && e.error.message) || "error",
         (e.filename || "") + ":" + (e.lineno || 0) + ":" + (e.colno || 0),
         (e.error && e.error.stack) || "");
     } catch (_) { /* nothing */ }

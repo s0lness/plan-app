@@ -44,7 +44,7 @@ export function v5WallLen(plan: PlanV5 | null | undefined, id: Id): number {
 
 // ---- duplicate walls -----------------------------------------------------------------------------
 // Two lines at the same spot = TWO exactly overlapping walls: the second is invisible (its band
-// paints over the first), "Supprimer le mur" only removes one and the button looks broken.
+// paints over the first), "Delete wall" only removes one and the button looks broken.
 
 export interface ComparaisonSegment {
   same: boolean;

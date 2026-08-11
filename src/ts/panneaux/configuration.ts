@@ -283,7 +283,7 @@ export function brancherConfiguration(ctx: Contexte): void {
   // as the input is incomplete or rejected, neither the draft nor the preview moves, and the field
   // SAYS SO (G-17).
   const champs: Array<[string, CleDimension, string]> = [
-    ["suW", "w", "La largeur"], ["suL", "l", "La longueur"],
+    ["suW", "w", "The width"], ["suL", "l", "The length"],
     ["suNW", "nw", "The notch width"], ["suNL", "nl", "The notch depth"],
   ];
   champs.forEach(([id, key, label]) => {

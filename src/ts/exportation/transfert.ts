@@ -32,7 +32,7 @@ export function importPlan(ctx: Contexte, text: unknown): boolean {
     const obj: unknown = JSON.parse(String(text));
     ns = migrate(obj, ctx.etat.opts);   // v1/v2/v3/v4 AND walls-only
     if (!ns || !ns.plan) throw 0;
-  } catch (_) { alert("Fichier de plan invalide."); return false; }
+  } catch (_) { alert("Invalid plan file."); return false; }
   pushHistory(ctx);               // captures the layout from before: the import is undoable
   ns.setupDone = true;
   applyReplacedState(ctx, ns);    // shared, safe replacement path
@@ -57,11 +57,11 @@ export function brancherTransfert(ctx: Contexte): void {
       if (xferTitle) xferTitle.textContent = "Save the plan";
       xferTa.readOnly = true; xferTa.placeholder = ""; xferTa.value = exportPayload(ctx);
       if (xferHint) xferHint.textContent = "Direct download is not available here. Copy this content and keep it in a file (flat-plan.json), or paste it straight into “Open from file…”.";
-      if (xferCopy) { xferCopy.hidden = false; xferCopy.textContent = "Copier"; }
+      if (xferCopy) { xferCopy.hidden = false; xferCopy.textContent = "Copy"; }
       if (xferImport) xferImport.hidden = true;
       if (xferFile) xferFile.hidden = true;
     } else {
-      if (xferTitle) xferTitle.textContent = "Charger un plan";
+      if (xferTitle) xferTitle.textContent = "Load a plan";
       xferTa.readOnly = false; xferTa.value = ""; xferTa.placeholder = "Paste the content of a plan here…";
       if (xferHint) xferHint.textContent = "Paste the content of a saved plan, or choose a file.";
       if (xferCopy) xferCopy.hidden = true;
@@ -77,7 +77,7 @@ export function brancherTransfert(ctx: Contexte): void {
     if (!xferTa || !xferCopy) return;
     const flash = (): void => {
       xferCopy.textContent = "Copied ✓"; clearTimeout(xferCopyTimer);
-      xferCopyTimer = setTimeout(() => { xferCopy.textContent = "Copier"; }, 1500);
+      xferCopyTimer = setTimeout(() => { xferCopy.textContent = "Copy"; }, 1500);
     };
     const fallback = (): void => { try { xferTa.select(); document.execCommand("copy"); flash(); } catch (_) { /* nothing more to try */ } };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(xferTa.value).then(flash, fallback);
@@ -104,7 +104,7 @@ export function brancherTransfert(ctx: Contexte): void {
     if (!file) return;
     const rdr = new FileReader();
     rdr.onload = (): void => { if (importPlan(ctx, rdr.result) && xferEl && !xferEl.hidden) closeXfer(); input.value = ""; };
-    rdr.onerror = (): void => { alert("Fichier de plan invalide."); input.value = ""; };
+    rdr.onerror = (): void => { alert("Invalid plan file."); input.value = ""; };
     rdr.readAsText(file);
   });
 }

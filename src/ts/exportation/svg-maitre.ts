@@ -123,7 +123,7 @@ export function buildMasterSVG(ctx: Contexte, opts?: OptionsSVGMaitre): string {
       + `fill="#2b2f2e" style="paint-order:stroke" stroke="#ffffff" stroke-width="4">${escapeHtml(c.name || "")}</text>`;
   });
 
-  const title = o.title != null ? o.title : "Plan de l'appartement";
+  const title = o.title != null ? o.title : "Apartment plan";
   const titleSVG = title ? `<text x="${(W / 2).toFixed(1)}" y="26" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="26" font-weight="650" fill="#1a1e1e">${escapeHtml(title)}</text>` : "";
   const topPad = title ? 26 : 0;
   const totH = H + topPad;

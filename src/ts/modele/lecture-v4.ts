@@ -37,7 +37,7 @@ export function lShapePoly(w: number, l: number, nw: number, nl: number): Pt[] {
 let uid = Date.now();
 let ruid = 0;
 
-/** The next room identifier. Exported only for the "Salon" room of `defaultState()`. */
+/** The next room identifier. Exported only for the "Room 1" room of `defaultState()`. */
 export function prochainRuid(): number {
   return ++ruid;
 }
@@ -118,7 +118,7 @@ export function sanitizeRoomObj(brut: unknown, fallbackName?: string): SalleAnci
   const ay = (r["ay"] == null || !isFinite(Number(r["ay"]))) ? null : Math.round(Number(r["ay"]));
   return {
     id: (r["id"] != null ? r["id"] : ++ruid) as string | number,
-    name: String(r["name"] || fallbackName || "Pièce"),
+    name: String(r["name"] || fallbackName || "Room"),
     floor, ax, ay, room: { poly: pts }, pieces,
   };
 }
@@ -234,7 +234,7 @@ export function readLegacyRooms(brut: unknown): PlanAncien | null {
   const st = (brut || {}) as Record<string, unknown>;
   let rooms: SalleAncienne[] | null = null;
   if (Array.isArray(st["rooms"]) && (st["rooms"] as unknown[]).length) {
-    rooms = (st["rooms"] as unknown[]).map((r, i) => sanitizeRoomObj(r, "Pièce " + (i + 1)));
+    rooms = (st["rooms"] as unknown[]).map((r, i) => sanitizeRoomObj(r, "Room " + (i + 1)));
     // Deduplication of ids: legacy data has several rooms with the SAME id.
     {
       const seen = new Set<string>();
@@ -248,13 +248,13 @@ export function readLegacyRooms(brut: unknown): PlanAncien | null {
       if (mx >= ruid) ruid = mx;
     }
   } else if (st["room"] || st["pieces"]) {
-    // single-room v1/v2/v3 -> a single room, "Salon"
+    // single-room v1/v2/v3 -> a single room, "Room 1"
     const rm = (st["room"] || {}) as Record<string, unknown>;
     const opts = st["opts"] as Record<string, unknown> | undefined;
     rooms = [sanitizeRoomObj({
       poly: rm["poly"], w: rm["w"], l: rm["l"], h: rm["h"],
-      pieces: st["pieces"], floor: (opts && opts["floor"]) || "parquet", name: "Salon",
-    }, "Salon")];
+      pieces: st["pieces"], floor: (opts && opts["floor"]) || "parquet", name: "Room 1",
+    }, "Room 1")];
   }
   if (!rooms) return null;
   const legacy: PlanAncien = { rooms: slotLegacyRooms(rooms), envelope: sanitizeEnvelope(st["envelope"]) };

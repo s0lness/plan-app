@@ -201,7 +201,7 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         P.cells.push({
           id: String(op.cellId),
           poly: op.poly.map((pt) => [pt[0], pt[1]] as Pt),
-          name: String(op.name || "Pièce"),
+          name: String(op.name || "Room"),
           floor: estSolConnu(op.floor) ? op.floor : "parquet",
         });
       }
@@ -218,7 +218,7 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         const poly = (c.poly || []).map((pt) => [pt[0], pt[1]] as Pt);
         const floor = estSolConnu(c.floor) ? c.floor : "parquet";
         if (ex) { ex.poly = poly; ex.name = c.name; ex.floor = floor; P.cells.push(ex); }
-        else P.cells.push({ id: String(c.id), poly, name: String(c.name || "Pièce"), floor });
+        else P.cells.push({ id: String(c.id), poly, name: String(c.name || "Room"), floor });
       });
       break;
     }

@@ -33,7 +33,7 @@ import { clampCenterToApt, wallSnapReach } from "../modele/espace.ts";
 import { autoName } from "../modele/creation.ts";
 import { prochainUid } from "../modele/lecture-v4.ts";
 import { v5ClampPiece, v5LastFit, v5MoveOpeningTo } from "../modele/edition.ts";
-import { dockedChairs, pieceTol, snapChairToTable, TABLE_TYPES } from "./contraintes.ts";
+import { deltaScaleMax, dockedChairs, pieceTol, snapChairToTable, TABLE_TYPES } from "./contraintes.ts";
 import { alignSnap, clearGuides, drawAlignLines, drawGuides } from "./guides.ts";
 import { armGesture } from "./sortie.ts";
 import { LONGPRESS_MS, TOUCH_DRAG_THRESH, isTouchEvt, measureMode, spaceHeld, touchPts, pointSuivi } from "./etat-pointeur.ts";
@@ -159,10 +159,25 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
   };
 
   const cible = e.target as HTMLElement | null;
-  const isRot = !!(cible && cible.dataset && cible.dataset["rot"]);
   const cont = focusEl(ctx);
   const r = ctx.viewport.getBoundingClientRect();
   const toApt = (cx: number, cy: number): { x: number; y: number } => screenToApt(ctx, cx - r.left, cy - r.top);
+  // INSIDE THE PIECE'S OWN BODY, THE PIECE WINS. `e.target` is real DOM hit-testing: it knows
+  // nothing about the piece's APARTMENT box, only about screen pixels. The rotation handle floats
+  // ~24 screen px above the piece's CENTER, in FIXED pixels, so on a THIN piece at a zoomed-out
+  // scale (measured: an 88×13 cm radiator at scale ~0.517, half-extent ~3.4 px on the short axis)
+  // the handle's invisible reach covers the piece's own center: a click aimed dead-center on the
+  // piece would land on `.rot-handle` and start a no-op rotation instead of a drag. The handle
+  // stays grabbable only where it truly sticks out beyond the piece: rotate the click point into
+  // the piece's own (unrotated) local frame and let the handle win only outside that box.
+  const clicApt = toApt(e.clientX, e.clientY);
+  const pcx0 = p.x + p.w / 2, pcy0 = p.y + p.h / 2;
+  const radP = (p.rot || 0) * Math.PI / 180;
+  const ddx = clicApt.x - pcx0, ddy = clicApt.y - pcy0;
+  const locX = ddx * Math.cos(radP) + ddy * Math.sin(radP);
+  const locY = -ddx * Math.sin(radP) + ddy * Math.cos(radP);
+  const dansLeCorps = Math.abs(locX) <= p.w / 2 && Math.abs(locY) <= p.h / 2;
+  const isRot = !!(cible && cible.dataset && cible.dataset["rot"]) && !dansLeCorps;
   const noeud = cont && cont.querySelector<HTMLElement>(`.piece[data-id="${cssId(p.id)}"]`);
   try { noeud?.setPointerCapture(e.pointerId); } catch (_) { /* the gesture holds up without capture */ }
   // Chairs docked under this table at the start of the gesture follow it. A fresh Alt duplicate
@@ -263,6 +278,10 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
       });
     }
     let movedG = false;             // G-4: a simple click on a group bounds nothing
+    // G-14. The shared delta actually requested this tick: what `deltaScaleMax` shrinks at
+    // release, so the whole group moves by the SAME reduced amount instead of each member being
+    // clamped to ITS OWN nearest spot (see contraintes.ts).
+    let lastDax = 0, lastDay = 0;
     const move = (ev: PointerEvent): void => {
       pousseHist();
       movedG = true;
@@ -273,6 +292,7 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
       if (ctx.etat.opts.snap) { px = p0x + Math.round((px - p0x) / 5) * 5; py = p0y + Math.round((py - p0y) / 5) * 5; }
       else { px = Math.round(px); py = Math.round(py); }
       const dax = px - p0x, day = py - p0y;
+      lastDax = dax; lastDay = day;
       members.forEach((m) => {
         let cx = m.x0 + dax + m.pc.w / 2, cy = m.y0 + day + m.pc.h / 2;
         m.rawX = cx; m.rawY = cy;                    // the WANTED center, before any bounding
@@ -296,8 +316,17 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
       // G-4. Bounding falls ONLY if the gesture really moved: without this guard, a simple click
       // on a group would bound its 5 to 11 members all at once.
       if (!canceled && movedG) {
+        // G-14. A GROUP MOVES AS ONE. `deltaScaleMax` finds the LARGEST fraction of the requested
+        // delta that EVERY member accepts, and that ONE fraction is applied to the whole group:
+        // no member is clamped to ITS OWN nearest spot, which is what deformed the selection
+        // (measured: 6 of 10 objects failed the round trip, drift up to 24 cm). Openings are
+        // untouched here (they already moved, above, through their own wall-slide path).
+        const t = deltaScaleMax(ctx.etat.plan, members.map((m) => ({
+          cx0: m.c0x, cy0: m.c0y, w: m.pc.w, h: m.pc.h, rot: m.pc.rot || 0, tol: m.pen0, orphelin: m.orphelin0,
+        })), lastDax, lastDay);
         members.forEach((m) => {
-          v5ClampPiece(ctx.etat.plan, m.pc, m.pen0, { gardeOrphelin: m.orphelin0 });
+          const cx = m.c0x + t * lastDax, cy = m.c0y + t * lastDay;
+          m.pc.x = Math.round(cx - m.pc.w / 2); m.pc.y = Math.round(cy - m.pc.h / 2);
           // G-5, the fourth cause, EXTENDED TO THE GROUP. We compare the WANTED position (before
           // bounding) to the one from BEFORE the previous drag: a long gesture that puts the member back
           // within RETOUR_TOL of there restores it EXACTLY there. This is what undoes the bounding of
@@ -311,6 +340,11 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
             saut: Math.hypot((m.pc.x + m.pc.w / 2) - m.c0x, (m.pc.y + m.pc.h / 2) - m.c0y),
           });
         });
+        // G-13. ONE message for the WHOLE GESTURE, not one per member: a group is one gesture, and
+        // this project throttles system banners but never a message answering a deliberate one.
+        if (t < 1 - 1e-6 && members.length) {
+          toast("This selection does not fit there: it was put back as close as possible, inside the room.", { geste: true });
+        }
       }
       v5Touch(ctx); render(ctx); clearGuides(ctx); ctx.crochets.syncInspector?.();
       ctx.crochets.dragEnd?.();

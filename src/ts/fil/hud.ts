@@ -91,6 +91,6 @@ export function brancherHud(fil: Fil): void {
       + "drag    out " + s.dragPerSec + "/s\n"
       + "recv→paint p95 " + (s.paintP95 == null ? "—" : s.paintP95 + " ms")
       + "  (p50 " + (s.paintP50 == null ? "—" : s.paintP50) + ", n=" + s.paintN + ")\n"
-      + "aller-retour   " + (s.rtt == null ? "—" : s.rtt + " ms");
+      + "round trip     " + (s.rtt == null ? "—" : s.rtt + " ms");
   }, 500);
 }

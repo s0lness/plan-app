@@ -342,7 +342,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     const x = document.createElement("div");
     x.className = "vx";
     x.textContent = "×";
-    x.title = "Retirer l'angle";
+    x.title = "Remove this corner";
     x.addEventListener("pointerdown", (ev) => ctx.gestes.contourSommetSupprimer?.(ev as PointerEvent, i));
     h.appendChild(x);
     h.addEventListener("pointerdown", (ev) => ctx.gestes.contourSommetPointerDown?.(ev as PointerEvent, i));

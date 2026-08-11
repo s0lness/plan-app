@@ -310,7 +310,7 @@ function stashConflit(mine: unknown, info: RefusRevision): number {
 }
 
 /**
- * The recovery file. `state` = the most recent one, so it goes back through "Charger un plan…" as
+ * The recovery file. `state` = the most recent one, so it goes back through "Load a plan" as
  * is (same envelope as an export); `ecartes` carries EVERY version that has been set aside, so
  * nothing gets lost along the way.
  */
