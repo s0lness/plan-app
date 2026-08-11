@@ -80,10 +80,10 @@ browserless ones (`rapide`, `compat-donnees`, `harnais-graine`, `exports-morts`,
 
 ## Deploying
 
-```powershell
-& $npm run build             # rebuild index.html before the commit
-& $npm run build -- --check  # reject a missing or hand-edited artifact
-git push origin main         # Pages deploys the committed index.html
+```
+npm run build              # rebuild index.html before the commit
+npm run build -- --check   # reject a missing or hand-edited artifact
+git push origin main       # Pages serves the committed index.html as-is
 ```
 
 Wrangler cannot be used on this ARM64 machine; the Worker is deployed through
