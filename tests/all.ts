@@ -70,6 +70,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/apercu-pose.ts",             chrome: 1 },
   { f: "tests/plan-abime.ts",              chrome: 2 },
   { f: "tests/porte-invitee.ts",           chrome: 2 },   // the guest door in a real browser: token capture, name step, dead end, local-only
+  { f: "tests/partage-navigateur.ts",      chrome: 2 },   // the Share button in a real browser: household door, silent-return fix, local-only self-heal
   { f: "tests/interactions.ts",            chrome: 1 },
   { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
   { f: "tests/selection-visible.ts",       chrome: 1 },

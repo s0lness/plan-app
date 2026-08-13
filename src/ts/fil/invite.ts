@@ -29,9 +29,10 @@ import type { Contexte } from "../app/contexte.ts";
 import type { Fil } from "./etat.ts";
 import { $ } from "../noyau/dom.ts";
 import {
-  SYNC_ON, definirModeInvite, definirModeLocalSeul, planNomInvite,
+  SYNC_ON, definirModeInvite, definirModeLocalSeul, estLocalSeul, planNomInvite,
 } from "./drapeaux.ts";
 import { setSyncChip } from "./rest.ts";
+import { toast } from "../app/toast.ts";
 import { wsSend } from "./emission.ts";
 import { assistant } from "../panneaux/configuration.ts";
 import { hashSansJeton, jetonDepuisHash } from "./jeton-hash.ts";
@@ -56,6 +57,35 @@ const NOM_KEY = "plan-invite-nom";
  * aussi, donc il ne peut pas mentir sur des données qui existeraient encore.
  */
 const PORTE_LOCALE_KEY = "plan-porte-locale";
+
+/**
+ * THE FLAG IS A GUESS, AND A GUESS CAN BE WRONG. Written on a 403 that looked like the guest door
+ * with no invitation (see above); read back synchronously, before confirmation, so a returning
+ * visitor doesn't fall onto the household's storage key by mistake. But an origin can start
+ * serving the household plan again — a misconfigured `HOUSEHOLD_HOSTS`/Access app fixed, a
+ * hostname moved — and the flag would then dead-end every later visit to a plan this browser
+ * could otherwise reach, FOREVER, on a stale guess.
+ *
+ * Wired to `ctx.crochets.porteMenageConfirmee` (`main.ts`), called from `fil/rest.ts`'s `syncBoot`
+ * and `pollPull` right where they lift `bootReconciled`: a boot read that SUCCEEDED is proof this
+ * origin does serve a plan to this tab, which is exactly the condition that makes the guess wrong.
+ * Idempotent, and cheap enough to call on every poll: clearing an already-absent key is a no-op.
+ * Does NOT touch `modeCourant()` — that mode is frozen for the life of THIS tab (`drapeaux.ts`),
+ * on purpose, the same as `SYNC_ON`; what this heals is the NEXT boot's guess, not this one's.
+ */
+export function oublierPorteLocale(): void {
+  const etaitPose = litStockage(PORTE_LOCALE_KEY) === "1";
+  effaceStockage(PORTE_LOCALE_KEY);
+  // ET ON LE DIT, si l'onglet est justement celui qui en souffrait. Guérir le PROCHAIN démarrage
+  // sans prévenir laisse cette personne devant une application qui refuse toujours de partager,
+  // sans raison visible et sans savoir qu'un rechargement suffit : deux rechargements en réalité,
+  // le premier nettoyant le drapeau et le second repartant en mode foyer. Personne ne devine ça.
+  // Le mode reste figé pour la vie de l'onglet (`drapeaux.ts`), donc le seul geste utile est de
+  // recharger, et c'est exactement ce que la phrase demande.
+  if (etaitPose && estLocalSeul()) {
+    toast("This tab is in local-only mode by mistake. Reload the page to reconnect to the shared plan.", { geste: true });
+  }
+}
 
 function litStockage(cle: string): string | null {
   try { return localStorage.getItem(cle); } catch (_) { return null; }
@@ -239,6 +269,9 @@ export function entrerLocalSeul(ctx: Contexte, fil: Fil): void {
   fil.detached = true;
   try { fil.ws?.close(); } catch (_) { /* already gone, or never opened */ }
   setSyncChip(fil, "local-only");
+  // Le bac à sable est une porte invité comme une autre : ce qui n'y marche pas ne doit pas y être
+  // proposé. Voir `masquerCommandesFoyer`, et la capture d'écran qui a produit ce correctif.
+  masquerCommandesFoyer();
   afficherBanniereLocale();
   // The wizard opens exactly as it would under `file://` (`panneaux/configuration.ts`'s own
   // `!SYNC_ON` branch): there is no server here either, only this browser, and a never-configured
@@ -261,14 +294,30 @@ async function appliquerNomInvite(fil: Fil, nom: string): Promise<void> {
 }
 
 /** Called once, right after `amorcer()` returns, ONLY when the tab is in `"invite"` mode. */
-export function finirGuestOnboarding(ctx: Contexte, fil: Fil): void {
-  void ctx;
-  // TRIM THE UI. "Plans…" is meaningless off the household door in general (`panneaux/plans.ts`
-  // already skips its own fetch there); "Load a plan…" specifically sends `plan5.replace`, which
-  // the server refuses from a guest outright (batch 2) — hiding it avoids a confusing, silently
-  // refused click rather than relying on the refusal alone.
+/**
+ * TRIM WHAT ONLY THE HOUSEHOLD DOOR CAN DO. Called from BOTH guest situations, and that is the
+ * whole point of it being its own function.
+ *
+ * MEASURED, from a real visitor: this used to run only for an INVITED guest
+ * (`if (estInvite())` in `main.ts`). Someone who simply opens the guest address with no link is
+ * NOT invited, they are in local-only mode, so nothing was trimmed: they saw "Plans…", opened it,
+ * typed "living room", pressed Create, and got «⁠Could not create the plan (403)⁠». The server was
+ * right, `/api/plans` is closed on that door. The screen was wrong: it offered a control that
+ * cannot work there, and the only thing the person learned is that the app is broken.
+ *
+ * The condition is "not the household door", never "is an invited guest".
+ */
+function masquerCommandesFoyer(): void {
+  // "Plans…" needs `/api/plans`, refused off the household door. "Load a plan…" sends
+  // `plan5.replace`, which the server refuses from a guest outright (batch 2); in local-only mode
+  // it would work, but on a plan nobody else will ever see, which is worse than absent.
   const btnPlans = $("btnPlans"); if (btnPlans) btnPlans.hidden = true;
   const btnImport = $("btnImport"); if (btnImport) btnImport.hidden = true;
+}
+
+export function finirGuestOnboarding(ctx: Contexte, fil: Fil): void {
+  void ctx;
+  masquerCommandesFoyer();
 
   const btnNom = $("btnGuestName");
   if (btnNom) {

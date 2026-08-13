@@ -63,7 +63,7 @@ import { brancherDiagnostics } from "./app/diagnostics.ts";
 import { EMBEDDED } from "./exportation/transfert.ts";
 import { brancherFil } from "./fil/branchement.ts";
 import { modeCourant, planCourant, planIdInvite, estInvite } from "./fil/drapeaux.ts";
-import { entrerImpasseInvite, entrerLocalSeul, finirGuestOnboarding, preparerAccueil } from "./fil/invite.ts";
+import { entrerImpasseInvite, entrerLocalSeul, finirGuestOnboarding, oublierPorteLocale, preparerAccueil } from "./fil/invite.ts";
 
 /** The saved blob, AS-IS, tried in the order of the four historical keys (js/07, `load`). */
 function lireBrut(): string | null {
@@ -266,6 +266,7 @@ async function demarrer(): Promise<void> {
   const { ctx, fil } = amorcer();
   ctx.crochets.accesRefuseSansInvite = () => entrerLocalSeul(ctx, fil);
   ctx.crochets.accesRefuseInvite = () => entrerImpasseInvite(fil);
+  ctx.crochets.porteMenageConfirmee = () => oublierPorteLocale();
   if (estInvite()) finirGuestOnboarding(ctx, fil);
 }
 

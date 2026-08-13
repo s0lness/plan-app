@@ -514,6 +514,7 @@ export function pollPull(ctx: Contexte, fil: Fil): void {
   if (!SYNC_ON || fil.detached || document.hidden || wsLive(fil)) return;
   apiFetch({ method: "GET" }).then((res) => {
     fil.bootReconciled = true;   // a read succeeded: we know what is on the other side
+    ctx.crochets.porteMenageConfirmee?.();   // self-heals a stale local-only guess, see the crochet's doc
     if (!res) return;
     if (res.updatedBy) fil.lastServerBy = res.updatedBy;
     if (res.updatedAt) fil.lastServerAt = res.updatedAt;
@@ -553,6 +554,7 @@ export function syncBoot(ctx: Contexte, fil: Fil): void {
   setSyncChip(fil, "saving");   // "saving…" reads as "busy" during reconciliation
   apiFetch({ method: "GET" }).then((res) => {
     fil.bootReconciled = true;   // we know what is on the other side: pushes can go out
+    ctx.crochets.porteMenageConfirmee?.();   // self-heals a stale local-only guess, see the crochet's doc
     if (res) {
       if (res.updatedBy) fil.lastServerBy = res.updatedBy;
       if (res.updatedAt) fil.lastServerAt = res.updatedAt;

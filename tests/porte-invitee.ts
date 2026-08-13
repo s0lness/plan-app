@@ -251,6 +251,16 @@ try {
     "vu " + await D.evaluate(`(document.getElementById("syncChip")||{}).textContent`));
   const banniere = await D.J(`!document.getElementById("localBanner").hidden`);
   check("le bandeau local (export mis en avant) est visible", banniere);
+  // LE CAS EXACT REMONTE PAR UN VISITEUR : « Plans… », puis Create, puis
+  // «⁠Could not create the plan (403)⁠». Le serveur avait raison (`/api/plans` est fermé sur cette
+  // porte) ; c'est l'écran qui proposait un bouton qui ne peut pas marcher là. Le rognage ne
+  // tournait que pour un invité MUNI d'un lien, pas pour le bac à sable.
+  const commandesFoyer = await D.J(`JSON.stringify({
+    plans: (document.getElementById("btnPlans")||{}).hidden,
+    charger: (document.getElementById("btnImport")||{}).hidden})`);
+  check("le bac a sable ne propose ni « Plans… » ni « Charger un plan… »",
+    commandesFoyer === '{"plans":true,"charger":true}', "vu " + commandesFoyer);
+
   const assistantOuvert = await D.J(`!document.getElementById("setup").hidden`);
   check("l'assistant de configuration s'ouvre comme sous file:// (aucun serveur ici non plus)", assistantOuvert);
 
