@@ -63,8 +63,15 @@ export interface Mur {
    *
    * Absent = through-running, so no existing plan changes. Trimming by the outline, however,
    * ALWAYS applies: free doesn't mean "allowed to leave the flat".
+   *
+   * `0` is a REAL, DISTINCT value from absent: it is what the "Ends: Through" control leaves on a
+   * wall that WAS free (`gestes/murs.ts` sets it instead of deleting the key). The server already
+   * treats an explicit 0 exactly like absence in storage and in the fingerprint (`WALL_FREE`,
+   * `live-worker/ops.ts`); keeping it here, rather than deleting, is what lets `v5WallWire` say
+   * "I have an opinion: through-going" instead of "I have no opinion", which is the only way the
+   * CLEAR itself can cross the wire (see `v5WallWire`'s comment).
    */
-  free?: 1 | undefined;
+  free?: 0 | 1 | undefined;
 }
 
 /**
@@ -177,11 +184,12 @@ export interface MurFil {
   b: Pt;
   t: number;
   /**
-   * FREE PARTITION, mirrors `Mur.free` (see there). Emitted ONLY if set (same rule as an
-   * opening's `leaf`, below): absence means "through-going", the historical default, so no
-   * existing plan changes shape the first time an unrelated field on it is touched.
+   * FREE PARTITION, mirrors `Mur.free` (see there). Emitted whenever `Mur.free` is DEFINED
+   * (`0` included): absence means "through-going", the historical default, so no existing plan
+   * changes shape the first time an unrelated field on it is touched, but a wall that HAS been
+   * touched by the "Ends" control always states its opinion, `0` or `1`, so the clear can travel.
    */
-  free?: 1 | undefined;
+  free?: 0 | 1 | undefined;
 }
 
 /**

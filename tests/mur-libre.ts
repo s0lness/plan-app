@@ -171,6 +171,35 @@ test("le_fil_ne_porte_pas_free_pour_une_cloison_traversante", (a: DonneeDynamiqu
 });
 
 // ---------------------------------------------------------------------------------------------
+// THE CLEAR DOES NOT TRAVEL (AGENTS.md, "The realtime wire", batch of 2026-08-14). `v5WallWire`
+// used to emit `free` ONLY when truthy: `{Ends: Through}` sets the local model back to
+// `free: undefined` (`delete w.free` in `gestes/murs.ts`), so the wire object for that wall came
+// back out looking EXACTLY like a wall that was never touched, no `free` key at all, in EITHER
+// case. The field-by-field diff (`fil/miroir.ts`'s `ws5FieldDiff`) then has nothing to compare:
+// it cannot tell "never set" from "just cleared", so the peer, whose mirror still says `free:1`,
+// never receives an op that says otherwise and keeps showing the partition as free forever.
+//
+// THE FIX: the local model now keeps the CLEAR itself as data (`w.free = 0`, never `delete`), and
+// the wire emits it explicitly whenever the wall has been TOUCHED by the tool at all
+// (`w.free !== undefined`), `0` included. The server already accepted this shape (`WALL_FREE`
+// includes 0) and already normalizes it to the SAME absence as a wall that was never set
+// (`live-worker/test-local.ts`, "an explicit free:0 fingerprints identically to absence"): this
+// is not a new server behavior, only the client finally using it.
+test("le_fil_porte_free_0_pour_une_cloison_repassee_traversante", (a: DonneeDynamique) => {
+  // `free: 0`, not absent: this is what the "Ends: Through" button now leaves behind on a wall
+  // that WAS free (see `gestes/murs.ts`), as opposed to a wall that never used the tool at all
+  // (covered by the negative control just above, which must stay green: `free` absent in ->
+  // `free` absent out).
+  const w: Mur = { id: "w9", a: [150, 120], b: [150, 180], t: 12, isOutline: false, free: 0 };
+  const P = plan([w]);
+  const fil = v5StateWire(P, true);
+  const wOut = fil.walls.find((q) => q.id === "w9");
+  a(!!wOut, "la cloison repassée traversante doit être présente sur le fil");
+  a(!!(wOut && wOut.free === 0),
+    `et porter \`free:0\` EXPLICITEMENT (pas l'absence, sinon le pair ne voit jamais la levée), vu ${JSON.stringify(wOut)}`);
+});
+
+// ---------------------------------------------------------------------------------------------
 console.log(`\n${ko ? `FAILURES ${ko}/${ok + ko}` : `OK ${ok}/${ok}`}`);
 rates.forEach(n => console.log("  FAIL " + n));
 process.exit(ko ? 1 : 0);

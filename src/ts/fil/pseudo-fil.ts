@@ -43,13 +43,26 @@ function v5WallWire(w: Mur): MurFil {
     b: [v5R2(w.b[0]), v5R2(w.b[1])],
     t: clamp(Math.round(w.t || WALL), WALL_T_MIN, WALL_T_MAX),
   };
-  // Same rule as an opening's `leaf`, below: `free` is ONLY EMITTED if it is set. Emitting 0 by
-  // default would rewrite the fingerprint of every wall in every plan on the first op that
-  // touches it, whereas absence means "through-going", the historical default (C-5: an absent
-  // field is not a field set to zero). This is exactly the field that used to be dropped here
-  // entirely, so a free-standing partition (the freehand tool's loose end) LOOKED right locally
-  // but reverted to through-going the moment it reached a peer or the D1 fallback.
-  if (w.free) out.free = 1;
+  // `free` is emitted whenever the LOCAL MODEL has an opinion (`w.free !== undefined`), `0`
+  // included. Emitting 0 on a wall that has NEVER been touched by the "Ends" control would
+  // rewrite the fingerprint of every wall in every existing plan on the first op that touches it,
+  // whereas absence means "through-going", the historical default (C-5: an absent field is not a
+  // field set to zero), so an untouched wall still omits the key entirely, unchanged.
+  //
+  // But a wall that WAS free and got switched back to Through must SAY SO, not merely fall
+  // silent: `gestes/murs.ts`'s "Ends: Through" control sets `w.free = 0` (never `delete`s it)
+  // precisely so this function can tell "never set" from "just cleared". Emitting nothing here
+  // for a cleared wall was the defect itself: the wire object for a just-cleared wall was
+  // BYTE-IDENTICAL to one that was never touched, so the field-by-field diff (`fil/miroir.ts`)
+  // had nothing to compare `free` against, and even its "the server doesn't know this field
+  // anymore, resend the whole entity" fallback resent an entity that still lacked the key. The
+  // peer's mirror kept `free:1` forever, and only a full resync ever repaired it.
+  //
+  // The server already accepts and understands an explicit 0 (`WALL_FREE`, `live-worker/ops.ts`)
+  // and already normalizes it to the exact same storage and fingerprint as absence: this is not
+  // a new server behavior, only the client finally using the "hypothetical future client" the
+  // server-side comment there was written for.
+  if (w.free !== undefined) out.free = w.free ? 1 : 0;
   return out;
 }
 
