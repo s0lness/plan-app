@@ -35,11 +35,12 @@ import { wallSnapReach } from "../modele/espace.ts";
 import { v5NewId } from "../fil/identite.ts";
 import { render } from "../rendu/rendu.ts";
 import { clearSel } from "../rendu/selection.ts";
-import { screenToApt } from "../rendu/vue.ts";
+import { aptToScreen, screenToApt } from "../rendu/vue.ts";
+import { stackedAt } from "../rendu/meubles.ts";
 import { save } from "../app/persistance.ts";
 import { toast } from "../app/toast.ts";
 import { pushHistory, redo, undo } from "../historique/pile.ts";
-import { escapeActiveGesture } from "./sortie.ts";
+import { escapeActiveGesture, gesteActif } from "./sortie.ts";
 import { lastCursorApt, measureMode } from "./etat-pointeur.ts";
 import { clearGuides, drawGuides, rotatePieceWithChairs } from "./guides.ts";
 import { cur, delSel, flipWallMountSide } from "./selection-actions.ts";
@@ -83,6 +84,27 @@ function clipCenterOf(ctx: Contexte, id: string): { x: number; y: number; piece?
 function viewCenterApt(ctx: Contexte): { x: number; y: number } {
   const r = ctx.viewport.getBoundingClientRect();
   return screenToApt(ctx, r.width / 2, r.height / 2);
+}
+
+/**
+ * D key (held): which piece of furniture to show the live dimensions of. The selection wins;
+ * an opening (wall-mounted) has none to offer here, `drawGuides` already declines those. With
+ * nothing selected, we hit-test the pointer's last known spot the same way a click would
+ * (`stackedAt`, paint-rank order, G-9): "two different rules for one on-screen box would be one
+ * more source of error."
+ */
+function pieceSousD(ctx: Contexte): Meuble | null {
+  if (ctx.selection.primaire != null) return pieceById(ctx, ctx.selection.primaire) || null;
+  const c = lastCursorApt();
+  if (!c) return null;
+  const s = aptToScreen(ctx, c.x, c.y);
+  const vr = ctx.viewport.getBoundingClientRect();
+  for (const el of stackedAt({ clientX: vr.left + s.x, clientY: vr.top + s.y })) {
+    const id = el.dataset["id"]; if (!id) continue;
+    const p = pieceById(ctx, id);
+    if (p && !isWallMount(p.type)) return p;
+  }
+  return null;
 }
 
 /** Copy (or cut) the selection. Returns the number of objects taken. */
@@ -263,6 +285,21 @@ export function brancherClavier(ctx: Contexte): void {
   // previous one survived to clear the guides of a SUBSEQUENT keystroke.
   let nudgeGuideTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // D (held): a LOOK, never a WRITE. `dTenue` tracks whether THIS key is the one holding the
+  // guides open, so releasing it never claims guides it didn't paint (a live drag repaints the
+  // same `.guides` container every frame; we must not rip that out from under it, "must not fight
+  // a drag in progress"). Nothing here pushes history, calls `save`, touches the model, or changes
+  // the selection: `drawGuides`/`clearGuides` are already ephemeral DOM, exactly like a hover.
+  let dTenue = false;
+  const finirDTenue = (): void => {
+    dTenue = false;
+    if (!gesteActif()) clearGuides(ctx);   // a running gesture cleans up its OWN guides on exit
+  };
+  window.addEventListener("keyup", (e) => {
+    if ((e.key === "d" || e.key === "D") && dTenue) finirDTenue();
+  });
+  window.addEventListener("blur", () => { if (dTenue) finirDTenue(); });
+
   window.addEventListener("keydown", (e) => {
     const tgt = (e.target || {}) as HTMLElement;
     const typing = /INPUT|TEXTAREA|SELECT/.test(tgt.tagName || "") || tgt.isContentEditable;
@@ -275,6 +312,15 @@ export function brancherClavier(ctx: Contexte): void {
     if (!typing && poseArme()) {
       if (e.key === "Escape") { e.preventDefault(); annulerPoseArmee(ctx, "Drop cancelled."); return; }
       if (e.key === "Enter") { e.preventDefault(); poserAuCentre(ctx); return; }
+    }
+    // D (held): show the selected piece's dimensions, or the pointer's if nothing is selected.
+    // `!dTenue` makes the OS key-repeat a no-op (the guides are already up); `!gesteActif()` keeps
+    // this from starting while a real drag owns the guides.
+    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !ctx.wallsMode && !measureMode() && !poseArme()
+      && !dTenue && !gesteActif() && (e.key === "d" || e.key === "D")) {
+      const p = pieceSousD(ctx);
+      if (p) { dTenue = true; drawGuides(ctx, p, null); }
+      return;
     }
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !typing) {

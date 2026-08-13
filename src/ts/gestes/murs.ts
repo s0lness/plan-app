@@ -60,7 +60,7 @@ import { toast } from "../app/toast.ts";
 import { numField } from "../noyau/champ-numerique.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { armGesture, beginGesture, endGesture } from "./sortie.ts";
-import { measureMode, spaceHeld } from "./etat-pointeur.ts";
+import { measureMode, sansGrille, spaceHeld } from "./etat-pointeur.ts";
 import { clearGuides } from "./guides.ts";
 // SYMBOLS EXPECTED FROM A MODULE THAT HAS NO AUTHOR YET (src/js/15-edition-murs.js):
 // the outline's orthogonal snap, its guides, and the "walls cross" alert. Walls mode
@@ -331,7 +331,10 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
     }
     const cm = evtApt(ctx, ev);
     let d = (cm.x - a0[0]) * s.nx + (cm.y - a0[1]) * s.ny - d0;
-    if (ctx.etat.opts.snap && !ev.altKey) {
+    // Alt = free partition (unchanged). Ctrl/Cmd (`sansGrille`) is the SAME escape hatch as
+    // furniture and openings: one key to remember for "no grid," without taking Alt away from
+    // free-drawing.
+    if (ctx.etat.opts.snap && !ev.altKey && !sansGrille(ev)) {
       const na = [a0[0] + s.nx * d, a0[1] + s.ny * d];
       if (Math.abs(s.nx) > 0.99) d += (Math.round(na[0]! / 5) * 5 - na[0]!) / s.nx;
       else if (Math.abs(s.ny) > 0.99) d += (Math.round(na[1]! / 5) * 5 - na[1]!) / s.ny;
@@ -513,7 +516,8 @@ export function v5StartVertexDrag(ctx: Contexte, e: PointerEvent, i: number): vo
     }
     if (!moved) return;
     const cm = evtApt(ctx, ev);                      // pure APARTMENT space
-    const step = ctx.etat.opts.snap ? 5 : 1;
+    // Ctrl/Cmd (`sansGrille`): same "no grid" key as the edge, the wall, furniture and openings.
+    const step = (ctx.etat.opts.snap && !sansGrille(ev)) ? 5 : 1;
     const lx = Math.round(cm.x / step) * step, ly = Math.round(cm.y / step) * step;
     const o = orthoSnapVertex(poly, i, lx, ly, ev.shiftKey, sx, sy, ctx.vue.scale);
     poly[i] = [Math.round(o.x), Math.round(o.y)];
@@ -579,7 +583,10 @@ export function v5StartOutlineEdgeDrag(
     if (!moved) return;
     const cm = evtApt(ctx, ev);
     let d = (cm.x - a0[0]) * s.nx + (cm.y - a0[1]) * s.ny - d0;
-    if (ctx.etat.opts.snap && !ev.altKey) {
+    // Alt = free partition (unchanged). Ctrl/Cmd (`sansGrille`) is the SAME escape hatch as
+    // furniture and openings: one key to remember for "no grid," without taking Alt away from
+    // free-drawing.
+    if (ctx.etat.opts.snap && !ev.altKey && !sansGrille(ev)) {
       const na = [a0[0] + s.nx * d, a0[1] + s.ny * d];
       if (Math.abs(s.nx) > 0.99) d += (Math.round(na[0]! / 5) * 5 - na[0]!) / s.nx;
       else if (Math.abs(s.ny) > 0.99) d += (Math.round(na[1]! / 5) * 5 - na[1]!) / s.ny;

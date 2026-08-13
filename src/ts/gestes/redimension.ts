@@ -27,7 +27,7 @@ import { screenToApt } from "../rendu/vue.ts";
 import { selReplace } from "../rendu/selection.ts";
 import { v5ClampPiece } from "../modele/edition.ts";
 import { armGesture, disarmGesture, endActiveGesture, escapeActiveGesture } from "./sortie.ts";
-import { measureMode, spaceHeld, estPrecis, pointSuivi } from "./etat-pointeur.ts";
+import { measureMode, spaceHeld, estPrecis, pointSuivi, sansGrille } from "./etat-pointeur.ts";
 import { pushHistory } from "../historique/pile.ts";
 
 export function startPieceResize(ctx: Contexte, e: PointerEvent, p: Meuble, hkey: string): void {
@@ -135,8 +135,9 @@ export function startPieceResize(ctx: Contexte, e: PointerEvent, p: Meuble, hkey
     if (h.dw) nw = (dLocX - priseX) * h.ux;
     if (h.dh) nh = (dLocY - priseY) * h.uy;
     // THE GRID SNAP IS CUT OFF IN PRECISE MODE: rounding to 5 cm what we just slowed down
-    // to reach the centimeter would exactly undo what we're in the middle of doing.
-    if (ctx.etat.opts.snap && !estPrecis(ev)) {
+    // to reach the centimeter would exactly undo what we're in the middle of doing. Ctrl/Cmd
+    // (`sansGrille`) cuts it off outright, precise mode or not: the same "no grid" key as furniture.
+    if (ctx.etat.opts.snap && !estPrecis(ev) && !sansGrille(ev)) {
       if (h.dw) nw = Math.round(nw / 5) * 5;
       if (h.dh) nh = Math.round(nh / 5) * 5;
     }
