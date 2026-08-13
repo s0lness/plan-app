@@ -344,6 +344,54 @@ await test("invites_creation_liste_revocation_aller_retour", async () => {
   return expect(resInconnu.status === 200, "révoquer un jeton INCONNU doit aussi rester 200 (pas de 404 qui confirmerait)");
 });
 
+// =================================================================================================
+//  3bis. `guestHost` (batch 4, owner client): the client cannot know the guest hostname on its
+//  own (de-identified repo, different origin from the owner's), so the server hands it back in
+//  every GET/POST response, read straight from GUEST_HOST — the SAME plain value `functions/porte.ts`
+//  already uses for the door check. `base()` configures GUEST_HOST; `baseSansGuestHost()` leaves it
+//  unset, which must give `null`, never an empty string or an omitted field a client would have
+//  to special-case.
+// =================================================================================================
+
+await test("invites_get_expose_guestHost_quand_configure", async () => {
+  const { env } = CTX_FOYER();
+  const res = await invitesGet(env, "https://plan.example.com/api/invites?p=appartement", HOTE_FOYER);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.guestHost === HOTE_INVITE, "guestHost attendu " + HOTE_INVITE + ", vu " + JSON.stringify(corps.guestHost));
+});
+
+await test("invites_post_expose_guestHost_quand_configure", async () => {
+  const { env } = CTX_FOYER();
+  const res = await invitesPost(env, HOTE_FOYER, { planId: "appartement" });
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 201, "doit répondre 201, vu " + res.status)
+      && expect(corps.guestHost === HOTE_INVITE, "guestHost attendu " + HOTE_INVITE + ", vu " + JSON.stringify(corps.guestHost));
+});
+
+const baseSansGuestHost = () => {
+  const { db, env } = fakeD1(null);
+  return { db, env: { ...env, HOUSEHOLD_HOSTS: HOTE_FOYER } };   // GUEST_HOST absent, volontairement
+};
+
+await test("invites_get_guestHost_absent_quand_non_configure", async () => {
+  const { db, env } = baseSansGuestHost();
+  inserePlan(db, "appartement", "Chez nous");
+  const res = await invitesGet(env, "https://plan.example.com/api/invites?p=appartement", HOTE_FOYER);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.guestHost === null, "guestHost doit être null sans GUEST_HOST, vu " + JSON.stringify(corps.guestHost));
+});
+
+await test("invites_post_guestHost_absent_quand_non_configure", async () => {
+  const { db, env } = baseSansGuestHost();
+  inserePlan(db, "appartement", "Chez nous");
+  const res = await invitesPost(env, HOTE_FOYER, { planId: "appartement" });
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 201, "doit répondre 201, vu " + res.status)
+      && expect(corps.guestHost === null, "guestHost doit être null sans GUEST_HOST, vu " + JSON.stringify(corps.guestHost));
+});
+
 await test("invites_delete_appelle_le_do_revoke_avec_le_marqueur_interne", async () => {
   // Batch 2, design edge 6: "Revoke must close live sockets, not merely block new ones." This
   // proves the WIRING from this route to `live-worker/worker.ts`'s `handleRevoke` — the DO-side
@@ -394,7 +442,11 @@ await test("invites_plafond_a_vingt_invitations_vivantes", async () => {
   const res = await invitesPost(env, HOTE_FOYER, { planId: "appartement" });
   const corps = await res.json<DonneeDynamique>();
   return expect(res.status === 409, "la 21e invite vivante doit être refusée, vu " + res.status)
-      && expect(corps.error === "trop_d_invitations", "corps attendu trop_d_invitations, vu " + JSON.stringify(corps));
+      && expect(corps.error === "trop_d_invitations", "corps attendu trop_d_invitations, vu " + JSON.stringify(corps))
+      // Le client lit ce plafond au lieu de le recopier en dur (même pattern que MAX_PLANS dans
+      // functions/api/plans.ts / panneaux/plans.ts) : sans lui, le message affiché dériverait
+      // silencieusement de la vraie constante serveur le jour où elle change.
+      && expect(corps.max === 20, "corps doit porter le plafond réel, vu " + JSON.stringify(corps.max));
 });
 
 await test("invites_plafond_ne_compte_pas_les_revoquees", async () => {

@@ -42,7 +42,12 @@ const listeHotes = (env: unknown): string[] => {
 // mean the same thing: an absent HOUSEHOLD_HOSTS treats every host as the household door
 // (compatibility default, batch 1a), while an absent GUEST_HOST simply removes "invite" from the
 // set of possible verdicts. Nothing starts trusting a guest host that was never declared.
-const hoteInviteDe = (env: unknown): string => {
+//
+// EXPORTED so `functions/api/invites.ts` can hand the guest origin back to the owner client
+// (batch 4): the client cannot know the guest hostname on its own (de-identified repo, and it is
+// a different origin from the one the owner is on), so the server is the only place that may say
+// it. Same cleaning as the door check itself: no caller builds its own copy that could drift.
+export const hoteInviteDe = (env: unknown): string => {
   const brut = (env && typeof env === "object" ? (env as EnvAvecHotes).GUEST_HOST : undefined) || "";
   return brut.split(":")[0].trim().toLowerCase();
 };

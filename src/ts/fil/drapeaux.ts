@@ -23,9 +23,11 @@ export const EMBEDDED: boolean = ((): boolean => {
 /** Sync only exists top-level over http(s). See the header. */
 export const SYNC_ON: boolean = !EMBEDDED && /^https?:$/.test(location.protocol);
 
-/** The client's two REST routes. `/ws` is built at connection time (protocol varies). */
+/** The client's REST routes. `/ws` is built at connection time (protocol varies). */
 export const SYNC_URL = "/api/plan";
 export const PLANS_URL = "/api/plans";
+/** Owner-side sharing (batch 4, docs/decisions/0004-partage-par-lien.md): create, list, revoke. */
+export const INVITES_URL = "/api/invites";
 
 // ---- THE GUEST DOOR: WHICH KIND OF SESSION THIS TAB IS (batch 3) -----------------------------
 // `SYNC_ON` alone answers "are we a real, top-level http(s) origin, capable of the network at

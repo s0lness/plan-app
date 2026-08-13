@@ -95,6 +95,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/invitation.ts",              chrome: 0 },   // the invite: functions/api/invite(s).ts, no browser
   { f: "tests/identite-fil.ts",            chrome: 0 },   // wire identity, client side: src/ts/fil/etat.ts + mesure/curseur-pair.ts, no browser
   { f: "tests/invite-fil.ts",              chrome: 0 },   // guest client pure logic: token-from-hash, storage key per mode, duplicate-name display, no browser
+  { f: "tests/partage-fil.ts",             chrome: 0 },   // owner share panel pure logic: link construction, guestHost fallback, live filter, row formatting, no browser
   // The SERVER validator doesn't know about the client: same file, same verdict, in both modes.
   { f: "live-worker/test-local.ts",        chrome: 0 },
 ];

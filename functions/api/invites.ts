@@ -13,7 +13,7 @@
 // be unguarded under test and under any future caller that reaches it a different way.
 
 import type { Env } from "../env.ts";
-import { identiteFoyer, porteDe } from "../porte.ts";
+import { hoteInviteDe, identiteFoyer, porteDe } from "../porte.ts";
 import { jetonInvitation } from "../invitation.ts";
 
 const PLAN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
@@ -41,6 +41,13 @@ const json = (o: unknown, status?: number) => new Response(JSON.stringify(o),
   { status: status || 200, headers: { "content-type": "application/json" } });
 const refuse = () => json({ error: "porte_refusee" }, 403);
 
+// THE OWNER CLIENT CANNOT KNOW THE GUEST HOSTNAME ON ITS OWN (batch 4): this repository is
+// de-identified, and the guest door is a DIFFERENT origin from the one the owner is browsing, so
+// there is no `location.host` to read it from. `hoteInviteDe` is the same cleaning `porteDe`
+// itself applies to `GUEST_HOST`; `null` (never `""`) is what an unset variable becomes, so the
+// client can tell "not configured" apart from "configured to an empty string" with one falsy check.
+const guestHost = (env: Env): string | null => hoteInviteDe(env) || null;
+
 const versJson = (r: LigneInvitationDB) => ({
   token: r.token,
   createdAt: r.created_at,
@@ -62,7 +69,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       "FROM invites WHERE plan_id=?1 ORDER BY created_at DESC"
     )
     .bind(planId).all<LigneInvitationDB>();
-  return json({ invites: (r.results || []).map(versJson) });
+  return json({ invites: (r.results || []).map(versJson), guestHost: guestHost(env) });
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -81,7 +88,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const live = await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM invites WHERE plan_id=?1 AND revoked=0 AND (expires_at IS NULL OR expires_at > ?2)"
   ).bind(planId, now.toISOString()).first<{ n: number }>();
-  if ((live?.n || 0) >= MAX_INVITES_PAR_PLAN) return json({ error: "trop_d_invitations" }, 409);
+  if ((live?.n || 0) >= MAX_INVITES_PAR_PLAN) return json({ error: "trop_d_invitations", max: MAX_INVITES_PAR_PLAN }, 409);
 
   const joursDemandes = Number(body.expiresInDays);
   const jours = Number.isFinite(joursDemandes) && joursDemandes > 0
@@ -100,6 +107,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       token, plan_id: planId, role: "edit", created_at: now.toISOString(), created_by: by,
       expires_at: expiresAt, revoked: 0, uses: 0, last_used_at: null, last_name: null,
     }),
+    guestHost: guestHost(env),
   }, 201);
 };
 

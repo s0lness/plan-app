@@ -53,6 +53,7 @@ import { brancherFicheCellule } from "./panneaux/fiche-cellule-edition.ts";
 import { brancherConfiguration } from "./panneaux/configuration.ts";
 import { brancherMenuPied } from "./panneaux/menu-pied.ts";
 import { brancherPlans } from "./panneaux/plans.ts";
+import { brancherPartage } from "./panneaux/partage.ts";
 import { brancherMesure } from "./mesure/mesure.ts";
 import { brancherExport } from "./exportation/exportation.ts";
 import { brancherCirculation } from "./circulation/circulation.ts";
@@ -187,6 +188,7 @@ function amorcer(): { ctx: Contexte; fil: Fil } {
   brancherConfiguration(ctx);
   brancherMenuPied(ctx);
   brancherPlans(ctx);
+  brancherPartage(ctx);
   brancherMesure(ctx);
   brancherExport(ctx);
   // VERBATIM AND LAST: the Circulation engine is neither touched nor reordered (§7.4).
