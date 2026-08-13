@@ -98,7 +98,12 @@ async function openBrowser(label: string, url: string) {
     if (r.result && r.result.exceptionDetails) throw new Error(label + ": " + JSON.stringify(r.result.exceptionDetails).slice(0, 400));
     return r.result && r.result.result ? r.result.result.value : undefined;
   };
-  const J = async (expr: string) => JSON.parse(await evaluate(`JSON.stringify(${expr})`));
+  // `?? null` PARCE QU'UN ELEMENT ABSENT VAUT `undefined`, ET QUE `JSON.stringify(undefined)` REND
+  // LA CHAINE "undefined", QUE `JSON.parse` REFUSE. Les lectures de cette suite sont gardees
+  // (`(document.getElementById("x")||{}).hidden`) pour ne pas lever pendant une navigation ; sans
+  // ce `?? null` la garde ne fait que deplacer la panne, d'une exception dans la page a une
+  // exception ici. Une valeur absente doit arriver comme `null`, pas faire tomber le scenario.
+  const J = async (expr: string) => JSON.parse(await evaluate(`JSON.stringify((${expr}) ?? null)`));
   await send("Page.enable");
   await send("Runtime.enable");
   await send("Page.navigate", { url });
