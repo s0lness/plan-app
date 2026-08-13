@@ -257,9 +257,10 @@ try {
   // tournait que pour un invité MUNI d'un lien, pas pour le bac à sable.
   const commandesFoyer = await D.J(`JSON.stringify({
     plans: (document.getElementById("btnPlans")||{}).hidden,
-    charger: (document.getElementById("btnImport")||{}).hidden})`);
-  check("le bac a sable ne propose ni « Plans… » ni « Charger un plan… »",
-    commandesFoyer === '{"plans":true,"charger":true}', "vu " + commandesFoyer);
+    charger: (document.getElementById("btnImport")||{}).hidden,
+    invite: (document.getElementById("btnInvite")||{}).hidden})`);
+  check("le bac a sable ne propose ni « Plans… », ni « Charger un plan… », ni « Invite »",
+    commandesFoyer === '{"plans":true,"charger":true,"invite":true}', "vu " + commandesFoyer);
 
   const assistantOuvert = await D.J(`!document.getElementById("setup").hidden`);
   check("l'assistant de configuration s'ouvre comme sous file:// (aucun serveur ici non plus)", assistantOuvert);
