@@ -121,9 +121,44 @@ node tests/boot-vierge.ts        # starts without a JS error
   migration, storage), **SYNCHRONIZATION** (realtime wire, ops, D1 fallback, conflicts), or
   **GEOMETRY** (walls, cells, openings, outline, gestures that modify them).
 
+### A NEW TEST IS SEEN RED BEFORE IT IS SEEN GREEN
+Write the test, then **remove the fix and run it**. If it still passes, it does not test the defect,
+whatever its name says, and shipping it is worse than shipping nothing: a suite that cannot fail
+reassures, and the next real defect gets waved through as "the machine again".
+
+Measured on 2026-08-13, twice in one day. A case proving `?p=` was ignored on the guest door
+asserted on `updated_by`, and the fixture wrote the SAME author to both plans, so it passed
+whichever plan was served. And the room-label suite compared labels only to other labels, while
+half the reported defect was a room name printed on an OBJECT: it passed against the broken code,
+and it took FOUR attempts on the fixture before the real cause (the measurement looked in the wrong
+place) came out. Once corrected, the negative control is unambiguous: 36 overlaps without the fix,
+zero with.
+
+The same applies to a fixture: `--figer`-style freezes and "known debt" lists are ratchets, and a
+ratchet you lower to silence a suite is a rug.
+
+### NEVER AUTHOR SOURCE THROUGH A SHELL HEREDOC
+Escape sequences do not survive the trip. Writing `\n`, a regex, or a template literal through
+`bash <<EOF` + `python` puts REAL newlines into the file and breaks it, three times in one night
+here (`functions/nom.ts`, `tests/retour.ts`, `tests/exports-morts.ts`). Use the editor for anything
+containing an escape. A shell heredoc is for data, never for code.
+
+### A GUARD IS JUDGED ON ITS NEW FAILURE MODE
+Hardening that turns one crash into another has moved the problem, not removed it. The browser
+suites read `document.getElementById("x").hidden`, which throws mid-navigation; guarding it with
+`||{}` then returned `undefined`, which `JSON.stringify` renders as the string `"undefined"` and
+`JSON.parse` rejects. Same dead scenario, one layer further out, one more full barrier lost. State
+what the guarded path returns, and check that the caller accepts it.
+
 ### Pace
 - **One batch carries one request.** Do not pick up improvements along the way.
 - **After more than ten minutes without delivery**, the worker returns what works instead of continuing.
+- **Check the branch before committing.** A sub-agent may have moved it under you: work meant for
+  one branch has already landed on another here, and the wrong branch got pushed.
+- **This repository is PUBLIC.** Before committing, look for real identifiers: hostnames, addresses,
+  and above all personal data disguised as a test fixture. A real apartment, room by room, was one
+  commit away from being published as a label-collision fixture. What reproduces a defect best is
+  often exactly what may not be published.
 
 ### The pre-deploy barrier runs at LOW PRIORITY, and why (measured on 2026-08-05)
 
