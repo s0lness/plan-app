@@ -165,6 +165,18 @@ export interface Crochets {
   showHint?: ((k: string) => void) | undefined;
   /** The emission mirror tracks the freshly adopted state (synchronization batch, C-6). */
   resyncMiroir?: (() => void) | undefined;
+  /**
+   * G-3 + G-12, THE TWO COMBINED. `pushHistory()` falls on a gesture's FIRST real movement, not
+   * on `pointerdown` (drag, rotate, wall/vertex/opening drag, resize): the snapshot it takes is
+   * "the state right before this gesture". Escape then restores that SAME state through the
+   * gesture's own `cancel`, but the snapshot stays sitting on the undo stack: `Ctrl+Z` would pop
+   * it, see no visible change (it already IS the current state), and only the SECOND `Ctrl+Z`
+   * would reach the action the person actually meant to undo. Wired to `historique/pile.ts`
+   * (which `gestes/sortie.ts` cannot import directly: `pile.ts` already imports FROM this
+   * module's `gesteActif`, and a cycle here is exactly the shape of bug "Blank startup" warns
+   * about), called by `escapeActiveGesture()` right after the gesture's own `cancel()` has run.
+   */
+  jeterHistoriqueVide?: (() => void) | undefined;
   /** The realtime wire during a drag: ephemeral ghosts, diff suspended (collab batch). */
   dragStart?: (() => void) | undefined;
   dragEnd?: (() => void) | undefined;

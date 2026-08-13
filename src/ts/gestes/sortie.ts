@@ -146,6 +146,10 @@ export function escapeActiveGesture(): boolean {
     try { c(); }
     catch (e) { _ctx?.crochets.reportError?.(e, "annulation de geste"); }
   }
+  // G-3 + G-12: the gesture's own `cancel()` just restored the pre-gesture state; if that
+  // gesture had pushed a history entry on its first movement, it now describes exactly THIS
+  // state and would waste the next Ctrl+Z on a no-op (see the crochet's own doc).
+  _ctx?.crochets.jeterHistoriqueVide?.();
   endActiveGesture();
   return true;
 }

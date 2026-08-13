@@ -60,6 +60,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/model-v5-conversion-rendu.ts", chrome: 1 },
   { f: "tests/gestes-usage-reel.ts",       chrome: 1 },
   { f: "tests/geste-ami.ts",               chrome: 1 },   // REAL MOUSE + KEYBOARD: Ctrl/Cmd no-grid drag, D-held dimensions peek
+  { f: "tests/chasse-usage.ts",            chrome: 1 },   // REAL MOUSE + KEYBOARD: re-grabbing a selected wall no longer deletes it, Escape mid-drag no longer wastes a Ctrl+Z
   { f: "tests/repli-conflit.ts",           chrome: 2 },
   { f: "tests/faces-pose-copie.ts",        chrome: 1 },
   { f: "tests/deux-appareils.ts",          chrome: 1 },

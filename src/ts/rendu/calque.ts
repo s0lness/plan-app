@@ -380,7 +380,21 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   });
   const w = ctx.ihm.selWall ? (ctx.etat.plan.walls || []).find((q) => String(q.id) === String(ctx.ihm.selWall)) : null;
   if (w && !w.isOutline) {
-    const s = toC((w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2);
+    // G-15-BIS: SAME TRAP AS THE OUTLINE'S "+", one wall family over. Dead-center on the wall's
+    // own segment, this "x" used to sit exactly where `[data-w]` (the drag band, G-3's "grab it
+    // again to nudge it") is grabbed: selecting a wall by dragging it once, then reaching for the
+    // SAME spot to adjust it again, deleted it instead — the delete handler wins the hit-test the
+    // layer's own early return grants `.v5wx` (`v5LayerDown`). Measured: a wall dragged out and
+    // back vanished on the second grab, silently (no toast, `v5DeleteSelectedWall`'s refusal path
+    // is for facades, not "wrong target"). Offset PERPENDICULAR to the wall, clear of its own
+    // half-thickness, exactly the outline fix's shape (`outlineOutward`, an outward normal), so
+    // the drag band stays reachable at its own center.
+    const mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
+    const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], L = Math.hypot(dx, dy) || 1;
+    const nx = -dy / L, ny = dx / L;
+    const off = ((w.t || 0) * S) / 2 + 16;
+    const sMid = toC(mx, my);
+    const s = { x: sMid.x + nx * off, y: sMid.y + ny * off };
     const x = document.createElement("div");
     x.className = "v5wx";
     x.textContent = "×";

@@ -102,6 +102,22 @@ export function pushHistory(ctx: Contexte): void {
   updateHistBtns();
 }
 
+/**
+ * G-3 + G-12. Called right after a gesture's own `cancel()` has restored the pre-gesture state
+ * (Escape). If that gesture had pushed a history entry on its first real movement (the ordinary
+ * `pushHistory()` pattern shared by drag, rotate, wall/vertex/opening drag and resize), the top of
+ * the undo stack now describes EXACTLY the current state: popping it costs nothing, and keeping it
+ * would waste the next `Ctrl+Z` on a no-op, pushing the action the person actually meant to undo
+ * one step further away. The comparison is the SAME string equality `pushHistory()` already uses
+ * to dedupe, so this only ever removes an entry that is byte-identical to now: a gesture whose
+ * `cancel()` did not fully restore the original state (there is none today, but never say never)
+ * simply keeps its entry, exactly as before this function existed.
+ */
+export function jeterHistoriqueVide(ctx: Contexte): void {
+  const top = undoStack[undoStack.length - 1];
+  if (top && top.s === snapshot(ctx)) { undoStack.pop(); updateHistBtns(); }
+}
+
 export interface OptionsRemplacement {
   /**
    * DO NOT resync the outgoing mirror onto the new state: it then keeps describing what
