@@ -28,6 +28,8 @@ export const SYNC_URL = "/api/plan";
 export const PLANS_URL = "/api/plans";
 /** Owner-side sharing (batch 4, docs/decisions/0004-partage-par-lien.md): create, list, revoke. */
 export const INVITES_URL = "/api/invites";
+/** The feedback drop ("retour-utilisateur"): reachable from EITHER door, see functions/api/feedback.ts. */
+export const FEEDBACK_URL = "/api/feedback";
 
 // ---- THE GUEST DOOR: WHICH KIND OF SESSION THIS TAB IS (batch 3) -----------------------------
 // `SYNC_ON` alone answers "are we a real, top-level http(s) origin, capable of the network at

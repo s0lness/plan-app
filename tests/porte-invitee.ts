@@ -188,12 +188,12 @@ try {
 
   const trim = await attendre(async () => (await A.J(`(function(){
     var g=document.getElementById("btnGuestName");
-    return {guestBtn: g && !g.hidden, plans: !document.getElementById("btnPlans") || document.getElementById("btnPlans").hidden,
-            imp: !document.getElementById("btnImport") || document.getElementById("btnImport").hidden};})()`)).guestBtn);
+    return {guestBtn: g && !g.hidden, plans: !document.getElementById("btnPlans") || (document.getElementById("btnPlans")||{}).hidden,
+            imp: !document.getElementById("btnImport") || (document.getElementById("btnImport")||{}).hidden};})()`)).guestBtn);
   const trimme = await A.J(`(function(){
     var g=document.getElementById("btnGuestName");
-    return {guestBtn: g && !g.hidden, plans: !document.getElementById("btnPlans") || document.getElementById("btnPlans").hidden,
-            imp: !document.getElementById("btnImport") || document.getElementById("btnImport").hidden};})()`);
+    return {guestBtn: g && !g.hidden, plans: !document.getElementById("btnPlans") || (document.getElementById("btnPlans")||{}).hidden,
+            imp: !document.getElementById("btnImport") || (document.getElementById("btnImport")||{}).hidden};})()`);
   check("un nom déjà connu (Marie) saute l'étape du nom : le bouton 'Name…' apparaît directement",
     trim, "vu " + JSON.stringify(trimme));
   check("le panneau Plans est masqué pour un invité", trimme.plans, "vu " + JSON.stringify(trimme));
@@ -209,14 +209,14 @@ try {
   opened.push(B);
   const dlgOuvert = await attendre(async () => !(await A2Hidden(B, "inviteNameDlg")));
   check("un invité JAMAIS nommé voit l'étape du nom", dlgOuvert);
-  const videDesactive = await B.J(`document.getElementById("inviteNameJoin").disabled`);
+  const videDesactive = await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`);
   check("le bouton Join reste désactivé tant que le champ est vide", videDesactive === true, "disabled=" + videDesactive);
 
   await B.evaluate(`(function(){
     var i = document.getElementById("inviteNameInput");
     i.value = "Julien"; i.dispatchEvent(new Event("input", {bubbles:true}));
   })()`);
-  const rempliActive = await B.J(`document.getElementById("inviteNameJoin").disabled`);
+  const rempliActive = await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`);
   check("le bouton Join s'active une fois un nom saisi", rempliActive === false, "disabled=" + rempliActive);
 
   await B.evaluate(`document.getElementById("inviteNameJoin").click()`);
@@ -233,10 +233,10 @@ try {
   const impasse = await attendre(async () => !(await A2Hidden(C, "inviteDeadEnd")));
   check("un jeton inconnu affiche l'écran plein, jamais de bandeau", impasse);
   const rienDerriere = await C.J(`(function(){
-    return {plan: typeof window.__plan, setupHidden: document.getElementById("setup").hidden};})()`);
+    return {plan: typeof window.__plan, setupHidden: (document.getElementById("setup")||{}).hidden};})()`);
   check("le planificateur n'a jamais démarré derrière l'impasse (window.__plan reste undefined)",
     rienDerriere.plan === "undefined", "vu " + JSON.stringify(rienDerriere));
-  const sansSauvegarde = await C.J(`document.getElementById("inviteDeadEndSaved").hidden`);
+  const sansSauvegarde = await C.J(`(document.getElementById("inviteDeadEndSaved")||{}).hidden`);
   check("la première rédemption ratée ne prétend rien sur une sauvegarde (rien n'a jamais été édité)",
     sansSauvegarde === true, "vu hidden=" + sansSauvegarde);
 
@@ -249,7 +249,7 @@ try {
   const local = await attendre(async () => (await D.evaluate(`(document.getElementById("syncChip")||{}).textContent`)) === "local only");
   check("le chip affiche « local only » pour un visiteur sans invitation", local,
     "vu " + await D.evaluate(`(document.getElementById("syncChip")||{}).textContent`));
-  const banniere = await D.J(`!document.getElementById("localBanner").hidden`);
+  const banniere = await D.J(`!(document.getElementById("localBanner")||{}).hidden`);
   check("le bandeau local (export mis en avant) est visible", banniere);
   // LE CAS EXACT REMONTE PAR UN VISITEUR : « Plans… », puis Create, puis
   // «⁠Could not create the plan (403)⁠». Le serveur avait raison (`/api/plans` est fermé sur cette
@@ -262,7 +262,7 @@ try {
   check("le bac a sable ne propose ni « Plans… », ni « Charger un plan… », ni « Invite »",
     commandesFoyer === '{"plans":true,"charger":true,"invite":true}', "vu " + commandesFoyer);
 
-  const assistantOuvert = await D.J(`!document.getElementById("setup").hidden`);
+  const assistantOuvert = await D.J(`!(document.getElementById("setup")||{}).hidden`);
   check("l'assistant de configuration s'ouvre comme sous file:// (aucun serveur ici non plus)", assistantOuvert);
 
   // A real edit, exactly like a household device would make: must NEVER reach the server.
@@ -309,7 +309,7 @@ try {
 }
 
 async function A2Hidden(b: { J: (e: string) => Promise<VerdictSonde> }, id: string): Promise<boolean> {
-  return b.J(`document.getElementById(${JSON.stringify(id)}).hidden`) as unknown as Promise<boolean>;
+  return b.J(`(document.getElementById(${JSON.stringify(id)})||{}).hidden`) as unknown as Promise<boolean>;
 }
 
 const passed = results.filter((r) => r.pass).length;

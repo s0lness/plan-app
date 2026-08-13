@@ -39,6 +39,36 @@ export function auteurPourInvite(v: string | null): string | null {
   return nom || "Quelqu'un";
 }
 
+/**
+ * LE MÊME NETTOYAGE, MAIS LE TEXTE LIBRE GARDE SES LIGNES. `cleanName` retire TOUS les caractères
+ * de contrôle, ce qui est juste pour un NOM (un nom n'a pas de retour à la ligne) et faux pour un
+ * retour d'utilisateur : quelqu'un qui écrit en paragraphes verrait ses lignes disparaître et ses
+ * mots se coller. Or ce champ existe précisément pour qu'on y raconte quelque chose.
+ *
+ * Le saut de ligne survit donc, et lui seul : les autres contrôles et les inverseurs bidi partent
+ * comme ailleurs, pour la même raison (ils réordonnent visuellement le TEXTE AUTOUR). Un retour
+ * chariot est ramené au simple saut, pour que la même saisie donne les mêmes octets quel que soit
+ * le système, et une rafale de sauts est ramenée à deux : un retour n'est pas une mise en page.
+ */
+export function cleanTexte(v: unknown, max: number): string {
+  if (typeof v !== "string") return "";
+  const SAUT = 10;
+  let out = "";
+  for (const ch of v.replace(/\r\n?/g, "\n").trim()) {
+    const c = ch.codePointAt(0) as number;
+    if (c === SAUT) {
+      if (out.endsWith("\n\n")) continue;
+    } else if (c < CONTROLE_BAS || c === DEL) {
+      continue;
+    } else if ((c >= BIDI_MIN_1 && c <= BIDI_MAX_1) || (c >= BIDI_MIN_2 && c <= BIDI_MAX_2)) {
+      continue;
+    }
+    if (out.length + ch.length > max) break;
+    out += ch;
+  }
+  return out;
+}
+
 export function cleanName(v: unknown, max: number): string {
   if (typeof v !== "string") return "";
   let out = "";

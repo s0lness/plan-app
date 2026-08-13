@@ -206,9 +206,9 @@ try {
     "vu " + await A.evaluate(`document.getElementById("plansList").innerHTML.slice(0,200)`));
 
   await A.evaluate(`document.querySelector('.pshare[data-id="main"]').click()`);
-  const dlgOuvert = await attendre(async () => (await A.evaluate(`document.getElementById("shareDlg").hidden`)) === false);
+  const dlgOuvert = await attendre(async () => (await A.evaluate(`(document.getElementById("shareDlg")||{}).hidden`)) === false);
   check("cliquer Share ouvre le panneau de partage", dlgOuvert,
-    "vu hidden=" + await A.evaluate(`document.getElementById("shareDlg").hidden`));
+    "vu hidden=" + await A.evaluate(`(document.getElementById("shareDlg")||{}).hidden`));
 
   await A.evaluate(`document.getElementById("shareCreate").click()`);
   const lienCree = await attendre(async () => {
@@ -255,7 +255,7 @@ try {
     toastVu, "vu toastText=" + JSON.stringify(texteToast));
   check("le message dit exactement pourquoi (onglet non rattaché au plan du foyer)",
     texteToast === MSG_PAS_MENAGE, "attendu " + JSON.stringify(MSG_PAS_MENAGE) + ", vu " + JSON.stringify(texteToast));
-  const dlgResteFerme = await B.evaluate(`document.getElementById("shareDlg").hidden`);
+  const dlgResteFerme = await B.evaluate(`(document.getElementById("shareDlg")||{}).hidden`);
   check("le panneau de partage ne s'ouvre pas", dlgResteFerme === true, "vu hidden=" + dlgResteFerme);
 
   // Defect 2, the other half: reload the SAME tab (same storage, `/revisite`, exactly like
@@ -270,9 +270,9 @@ try {
     "vu hidden=" + await B.evaluate(`(document.getElementById("btnInvite")||{}).hidden`));
 
   await B.evaluate(`document.getElementById("btnInvite").click()`);
-  const dlgOuvertApresGuerison = await attendre(async () => (await B.evaluate(`document.getElementById("shareDlg").hidden`)) === false);
+  const dlgOuvertApresGuerison = await attendre(async () => (await B.evaluate(`(document.getElementById("shareDlg")||{}).hidden`)) === false);
   check("Share fonctionne normalement après auto-guérison (plus aucun message d'impossibilité)", dlgOuvertApresGuerison,
-    "vu hidden=" + await B.evaluate(`document.getElementById("shareDlg").hidden`));
+    "vu hidden=" + await B.evaluate(`(document.getElementById("shareDlg")||{}).hidden`));
   const nomPlanAffiche = await B.evaluate(`(document.getElementById("sharePlanName")||{}).textContent`);
   check("le panneau affiche bien le plan du foyer", nomPlanAffiche === "Chez nous" || nomPlanAffiche === "main",
     "vu " + JSON.stringify(nomPlanAffiche));

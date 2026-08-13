@@ -55,6 +55,13 @@ CREATE TABLE IF NOT EXISTS invites(
   expires_at TEXT,
   revoked INTEGER NOT NULL DEFAULT 0,
   uses INTEGER NOT NULL DEFAULT 0, last_used_at TEXT, last_name TEXT
+);
+-- 'feedback' was added for tests/retour.ts (functions/api/feedback.ts): EXACT schema from
+-- live-worker/schema.sql, same reasoning as 'invites' above.
+CREATE TABLE IF NOT EXISTS feedback(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT, who TEXT, porte TEXT, plan_id TEXT,
+  texte TEXT NOT NULL, contact TEXT, ua TEXT, ip TEXT
 );`;
 
 // `seed`: initial content of the 'main' row (JS object), or null for an empty database.
