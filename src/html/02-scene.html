@@ -20,6 +20,13 @@
            lasts: the write exception used to be swallowed silently and the person thought they
            were saving. -->
       <span class="store-chip" id="storeChip" hidden>not saved here</span>
+      <!-- Direct entry point to the Share panel for the plan currently open (`panneaux/partage.ts`,
+           `ouvrirPartage`), wired from `panneaux/plans.ts` (which already caches plan names for
+           its own list). Hidden under `!SYNC_ON` (file://, the claude.ai artifact) and off the
+           household door (`estMenage()`: a guest must never see it), default hidden here,
+           revealed by script, so a mistake fails closed. The per-row Share button in the Plans
+           panel remains: it is the only way to share a plan you are NOT currently looking at. -->
+      <button class="btn sm hbtn" id="btnInvite" type="button" hidden title="Invite someone to edit this plan, by link">Invite</button>
       <!-- Guest only (batch 3): reopens the name step to change how this device's name appears
            to others. Hidden everywhere else. -->
       <button class="btn sm hbtn" id="btnGuestName" type="button" hidden title="Change how your name appears to others">Name…</button>

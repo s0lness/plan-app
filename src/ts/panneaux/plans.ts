@@ -159,6 +159,17 @@ const ctxConfirm = (msg: string): boolean => {
   try { return window.confirm(msg); } catch (_) { return false; }
 };
 
+/** The current plan's cached name, for the toolbar Invite button: this panel already fetches
+ *  the plan list for its own rows (`_plans`), so the button reads from there instead of firing a
+ *  second fetch on every click. Falls back to the id when the list has not loaded yet (e.g. the
+ *  very first click, before `charger()` resolves): `ouvrirPartage` still works with an
+ *  id-as-name, no second source of truth for plan names is introduced. */
+function nomPlanCourant(): string {
+  const id = planCourant();
+  const p = _plans.find((q) => q.id === id);
+  return p ? p.name : id;
+}
+
 /** The rail's title carries the current plan's name (or its identifier if the name is missing). */
 function peindreTitre(): void {
   const el = $("planName");
@@ -265,6 +276,15 @@ export function brancherPlans(ctx: Contexte): void {
   // is still `"menage"` here (discovered only after the boot GET answers), so this one fetch can
   // still fire once before that discovery — harmless, and the price of "discover by trying".
   if (SYNC_ON && estMenage()) void charger().then(() => peindreTitre()).catch(() => { /* title = identifier */ });
+  // TOOLBAR INVITE BUTTON: opens the Share panel for whatever plan is on screen right now,
+  // without going through this panel first. Same gate as the fetch just above (`SYNC_ON` false
+  // under `file://`/the artifact, or off the household door): the HTML starts it `hidden`, this
+  // is the only place that reveals it, so a mistake fails closed.
+  const btnInvite = $("btnInvite");
+  if (btnInvite) {
+    if (SYNC_ON && estMenage()) btnInvite.hidden = false;
+    btnInvite.addEventListener("click", () => ouvrirPartage(planCourant(), nomPlanCourant()));
+  }
   $("planName")?.addEventListener("dblclick", (e) => {
     e.preventDefault();
     const el = $("planName");
