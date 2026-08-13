@@ -398,6 +398,71 @@ test("une_maj_recue_du_pair_rend_un_mur_deja_connu_libre", SEED, `
 `, (v: VerdictSonde) => expect(!v.avant, "avant la mise à jour, le mur doit être traversant, vu " + JSON.stringify(v))
      && expect(v.apres === 1, "après la mise à jour partielle, il doit devenir libre, vu " + JSON.stringify(v)));
 
+// =============================================================================
+//  8. THE CLEAR TRAVELS TOO, NOT JUST THE SET
+// =============================================================================
+// `v5WallWire` used to emit `free` ONLY when truthy: switching a partition back to Through
+// (`gestes/murs.ts`'s "Ends: Through" button) deletes the local flag, so the wire object for
+// that wall came back out looking EXACTLY like a wall that was never touched, and the
+// field-by-field diff had nothing to compare `free` against. The author saw Through, the peer
+// kept showing Free, and only a full resync repaired it. Fixed: the local model now keeps the
+// clear as `free: 0` (never `delete`), and the wire emits it explicitly.
+
+// 8a. THE ROUND TRIP: device A's diff emitter is made to run for real (`outLog`+`forceDiff`,
+// the same rig `collab-annuler.ts` uses), so this exercises the ACTUAL emission code, not a
+// hand-built op. The captured op is then handed to a peer whose copy of the SAME wall is still
+// `free:1` (representative of someone who has not heard about the clear yet): applying the op
+// must bring them back to Through.
+test("la_levee_d_une_cloison_libre_atteint_le_pair", SEED, `
+  ${HELLO}
+  var w = window.__plan.plan.walls.filter(function(x){ return !x.isOutline; })[0];
+  if (!w) return { aucun: true };
+  // Device A had already set it free, and this state was already shared (the mirror knows it).
+  w.free = 1;
+  window.__plan.shadowSync();
+  window.__plan.outLog(true);
+  // Device A now flips it back to Through.
+  w.free = 0;
+  window.__plan.forceDiff();
+  var out = window.__plan.outLog(false);
+  var msg = out.filter(function(m){
+    return m.t === "op" && m.op && m.op.kind === "wall.set" && String(m.op.wall.id) === String(w.id);
+  })[0];
+  var opEnvoye = msg && msg.op;
+  // A peer whose copy is still free (they have not received anything yet).
+  w.free = 1;
+  if (opEnvoye) window.__plan.applyRemote(opEnvoye);
+  var apres = window.__plan.v5WallById(w.id);
+  return { id: w.id, opPresent: !!opEnvoye, opCles: opEnvoye && Object.keys(opEnvoye.wall).sort(),
+           opFree: opEnvoye && opEnvoye.wall.free, peerFreeApres: apres && apres.free };
+`, (v: VerdictSonde) => expect(!v.aucun, "le plan de référence doit contenir au moins une cloison intérieure")
+     && expect(v.opPresent === true, "la levée doit émettre une op wall.set, vu " + JSON.stringify(v))
+     && expect(v.opCles.indexOf("free") >= 0, "l'op doit PORTER la clé \`free\`, vu " + JSON.stringify(v.opCles))
+     && expect(v.opFree === 0, "avec la valeur explicite 0 (pas l'absence), vu " + JSON.stringify(v.opFree))
+     && expect(!v.peerFreeApres, "et le pair doit redevenir traversant en l'appliquant, vu " + JSON.stringify(v)));
+
+// 8b. NEGATIVE CONTROL / no wire-shape regression: a wall that NEVER used the Free tool
+// (`free` absent, not just falsy) must keep emitting EXACTLY what it emitted before this fix
+// when an unrelated field changes, otherwise every existing plan would move on its next save.
+test("une_cloison_jamais_libre_n_emet_toujours_pas_free", SEED, `
+  ${HELLO}
+  var w = window.__plan.plan.walls.filter(function(x){ return !x.isOutline && x.free === undefined; })[0];
+  if (!w) return { aucun: true };
+  window.__plan.shadowSync();
+  window.__plan.outLog(true);
+  w.t = w.t === 12 ? 13 : 12;   // touch an UNRELATED field to force a diff
+  window.__plan.forceDiff();
+  var out = window.__plan.outLog(false);
+  var msg = out.filter(function(m){
+    return m.t === "op" && m.op && m.op.kind === "wall.set" && String(m.op.wall.id) === String(w.id);
+  })[0];
+  var opEnvoye = msg && msg.op;
+  return { opPresent: !!opEnvoye, opCles: opEnvoye && Object.keys(opEnvoye.wall).sort() };
+`, (v: VerdictSonde) => expect(!v.aucun, "le plan de référence doit contenir une cloison jamais libre")
+     && expect(v.opPresent === true, "le changement d'épaisseur doit émettre une op, vu " + JSON.stringify(v))
+     && expect(JSON.stringify(v.opCles) === JSON.stringify(["id", "t"]),
+        "et ne JAMAIS porter \`free\`, vu " + JSON.stringify(v.opCles)));
+
 // ---- verdict ---------------------------------------------------------------------------------
 const bad = results.filter(r => !r.pass);
 console.log("");

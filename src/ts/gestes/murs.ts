@@ -930,6 +930,14 @@ export function brancherOutilsMurs(ctx: Contexte): void {
   // wall (it's already extended, and shortening it by force would make a partition you could
   // see disappear), but switching to through LENGTHENS it right away, otherwise the setting would say nothing
   // on screen and you'd have to guess that it will act "later."
+  //
+  // Switching to Through sets `w.free = 0`, it does NOT delete the key. A deleted key and a wall
+  // that never used this control at all became BYTE-IDENTICAL on the wire (`v5WallWire`), so the
+  // field-by-field diff had no way to tell "never set" from "just cleared", and the CLEAR never
+  // reached a peer: the author saw Through, the peer kept showing Free, forever, until a full
+  // resync. `0` is a real value the server already understands and already normalizes to the
+  // same storage as absence (`WALL_FREE`, `live-worker/ops.ts`), so nothing downstream changes;
+  // only the wire, in between, finally gets to carry the clear.
   for (const [id, libre] of [["rcThrough", false], ["rcFree", true]] as const) {
     $(id)?.addEventListener("click", () => {
       const P = ctx.etat.plan;
@@ -937,7 +945,7 @@ export function brancherOutilsMurs(ctx: Contexte): void {
       if (!P || !w || w.isOutline) return;
       if (!!w.free === libre) return;
       pushHistory(ctx);
-      if (libre) w.free = 1; else delete w.free;
+      w.free = libre ? 1 : 0;
       v5ThroughWall(P, w);
       v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx);
       render(ctx); save(ctx);
