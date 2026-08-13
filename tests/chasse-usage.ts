@@ -149,11 +149,11 @@ const undoCount = async () => Number(await evaluate(`String(__plan.histInfo().un
 // =============================================================================
 //  1. mur_re_glisse_apres_selection_ne_le_supprime_pas
 // =============================================================================
-// The delete "x" of the SELECTED wall (`drawHandles`, rendu/calque.ts) used to sit dead-center on
+// The delete "x" of the SELECTED wall (painted by the handle pass of rendu/calque.ts) used to sit dead-center on
 // the wall's own segment: exactly where `[data-w]` (the drag band) is grabbed. Selecting a wall by
 // dragging it once, then reaching for the SAME spot to nudge it again, hit the delete cross
 // instead — the wall vanished, silently (no toast: the layer's own early return hands the event to
-// `.v5wx` before `v5StartWallDrag` is ever called).
+// `.v5wx` before the wall-drag gesture is ever armed).
 await test("mur_re_glisse_apres_selection_ne_le_supprime_pas", async () => {
   await wallsMode(true);
   const w = await J(`(function(){var x=__plan.plan.walls.filter(function(w){return !w.isOutline;})[0];
