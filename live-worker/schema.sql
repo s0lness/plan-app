@@ -37,6 +37,28 @@ CREATE TABLE IF NOT EXISTS errors(
   ua TEXT
 );
 
+-- Feedback dropped from inside the app itself (functions/api/feedback.ts): an unauthenticated
+-- free-text note, no account required, reachable from EITHER door (household or guest link) —
+-- the whole point is that a visitor can report something too. Read periodically by whoever
+-- maintains the plan; there is no in-app inbox to view it back.
+--   at       : ISO timestamp of the write.
+--   who      : the Access email on the household door, or the guest's already-known chosen name
+--              (invites.last_name) on the guest door; empty when a guest never gave one.
+--   porte    : which door it came from, 'foyer' or 'invite' (functions/porte.ts's own verdict),
+--              so a reply knows which kind of visitor to look for.
+--   plan_id  : which plan the note is about — the household's own plan id on the foyer door, or
+--              the plan named by the invite the guest came through. No foreign key, same
+--              reasoning as `invites`: a plan can be deleted while its feedback rows stay legible.
+--   texte    : the note itself. Required, cleaned and capped by functions/nom.ts's cleanName.
+--   contact  : optional free text, "how to reach you" — never validated, not necessarily an email.
+--   ua       : navigator.userAgent, for triage only (which build/browser hit the bug).
+--   ip       : CF-Connecting-IP, kept short. Rate-limit and abuse bookkeeping only, never shown.
+CREATE TABLE IF NOT EXISTS feedback(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT, who TEXT, porte TEXT, plan_id TEXT,
+  texte TEXT NOT NULL, contact TEXT, ua TEXT, ip TEXT
+);
+
 -- Invites for sharing a plan by link, no Access account required (functions/api/invite.ts,
 -- functions/api/invites.ts, functions/invitation.ts). See docs/decisions/0004-partage-par-lien.md
 -- ("batch 1b, the invite").

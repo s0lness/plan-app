@@ -25,3 +25,4 @@ export * from "./fil/miroir.ts";
 export * from "./historique/rejeu.ts";
 export * from "./rendu/noms.ts";
 export * from "./rendu/arc-porte.ts";
+export * from "./rendu/etiquettes-disposition.ts";

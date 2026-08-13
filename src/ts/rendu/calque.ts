@@ -14,7 +14,7 @@ import type { BBox } from "../geometrie/polygones.ts";
 import type { Contexte } from "../app/contexte.ts";
 import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
-import { bboxOfPoly, pointInPoly, poleOfInaccessibility } from "../geometrie/polygones.ts";
+import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
@@ -26,6 +26,8 @@ import { doorArcSVG, windowArcSVG } from "./arc-porte.ts";
 import { polygoneFaisceau, projection } from "../modele/projection.ts";
 import { renderPieces } from "./meubles.ts";
 import { isSel } from "./selection.ts";
+import type { CandidatEtiquetteCellule } from "./etiquettes-disposition.ts";
+import { disposerEtiquettesCellules, obstaclesMeubles } from "./etiquettes-disposition.ts";
 
 /** The layer, if mounted. */
 export const focusEl = (ctx: Contexte): HTMLElement | null =>
@@ -261,12 +263,41 @@ export function renderFaisceaux(ctx: Contexte, layer: HTMLElement, bb: BBox, S: 
   layer.insertBefore(svg, layer.children[1] || null);
 }
 
-/** A cell's name, placed on its POLE OF INACCESSIBILITY (an L-shaped room doesn't have its centroid inside it). */
+/**
+ * A cell's name, anchored on its POLE OF INACCESSIBILITY (an L-shaped room doesn't have its
+ * centroid inside it) then NUDGED AWAY from furniture and from other room labels
+ * (`disposerEtiquettesCellules`, `rendu/etiquettes-disposition.ts`).
+ *
+ * Room labels and furniture labels used to be laid out independently: on a real 103 m2 apartment
+ * (ten rooms), a chosen furniture name landed on top of "Cuisine", and other room labels landed on
+ * an appliance icon. A label that cannot be placed without overlapping something is DROPPED, never
+ * painted over it: the name also lives in the rail, so losing it on the canvas costs less than an
+ * unreadable stack.
+ */
 export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
   const P = ctx.etat.plan;
   const seen: Record<string, 1> = {};
+  const candidats: CandidatEtiquetteCellule[] = (P.cells || []).map((c) => {
+    const pl = poleOfInaccessibility(c.poly);
+    const poly = c.poly;
+    return {
+      id: String(c.id),
+      ax: (pl.x - bb.minX) * S,
+      ay: (pl.y - bb.minY) * S,
+      texte: c.name || "",
+      aire: polyArea(c.poly),
+      // The label is never pushed into a NEIGHBOR's territory while searching for a clear spot:
+      // a nudge is only tried while it is still inside THIS cell's own polygon.
+      dansCellule: (x: number, y: number) => pointInPoly(x / S + bb.minX, y / S + bb.minY, poly),
+    };
+  });
+  const obstacles = obstaclesMeubles(P.pieces || [], ctx.etat.opts, S, bb);
+  const places = disposerEtiquettesCellules(candidats, obstacles);
   (P.cells || []).forEach((c) => {
+    const id = String(c.id);
+    const pos = places.get(id) || null;
     let el = layer.querySelector<HTMLElement>(`.ov-name[data-c="${cssId(c.id)}"]`);
+    if (!pos) { if (el) el.remove(); return; } // YIELDS: no spot clears every obstacle
     if (!el) {
       el = document.createElement("div");
       el.className = "ov-name ov-name-center";
@@ -278,12 +309,11 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
       });
       layer.appendChild(el);
     }
-    seen[String(c.id)] = 1;
+    seen[id] = 1;
     el.textContent = c.name || "";
     el.classList.toggle("focused", String(ctx.ihm.selCell) === String(c.id));
-    const pl = poleOfInaccessibility(c.poly);
-    el.style.left = ((pl.x - bb.minX) * S) + "px";
-    el.style.top = ((pl.y - bb.minY) * S) + "px";
+    el.style.left = pos.x + "px";
+    el.style.top = pos.y + "px";
     el.style.right = "auto";
   });
   layer.querySelectorAll<HTMLElement>(".ov-name[data-c]").forEach((n) => {

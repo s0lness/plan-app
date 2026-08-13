@@ -32,6 +32,9 @@
            to others. Hidden everywhere else. -->
       <button class="btn sm hbtn" id="btnGuestName" type="button" hidden title="Change how your name appears to others">Name…</button>
       <span class="sync-chip" id="syncChip" hidden></span>
+      <!-- Reachable from EITHER door, and never hidden by one, unlike Invite/Share above
+           (`panneaux/retour.ts`): a visitor can flag something too. -->
+      <button class="btn sm hbtn" id="btnFeedback" type="button" title="Send feedback about the app" aria-label="Feedback">✉</button>
       <button class="btn sm hbtn" id="btnHelp" title="Help (?)" aria-label="Help">?</button>
     </div>
     <div class="viewport" id="viewport">

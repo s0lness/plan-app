@@ -72,10 +72,12 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/plan-abime.ts",              chrome: 2 },
   { f: "tests/porte-invitee.ts",           chrome: 2 },   // the guest door in a real browser: token capture, name step, dead end, local-only
   { f: "tests/partage-navigateur.ts",      chrome: 2 },   // the Share button in a real browser: household door, silent-return fix, local-only self-heal
+  { f: "tests/retour-navigateur.ts",       chrome: 2 },   // the Feedback button in a real browser: both doors, server received it, text survives a failed send
   { f: "tests/interactions.ts",            chrome: 1 },
   { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
+  { f: "tests/etiquettes-recouvrement.ts", chrome: 1 },   // room labels vs furniture labels vs each other, real DOM, the owner's real apartment
   { f: "tests/boot-vierge.ts",             chrome: 1 },
   // IT EXISTED, GREEN, AND THE BARRIER DID NOT LAUNCH IT. Six checks on the DELIVERABLE
   // itself (a single file, zero network request, no external tag): exactly the kind of guard
@@ -94,10 +96,12 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/sans-grille.ts",             chrome: 0 },   // PURE: the Ctrl/Cmd modifier and the relative grid math, no browser
   { f: "tests/trace-libre.ts",             chrome: 0 },   // PURE geometry, freehand wall trace: no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
+  { f: "tests/etiquettes-disposition.ts",  chrome: 0 },   // PURE placement math: room labels vs furniture obstacles, no browser
   { f: "tests/exports-morts.ts",           chrome: 0 },   // reads the SOURCE: no browser
   { f: "tests/no-dead-selectors.ts",       chrome: 0 },                        // CSS classes taken by src/ts
   { f: "tests/porte.ts",                   chrome: 0 },   // door + identity: functions/porte.ts, no browser
   { f: "tests/invitation.ts",              chrome: 0 },   // the invite: functions/api/invite(s).ts, no browser
+  { f: "tests/retour.ts",                  chrome: 0 },   // the feedback drop: functions/api/feedback.ts, no browser
   { f: "tests/identite-fil.ts",            chrome: 0 },   // wire identity, client side: src/ts/fil/etat.ts + mesure/curseur-pair.ts, no browser
   { f: "tests/invite-fil.ts",              chrome: 0 },   // guest client pure logic: token-from-hash, storage key per mode, duplicate-name display, no browser
   { f: "tests/partage-fil.ts",             chrome: 0 },   // owner share panel pure logic: link construction, guestHost fallback, live filter, row formatting, no browser

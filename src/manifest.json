@@ -20,7 +20,8 @@
     "css/16-impression.css",
     "css/17-etroit.css",
     "css/18-invite.css",
-    "css/19-partage.css"
+    "css/19-partage.css",
+    "css/20-retour.css"
   ],
   "html": [
     "html/01-coque-rail.html",
@@ -35,6 +36,7 @@
     "html/11-plans.html",
     "html/13-partage.html",
     "html/10-impression.html",
-    "html/12-invite.html"
+    "html/12-invite.html",
+    "html/14-retour.html"
   ]
 }
