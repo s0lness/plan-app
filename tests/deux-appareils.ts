@@ -353,6 +353,51 @@ test("une_pose_rabotee_par_un_mur_court_est_annoncee", SEED, `
      && expect(v.w !== null && v.w < 120, "la fenêtre doit bien avoir été rabotée, vu " + JSON.stringify(v.w))
      && expect(!!v.txt && /instead of/.test(v.txt), "et le dire, vu " + JSON.stringify(v.txt)));
 
+// =============================================================================
+//  7. A FREE-STANDING PARTITION SURVIVES THE INCREMENTAL WIRE
+// =============================================================================
+// A wall can carry `free:1`: it does NOT extend to the first barrier (the Freehand tool's loose
+// ends, and the "Ends: Through | Free" control). `sanitizeV5Plan` (full-plan re-read: reload,
+// undo/redo, D1/realtime adoption) already keeps it. The receive path for a SINGLE incremental
+// op (`ws5ApplyRemoteOp`'s `wall.set` case, `src/ts/fil/reception.ts`) is a SEPARATE code path
+// that merges only the keys present on the op: it used to merge neither on wall CREATION nor on
+// an UPDATE to an existing wall, so a free partition drawn by one device looked right locally but
+// reverted to through-going the moment the OTHER device received it, live or through fallback.
+
+// 7a. The peer receives a brand-new wall carrying `free:1` (the author's FIRST op for it,
+// C-5: creation sends the whole entity): it must exist, and stay free.
+test("un_mur_libre_recu_du_pair_reste_libre", SEED, `
+  ${HELLO}
+  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerLibre", a:[60,60], b:[60,120], t:12, free:1 } });
+  var w = window.__plan.v5WallById("wPeerLibre");
+  return { existe: !!w, free: w && w.free };
+`, (v: VerdictSonde) => expect(v.existe === true, "le mur reçu doit exister chez le pair")
+     && expect(v.free === 1, "et y rester libre, vu " + JSON.stringify(v)));
+
+// 7b. The reverse, the suite's own negative control: an ORDINARY wall (no `free` key at all)
+// must NOT come out free on the peer's side either.
+test("un_mur_traversant_recu_du_pair_reste_traversant", SEED, `
+  ${HELLO}
+  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerTrav", a:[80,60], b:[80,120], t:12 } });
+  var w = window.__plan.v5WallById("wPeerTrav");
+  return { existe: !!w, free: w && w.free };
+`, (v: VerdictSonde) => expect(v.existe === true, "le mur reçu doit exister chez le pair")
+     && expect(!v.free, "et rester traversant, vu " + JSON.stringify(v)));
+
+// 7c. The OTHER half of the receive path: an UPDATE to a wall the peer ALREADY has (field-by-field
+// merge, C-5) must also carry `free` over, not just a creation.
+test("une_maj_recue_du_pair_rend_un_mur_deja_connu_libre", SEED, `
+  ${HELLO}
+  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerMaj", a:[100,60], b:[100,120], t:12 } });
+  // \`v5WallById\` returns a LIVE reference: the flag is read off right away, before the second
+  // op can mutate the SAME object in place.
+  var avantFree = (window.__plan.v5WallById("wPeerMaj") || {}).free;
+  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerMaj", free:1 } });
+  var apres = window.__plan.v5WallById("wPeerMaj");
+  return { avant: avantFree, apres: apres && apres.free };
+`, (v: VerdictSonde) => expect(!v.avant, "avant la mise à jour, le mur doit être traversant, vu " + JSON.stringify(v))
+     && expect(v.apres === 1, "après la mise à jour partielle, il doit devenir libre, vu " + JSON.stringify(v)));
+
 // ---- verdict ---------------------------------------------------------------------------------
 const bad = results.filter(r => !r.pass);
 console.log("");

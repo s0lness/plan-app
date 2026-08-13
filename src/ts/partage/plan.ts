@@ -176,6 +176,12 @@ export interface MurFil {
   a: Pt;
   b: Pt;
   t: number;
+  /**
+   * FREE PARTITION, mirrors `Mur.free` (see there). Emitted ONLY if set (same rule as an
+   * opening's `leaf`, below): absence means "through-going", the historical default, so no
+   * existing plan changes shape the first time an unrelated field on it is touched.
+   */
+  free?: 1 | undefined;
 }
 
 /**

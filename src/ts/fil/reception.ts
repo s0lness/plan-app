@@ -100,10 +100,17 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         if (w.a) ex.a = [w.a[0], w.a[1]];
         if (w.b) ex.b = [w.b[0], w.b[1]];
         if (w.t !== undefined) ex.t = w.t;
+        // C-5: `free` follows the same "present key = opinion" merge as every other field here.
+        // It is only ever emitted truthy (see `v5WallWire`), so a present value is always `1`.
+        if (w.free !== undefined) ex.free = w.free ? 1 : undefined;
         ex.isOutline = v5OnOutline(ex.a, ex.b, P.outline, 1);
       } else if (w.a && w.b) {
         const a: Pt = [w.a[0], w.a[1]], b: Pt = [w.b[0], w.b[1]];
-        P.walls.push({ id: String(w.id), a, b, t: (w.t || WALL), isOutline: v5OnOutline(a, b, P.outline, 1) });
+        P.walls.push({
+          id: String(w.id), a, b, t: (w.t || WALL),
+          isOutline: v5OnOutline(a, b, P.outline, 1),
+          free: w.free ? 1 : undefined,
+        });
       }
       // C-10, THE ONLY HOLE IN THE RULE (see the header): we bound ONLY what depends on the wall
       // named by THIS op. No furniture is touched, `v5ClampPieces` stays out of it.
