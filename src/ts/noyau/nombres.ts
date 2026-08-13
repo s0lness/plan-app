@@ -53,6 +53,30 @@ export const KEY = "room-planner-v4";
 export function keyPourPlan(planId: string): string {
   return (!planId || planId === "main") ? KEY : KEY + ":" + planId;
 }
+
+/**
+ * BATCH 3, GUEST CLIENT (design edge 13). Local-only mode's own key, entirely separate from
+ * every plan id: on the guest origin an anonymous visitor's own sandbox and an invited `main`
+ * plan must never share bytes.
+ */
+export const KEY_GUEST_LOCAL = "room-planner-guest-local";
+
+/**
+ * THE STORAGE KEY FOR THE CURRENT MODE. `keyPourPlan` alone is right for the household door: its
+ * `main` exemption protects bytes already written there, before this feature existed. Off it,
+ * that exemption has nothing to protect and everything to lose: local-only mode gets its OWN key
+ * (never the bare one, never a plan-namespaced one), and an invited plan is ALWAYS namespaced by
+ * its id, `main` included — the SAME `main` that would otherwise collapse to the bare key.
+ *
+ * `mode` and `planId` come from `fil/drapeaux.ts` (the only place that tracks them), passed in
+ * rather than imported, so this function stays as leaf as `keyPourPlan` itself.
+ */
+export function keyPourMode(mode: "menage" | "invite" | "local", planId: string | null): string {
+  if (mode === "local") return KEY_GUEST_LOCAL;
+  if (mode === "invite") return KEY + ":" + (planId || "invite");
+  return keyPourPlan(planId || "main");
+}
+
 export const OPTS_KEY = "room-planner-opts";
 export const KEY_V3 = "room-planner-v3";
 export const KEY_V2 = "room-planner-v2";

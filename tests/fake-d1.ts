@@ -27,13 +27,34 @@ export interface LigneD1 {
   updated_by: string | null;
 }
 
+// `invites` was added for tests/invitation.ts (docs/decisions/0004-partage-par-lien.md, "batch
+// 1b"): same reasoning as `plans` above, the EXACT schema from live-worker/schema.sql, so a
+// syntax mistake in a route's SQL shows up here rather than in production. Tests populate and
+// read it directly through the `db` handle this factory already returns, exactly like they use
+// `store.writeDirect` for `plans` — no bespoke helper needed for one more table.
+// `plans.name` is NOT in live-worker/schema.sql's CREATE TABLE text: that column was added in
+// production by a separate `ALTER TABLE plans ADD COLUMN name TEXT` (functions/api/plans.ts's own
+// top comment says so), which the "exact reproduction" file never captured. It is added here
+// because functions/api/invite.ts genuinely reads it in production (the plan name shown to a
+// guest on redemption) — reproducing the CREATE TABLE text literally would make that query fail
+// against every real database it will ever run on.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans(
   id TEXT PRIMARY KEY,
   data TEXT NOT NULL,
   rev INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT,
-  updated_by TEXT
+  updated_by TEXT,
+  name TEXT
+);
+CREATE TABLE IF NOT EXISTS invites(
+  token TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'edit',
+  created_at TEXT, created_by TEXT,
+  expires_at TEXT,
+  revoked INTEGER NOT NULL DEFAULT 0,
+  uses INTEGER NOT NULL DEFAULT 0, last_used_at TEXT, last_name TEXT
 );`;
 
 // `seed`: initial content of the 'main' row (JS object), or null for an empty database.
@@ -69,6 +90,13 @@ export function fakeD1(seed: unknown, seedRev?: number, seedBy?: string) {
     async first() {
       const r = db.prepare(sql).get(...this.args);
       return r === undefined ? null : r;
+    },
+    // Added alongside `invites` (tests/invitation.ts): functions/api/invites.ts lists a plan's
+    // invites with `.all()`, which no caller of this factory needed before. D1 shape: rows come
+    // back under `results`.
+    async all() {
+      const rows = db.prepare(sql).all(...this.args);
+      return { results: rows };
     },
     async run() {
       const res = db.prepare(sql).run(...this.args);

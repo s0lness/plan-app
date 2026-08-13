@@ -31,9 +31,25 @@
 // compare-and-swap (see DEPLOY.md / the report), it can still overwrite a REST write it hasn't
 // seen; it MITIGATES this by rereading the row before every snapshot (`reconcileD1`).
 
-// The header set by Access doesn't always reach the Function; as a fallback we decode the
-// payload of the Access JWT (already verified upstream by Access, no need to re-sign).
+// Identity: `identiteFoyer` (../porte.ts) is THE ONE implementation of `who()`. It reads the
+// header set by Access, with a JWT-decoding fallback, but ONLY on the household door: off it,
+// every one of those inputs is caller-supplied and unsigned. See docs/decisions/0004-partage-par-lien.md.
+//
+// ---- THE "invite" DOOR (batch 1b) ----------------------------------------------------------
+// A guest carries no Access identity and no `?p=`: `?p=` is IGNORED on this door (design edge 5,
+// a guest editing the URL must not reach another plan), and the plan comes from the SESSION
+// COOKIE set by functions/api/invite.ts, resolved through the SAME `invites` row every other
+// guest-facing route reads (functions/invitation.ts). A PUT here also drops the OLD blind-write
+// contract entirely: `rev` is required, because a blind PUT is `plan5.replace` by another name
+// (last writer wins, whole document), the old contract exists for a tab opened before this
+// feature deployed, and no guest tab predates it. `updated_by` for a guest write is
+// `"invite:" + <name or "?">`, built from the invite row's `last_name` — never an email (there is
+// none to have), and never the literal `"live"` (identiteFoyer already screens that out; this
+// path never calls it at all).
 import type { Env } from "../env.ts";
+import { identiteFoyer, porteDe } from "../porte.ts";
+import { auteurPourInvite, cleanName } from "../nom.ts";
+import { chargerInvitation, invitationValide, tokenDuCookie } from "../invitation.ts";
 
 interface PlanRow {
   data: string;
@@ -41,20 +57,6 @@ interface PlanRow {
   updated_at: string | null;
   updated_by: string | null;
 }
-
-const who = (request: Request) => {
-  const direct = request.headers.get("Cf-Access-Authenticated-User-Email");
-  if (direct) return direct;
-  const jwt = request.headers.get("Cf-Access-Jwt-Assertion") ||
-    (request.headers.get("Cookie") || "").match(/CF_Authorization=([^;]+)/)?.[1];
-  if (jwt) {
-    try {
-      const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-      if (payload.email) return payload.email;
-    } catch {}
-  }
-  return "inconnu";
-};
 
 // WHICH plan. `main` by default (the household's historical plan); a malformed identifier is an
 // ERROR and never a silent fallback, otherwise a broken URL would write into the wrong plan.
@@ -72,10 +74,26 @@ const planIdDe = (request: Request) => {
 };
 const mauvaisPlan = () => new Response(JSON.stringify({ error: "bad_plan_id" }),
   { status: 400, headers: { "content-type": "application/json" } });
+// ONE shape for "no invite cookie", "unknown token", "revoked" and "expired": telling them apart
+// would confirm a guess. Also what a revoked guest gets mid-session (design edge 18): "offline"
+// would dress a PERMISSION answer as a NETWORK one, in the codebase whose rule is that the chip
+// never lies, so 403 (not the 401/404 mix used elsewhere) routes the client to its dead-end
+// screen instead of a retry loop.
+const inviteInvalide = () => new Response(JSON.stringify({ error: "invite_invalide" }),
+  { status: 403, headers: { "content-type": "application/json" } });
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const planId = planIdDe(request);
-  if (!planId) return mauvaisPlan();
+  const porte = porteDe(request, env);
+  let planId: string;
+  if (porte === "invite") {
+    const invit = await chargerInvitation(env, tokenDuCookie(request));
+    if (!invitationValide(invit)) return inviteInvalide();
+    planId = invit.plan_id;   // `?p=` IGNORED: design edge 5.
+  } else {
+    const pid = planIdDe(request);
+    if (!pid) return mauvaisPlan();
+    planId = pid;
+  }
   const row = await env.DB
     .prepare("SELECT data, rev, updated_at, updated_by FROM plans WHERE id=?1")
     .bind(planId)
@@ -85,7 +103,15 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     data: JSON.parse(row.data),
     rev: row.rev,
     updatedAt: row.updated_at,
-    updatedBy: row.updated_by,
+    // THE LAST PLACE A HOUSEHOLD ADDRESS COULD CROSS TO A GUEST. Batch 2 stopped emails on the
+    // WIRE (the Durable Object projects every message per recipient), but this is the REST
+    // fallback, a Pages Function that shares no code with it — and it reads the raw `updated_by`
+    // column, which holds an Access email. One GET from the guest door and anyone holding a link
+    // collects the couple's address. Design edge 16 covers the wire; this is its other half.
+    // A guest is told WHAT they need (someone else wrote before you) and not WHO in a form they
+    // could mail: an author already written as `invite:<name>` passes through, an email is
+    // reduced to the same display name the wire would have shown.
+    updatedBy: porte === "invite" ? auteurPourInvite(row.updated_by) : row.updated_by,
   });
 };
 
@@ -128,8 +154,22 @@ async function currentRow(env: Env, planId: string) {
 }
 
 export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
-  const planId = planIdDe(request);
-  if (!planId) return mauvaisPlan();
+  const porte = porteDe(request, env);
+  let planId: string;
+  // Non-empty only when the write comes through the invite door: captured here, at the point
+  // where the invite row is still in scope, so the write below never has to re-resolve it.
+  let nomEcrivainInvite = "?";
+  if (porte === "invite") {
+    const invit = await chargerInvitation(env, tokenDuCookie(request));
+    if (!invitationValide(invit)) return inviteInvalide();
+    planId = invit.plan_id;   // `?p=` IGNORED: same reason as the GET above.
+    nomEcrivainInvite = cleanName(invit.last_name, 40) || "?";
+  } else {
+    const pid = planIdDe(request);
+    if (!pid) return mauvaisPlan();
+    planId = pid;
+  }
+
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
   const st = body && body.state;
@@ -138,10 +178,23 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
   const data = JSON.stringify(st);
   if (data.length > 2_000_000) return new Response("too big", { status: 413 });
   const now = new Date().toISOString();
-  const by = who(request);
 
-  // BLIND write (old contract): no expected revision, last writer wins.
   const expected = body && Number.isInteger(body.rev) ? Number(body.rev) : null;
+  if (porte === "invite" && expected === null) {
+    // A BLIND PUT is `plan5.replace` by another name: no expected revision, last writer wins, the
+    // whole document at once. The old contract exists for a tab opened BEFORE this feature
+    // deployed; no guest tab predates it, so the guest door requires `rev` on every write.
+    return new Response(JSON.stringify({ error: "rev_requis" }),
+      { status: 400, headers: { "content-type": "application/json" } });
+  }
+  const by = porte === "invite"
+    // NEVER an email (there is none), NEVER the literal "live": a guest's identity is
+    // self-declared and lives in the invite row, not in an Access header this door doesn't have.
+    ? "invite:" + nomEcrivainInvite
+    : identiteFoyer(request, porte);
+
+  // BLIND write (old contract): no expected revision, last writer wins. Never reachable from the
+  // invite door: refused above.
   if (expected === null) {
     await env.DB
       .prepare(

@@ -1,0 +1,26 @@
+<!-- Share ONE plan by link (batch 4, docs/decisions/0004-partage-par-lien.md). Opened from a
+     plan row's "Share" button in the Plans panel (html/11-plans.html, wired from
+     src/ts/panneaux/partage.ts). A capability link, not an account: anyone holding it can edit
+     the plan until it is revoked. Never reachable from the guest door: "Plans…" itself is hidden
+     there (src/ts/fil/invite.ts's finirGuestOnboarding). -->
+<div class="setup share" id="shareDlg" hidden role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+  <div class="setup-card share-card" role="document">
+    <div class="setup-body">
+      <div class="setup-head" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+        <h2 id="shareTitle">Share <span id="sharePlanName"></span></h2>
+        <button class="flow-x" id="shareClose" title="Close" aria-label="Close">×</button>
+      </div>
+      <p class="share-lede">Anyone with a link can edit this plan. Revoke a link to take it back.</p>
+      <div class="setup-actions">
+        <button class="btn pri" id="shareCreate">Create a link</button>
+      </div>
+      <div class="share-new" id="shareNew" hidden>
+        <input id="shareNewLink" type="text" readonly spellcheck="false" autocomplete="off">
+        <button class="btn" id="shareCopy">Copy</button>
+      </div>
+      <p class="share-fallback" id="shareFallback" hidden></p>
+      <div class="share-list" id="shareList"></div>
+      <p class="share-hint" id="shareHint"></p>
+    </div>
+  </div>
+</div>

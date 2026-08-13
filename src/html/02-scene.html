@@ -20,6 +20,9 @@
            lasts: the write exception used to be swallowed silently and the person thought they
            were saving. -->
       <span class="store-chip" id="storeChip" hidden>not saved here</span>
+      <!-- Guest only (batch 3): reopens the name step to change how this device's name appears
+           to others. Hidden everywhere else. -->
+      <button class="btn sm hbtn" id="btnGuestName" type="button" hidden title="Change how your name appears to others">Name…</button>
       <span class="sync-chip" id="syncChip" hidden></span>
       <button class="btn sm hbtn" id="btnHelp" title="Help (?)" aria-label="Help">?</button>
     </div>
@@ -39,6 +42,17 @@
       <div class="boot-notice" id="bootNotice" hidden>
         <span id="bootNoticeText"></span>
         <button class="flow-x" type="button" id="bootNoticeX" title="Close" aria-label="Close">×</button>
+      </div>
+      <!-- Local-only mode (batch 3, no invitation on the guest door): sync is fully off, so the
+           file export is made prominent here rather than left inside the File menu alone. One
+           line, no lecture. Lives inside `#viewport` (not a separate top-level fragment) for the
+           SAME reason `#bootNotice` does: `position:absolute;left/right:16px` is scoped by
+           `#viewport`'s own `position:relative`, so it stays confined to the stage and never
+           overlaps the rail. -->
+      <div class="local-banner" id="localBanner" hidden>
+        <span>This plan lives only in this browser: it is not shared, and it can be lost.</span>
+        <button class="btn sm pri" id="localBannerSave" type="button">Save to file…</button>
+        <button class="flow-x" id="localBannerX" type="button" title="Close" aria-label="Close">×</button>
       </div>
       <button class="chat-btn" id="chatBtn" hidden title="Chat" aria-label="Chat">💬<span class="chat-badge" id="chatBadge" hidden>0</span></button>
       <div class="chat-panel" id="chatPanel" hidden role="dialog" aria-label="Chat">

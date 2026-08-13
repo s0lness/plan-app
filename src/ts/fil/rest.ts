@@ -28,7 +28,7 @@
 import type { Contexte } from "../app/contexte.ts";
 import type { EtatPuce, Fil, RefusRevision } from "./etat.ts";
 import { wsLive } from "./etat.ts";
-import { SYNC_ON, SYNC_URL, avecPlan } from "./drapeaux.ts";
+import { SYNC_ON, SYNC_URL, avecPlan, estInvite } from "./drapeaux.ts";
 import { $ } from "../noyau/dom.ts";
 import { toast } from "../app/toast.ts";
 import { displayName } from "../mesure/curseur-pair.ts";
@@ -46,12 +46,37 @@ const CONFLIT_KEY = "room-planner-v4-conflit";   // [{at, par, rev, state}], the
 const CONFLIT_MAX = 5;                           // beyond this, the oldest one drops out
 const FETCH_TIMEOUT = 8000;
 
-/** What `GET /api/plan` returns, and what a 409's body carries in addition (`data` = the winning state). */
+/** What `GET /api/plan` returns, and what a 409's body carries in addition (`data` = the winning state).
+ *  `error` (batch 3) is what a 403 from the guest door carries instead: `"porte_refusee"` or
+ *  `"invite_invalide"` (`functions/api/plan.ts`, `functions/_middleware.ts`). */
 interface ReponsePlan {
   data?: unknown;
   rev?: number;
   updatedAt?: string;
   updatedBy?: string;
+  error?: string;
+}
+
+/**
+ * BATCH 3. A 403 shaped like the guest door's refusal: no invitation, a revoked one, an expired
+ * one, or a deleted plan. The SAME shape means the SAME reaction everywhere it can arrive (boot,
+ * poll, or a push refused mid-session), which is why this is a free function and not inlined
+ * three times.
+ */
+const estRefusInvite = (p: ReponsePlan | null | undefined): boolean =>
+  !!p && (p.error === "porte_refusee" || p.error === "invite_invalide");
+
+/**
+ * ONE decision, read from `ctx.crochets` rather than importing `fil/invite.ts` directly: this
+ * module is imported BY that one (for `setSyncChip`), so the reverse import would be a cycle.
+ * The crochet pattern is the SAME one `fil/branchement.ts` already uses for every other
+ * cross-batch wire (`detacherSynchro`, `publierPlanEntier`…): a hook nobody has set yet is a
+ * silent no-op, which is exactly the right default on the household door, where neither crochet
+ * is EVER wired to anything but a no-op path.
+ */
+function surRefusGuest(ctx: Contexte): void {
+  if (estInvite()) ctx.crochets.accesRefuseInvite?.();
+  else ctx.crochets.accesRefuseSansInvite?.();
 }
 
 interface ErreurApi extends Error {
@@ -94,7 +119,10 @@ export function setSyncChip(fil: Fil, kind: EtatPuce): void {
   const chip = $("syncChip");
   if (!chip) return;
   if (!SYNC_ON) { chip.hidden = true; return; }
-  if (fil.detached && kind !== "local") return;   // detached tab: the chip stays "local"
+  // A detached tab's chip stays "local" (js/41's pre-conversion restore), UNLESS this detach is
+  // the guest door's local-only mode (batch 3), which reuses `fil.detached` for its mechanics
+  // (see `fil/invite.ts`) but must show its OWN wording, never that unrelated one.
+  if (fil.detached && kind !== "local" && kind !== "local-only") return;
   // WS alive: the collaboration layer owns the chip ("live ✓"), we ignore the D1 fallback.
   if (wsLive(fil) && kind !== "__ws__") return;
   chip.hidden = false;
@@ -105,6 +133,15 @@ export function setSyncChip(fil: Fil, kind: EtatPuce): void {
   if (kind === "local") {
     _okStamp = ""; chip.classList.remove("slow"); ecrirePuce(fil, chip, "local", true);
     chip.title = "Plan restored on this device: changes are not shared.";
+    return;
+  }
+  // BATCH 3. The guest door with no invitation: not a household tab that lost its link, a
+  // visitor whose work was never meant to leave this browser. NOT one of the five sync states
+  // (never "offline", never "not saved": both would imply a shared plan exists somewhere and is
+  // merely unreachable right now).
+  if (kind === "local-only") {
+    _okStamp = ""; chip.classList.remove("slow"); ecrirePuce(fil, chip, "local only", false);
+    chip.title = "Nothing here leaves this browser: there is no account and nothing is shared. Save a file if you want to keep this plan.";
     return;
   }
   // "slow sync": real time has dropped, we are on the D1 fallback (4 s poll). DISTINCT from
@@ -441,6 +478,9 @@ export function doPut(ctx: Contexte, fil: Fil): void {
     // 409: the row moved under us. This is NOT an outage, not "offline", not a reason to resend.
     // We set aside, we announce, we re-read.
     if (err && err.status === 409) { onPutRefused(ctx, fil, s, err.payload); return; }
+    // BATCH 3, design edge 18. A PERMISSION answer must never be dressed as "offline": a revoked
+    // guest reaches this exact catch (a write refused mid-session) as often as the boot GET does.
+    if (err && err.status === 403 && estRefusInvite(err.payload)) { surRefusGuest(ctx); return; }
     fil.dirtySincePut = true;                  // we will retry on the next save() or poll tick
     fil.putFailed = true;
     setSyncChip(fil, "offline");
@@ -500,7 +540,12 @@ export function pollPull(ctx: Contexte, fil: Fil): void {
     // A device that was offline on its first visit (wizard dismissed) reaches the server HERE. If
     // the household plan is confirmed empty, this is the real first launch -> wizard.
     if (!serverHasPlan(res.data) && pullSafe(ctx, fil)) maybeOpenSetupFromServer(ctx);
-  }).catch(() => { if (!fil.putInFlight) setSyncChip(fil, "offline"); });
+  }).catch((err: ErreurApi) => {
+    // BATCH 3, design edge 18. Same reasoning as `doPut`'s catch: a link revoked while the poll
+    // was in flight must reach the dead end, not "offline".
+    if (err && err.status === 403 && estRefusInvite(err.payload)) { surRefusGuest(ctx); return; }
+    if (!fil.putInFlight) setSyncChip(fil, "offline");
+  });
 }
 
 export function syncBoot(ctx: Contexte, fil: Fil): void {
@@ -546,7 +591,17 @@ export function syncBoot(ctx: Contexte, fil: Fil): void {
   // The GET FAILED: the publication lock STAYS SET. We still have not seen the household plan, so
   // we still do not have the right to overwrite it. `pollPull` will lift it as soon as a read
   // succeeds; until then everything stays local and the chip says "offline".
-  }).catch(() => { setSyncChip(fil, "offline"); });
+  //
+  // BATCH 3. UNLESS the failure is the guest door's own refusal shape (403, `porte_refusee` or
+  // `invite_invalide`): THIS is the discovery point (docs/decisions/0004-partage-par-lien.md,
+  // "how the client learns where it is"). An invite already redeemed but now dead (revoked
+  // between redemption and this very read) is the dead end; no invite ever redeemed is
+  // local-only. `surRefusGuest` tells the two apart by reading the mode `fil/invite.ts` set (or
+  // did not set) before this GET was even sent.
+  }).catch((err: ErreurApi) => {
+    if (err && err.status === 403 && estRefusInvite(err.payload)) { surRefusGuest(ctx); return; }
+    setSyncChip(fil, "offline");
+  });
 }
 
 /**

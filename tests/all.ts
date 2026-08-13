@@ -69,6 +69,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/run.ts",                     chrome: 1 },
   { f: "tests/apercu-pose.ts",             chrome: 1 },
   { f: "tests/plan-abime.ts",              chrome: 2 },
+  { f: "tests/porte-invitee.ts",           chrome: 2 },   // the guest door in a real browser: token capture, name step, dead end, local-only
   { f: "tests/interactions.ts",            chrome: 1 },
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
@@ -90,6 +91,11 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
   { f: "tests/exports-morts.ts",           chrome: 0 },   // reads the SOURCE: no browser
   { f: "tests/no-dead-selectors.ts",       chrome: 0 },                        // CSS classes taken by src/ts
+  { f: "tests/porte.ts",                   chrome: 0 },   // door + identity: functions/porte.ts, no browser
+  { f: "tests/invitation.ts",              chrome: 0 },   // the invite: functions/api/invite(s).ts, no browser
+  { f: "tests/identite-fil.ts",            chrome: 0 },   // wire identity, client side: src/ts/fil/etat.ts + mesure/curseur-pair.ts, no browser
+  { f: "tests/invite-fil.ts",              chrome: 0 },   // guest client pure logic: token-from-hash, storage key per mode, duplicate-name display, no browser
+  { f: "tests/partage-fil.ts",             chrome: 0 },   // owner share panel pure logic: link construction, guestHost fallback, live filter, row formatting, no browser
   // The SERVER validator doesn't know about the client: same file, same verdict, in both modes.
   { f: "live-worker/test-local.ts",        chrome: 0 },
 ];

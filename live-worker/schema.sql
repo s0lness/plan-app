@@ -36,3 +36,44 @@ CREATE TABLE IF NOT EXISTS errors(
   stack TEXT,
   ua TEXT
 );
+
+-- Invites for sharing a plan by link, no Access account required (functions/api/invite.ts,
+-- functions/api/invites.ts, functions/invitation.ts). See docs/decisions/0004-partage-par-lien.md
+-- ("batch 1b, the invite").
+--   token      : the capability itself, PRIMARY KEY, 128 bits base64url. Stored IN CLEAR,
+--                deliberately: hashing it would mean the link can be shown exactly once, and the
+--                owner will want to re-copy it later (a "Share" panel that lists live invites).
+--                What this row protects is the SAME thing the link already protects — someone
+--                holding the token can already reach the plan — so a leaked row leaks nothing a
+--                leaked link would not. Reachable only through the household door
+--                (functions/api/invites.ts checks porteDe()==="foyer" itself, not just the
+--                middleware), which is why this is acceptable here and would not be for anything
+--                the guest door itself could read back.
+--   plan_id    : which plan the token unlocks. No foreign key (this database has none anywhere):
+--                a plan can be deleted while a link stays live, and that is read back as a dead
+--                end (functions/api/invite.ts), not as a database error.
+--   role       : 'edit' is the only value accepted today. The column exists so read-only access
+--                can be ADDED later without a migration; it is not "one line" either (it needs op
+--                rejection in the Durable Object, PUT rejection here, and UI trimming), so it is
+--                deferred on purpose, not implemented halfway.
+--   expires_at : NULL = no expiry (the row never disappears on its own; revoke is the real
+--                control). functions/api/invites.ts always sets a value (default 30 days) when it
+--                creates a row, so NULL is reachable only from a row created some other way.
+--   revoked    : 0/1. The real control, not expiry: `functions/api/invites.ts`'s DELETE flips
+--                this rather than deleting the row, so "revoke" stays idempotent (a second revoke
+--                of the same token is still 200, never a 404 that would confirm a guessed token
+--                ever existed).
+--   uses, last_used_at, last_name : best-effort bookkeeping written by
+--                functions/api/invite.ts on redemption. `last_name` is the STORE for a guest's
+--                self-declared name, not local storage: an iOS in-app browser (a link opened from
+--                a message) partitions and discards storage, so "a returning guest skips the name
+--                step" would be false exactly where links get opened (design edge 20).
+CREATE TABLE IF NOT EXISTS invites(
+  token TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'edit',
+  created_at TEXT, created_by TEXT,
+  expires_at TEXT,
+  revoked INTEGER NOT NULL DEFAULT 0,
+  uses INTEGER NOT NULL DEFAULT 0, last_used_at TEXT, last_name TEXT
+);

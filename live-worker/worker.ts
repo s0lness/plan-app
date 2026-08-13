@@ -5,19 +5,68 @@
 
 import {
   applyOp, sanitizeState, colorFor, isV5, OpError, sanitizeCursor, sanitizeDrag,
-  planFp, strHash, emptyPlan, cleanPlanId, PLAN_ID_DEFAUT,
+  planFp, strHash, emptyPlan, cleanPlanId, PLAN_ID_DEFAUT, cleanGuestName, nameFromEmail,
 } from "./ops.ts";
 import type { Operation, PlanState } from "./ops.ts";
 
 interface Env {
   DB: D1Database;
   ROOM: DurableObjectNamespace;
+  // Optional door allowlist, same contract as functions/porte.ts: comma-separated hostnames,
+  // an entry may start with `*.`. ABSENT = trust the header as before (live-worker/test-local.ts
+  // has no such variable configured and must stay green).
+  HOUSEHOLD_HOSTS?: string;
 }
 
+// ---- SOCKET IDENTITY (batch 2, wire identity) ---------------------------------------------------
+// `email` is the HOUSEHOLD identity (Access-proven, "inconnu" when unresolvable); `guest` +
+// `guestId` + `token` exist ONLY for the guest door and are always "" / false for a household
+// socket. `name` is the one field BOTH sides can carry: a guest's self-declared label, or (once a
+// household member also sets one through `{t:"name"}`) a chosen label instead of an email-derived
+// one. `token` is the raw invite token: it is what `/revoke` matches sockets against (edge 6) and
+// what the per-socket rate cap is keyed on (edge 15) — NOT a credential in its own right here (the
+// socket is already open), just the label that ties a live connection back to the invite row that
+// let it in.
 interface SocketAttachment {
   email: string;
   color: string;
   tag: string;
+  name: string;
+  guest: boolean;
+  guestId: string;
+  token: string;
+}
+
+// Same shape as functions/ws.ts's `?g=` cleaning: a guest's OWN second tab identifier, not a
+// credential, grants nothing. Re-validated here too (defence in depth: this Worker trusts nothing
+// forwarded to it without re-checking, the same way functions/api/invites.ts re-checks `porteDe()`
+// even though `_middleware.ts` already gated the request).
+const GUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Builds a socket's attachment from the headers `functions/ws.ts` sets (ALWAYS set, never
+ * conditionally — see its header note — so a caller cannot forge `X-Plan-Guest`/`X-Plan-Name`/
+ * `X-Plan-Guest-Id`/`X-Plan-Token` by sending its own copy). Pulled out of `PlanRoom.fetch` as a
+ * PURE function of `(request, tag)` so it is testable under plain node without a real
+ * `WebSocketPair` (which `fetch` itself needs and node does not provide).
+ *
+ * `??` NOT `||` ON EMAIL: a guest's `X-Plan-Email` is the EXPLICIT empty string ("there is no
+ * email to have"), which `||` would silently coerce back into the literal "inconnu" — a real
+ * value with its OWN meaning ("household door, but Access gave us no header"). `??` only falls
+ * back when the header is truly ABSENT (an older forwarder, or a test double that never set it).
+ */
+export function attachmentFromRequest(request: Request, tag: string): SocketAttachment {
+  const email = request.headers.get("X-Plan-Email") ?? "inconnu";
+  const guest = request.headers.get("X-Plan-Guest") === "1";
+  const name = cleanGuestName(request.headers.get("X-Plan-Name") || "");
+  const guestIdRaw = (request.headers.get("X-Plan-Guest-Id") || "").trim();
+  const guestId = GUEST_ID_RE.test(guestIdRaw) ? guestIdRaw : "";
+  const token = String(request.headers.get("X-Plan-Token") || "").trim().slice(0, 128);
+  // Colour for a guest is derived from something the GUEST chose or generated (name, then their
+  // own device id, then the fresh socket tag as a last resort) instead of the email: there is no
+  // email, and `colorFor("")` would hand every unnamed guest the SAME hue.
+  const color = guest ? colorFor(name || guestId || tag) : colorFor(email);
+  return { email, color, tag, name, guest, guestId, token };
 }
 
 interface SequenceEntry {
@@ -29,6 +78,12 @@ interface SequenceEntry {
 interface ChatEntry {
   id: string;
   by: string;
+  // Author's display name and guest flag AT THE TIME OF SENDING (design edge 19: `chat` needs
+  // `name`/`guest` too). Stored so a REPLAYED history (`hello.chat`) can still be redacted for a
+  // later guest recipient without recomputing anything from `by` beyond the email-derivation
+  // fallback in `chatWire` (for entries written before this field existed, `name` is "").
+  name: string;
+  guest: boolean;
   text: string;
   ts: number;
 }
@@ -61,6 +116,30 @@ interface WireMessage {
   x?: number | null;
   y?: number | null;
   rot?: number | null;
+  name?: string;
+}
+
+// ---- THE SAME DOOR AS functions/porte.ts, applied here too ------------------------------------
+// A DOOR IN WAITING, and that is the point. Today `/ws` is served by Pages
+// (`functions/ws.ts` forwards through the `ROOM` binding), so `functions/_middleware.ts` covers
+// it and this `fetch` is not reachable from outside: the `workers.dev` subdomain is disabled.
+// But `live-worker/DEPLOY.md` §2 describes a zone route that would send `/ws*` straight HERE and
+// take precedence over Pages, and that document is a procedure someone may yet run. The day it
+// is run, this function becomes the front door of the most privileged route in the product,
+// reading a caller-supplied identity header with no middleware in front of it.
+// See docs/decisions/0004-partage-par-lien.md.
+// Kept as an independent copy, not an import from `functions/`: this file is bundled and
+// deployed as its own Worker (`live-worker/build-worker.ts`), a separate unit from the Pages
+// Functions it happens to share a repository with.
+function hoteAutorise(request: Request, env: Env): boolean {
+  const hotes = (env.HOUSEHOLD_HOSTS || "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+  // ABSENT VARIABLE = trust the header, exactly as before this door existed:
+  // live-worker/test-local.ts has no such configuration and must stay green.
+  if (!hotes.length) return true;
+  const hote = (request.headers.get("Host") || "").split(":")[0].trim().toLowerCase();
+  return hotes.some((motif) => motif.startsWith("*.")
+    ? hote.length > motif.length - 1 && hote.endsWith(motif.slice(1))
+    : hote === motif);
 }
 
 export default {
@@ -70,8 +149,17 @@ export default {
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("expected websocket", { status: 426 });
     }
-    // Access has already filtered; missing header -> "unknown" but we let it through.
-    const email = request.headers.get("Cf-Access-Authenticated-User-Email") || "inconnu";
+    // Access has already filtered on the household host; missing header -> "unknown" but we let
+    // it through. Off an unrecognized host (HOUSEHOLD_HOSTS declared and not matching) the header
+    // is caller-supplied and unsigned, so it is never trusted: force "inconnu" instead.
+    // It DOWNGRADES rather than refuses, unlike `functions/_middleware.ts`, which answers 403 on
+    // an unrecognized host. The asymmetry is deliberate: this handler is not reachable from
+    // outside today, so an unrecognized host here means a MISCONFIGURED allowlist far more often
+    // than an attack, and refusing would take the whole wire down rather than merely lose
+    // attribution. The exposed path is the Pages one, and that one fails closed.
+    const email = hoteAutorise(request, env)
+      ? (request.headers.get("Cf-Access-Authenticated-User-Email") || "inconnu")
+      : "inconnu";
     // WHICH plan. A refused identifier is an ERROR, never a silent fallback to `main`: falling
     // back to the household's plan because a URL was malformed would mean editing the wrong
     // document while believing to edit another one.
@@ -80,9 +168,19 @@ export default {
     const id = env.ROOM.idFromName(planId);
     const stub = env.ROOM.get(id);
     // We forward the identity AND the plan to the DO via headers on the forwarded request.
+    // `new Request(url, request)` COPIES every header of the original request, guest-related ones
+    // included: this dormant path has no concept of a guest door (`hoteAutorise` only knows
+    // `HOUSEHOLD_HOSTS`), so every one of them is FORCED, not merely defaulted, the same way
+    // `X-Plan-Email` already is above — a caller cannot present as a guest, or carry the internal
+    // `/revoke` marker (see `INTERNAL_HEADER`, never legitimate on a `/ws` request), through here.
     const fwd = new Request(url.toString(), request);
     fwd.headers.set("X-Plan-Email", email);
     fwd.headers.set("X-Plan-Id", planId);
+    fwd.headers.set("X-Plan-Guest", "0");
+    fwd.headers.set("X-Plan-Name", "");
+    fwd.headers.set("X-Plan-Guest-Id", "");
+    fwd.headers.set("X-Plan-Token", "");
+    fwd.headers.delete(INTERNAL_HEADER);
     return stub.fetch(fwd);
   },
 };
@@ -126,6 +224,38 @@ const SEQ_MAX_ENTRIES = 64;
 // therefore keep the numbers seen above the contiguous one, up to this width; beyond it, we
 // consider the gap final and close the window on the highest one.
 const SEQ_WINDOW = 64;
+
+// ---- PER-TOKEN RATE CAP (design edge 15) --------------------------------------------------------
+// Brute-forcing a 128-bit invite token is not the threat this guards against — revoke (edge 6) is
+// the real answer to a link handed around too widely. What this closes is a VALID link behaving
+// badly: a tight client-side loop (a bug, or a script fed the token) that would otherwise fill the
+// `plans` row and the D1 write quota with no ceiling at all. Measured interactive use: a furniture
+// drag emits its final `piece.set` on RELEASE, not per frame (gestures diff-and-send once, cf.
+// AGENTS.md "Gestures: ONE exit point"), so even a frantic multi-object session tops out at a
+// handful of `op` messages per SECOND. 120 / rolling minute (2/s sustained) leaves roughly ten
+// times that headroom — a human editing furniture can never hit it, a runaway loop will.
+// Keyed on the ATTACHMENT'S TOKEN, never on `tag`: the cap must follow the LINK (several guest
+// tabs can share one token), and a household socket's token is always "", so this never touches
+// household traffic (MAX_ENTITIES and the 1.5 MB plan ceiling already bound that side).
+const RATE_MAX_OPS = 120;
+const RATE_WINDOW_MS = 60_000;
+// Bound on the number of DISTINCT tokens tracked at once, same spirit as SEQ_MAX_ENTRIES: an
+// abandoned or revoked token's timestamp array must not linger in memory forever.
+const RATE_MAX_ENTRIES = 64;
+
+// The internal marker `functions/api/invites.ts` sets on its OWN freshly-built request to
+// `PlanRoom`'s `/revoke` route (docs/decisions/0004-partage-par-lien.md, edge 6). It is never
+// derived from an inbound client request — `functions/_middleware.ts` also strips it from every
+// request it forwards, and `functions/ws.ts` deletes it explicitly from what it forwards to `/ws`
+// — so its mere presence here can only mean this call came from that trusted code path, over the
+// `ROOM` binding, a call that never touches the network-facing `export default {fetch}` below (see
+// `handleRevoke`).
+const INTERNAL_HEADER = "X-Plan-Internal";
+// A distinguishable WebSocket close code (RFC 6455 application range 4000-4999) and reason, so a
+// client that reconnects after a revoke can tell it apart from an ordinary drop and show the dead
+// end screen instead of quietly retrying forever.
+const REVOKE_CLOSE_CODE = 4001;
+const REVOKE_CLOSE_REASON = "invite_revoked";
 
 // Will the plan fit into the DO's storage and into D1? Checked BEFORE any write: a mutation
 // accepted then rejected by storage.put() used to let the exception escape from
@@ -221,6 +351,10 @@ export class PlanRoom {
   chat: ChatEntry[];
   seq: Map<string, SequenceEntry>;
   d1Seen: string | null;
+  // Per-token rate window (design edge 15): token -> timestamps of `op` messages accepted within
+  // the rolling window. Memory only, same reasoning as `seq` (cf. RATE_MAX_ENTRIES): losing it on
+  // an eviction just resets the counter, which is harmless.
+  rateSeen: Map<string, number[]>;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -242,6 +376,7 @@ export class PlanRoom {
     // Fingerprint of the bytes of the D1 row that this DO last wrote or adopted. Persisted:
     // without this, an eviction would re-adopt the same REST write over and over.
     this.d1Seen = null;
+    this.rateSeen = new Map();
   }
 
   // Lazy load: DO storage first, otherwise D1, otherwise an empty plan.
@@ -359,14 +494,18 @@ export class PlanRoom {
       const o = await this.storage.get<OrphanTrace>("orphan");
       if (o) await this.storage.put("orphan", { ...o, told: vus });
     }
-    this.broadcast(this.conflictMsg({ ...trace, data: keepBytes ? "…" : null }), null);
+    this.broadcastFor((guestAudience) => this.conflictMsg({ ...trace, data: keepBytes ? "…" : null }, guestAudience), null);
     return v;
   }
 
   // Conflict message, built from a single place (reconciliation AND the `hello` on return).
-  conflictMsg(o: { by?: string | null; at?: string | null; bytes?: number; data?: unknown }) {
+  // `by` names a HOUSEHOLD writer (an email, or the REST fallback's "invite:<name>" string for a
+  // guest write) — not this batch's "author identity", but the same "no email to a guest" rule
+  // from item 2 applies here too: a guest recipient gets no `by` at all, only the fact that
+  // something was kept.
+  conflictMsg(o: { by?: string | null; at?: string | null; bytes?: number; data?: unknown }, guestAudience: boolean) {
     return {
-      t: "conflict", by: o.by || null, at: o.at || null,
+      t: "conflict", by: guestAudience ? null : (o.by || null), at: o.at || null,
       bytes: o.bytes || 0, kept: o.data ? "server" : "none",
     };
   }
@@ -390,6 +529,13 @@ export class PlanRoom {
   }
 
   async fetch(request: Request): Promise<Response> {
+    // `/revoke` is an INTERNAL route (docs/decisions/0004-partage-par-lien.md, edge 6): it never
+    // upgrades a socket, so it is handled BEFORE `adoptPlanId`/`ensureLoaded` (this room may not
+    // even hold a live plan yet, e.g. a link revoked before anyone ever joined). See `handleRevoke`
+    // for why this is safe to reach only from `functions/api/invites.ts`'s own trusted call.
+    const url = new URL(request.url);
+    if (url.pathname === "/revoke") return this.handleRevoke(request);
+
     await this.adoptPlanId(request.headers.get("X-Plan-Id"));
     await this.ensureLoaded();
     // The room was EMPTY: no one was in realtime, so everyone was on the REST fallback. This is
@@ -399,13 +545,39 @@ export class PlanRoom {
     if (this.state.getWebSockets().length === 0) {
       try { await this.reconcileD1(await this.storage.getAlarm() !== null); } catch (_) { /* serve anyway */ }
     }
-    const email = request.headers.get("X-Plan-Email") || "inconnu";
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     // Hibernation: the DO manages the socket via webSocketMessage/Close.
     this.state.acceptWebSocket(server);
-    server.serializeAttachment({ email, color: colorFor(email), tag: this.freshTag() });
+    server.serializeAttachment(attachmentFromRequest(request, this.freshTag()));
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /**
+   * `POST /revoke {token}` (docs/decisions/0004-partage-par-lien.md, edge 6): closes every LIVE
+   * socket whose attachment token matches, so "Revoke" in the owner's Share panel is not a lie for
+   * as long as the guest stays connected. Reachable in exactly ONE way: `functions/api/invites.ts`
+   * calling `env.ROOM.get(id).fetch(...)` directly on its OWN freshly-built `Request` — that call
+   * invokes THIS method straight away, over the binding, and never touches the network-facing
+   * `export default {fetch}` below (which still 404s any path but `/ws`, so even a future zone
+   * route sending traffic there gets nothing new). The `INTERNAL_HEADER` check is defence in
+   * depth on top of that structural guarantee: see its definition for what makes it trustworthy.
+   */
+  async handleRevoke(request: Request): Promise<Response> {
+    if (request.headers.get(INTERNAL_HEADER) !== "1") return new Response("forbidden", { status: 403 });
+    let body: { token?: unknown };
+    try { body = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    if (!token) return new Response("bad token", { status: 400 });
+    let closed = 0;
+    for (const ws of this.state.getWebSockets()) {
+      const a = this.attOf(ws);
+      if (a.token && a.token === token) {
+        try { ws.close(REVOKE_CLOSE_CODE, REVOKE_CLOSE_REASON); } catch (_) { /* already gone */ }
+        closed++;
+      }
+    }
+    return Response.json({ ok: true, closed });
   }
 
   // Device label, unique among LIVE sockets, stable for the duration of the socket. It's used by
@@ -428,7 +600,7 @@ export class PlanRoom {
   // ---- presence ----
   attOf(ws: WebSocket): SocketAttachment {
     return (ws.deserializeAttachment() as SocketAttachment | null)
-      || { email: "inconnu", color: colorFor("inconnu"), tag: "000000" };
+      || { email: "inconnu", color: colorFor("inconnu"), tag: "000000", name: "", guest: false, guestId: "", token: "" };
   }
 
   // ---- TECHNICAL IDENTITY IS THE DEVICE, NOT THE EMAIL ADDRESS -----------------------------------
@@ -441,11 +613,70 @@ export class PlanRoom {
   // its cursor, nor its drag ghosts appeared.
   // `tag` therefore accompanies EVERYTHING that is relayed: presence, ops, cursors, ghosts.
   // An OLD client simply ignores the extra key.
-  peers() {
-    return this.state.getWebSockets().map((ws) => {
-      const a = this.attOf(ws);
-      return { email: a.email, color: a.color, tag: a.tag || null };
-    });
+  //
+  // ---- WIRE IDENTITY, batch 2 --------------------------------------------------------------------
+  // Every message naming an author now goes through `authorWire`/`identityWire`: `tag`, `name` and
+  // `guest` are the SAME for every recipient (a guest recipient must still be able to tell peers
+  // apart and see who is who), but `email`/`by` is INCLUDED ONLY for a household recipient (item 2:
+  // "emails never cross to a guest"). Because the SAME broadcast reaches both kinds of socket, the
+  // household's own attribution must not be stripped at the SOURCE — hence `broadcastFor`, which
+  // builds (at most) two payload variants and sends each recipient the one meant for it.
+
+  /**
+   * The name a GUEST recipient should see for `a`. A guest author's own declared name if they have
+   * one; a HOUSEHOLD author has no such field (`a.name` is always "" there), so without this a
+   * guest would see a blank dot where a household peer's should be — "a display name instead [of
+   * the email], never an email at all" (item 2) means instead, not nothing.
+   */
+  nameForGuestAudience(a: SocketAttachment): string {
+    return a.name || nameFromEmail(a.email);
+  }
+
+  /** The author fields common to every relayed message (`op`/`cursor`/`drag`, which all key the
+   *  address as `by`): `tag` always, `name`+`guest` always (see `nameForGuestAudience`), `guestId`
+   *  when the author is a guest (not sensitive: a self-generated device id, never a credential),
+   *  `by` NEVER unless `guestAudience` is false. */
+  authorWire(a: SocketAttachment, guestAudience: boolean): Record<string, unknown> {
+    const o: Record<string, unknown> = {
+      tag: a.tag || null,
+      name: guestAudience ? this.nameForGuestAudience(a) : (a.name || ""),
+      guest: !!a.guest,
+    };
+    if (a.guest && a.guestId) o.guestId = a.guestId;
+    if (!guestAudience) o.by = a.email;
+    return o;
+  }
+
+  /** `hello.you` / `hello.peers` / `peer` shape: `authorWire` plus `color`, plus `email` for a
+   *  household recipient (mirrors the pre-batch-2 shape exactly, so an older client still works). */
+  identityWire(a: SocketAttachment, guestAudience: boolean): Record<string, unknown> {
+    const o: Record<string, unknown> = { color: a.color, ...this.authorWire(a, guestAudience) };
+    if (!guestAudience) o.email = a.email;
+    return o;
+  }
+
+  /** `exclude`: drop ONE socket from the list itself (webSocketClose's "remaining", which has
+   *  already left); `null` keeps every socket (hello, and the newcomer broadcast, which excludes
+   *  the RECIPIENT via `broadcastFor`'s own `exclude`, not the list). */
+  peersWire(guestAudience: boolean, exclude: WebSocket | null): Record<string, unknown>[] {
+    return this.state.getWebSockets()
+      .filter((ws) => ws !== exclude)
+      .map((ws) => this.identityWire(this.attOf(ws), guestAudience));
+  }
+
+  /** Full-fidelity peer list (household shape): kept for callers, and for tests, that only ever
+   *  cared about the household's own view (`live-worker/test-local.ts`). */
+  peers(): Record<string, unknown>[] { return this.peersWire(false, null); }
+
+  /** A stored chat entry, redacted for `guestAudience`. `e.by` (the real author identity) is kept
+   *  in STORAGE always; only the outgoing copy ever omits it (design edge 19). */
+  chatWire(e: ChatEntry, guestAudience: boolean): Record<string, unknown> {
+    const o: Record<string, unknown> = {
+      id: e.id, text: e.text, ts: e.ts, guest: !!e.guest,
+      name: guestAudience ? (e.name || nameFromEmail(e.by)) : (e.name || ""),
+    };
+    if (!guestAudience) o.by = e.by;
+    return o;
   }
 
   broadcast(obj: object, exclude: WebSocket | null) {
@@ -456,8 +687,65 @@ export class PlanRoom {
     }
   }
 
+  /**
+   * Per-recipient broadcast: `builder(guestAudience)` returns the payload for that AUDIENCE, and
+   * we serialize it AT MOST TWICE (once per distinct audience actually among the RECIPIENTS),
+   * never once per socket. "Do not simply strip at the source" (item 2): stripping the
+   * household's OWN email out of a single shared payload would blind the household to its own
+   * attribution, so two payloads are built instead of one, and each recipient gets the one that
+   * matches what it is.
+   *
+   * WHEN ONLY ONE AUDIENCE IS PRESENT among the recipients (the common case: a household with no
+   * guest connected, or — for `live-worker/test-local.ts`'s single-socket doubles — always), this
+   * delegates to `this.broadcast()` instead of sending directly: tests that override `room.broadcast`
+   * to capture what goes out (predating this batch, and unaware `broadcastFor` exists) keep working
+   * unchanged. Only a TRULY MIXED audience bypasses it, since `broadcast()` cannot carry two
+   * different payloads to two different sockets in one call.
+   */
+  broadcastFor(builder: (guestAudience: boolean) => object, exclude: WebSocket | null) {
+    const destinataires = this.state.getWebSockets().filter((ws) => ws !== exclude);
+    const guestPresent = destinataires.some((ws) => this.attOf(ws).guest);
+    const householdPresent = destinataires.some((ws) => !this.attOf(ws).guest);
+    if (!(guestPresent && householdPresent)) {
+      this.broadcast(builder(guestPresent), exclude);
+      return;
+    }
+    let householdStr: string | null = null;
+    let guestStr: string | null = null;
+    for (const ws of destinataires) {
+      const guestAudience = this.attOf(ws).guest;
+      const s = guestAudience
+        ? (guestStr ??= JSON.stringify(builder(true)))
+        : (householdStr ??= JSON.stringify(builder(false)));
+      try { ws.send(s); } catch (_) { /* dead socket, close will come */ }
+    }
+  }
+
   send(ws: WebSocket, obj: object) {
     try { ws.send(JSON.stringify(obj)); } catch (_) {}
+  }
+
+  // ---- PER-TOKEN RATE CAP (design edge 15, see RATE_MAX_OPS) -------------------------------------
+  // Household sockets carry an empty token and are NEVER capped here (see the constant's header
+  // note): this only ever throttles a specific guest LINK. Returns true if `token` may proceed
+  // (and records this attempt); false if it is OVER the cap for the rolling window.
+  rateOk(token: string): boolean {
+    if (!token) return true;
+    const now = Date.now();
+    let arr = this.rateSeen.get(token);
+    if (!arr) {
+      while (this.rateSeen.size >= RATE_MAX_ENTRIES) {
+        const oldest = this.rateSeen.keys().next().value as string | undefined;
+        if (oldest === undefined) break;
+        this.rateSeen.delete(oldest);
+      }
+      arr = [];
+      this.rateSeen.set(token, arr);
+    }
+    while (arr.length && now - arr[0]! > RATE_WINDOW_MS) arr.shift();
+    if (arr.length >= RATE_MAX_OPS) return false;
+    arr.push(now);
+    return true;
   }
 
   // ---- D1 snapshot (30 s debounce, carried by a storage ALARM) ----
@@ -558,9 +846,11 @@ export class PlanRoom {
       case "hello": {
         this.send(ws, {
           t: "hello",
-          // `tag`: device label unique among live sockets (cf. freshTag).
-          you: { email: att.email, color: att.color, tag: att.tag || null },
-          peers: this.peers(),
+          // `tag`: device label unique among live sockets (cf. freshTag). `name`/`guest` carry the
+          // wire identity added in batch 2; `email` is present here too (this is `att`'s OWN
+          // identity, sent back to itself) but stays "" for a guest, exactly as `X-Plan-Email` was.
+          you: this.identityWire(att, att.guest),
+          peers: this.peersWire(att.guest, null),
           state: this.plan,
           // `opCount` replaces the old `rev`: it's THIS Durable Object's op counter, it is purely
           // INFORMATIVE and is not compared to anything (especially not to the D1 row's `rev`,
@@ -574,16 +864,16 @@ export class PlanRoom {
           // An up-to-date client only arms its re-emission IF it sees this flag: facing an older
           // server, it behaves exactly as before, without re-emitting anything into the void.
           acks: true,
-          chat: this.chat.slice(-CHAT_CAP),
+          chat: this.chat.slice(-CHAT_CAP).map((e) => this.chatWire(e, att.guest)),
         });
         // The others learn about the newcomer.
-        this.broadcast({ t: "peer", peers: this.peers() }, ws);
+        this.broadcastFor((guestAudience) => ({ t: "peer", peers: this.peersWire(guestAudience, null) }), ws);
         // A write made offline couldn't be merged while this person was away? It's THEM who lost
         // work, and they weren't there to hear about it. We tell them when they come back, only
         // once (the `told` list remembers who has already been notified).
         const orphan = await this.storage.get<OrphanTrace>("orphan");
         if (orphan && !(orphan.told || []).includes(att.email)) {
-          this.send(ws, this.conflictMsg(orphan));
+          this.send(ws, this.conflictMsg(orphan, att.guest));
           await this.storage.put("orphan", { ...orphan, told: [...(orphan.told || []), att.email] });
         }
         break;
@@ -628,6 +918,26 @@ export class PlanRoom {
         // The number is CONSUMED as soon as the server has processed it, refusal included: in
         // both cases the client got its response (the echo or the `err`), so it won't re-emit it.
         if (sq) this.seqNote(sq, seq);
+
+        // ---- GUEST-ONLY REFUSALS (design edges 15, 17; batch 2 items 4, 5, 7) --------------------
+        // All three share the SAME numbered err path as an ordinary validation refusal: the client
+        // must UNDO through the normal receive path, never silently swallow a rejected change.
+        if (!this.rateOk(att.token)) {
+          return this.send(ws, { t: "err", reason: "rate_limited", n: seq, kind: (msg.op && msg.op.kind) || null });
+        }
+        // Item 5: the name gate is client-side in the guest onboarding UI (batch 3), a disabled
+        // Join button stops a PERSON, not a script. `sync`/`hello` stay allowed (a nameless guest
+        // must still be able to SEE the plan and be told what is wrong); only `op` is gated.
+        if (att.guest && !att.name) {
+          return this.send(ws, { t: "err", reason: "guest_unnamed", n: seq, kind: (msg.op && msg.op.kind) || null });
+        }
+        // Item 4: `plan5.replace` replaces the plan in ONE atomic op AND clears undo history (cf.
+        // AGENTS.md, "Ctrl+Z undoes only its author's work"). Hidden from the guest UI (batch 3);
+        // refused here regardless of what reaches the wire.
+        if (att.guest && msg.op && msg.op.kind === "plan5.replace") {
+          return this.send(ws, { t: "err", reason: "guest_no_replace", n: seq, kind: "plan5.replace" });
+        }
+
         const before = this.plan;
         let next;
         try {
@@ -661,8 +971,10 @@ export class PlanRoom {
         // better (it proves not only receipt, but APPLICATION). Peers, for their part, ignore a
         // number that isn't theirs: they compare `tag` to their own, exactly as for the undo
         // replay log.
-        this.broadcast({ t: "op", op: msg.op, by: att.email, tag: att.tag || null, n: seq,
-          opCount: this.opCount, fp: planFp(this.plan) }, null);
+        this.broadcastFor((guestAudience) => ({
+          t: "op", op: msg.op, n: seq, opCount: this.opCount, fp: planFp(this.plan),
+          ...this.authorWire(att, guestAudience),
+        }), null);
         // A NUMBER IS MISSING. The op that just went through wasn't the expected next one: an op
         // from this device was lost in transit. We tell it right away rather than letting it wait
         // for its own guard delay: it will re-emit what's missing, at its CURRENT value.
@@ -684,10 +996,10 @@ export class PlanRoom {
         // Relayed as-is to the other tab: therefore validated, cf. sanitizeCursor.
         const c = sanitizeCursor(msg);
         if (!c) break;
-        this.broadcast({
-          t: "cursor", by: att.email, tag: att.tag || null, color: att.color,
-          room: c.room, x: c.x, y: c.y,
-        }, ws);
+        this.broadcastFor((guestAudience) => ({
+          t: "cursor", color: att.color, room: c.room, x: c.x, y: c.y,
+          ...this.authorWire(att, guestAudience),
+        }), ws);
         break;
       }
 
@@ -696,21 +1008,45 @@ export class PlanRoom {
         // `pieceId` ends up in a CSS selector on the peer's side: validated, cf. sanitizeDrag.
         const d = sanitizeDrag(msg);
         if (!d) break;
-        this.broadcast({
-          t: "drag", by: att.email, tag: att.tag || null, color: att.color,
-          room: d.room, pieceId: d.pieceId, x: d.x, y: d.y, rot: d.rot,
-        }, ws);
+        this.broadcastFor((guestAudience) => ({
+          t: "drag", color: att.color, room: d.room, pieceId: d.pieceId, x: d.x, y: d.y, rot: d.rot,
+          ...this.authorWire(att, guestAudience),
+        }), ws);
         break;
       }
 
       case "chat": {
         const text = String(msg.text ?? "").slice(0, 500).trim();
         if (!text) return;
-        const entry = { id: crypto.randomUUID(), by: att.email, text, ts: Date.now() };
+        // `name`/`guest` captured AT SEND TIME (design edge 19): a stored entry survives a rename
+        // and a departure alike, so the replayed history in a later `hello` must not depend on the
+        // author's socket still being around, or on their CURRENT name.
+        const entry: ChatEntry = { id: crypto.randomUUID(), by: att.email, name: att.name || "", guest: !!att.guest, text, ts: Date.now() };
         this.chat.push(entry);
         if (this.chat.length > CHAT_CAP) this.chat = this.chat.slice(-CHAT_CAP);
         await this.storage.put("chat", this.chat);
-        this.broadcast({ t: "chat", msg: entry }, null);
+        this.broadcastFor((guestAudience) => ({ t: "chat", msg: this.chatWire(entry, guestAudience) }), null);
+        break;
+      }
+
+      // A socket may set/change its display name AT ANY TIME (item 5), not only a guest at
+      // onboarding: this is also what the sync-chip's "change my name" menu (batch 3/4) will call.
+      // Cleaned server-side regardless of what the caller already did upstream (defence in depth,
+      // same reasoning as re-checking `porteDe()` in every Pages Function that could reach here).
+      case "name": {
+        const cleaned = cleanGuestName(msg.name);
+        const next: SocketAttachment = { ...att, name: cleaned };
+        // Colour follows the SAME formula used at connection time (cf. `attachmentFromRequest`),
+        // so picking/typing a name doesn't leave the dot showing the colour derived from the OLD
+        // (usually empty) one. A household socket's colour stays tied to its email: it must not
+        // drift just because someone typed a name into the same field.
+        if (att.guest) next.color = colorFor(cleaned || att.guestId || att.tag);
+        ws.serializeAttachment(next);
+        // Presence must reflect the rename on every screen right away, including sockets that
+        // never send an `op` (a guest who only ever looks) and therefore never trigger the
+        // ordinary `peer` broadcast on their own.
+        this.broadcastFor((guestAudience) => ({ t: "peer", peers: this.peersWire(guestAudience, null) }), null);
+        this.send(ws, { t: "name", ok: true, name: cleaned });
         break;
       }
 
@@ -734,11 +1070,8 @@ export class PlanRoom {
     // unique per socket and never reused. Nothing to purge later.
     const att = this.attOf(ws);
     if (att && att.tag) this.seq.delete(att.tag);
+    this.broadcastFor((guestAudience) => ({ t: "peer", peers: this.peersWire(guestAudience, ws) }), ws);
     const remaining = this.state.getWebSockets().filter((s) => s !== ws);
-    this.broadcast({ t: "peer", peers: remaining.map((s) => {
-      const a = this.attOf(s);
-      return { email: a.email, color: a.color, tag: a.tag || null };
-    }) }, ws);
     // Last departure: immediate flush to D1 if a snapshot is due (alarm armed), then disarming.
     // If the flush fails, we LEAVE the alarm: it will replay the snapshot.
     if (remaining.length === 0) {

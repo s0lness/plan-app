@@ -70,3 +70,28 @@ export function v5DerivedId(prefix: string): string {
   do { id = prefix + (n++); } while (used.has(id));
   return id;
 }
+
+// ---- BATCH 3, GUEST CLIENT: A GUEST'S OWN SECOND TAB ------------------------------------------
+// docs/decisions/0004-partage-par-lien.md, design edge 8. `v5DeviceTag` (above) is per SOCKET,
+// so it cannot tell "my other tab" from "a different guest": two tabs of the same guest open two
+// sockets, hence two different tags. `guestId`, by contrast, is per BROWSER PROFILE: `localStorage`
+// (not `sessionStorage`, deliberately, unlike `v5DeviceTag`), read back identically by every tab
+// on this device, and by nobody else's. `wsSameAccount` (`fil/etat.ts`) compares it the same way
+// it compares an email on the household door.
+const GUEST_ID_KEY = "plan-guest-id";
+// Same shape the server re-validates (`functions/ws.ts`'s `GUEST_ID_RE`, `live-worker/worker.ts`'s
+// copy): not a credential, so no cryptographic requirement, just narrow enough to carry nothing
+// but itself.
+const GUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function guestIdCourant(): string {
+  let g: string | null = null;
+  try { g = localStorage.getItem(GUEST_ID_KEY); } catch (_) { g = null; }
+  if (g && GUEST_ID_RE.test(g)) return g;
+  const octets = new Uint8Array(8);
+  try { crypto.getRandomValues(octets); }
+  catch (_) { for (let i = 0; i < octets.length; i++) octets[i] = Math.floor(Math.random() * 256); }
+  g = Array.from(octets, (b) => b.toString(16).padStart(2, "0")).join("");
+  try { localStorage.setItem(GUEST_ID_KEY, g); } catch (_) { /* private browsing: works for this load, just not remembered */ }
+  return g;
+}

@@ -1,0 +1,22 @@
+  /* ---------- guest door: name step, dead end, local-only banner (batch 3) ---------- */
+  .invite-name-card{grid-template-columns:1fr;width:min(420px,100%)}
+  .invite-back{margin:2px 0 0;color:var(--faint);font-size:11.5px}
+
+  /* A FULL SCREEN, not a modal over the app: no planner behind it, ever. Sits above `.setup`
+     (z-index 400) so a race that leaves the name step open underneath still resolves to this. */
+  .dead-end{position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;
+    padding:24px;background:var(--bg)}
+  .dead-end[hidden]{display:none}
+  .dead-end-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-modal);
+    box-shadow:var(--shadow);max-width:420px;padding:26px 24px;text-align:center}
+  .dead-end-card h2{margin:0 0 8px;font-size:19px;font-weight:650;letter-spacing:.2px}
+  .dead-end-card p{margin:0 0 4px;color:var(--muted);font-size:13px;line-height:1.45}
+  .dead-end-saved{font-weight:600;color:var(--ink)}
+  .dead-end-card .invite-back{margin-top:14px}
+
+  .local-banner{position:absolute;left:16px;right:16px;top:14px;z-index:255;
+    display:flex;align-items:center;gap:10px;
+    background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius-chip);
+    padding:8px 10px 8px 12px;color:var(--ink);font-size:12.5px;line-height:1.4;box-shadow:var(--shadow)}
+  .local-banner[hidden]{display:none}
+  .local-banner span{flex:1;min-width:0}

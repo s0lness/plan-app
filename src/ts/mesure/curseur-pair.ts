@@ -56,7 +56,7 @@ function hachage(s: string): number {
  * trailing digits stripped (`jean.dupont42@…` → "Jean Dupont"). An empty address returns "":
  * callers already know how to fall back to something else, and inventing a name would be worse.
  */
-export function displayName(email: unknown): string {
+function displayNameFromEmail(email: unknown): string {
   const s = String(email || "").trim();
   if (!s) return "";
   const local = (s.split("@")[0] || "").replace(/\d+$/, "");
@@ -65,10 +65,79 @@ export function displayName(email: unknown): string {
   return mots.map((m) => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase()).join(" ").slice(0, 32);
 }
 
-export function personColor(email: unknown, fallback?: string): string {
-  const s = String(email || "").trim().toLowerCase();
-  if (!s) return fallback || "var(--accent)";
-  return PALETTE[hachage(s) % PALETTE.length]!;
+/**
+ * PREFERS AN EXPLICITLY SENT NAME (docs/decisions/0004-partage-par-lien.md, "batch 2, wire
+ * identity"). A guest's `name` is self-declared and carried on the wire as-is (`peer`, `op`,
+ * `cursor`, `drag`, `chat`, `hello.you`/`.peers`): it is NOT an email and must never be run
+ * through the local-part derivation above. A household author still has no such field (only a
+ * guest chooses one today), so passing its peer object here — instead of just its `.email` — is
+ * what lets a GUEST recipient see something better than "?" for a household peer too: the server
+ * fills `name` in with an email-derived one for exactly that recipient (`nameForGuestAudience` in
+ * `live-worker/worker.ts`), and this function only has to trust whatever arrives.
+ *
+ * Every EXISTING call site kept passing a bare string (an email, or an author id): the object form
+ * is additive, so `displayName(email)` still behaves exactly as before.
+ */
+export function displayName(o: unknown): string {
+  if (o && typeof o === "object" && !Array.isArray(o)) {
+    const rec = o as Record<string, unknown>;
+    const nom = typeof rec.name === "string" ? rec.name.trim() : "";
+    if (nom) return nom.slice(0, 40);
+    return displayNameFromEmail(rec.email ?? rec.by);
+  }
+  return displayNameFromEmail(o);
+}
+
+/**
+ * Same "prefers an explicit name" rule as `displayName`: the colour hash is keyed on the name when
+ * one exists (deterministic across every surface that renders a given guest, independently of
+ * whether a `color`/`fallback` happened to be threaded through to this particular call), falling
+ * back to the email, then to `fallback`/the accent. Backward compatible: a bare string (or no
+ * object at all) behaves exactly as before this batch.
+ */
+export function personColor(o: unknown, fallback?: string): string {
+  let cle = "";
+  if (o && typeof o === "object" && !Array.isArray(o)) {
+    const rec = o as Record<string, unknown>;
+    const nom = typeof rec.name === "string" ? rec.name.trim() : "";
+    cle = nom || String(rec.email ?? rec.by ?? "").trim();
+  } else {
+    cle = String(o || "").trim();
+  }
+  cle = cle.toLowerCase();
+  if (!cle) return fallback || "var(--accent)";
+  return PALETTE[hachage(cle) % PALETTE.length]!;
+}
+
+/**
+ * DUPLICATE-NAME DISPLAY (docs/decisions/0004-partage-par-lien.md, design edge 3). Two peers can
+ * end up with the SAME rendered name (two guests who both typed "Marie", or a guest who typed
+ * the same label a household member's email derives to): the wire still keys them apart by
+ * `tag` (a device is never confused), but the SCREEN would show two identical-looking dots or
+ * cursors, which is its own kind of lie.
+ *
+ * PURE and DISPLAY-ONLY: it never touches what is stored anywhere (the invite row, `wsMe.name`,
+ * the wire) — only what THIS call paints. `all` should be the FULL peer set (self included): the
+ * discriminator is derived by sorting every collision's `tag` and reading off the target's rank,
+ * so every screen that received the same peer list computes the SAME numbering independently,
+ * with no coordination and no extra round trip. A target with no `tag` at all (e.g. a value read
+ * before the wire ever set one) simply never collides: it always renders plain.
+ */
+export function dedupedDisplayName(all: Iterable<unknown>, target: unknown): string {
+  const nom = displayName(target);
+  if (!nom) return nom;
+  const tagCible = (target && typeof target === "object" && !Array.isArray(target))
+    ? (target as Record<string, unknown>).tag : undefined;
+  if (tagCible === undefined || tagCible === null || tagCible === "") return nom;
+  const tagsMemeNom = new Set<string>();
+  for (const p of all) {
+    if (displayName(p) !== nom) continue;
+    const t = (p && typeof p === "object" && !Array.isArray(p)) ? (p as Record<string, unknown>).tag : undefined;
+    if (t !== undefined && t !== null && t !== "") tagsMemeNom.add(String(t));
+  }
+  if (tagsMemeNom.size <= 1) return nom;
+  const rang = [...tagsMemeNom].sort().indexOf(String(tagCible));
+  return rang <= 0 ? nom : `${nom} (${rang + 1})`;
 }
 
 function wsCursorArrowSVG(color: string): string {
@@ -82,10 +151,19 @@ function wsCursorArrowSVG(color: string): string {
  *
  * `label` comes from an e-mail RELAYED by the server: it goes into `innerHTML`, so it is ESCAPED,
  * like everything else (R-9). One single rule, no "harmless" exception.
+ *
+ * SINCE BATCH 2, `label` MAY ALSO BE A GUEST'S SELF-DECLARED NAME — the FIRST untrusted string
+ * this client has ever rendered (every name before it came from an Access-verified email). The
+ * SAME `escapeHtml` call already covers it: nothing here changed for that reason, which is exactly
+ * the point of having one rule instead of a second "harmless" path for the new source.
+ *
+ * `guest`: design edge 4, "make provenance visible". A household identity is Access-proven; a
+ * guest's is self-declared, and someone can name themselves after the owner — the `.guest` class
+ * (dashed border, `css/15-collab.css`) is the only thing that tells the two apart on screen.
  */
-export function creerNoeudCurseur(label: string, color: string): HTMLElement {
+export function creerNoeudCurseur(label: string, color: string, guest?: boolean): HTMLElement {
   const el = document.createElement("div");
-  el.className = "peer-cur";
+  el.className = guest ? "peer-cur guest" : "peer-cur";
   el.innerHTML = wsCursorArrowSVG(color)
     + `<span class="pc-name" style="background:${color}">${escapeHtml(label)}</span>`;
   return el;
@@ -95,6 +173,8 @@ export interface MessageCurseur {
   by?: string | undefined;
   tag?: string | undefined;
   color?: string | undefined;
+  name?: string | undefined;
+  guest?: boolean | undefined;
   x: number;
   y: number;
 }
@@ -111,10 +191,10 @@ const curseurs = new Map<string, HTMLElement>();
 export function peindreCurseurPair(ctx: Contexte, msg: MessageCurseur): HTMLElement | null {
   const hote = $("peerCursors"); if (!hote) return null;
   const key = msg.tag ? String(msg.tag) : String(msg.by || "");
-  const col = personColor(msg.by, msg.color);
+  const col = personColor(msg, msg.color);
   let el = curseurs.get(key) || null;
   if (!el || !el.isConnected) {
-    el = creerNoeudCurseur(displayName(msg.by) || "?", col);
+    el = creerNoeudCurseur(displayName(msg) || "?", col, !!msg.guest);
     hote.appendChild(el);
     curseurs.set(key, el);
   }

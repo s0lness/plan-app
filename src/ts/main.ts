@@ -17,12 +17,14 @@
 // `import` graph makes the order, and a cycle would be a compile error.
 
 import { creerContexte } from "./app/contexte.ts";
+import type { Contexte } from "./app/contexte.ts";
+import type { Fil } from "./fil/etat.ts";
 import type { Etat } from "./modele/etat.ts";
 import type { Options } from "./modele/migrations.ts";
 import { cleanOpts } from "./modele/migrations.ts";
 import { defaultState, migrate } from "./modele/etat.ts";
 import { downloadRescued, rescueUnreadable, v5BackupLegacy } from "./modele/filets.ts";
-import { KEY, KEY_OLD, KEY_V2, KEY_V3, OPTS_KEY, keyPourPlan } from "./noyau/nombres.ts";
+import { KEY, KEY_OLD, KEY_V2, KEY_V3, OPTS_KEY, keyPourMode } from "./noyau/nombres.ts";
 import { $, el } from "./noyau/dom.ts";
 import { aptBBox, aptToScreen, brancherRendu, fitView, renderView } from "./rendu/vue.ts";
 import { render } from "./rendu/rendu.ts";
@@ -51,6 +53,7 @@ import { brancherFicheCellule } from "./panneaux/fiche-cellule-edition.ts";
 import { brancherConfiguration } from "./panneaux/configuration.ts";
 import { brancherMenuPied } from "./panneaux/menu-pied.ts";
 import { brancherPlans } from "./panneaux/plans.ts";
+import { brancherPartage } from "./panneaux/partage.ts";
 import { brancherMesure } from "./mesure/mesure.ts";
 import { brancherExport } from "./exportation/exportation.ts";
 import { brancherCirculation } from "./circulation/circulation.ts";
@@ -59,15 +62,18 @@ import { brancherAide } from "./app/aide.ts";
 import { brancherDiagnostics } from "./app/diagnostics.ts";
 import { EMBEDDED } from "./exportation/transfert.ts";
 import { brancherFil } from "./fil/branchement.ts";
-import { planCourant } from "./fil/drapeaux.ts";
+import { modeCourant, planCourant, planIdInvite, estInvite } from "./fil/drapeaux.ts";
+import { entrerImpasseInvite, entrerLocalSeul, finirGuestOnboarding, preparerAccueil } from "./fil/invite.ts";
 
 /** The saved blob, AS-IS, tried in the order of the four historical keys (js/07, `load`). */
 function lireBrut(): string | null {
   try {
-    const k = keyPourPlan(planCourant());
-    // THE THREE HISTORICAL KEYS ARE READ ONLY FOR `main`. A fresh plan must inherit NOTHING:
-    // falling back to `room-planner-v3` would make it display the apartment from two versions
-    // ago instead of opening the outline assistant.
+    const k = keyPourMode(modeCourant(), planIdInvite() || planCourant());
+    // THE THREE HISTORICAL KEYS ARE READ ONLY FOR `main`, ON THE HOUSEHOLD DOOR. A fresh plan
+    // must inherit NOTHING: falling back to `room-planner-v3` would make it display the
+    // apartment from two versions ago instead of opening the outline assistant. Batch 3: the
+    // SAME reasoning now also applies to every key `keyPourMode` returns off the household
+    // door — an invited or local-only key never inherits from these either.
     if (k !== KEY) return localStorage.getItem(k);
     return localStorage.getItem(KEY) || localStorage.getItem(KEY_V3)
       || localStorage.getItem(KEY_V2) || localStorage.getItem(KEY_OLD) || null;
@@ -91,7 +97,13 @@ function bootOpts(seed: Partial<Options> | null | undefined): Options {
   return cleanOpts(stocke || seed);
 }
 
-function amorcer(): void {
+/**
+ * Returns `{ctx, fil}` (batch 3): `demarrer()` needs both, right after this call, to wire the
+ * two guest-door crochets (`accesRefuseSansInvite`/`accesRefuseInvite`) before any network
+ * response can possibly arrive, and — for an already-redeemed invitation — to finish onboarding
+ * (`finirGuestOnboarding`).
+ */
+function amorcer(): { ctx: Contexte; fil: Fil } {
   const brut = lireBrut();
   const hadSaved = !!brut;
   let charge: unknown = null;
@@ -176,6 +188,7 @@ function amorcer(): void {
   brancherConfiguration(ctx);
   brancherMenuPied(ctx);
   brancherPlans(ctx);
+  brancherPartage(ctx);
   brancherMesure(ctx);
   brancherExport(ctx);
   // VERBATIM AND LAST: the Circulation engine is neither touched nor reordered (§7.4).
@@ -232,6 +245,28 @@ function amorcer(): void {
   const fil = brancherFil(ctx);
 
   installerSonde(ctx, fil);
+  return { ctx, fil };
 }
 
-amorcer();
+/**
+ * BATCH 3. `preparerAccueil()` runs BEFORE anything else: it captures a `#k=` token (or a
+ * remembered one), redeems it, and blocks on the name step if one is shown — nobody reaches the
+ * wire unnamed. It resolves `false` only when the dead end already covers the whole screen, in
+ * which case `amorcer()` never runs at all: "there is no planner behind it" is not a figure of
+ * speech. On the household door (and on a guest door with no token yet, which only reveals
+ * itself later) it resolves `true` immediately, so nothing here changes anyone else's boot.
+ *
+ * The two crochets are wired UNCONDITIONALLY, right after `amorcer()` returns and therefore
+ * still inside this synchronous tick: no network response — the one thing that could call them —
+ * can possibly have arrived yet. On the household door neither is ever invoked.
+ */
+async function demarrer(): Promise<void> {
+  const suite = await preparerAccueil();
+  if (!suite) return;
+  const { ctx, fil } = amorcer();
+  ctx.crochets.accesRefuseSansInvite = () => entrerLocalSeul(ctx, fil);
+  ctx.crochets.accesRefuseInvite = () => entrerImpasseInvite(fil);
+  if (estInvite()) finirGuestOnboarding(ctx, fil);
+}
+
+void demarrer();

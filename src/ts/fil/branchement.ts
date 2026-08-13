@@ -15,7 +15,7 @@
 import type { Contexte } from "../app/contexte.ts";
 import type { Fil } from "./etat.ts";
 import { creerFil } from "./etat.ts";
-import { SYNC_ON, ERR_URL } from "./drapeaux.ts";
+import { SYNC_ON, ERR_URL, estLocalSeul } from "./drapeaux.ts";
 import { poserEnvoiErreur } from "../app/diagnostics.ts";
 import { brancherTagServeur } from "./identite.ts";
 import { beginGesture, endGesture } from "../gestes/sortie.ts";
@@ -40,6 +40,11 @@ import type { Op } from "../partage/plan.ts";
 function brancherRapportErreur(): void {
   if (!SYNC_ON) return;
   poserEnvoiErreur((entry) => {
+    // BATCH 3. "No /api/err" is part of local-only mode's "sync fully off": once the guest door
+    // WITHOUT an invitation is confirmed (`fil/invite.ts`), nothing leaves this browser, crash
+    // reports included. Checked here rather than by threading `fil` through: this callback is
+    // wired once, before `fil` exists, and the mode is the one piece of state that does not need it.
+    if (estLocalSeul()) return;
     try {
       fetch(ERR_URL, {
         method: "POST", keepalive: true,

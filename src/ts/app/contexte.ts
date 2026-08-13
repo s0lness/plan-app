@@ -169,6 +169,21 @@ export interface Crochets {
   emitDragMulti?: ((l: unknown[]) => void) | undefined;
   /** The LIVE Circulation analysis, during the gesture (js/38, later batch). */
   liveAnalyze?: (() => void) | undefined;
+  /**
+   * BATCH 3, guest client (docs/decisions/0004-partage-par-lien.md). `fil/rest.ts` DETECTS the
+   * guest door's 403 refusal shape (boot, poll, or a push refused mid-session); it does not
+   * decide what to do about it, because that decision lives in `fil/invite.ts`, which THIS
+   * module (`rest.ts`) is imported BY (for `setSyncChip`) — importing it back would be a cycle.
+   * Wired once, right after `brancherFil()` returns in `main.ts`, unconditionally: on the
+   * household door neither is ever called, which is exactly the right default.
+   *
+   * `accesRefuseSansInvite`: no invitation was ever redeemed on this tab — the guest door,
+   * visited by a stranger. Enters LOCAL-ONLY mode.
+   * `accesRefuseInvite`: an invitation WAS redeemed, and this door slammed anyway (revoked,
+   * expired, the plan deleted). The dead end, full screen.
+   */
+  accesRefuseSansInvite?: (() => void) | undefined;
+  accesRefuseInvite?: (() => void) | undefined;
 }
 
 export function creerContexte(etat: Etat, canvas: HTMLElement, viewport: HTMLElement): Contexte {

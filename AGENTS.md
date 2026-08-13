@@ -230,7 +230,10 @@ repository.
 | `tests/compat-donnees.ts` | 0 | **THE DATA COMPATIBILITY ORACLE**. Reads the corpus again and compares its fingerprints with `tests/fixtures/empreintes-compat.json`. `--b <dir>` compares two module directories; the barrier uses only the frozen reference. `--figer` remains a deliberate act. A private corpus can be pointed at with `--corpus <dir>` (a directory outside the repository), and its fingerprints stay with it. |
 | `tests/harnais-graine.ts` | 0 | Deterministic seeded harness: convergence and undo/redo round trip, client code imported from `src/ts`, real server imported from `live-worker/`. |
 | `tests/no-dead-selectors.ts` | 0 | Static: no CSS class without a consumer in `src/ts` or `src/html`. |
-| `live-worker/test-local.ts` | 0 | 601 SERVER assertions: validator, ops, Durable Object, D1 fallback, sequence, and deduplication by `(tag, n)`. |
+| `live-worker/test-local.ts` | 0 | 657 SERVER assertions: validator, ops, Durable Object, D1 fallback, sequence, deduplication by `(tag, n)`, and the guest wire (per-recipient redaction, the `name` message, refused `plan5.replace`, the rate cap, revoke closing sockets). |
+| `tests/porte.ts` | 0 | THE DOOR: the `HOUSEHOLD_HOSTS` / `GUEST_HOST` allowlists and their `*.` wildcard, the ONE `who()`, and the middleware's refusals. |
+| `tests/invitation.ts` | 0 | THE INVITE: token redemption and its single 404, the session cookie, the owner's create/list/revoke, and the guest door's effect on `/api/plan` and `/ws`. |
+| `tests/identite-fil.ts` | 0 | WHO A NAME BELONGS TO: `displayName` / `personColor` / `wsSameAccount` including guest-vs-guest, and the proof that a name of `<img onerror=…>` renders as TEXT. |
 | `tests/run.ts` | 1 | 30 general regression tests on the deliverable. |
 | `tests/model-v5-*.ts` (7 suites) | 1 each | 74 tests: walls-only model, server rejection, D1 fallback. Filter: `all.ts model-v5`. |
 | `tests/boot-vierge.ts` | 1 | THE NUMBER ONE TRAP: the page mounts without a JS error, with a blank profile THEN a seeded floor plan. |
@@ -295,6 +298,20 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - Domain: `plan.example.com` (CNAME to `plan.pages.dev`, the zone's domain).
 - Access restricted by Cloudflare Access (allowed emails: someone@example.com,
   someone-else@example.com). The service must never be assumed public.
+- **`HOUSEHOLD_HOSTS` MUST BE SET ON THE PAGES PROJECT, AND ON THE `plan-live` WORKER.** It is a
+  plain (non-secret) comma-separated list of the hostnames Cloudflare Access actually protects, for
+  example `plan.example.com,plan-x.pages.dev,*.plan-x.pages.dev` (an entry may start with `*.`).
+  It is the allowlist `functions/porte.ts` and `worker.ts` compare the `Host` header against.
+  **UNSET, IT IS A NO-OP**: every host is treated as the household door, which is exactly today's
+  behaviour and is why the four suites that import the Functions directly keep passing. That
+  compatibility default is also the trap: the day a hostname Access does NOT cover is added to the
+  project, an unset variable means the door never closes. Set it BEFORE adding any hostname.
+  Functions are bound to the PROJECT, not to a hostname, so `/api/plan`, `/api/plans`, `/api/err`
+  and `/ws` answer on every hostname the project serves. See `docs/decisions/0004-partage-par-lien.md`.
+- **`GUEST_HOST` is the ONE hostname of the guest door**, the one Access does NOT cover. Unset, the
+  `"invite"` verdict can never occur and the guest door simply does not exist, which is the state
+  the repository ships in. It is checked only AFTER the household allowlist misses, so a host named
+  in both stays `"foyer"`: the door can only ever be loosened deliberately, never by a typo.
 - **NEVER ADD `wrangler.toml` TO THIS REPOSITORY.** This project does not have one, and that is what
   keeps its bindings alive: `DB` (D1) and `ROOM` (the Durable Object namespace) are set ON THE Pages
   PROJECT, in the dashboard. As soon as a Pages project contains `wrangler.toml`, **that file becomes
@@ -309,8 +326,9 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - D1 `plan` (uuid `<d1_database_id>`, get your own from the Cloudflare dashboard), `plans` table with one `main` row
   (`data` JSON, increasing `rev`, `updated_at`, `updated_by`). Bound to the Pages project as `DB`
   (production + preview), configured through the REST API (no wrangler here).
-- **Four network entry points, not one more**, all on the app origin and therefore all behind Access
-  by default. Identity is the `Cf-Access-Authenticated-User-Email` header set by Access (fallback:
+- **Six network entry points, not one more.** The first four are on the app origin and therefore
+  behind Access by default; the last two exist because of the guest door, and `functions/_middleware.ts`
+  is what decides which door may reach which route (`docs/decisions/0004-partage-par-lien.md`). Identity is the `Cf-Access-Authenticated-User-Email` header set by Access (fallback:
   the `Cf-Access-Jwt-Assertion` JWT payload, already verified upstream); otherwise, `inconnu`.
 
 | Route | Method | Purpose | Contract |
@@ -318,7 +336,9 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 | `/api/plan` | `GET` | Read the household floor plan. | `{data, rev, updatedAt, updatedBy}` · missing row = `{data:null, rev:0}` |
 | `/api/plan` | `PUT` | Write the floor plan through FALLBACK (realtime down). | `{state, rev}` = compare-and-swap: **409** with the winning revision, author, AND state if the row moved. `{state}` alone = BLIND write, the old contract, kept for a tab opened before deployment. |
 | `/api/err` | `POST` | Collect an uncaught client JS error in D1 for remote diagnosis. | free-form body, response without useful content |
-| `/ws` | `GET` + `Upgrade` | Open the realtime wire. | Pass-through: adds `X-Plan-Email` and forwards to the `PlanRoom` Durable Object (binding `ROOM`). **426** without an `Upgrade` header. |
+| `/ws` | `GET` + `Upgrade` | Open the realtime wire. | Pass-through: adds `X-Plan-Email`, `X-Plan-Guest` and `X-Plan-Name` (always SET, never conditionally, so a caller cannot forge them) and forwards to the `PlanRoom` Durable Object (binding `ROOM`). **426** without an `Upgrade` header. |
+| `/api/invite` | `POST` | GUEST DOOR ONLY. Trade the link's `#k=` token for a session. | `{token, name?}` → `{planId, planName, role, name}` + an `HttpOnly; Secure; SameSite=Strict` cookie. Unknown, revoked, expired and deleted-plan all answer the SAME **404**, so a probe never learns it guessed a real token. |
+| `/api/invites` | `GET` `POST` `DELETE` | HOUSEHOLD DOOR ONLY. Create, list and revoke a plan's links. | 20 live invites per plan max (**409**), revoke is idempotent (**200** even for an unknown token, same reason as the 404 above). |
 - **`rev` IS THE LOCK, no longer mere information.** TWO writers write to the D1 row (the Durable
   Object snapshot, and the client PUT when realtime is down): blind PUT let two people in fallback
   silently overwrite each other (measured: two writes accepted, rev 3 then 5, the row retaining only

@@ -7,8 +7,9 @@
 import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { escapeHtml } from "../noyau/nombres.ts";
-import { PLANS_URL, SYNC_ON, memoriserPlan, planCourant } from "../fil/drapeaux.ts";
+import { PLANS_URL, SYNC_ON, estMenage, memoriserPlan, planCourant } from "../fil/drapeaux.ts";
 import { toast } from "../app/toast.ts";
+import { ouvrirPartage } from "./partage.ts";
 
 interface PlanListe {
   id: string;
@@ -68,6 +69,7 @@ function peindre(): void {
     return `<div class="plan-row${ici ? " here" : ""}" data-id="${escapeHtml(p.id)}">
       <span class="pname" data-id="${escapeHtml(p.id)}" title="Double-click to rename">${escapeHtml(p.name)}</span>
       <span class="pmeta">${vide ? "empty" : quand}</span>
+      <button class="btn sm pshare" data-id="${escapeHtml(p.id)}" title="Share this plan by link">Share</button>
       ${ici ? `<span class="pcur">open</span>`
             : `<button class="btn sm popen" data-id="${escapeHtml(p.id)}">Open</button>`}
       ${p.id === "main" ? "" : `<button class="flow-x pdel" data-id="${escapeHtml(p.id)}" title="Delete this plan">×</button>`}
@@ -228,6 +230,13 @@ export function brancherPlans(ctx: Contexte): void {
   // Delegation: the list is repainted on every change, so no listener lives on its nodes.
   $("plansList")?.addEventListener("click", (e) => {
     const t = e.target as HTMLElement | null;
+    const share = t?.closest<HTMLElement>(".pshare");
+    if (share) {
+      const id = String(share.dataset["id"]);
+      const p = _plans.find((q) => q.id === id);
+      ouvrirPartage(id, p ? p.name : id);
+      return;
+    }
     const open = t?.closest<HTMLElement>(".popen");
     if (open) { ouvrirPlan(String(open.dataset["id"])); return; }
     const del = t?.closest<HTMLElement>(".pdel");
@@ -248,7 +257,14 @@ export function brancherPlans(ctx: Contexte): void {
   // failing that), the title carries the plan's IDENTIFIER: never "Flat plan", never a title that
   // doesn't say which one we're looking at.
   peindreTitre();
-  if (SYNC_ON) void charger().then(() => peindreTitre()).catch(() => { /* title = identifier */ });
+  // BATCH 3. `/api/plans` is 403 on the guest door in every method, whether invited or
+  // local-only (docs/decisions/0004-partage-par-lien.md): fetching it there would only ever
+  // produce a failed request nobody reads (the Plans panel itself is hidden for a guest,
+  // `fil/invite.ts`). `estMenage()` is already known by this synchronous point for an INVITED
+  // tab (the redemption that set it happens before `amorcer()` runs); a fresh LOCAL-ONLY visitor
+  // is still `"menage"` here (discovered only after the boot GET answers), so this one fetch can
+  // still fire once before that discovery — harmless, and the price of "discover by trying".
+  if (SYNC_ON && estMenage()) void charger().then(() => peindreTitre()).catch(() => { /* title = identifier */ });
   $("planName")?.addEventListener("dblclick", (e) => {
     e.preventDefault();
     const el = $("planName");

@@ -28,36 +28,18 @@ interface PlanRow {
 }
 
 import type { Env } from "../env.ts";
+import { identiteFoyer, porteDe } from "../porte.ts";
+import { cleanName as nettoieNom } from "../nom.ts";
 
 const json = (o: unknown, status?: number) => new Response(JSON.stringify(o),
   { status: status || 200, headers: { "content-type": "application/json" } });
 
-const who = (request: Request) => {
-  const direct = request.headers.get("Cf-Access-Authenticated-User-Email");
-  if (direct) return direct;
-  const jwt = request.headers.get("Cf-Access-Jwt-Assertion") ||
-    (request.headers.get("Cookie") || "").match(/CF_Authorization=([^;]+)/)?.[1];
-  if (jwt) {
-    try {
-      const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-      if (payload.email) return payload.email;
-    } catch {}
-  }
-  return "inconnu";
-};
-
-/** Clean name: no control characters, no edge whitespace, truncated. "" = no name. */
-const cleanName = (v: unknown) => {
-  if (typeof v !== "string") return "";
-  let out = "";
-  for (const ch of v.trim()) {
-    const c = ch.codePointAt(0);
-    if (c < 32 || c === 127) continue;
-    if (out.length + ch.length > NAME_MAX) break;
-    out += ch;
-  }
-  return out;
-};
+/** Clean name: no control characters, no bidi overrides, no edge whitespace, truncated at
+ * NAME_MAX. "" = no name. Now THE SAME implementation a guest's self-declared name goes through
+ * (functions/nom.ts) — a plan name sits on the same screen as a guest name, so it gets the same
+ * bidi-override stripping (docs/decisions/0004-partage-par-lien.md, edge case 2), just with the
+ * historical 60-character cap instead of a guest's 40. */
+const cleanName = (v: unknown) => nettoieNom(v, NAME_MAX);
 
 /**
  * An identifier DERIVED from the name, but never EQUAL to the name: the name is free (accents,
@@ -120,7 +102,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const now = new Date().toISOString();
   await env.DB
     .prepare("INSERT INTO plans(id,name,data,rev,updated_at,updated_by) VALUES(?1,?2,?3,0,?4,?5)")
-    .bind(id, nom, JSON.stringify(null), now, who(request))
+    .bind(id, nom, JSON.stringify(null), now, identiteFoyer(request, porteDe(request, env)))
     .run();
   return json({ ok: true, id, name: nom });
 };
