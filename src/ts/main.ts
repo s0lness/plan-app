@@ -36,7 +36,7 @@ import { beginGesture, brancherSortieGestes, endGesture } from "./gestes/sortie.
 import { brancherGestes } from "./gestes/branchement.ts";
 import { brancherInteractionsVue } from "./gestes/vue-interactions.ts";
 import { brancherClavier } from "./gestes/clavier.ts";
-import { brancherBoutonsHistorique } from "./historique/pile.ts";
+import { brancherBoutonsHistorique, jeterHistoriqueVide } from "./historique/pile.ts";
 import { brancherPlanIdentite } from "./fil/identite.ts";
 import { brancherOutilsMurs } from "./gestes/murs.ts";
 import { brancherPalette } from "./gestes/pose.ts";
@@ -155,6 +155,8 @@ function amorcer(): { ctx: Contexte; fil: Fil } {
   // collaboration batch will WRAP these two hooks instead of replacing them.
   ctx.crochets.dragStart = () => beginGesture();
   ctx.crochets.dragEnd = () => endGesture();
+  // G-3 + G-12: Escape must not leave a no-op entry on the undo stack (see the crochet's own doc).
+  ctx.crochets.jeterHistoriqueVide = () => jeterHistoriqueVide(ctx);
   // The inspector wires itself up further down (batch E3c) and sets `openInspector` /
   // `syncInspector` / `hideInspector` itself. The fallback below is the default value: a panel
   // that closes.

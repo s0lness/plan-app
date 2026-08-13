@@ -24,6 +24,7 @@
 //   rebasculer_en_traversant_rallonge             the setting shows immediately, both ways
 import type { DonneeDynamique } from "./_types.ts";
 import { v5ThroughWall } from "../src/ts/modele/edition.ts";
+import { sanitizeV5Plan } from "../src/ts/modele/migrations.ts";
 import { RATIO_PRECIS, pointSuivi } from "../src/ts/gestes/etat-pointeur.ts";
 import type { Mur, PlanV5 } from "../src/ts/partage/plan.ts";
 
@@ -113,6 +114,29 @@ test("maj_ralentit_le_point_suivi", (a: DonneeDynamique) => {
     "avec MAJ, l'ecart est reduit d'un facteur " + RATIO_PRECIS + ", vu " + JSON.stringify(avec));
   const nul = pointSuivi({ shiftKey: true }, 100, 100, 100, 100);
   a(nul.x === 100 && nul.y === 100, "au point de depart, MAJ ne decale rien, vu " + JSON.stringify(nul));
+});
+
+// ---------------------------------------------------------------------------------------------
+// `sanitizeV5Plan` is THE ONLY entry point for a walls-only plan (modele/migrations.ts's own
+// header): every reload, every `Ctrl+Z`/`Ctrl+Y` (`histReplay` -> `migrate` -> here), and every D1
+// or realtime adoption reads a plan back through it. It used to rebuild each wall from a fixed
+// `{id, a, b, t, isOutline}` literal and drop every other key, `free` included: a free-standing
+// partition (the freehand tool's loose end, `gestes/trace-libre.ts`) still LOOKED right (its `a`/`b`
+// survived) but silently became an ordinary through-going wall the next time anything touched it
+// (`v5ThroughWall`, called by `v5WallDragApply` on every drag frame): the very next nudge would
+// snap it onto the nearest barrier, three rooms away, on a wall the person never asked to change.
+// Found via `Ctrl+Z` then `Ctrl+Y` on a freehand chain not reproducing the pre-undo state.
+test("sanitize_garde_free_a_la_relecture", (a: DonneeDynamique) => {
+  const P = plan([]);
+  P.walls.push({ id: "w9", a: [150, 120], b: [150, 180], t: 12, isOutline: false, free: 1 });
+  const out = sanitizeV5Plan(P);
+  a(!!out, "le plan doit rester lisible");
+  const w = out && out.walls.find((q) => q.id === "w9");
+  a(!!w, "la cloison libre doit survivre à la relecture");
+  a(!!(w && w.free === 1), `son marqueur \`free\` doit survivre lui aussi, vu ${JSON.stringify(w)}`);
+  // and an ordinary (through-going) wall must NOT gain `free` out of nowhere
+  const w2 = out && out.walls.find((q) => q.id === "o1");
+  a(!!(w2 && w2.free === undefined), `une façade ne doit jamais récupérer \`free\`, vu ${JSON.stringify(w2)}`);
 });
 
 // ---------------------------------------------------------------------------------------------
