@@ -28,23 +28,10 @@ interface PlanRow {
 }
 
 import type { Env } from "../env.ts";
+import { identiteFoyer, porteDe } from "../porte.ts";
 
 const json = (o: unknown, status?: number) => new Response(JSON.stringify(o),
   { status: status || 200, headers: { "content-type": "application/json" } });
-
-const who = (request: Request) => {
-  const direct = request.headers.get("Cf-Access-Authenticated-User-Email");
-  if (direct) return direct;
-  const jwt = request.headers.get("Cf-Access-Jwt-Assertion") ||
-    (request.headers.get("Cookie") || "").match(/CF_Authorization=([^;]+)/)?.[1];
-  if (jwt) {
-    try {
-      const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-      if (payload.email) return payload.email;
-    } catch {}
-  }
-  return "inconnu";
-};
 
 /** Clean name: no control characters, no edge whitespace, truncated. "" = no name. */
 const cleanName = (v: unknown) => {
@@ -120,7 +107,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const now = new Date().toISOString();
   await env.DB
     .prepare("INSERT INTO plans(id,name,data,rev,updated_at,updated_by) VALUES(?1,?2,?3,0,?4,?5)")
-    .bind(id, nom, JSON.stringify(null), now, who(request))
+    .bind(id, nom, JSON.stringify(null), now, identiteFoyer(request, porteDe(request, env)))
     .run();
   return json({ ok: true, id, name: nom });
 };

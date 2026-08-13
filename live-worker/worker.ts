@@ -12,6 +12,10 @@ import type { Operation, PlanState } from "./ops.ts";
 interface Env {
   DB: D1Database;
   ROOM: DurableObjectNamespace;
+  // Optional door allowlist, same contract as functions/porte.ts: comma-separated hostnames,
+  // an entry may start with `*.`. ABSENT = trust the header as before (live-worker/test-local.ts
+  // has no such variable configured and must stay green).
+  HOUSEHOLD_HOSTS?: string;
 }
 
 interface SocketAttachment {
@@ -63,6 +67,24 @@ interface WireMessage {
   rot?: number | null;
 }
 
+// ---- THE SAME DOOR AS functions/porte.ts, applied here too ------------------------------------
+// A zone route sends `plan.example.com/ws*` straight to THIS Worker, bypassing Pages Functions
+// entirely (docs/decisions/0004-partage-par-lien.md): `functions/_middleware.ts` never sees this
+// request, so a choke point living only there misses the most privileged route in the product.
+// Kept as an independent copy, not an import from `functions/`: this file is bundled and
+// deployed as its own Worker (`live-worker/build-worker.ts`), a separate unit from the Pages
+// Functions it happens to share a repository with.
+function hoteAutorise(request: Request, env: Env): boolean {
+  const hotes = (env.HOUSEHOLD_HOSTS || "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+  // ABSENT VARIABLE = trust the header, exactly as before this door existed:
+  // live-worker/test-local.ts has no such configuration and must stay green.
+  if (!hotes.length) return true;
+  const hote = (request.headers.get("Host") || "").split(":")[0].trim().toLowerCase();
+  return hotes.some((motif) => motif.startsWith("*.")
+    ? hote.length > motif.length - 1 && hote.endsWith(motif.slice(1))
+    : hote === motif);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -70,8 +92,18 @@ export default {
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("expected websocket", { status: 426 });
     }
-    // Access has already filtered; missing header -> "unknown" but we let it through.
-    const email = request.headers.get("Cf-Access-Authenticated-User-Email") || "inconnu";
+    // Access has already filtered on the household host; missing header -> "unknown" but we let
+    // it through. Off an unrecognized host (HOUSEHOLD_HOSTS declared and not matching) the header
+    // is caller-supplied and unsigned, so it is never trusted: force "inconnu" instead.
+    // It DOWNGRADES rather than refuses, unlike `functions/_middleware.ts`, which answers 403 on
+    // an unrecognized host. The asymmetry is deliberate: this Worker is reachable only through
+    // the zone route (its `workers.dev` subdomain is disabled), so an unrecognized host here means
+    // a MISCONFIGURED allowlist far more often than an attack, and refusing would take the whole
+    // wire down rather than merely lose attribution. The exposed path is the Pages one, and that
+    // one fails closed.
+    const email = hoteAutorise(request, env)
+      ? (request.headers.get("Cf-Access-Authenticated-User-Email") || "inconnu")
+      : "inconnu";
     // WHICH plan. A refused identifier is an ERROR, never a silent fallback to `main`: falling
     // back to the household's plan because a URL was malformed would mean editing the wrong
     // document while believing to edit another one.

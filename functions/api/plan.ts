@@ -31,9 +31,11 @@
 // compare-and-swap (see DEPLOY.md / the report), it can still overwrite a REST write it hasn't
 // seen; it MITIGATES this by rereading the row before every snapshot (`reconcileD1`).
 
-// The header set by Access doesn't always reach the Function; as a fallback we decode the
-// payload of the Access JWT (already verified upstream by Access, no need to re-sign).
+// Identity: `identiteFoyer` (../porte.ts) is THE ONE implementation of `who()`. It reads the
+// header set by Access, with a JWT-decoding fallback, but ONLY on the household door: off it,
+// every one of those inputs is caller-supplied and unsigned. See docs/decisions/0004-partage-par-lien.md.
 import type { Env } from "../env.ts";
+import { identiteFoyer, porteDe } from "../porte.ts";
 
 interface PlanRow {
   data: string;
@@ -41,20 +43,6 @@ interface PlanRow {
   updated_at: string | null;
   updated_by: string | null;
 }
-
-const who = (request: Request) => {
-  const direct = request.headers.get("Cf-Access-Authenticated-User-Email");
-  if (direct) return direct;
-  const jwt = request.headers.get("Cf-Access-Jwt-Assertion") ||
-    (request.headers.get("Cookie") || "").match(/CF_Authorization=([^;]+)/)?.[1];
-  if (jwt) {
-    try {
-      const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-      if (payload.email) return payload.email;
-    } catch {}
-  }
-  return "inconnu";
-};
 
 // WHICH plan. `main` by default (the household's historical plan); a malformed identifier is an
 // ERROR and never a silent fallback, otherwise a broken URL would write into the wrong plan.
@@ -138,7 +126,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
   const data = JSON.stringify(st);
   if (data.length > 2_000_000) return new Response("too big", { status: 413 });
   const now = new Date().toISOString();
-  const by = who(request);
+  const by = identiteFoyer(request, porteDe(request, env));
 
   // BLIND write (old contract): no expected revision, last writer wins.
   const expected = body && Number.isInteger(body.rev) ? Number(body.rev) : null;

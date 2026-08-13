@@ -295,6 +295,16 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - Domain: `plan.example.com` (CNAME to `plan.pages.dev`, the zone's domain).
 - Access restricted by Cloudflare Access (allowed emails: someone@example.com,
   someone-else@example.com). The service must never be assumed public.
+- **`HOUSEHOLD_HOSTS` MUST BE SET ON THE PAGES PROJECT, AND ON THE `plan-live` WORKER.** It is a
+  plain (non-secret) comma-separated list of the hostnames Cloudflare Access actually protects, for
+  example `plan.example.com,plan-x.pages.dev,*.plan-x.pages.dev` (an entry may start with `*.`).
+  It is the allowlist `functions/porte.ts` and `worker.ts` compare the `Host` header against.
+  **UNSET, IT IS A NO-OP**: every host is treated as the household door, which is exactly today's
+  behaviour and is why the four suites that import the Functions directly keep passing. That
+  compatibility default is also the trap: the day a hostname Access does NOT cover is added to the
+  project, an unset variable means the door never closes. Set it BEFORE adding any hostname.
+  Functions are bound to the PROJECT, not to a hostname, so `/api/plan`, `/api/plans`, `/api/err`
+  and `/ws` answer on every hostname the project serves. See `docs/decisions/0004-partage-par-lien.md`.
 - **NEVER ADD `wrangler.toml` TO THIS REPOSITORY.** This project does not have one, and that is what
   keeps its bindings alive: `DB` (D1) and `ROOM` (the Durable Object namespace) are set ON THE Pages
   PROJECT, in the dashboard. As soon as a Pages project contains `wrangler.toml`, **that file becomes
