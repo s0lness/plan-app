@@ -59,6 +59,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/model-v5-ancien-plan.ts",    chrome: 1 },
   { f: "tests/model-v5-conversion-rendu.ts", chrome: 1 },
   { f: "tests/gestes-usage-reel.ts",       chrome: 1 },
+  { f: "tests/geste-ami.ts",               chrome: 1 },   // REAL MOUSE + KEYBOARD: Ctrl/Cmd no-grid drag, D-held dimensions peek
   { f: "tests/repli-conflit.ts",           chrome: 2 },
   { f: "tests/faces-pose-copie.ts",        chrome: 1 },
   { f: "tests/deux-appareils.ts",          chrome: 1 },
@@ -90,6 +91,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/repartir-espacement.ts",     chrome: 0 },   // PURE computation: no browser
   { f: "tests/fenetre-battement.ts",       chrome: 0 },   // PURE tracing: no browser
   { f: "tests/mur-libre.ts",               chrome: 0 },   // PURE geometry: no browser
+  { f: "tests/sans-grille.ts",             chrome: 0 },   // PURE: the Ctrl/Cmd modifier and the relative grid math, no browser
   { f: "tests/trace-libre.ts",             chrome: 0 },   // PURE geometry, freehand wall trace: no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
   { f: "tests/exports-morts.ts",           chrome: 0 },   // reads the SOURCE: no browser

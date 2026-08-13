@@ -69,7 +69,7 @@ import { screenToApt } from "../rendu/vue.ts";
 import { selReplace, selToggle } from "../rendu/selection.ts";
 import { addGuideSeg, clearGuides } from "./guides.ts";
 import { armGesture, beginGesture, endGesture } from "./sortie.ts";
-import { measureMode, spaceHeld, pointSuivi } from "./etat-pointeur.ts";
+import { measureMode, sansGrille, spaceHeld, pointSuivi } from "./etat-pointeur.ts";
 
 // =================================================================================================
 //  THE CLEARANCE GUIDES ALONG THE WALL (js/53)
@@ -470,8 +470,9 @@ export function v5StartOpeningResize(
       want = OP_RSZ_MAX;
       bute = `An opening cannot be wider than ${OP_RSZ_MAX} cm.`;
     }
-    // 5 cm grid: we round the WIDTH (the fixed edge itself never moves by a hair)
-    if (ctx.etat.opts.snap && !ev.altKey) want = Math.max(OP_RSZ_MIN, Math.round(want / 5) * 5);
+    // 5 cm grid: we round the WIDTH (the fixed edge itself never moves by a hair). Ctrl/Cmd
+    // (`sansGrille`) suppresses it, same key as furniture and walls.
+    if (ctx.etat.opts.snap && !ev.altKey && !sansGrille(ev)) want = Math.max(OP_RSZ_MIN, Math.round(want / 5) * 5);
     if (end === "lo") {
       const min = Math.max(0, lim.loLim);
       if (fixe - want < min - 0.01) {

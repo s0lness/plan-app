@@ -36,13 +36,13 @@ import { v5ClampPiece, v5LastFit, v5MoveOpeningTo } from "../modele/edition.ts";
 import { deltaScaleMax, dockedChairs, pieceTol, snapChairToTable, TABLE_TYPES } from "./contraintes.ts";
 import { alignSnap, clearGuides, drawAlignLines, drawGuides } from "./guides.ts";
 import { armGesture } from "./sortie.ts";
-import { LONGPRESS_MS, TOUCH_DRAG_THRESH, isTouchEvt, measureMode, spaceHeld, touchPts, pointSuivi } from "./etat-pointeur.ts";
+import { LONGPRESS_MS, TOUCH_DRAG_THRESH, isTouchEvt, measureMode, pasGrille, sansGrille, spaceHeld, touchPts, pointSuivi } from "./etat-pointeur.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { toast } from "../app/toast.ts";
 import { render } from "../rendu/rendu.ts";
 import { focusEl } from "../rendu/calque.ts";
 import { aptToScreen, screenToApt } from "../rendu/vue.ts";
-import { selReplace, selToggle } from "../rendu/selection.ts";
+import { selReplace, selRecomputePrimary, selToggle } from "../rendu/selection.ts";
 
 /**
  * G-5, the fourth cause. Placement each piece of furniture had BEFORE its last drag (session
@@ -64,14 +64,31 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
   e.preventDefault();   // otherwise the browser starts a text selection on the label
   let p = p0;
 
-  // Ctrl/Cmd + click TOGGLES this piece of furniture in the selection and starts NO drag.
-  if (e.ctrlKey || e.metaKey) {
+  // Ctrl/Cmd held AT PRESS. The decision is DEFERRED to the release, the same pattern as
+  // "PRESS TAKES WHAT IS SELECTED, A COMPLETED CLICK MOVES DOWN ONE STEP" (AGENTS.md): a press
+  // alone commits to nothing. A completed click (no movement) TOGGLES this piece in the
+  // selection, exactly as before; a real drag moves it, grid suppressed (`sansGrille`, which
+  // already reads the modifier off each MOVE event, not off this one). Holding Ctrl/Cmd used to
+  // start no drag at all, so the only way to reach the fine-grained grid was to grab the
+  // modifier after the drag was already under way; this is what let a user who did the natural
+  // thing (hold Cmd, THEN drag) get nothing but a selection toggle.
+  const ctrlDown = !!(e.ctrlKey || e.metaKey);
+
+  // A piece that cannot be dragged anyway (locked, or an orphaned wall-mounted object with no
+  // wall to follow, see the `isWallMount` check below) has nothing to defer: toggle immediately,
+  // exactly as before, since no release-time drag/click distinction will ever arise for it.
+  if (ctrlDown && (p.locked || isWallMount(p.type))) {
     selToggle(ctx, p.id);
     render(ctx);
     if (ctx.selection.primaire != null) ctx.crochets.openInspector?.();
     else ctx.crochets.hideInspector?.();
     return;
   }
+  // Selection BEFORE this gesture touches anything: what a motionless release restores before
+  // toggling. A real drag keeps the ORDINARY selection change made just below (selReplace, or
+  // the clicked piece becoming primary within its group); only a click without movement rolls it
+  // back to toggle instead.
+  const preSelIds = ctrlDown ? new Set(ctx.selection.ids) : null;
 
   // FINGER LONG-PRESS = multi-selection toggle (equivalent of Ctrl+click). A fast movement
   // cancels the timer and continues as a normal drag; the long press only fires if the finger stays
@@ -130,11 +147,15 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
   // the snapshot must be taken BEFORE.
   let histPoussee = false;
   const pousseHist = (): void => { if (!histPoussee) { histPoussee = true; pushHistory(ctx); } };
-  if (e.altKey) pousseHist();
+  // Ctrl/Cmd held from the press already claims the release (toggle-vs-drag, above): the
+  // duplicate-on-press exception for Alt does not combine with it, exactly as when Ctrl/Cmd used
+  // to intercept the click before Alt was ever considered.
+  const altEff = e.altKey && !ctrlDown;
+  if (altEff) pousseHist();
   ctx.crochets.dragStart?.();   // suspends the diff-emitter for the duration of the gesture
 
   let altCopy = false;
-  const group = groupDrag && !e.altKey;
+  const group = groupDrag && !altEff;
   const origId = p.id;
   // G-12. Snapshot of the placements BEFORE the gesture: this is what Escape restores. `canceled`
   // stops the gesture's end from re-bounding what was just restored: a piece of furniture that
@@ -145,7 +166,7 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     canceled = true;
     snap.forEach((m) => { m.q.x = m.x; m.q.y = m.y; m.q.rot = m.rot; });
   };
-  if (e.altKey) {
+  if (altEff) {
     const n: Meuble = { ...p, id: String(prochainUid()), locked: false, name: autoName(ctx.etat.plan, p.name) };
     ctx.etat.plan.pieces.push(n);
     p = n; selReplace(ctx, n.id); altCopy = true;
@@ -177,7 +198,10 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
   const locX = ddx * Math.cos(radP) + ddy * Math.sin(radP);
   const locY = -ddx * Math.sin(radP) + ddy * Math.cos(radP);
   const dansLeCorps = Math.abs(locX) <= p.w / 2 && Math.abs(locY) <= p.h / 2;
-  const isRot = !!(cible && cible.dataset && cible.dataset["rot"]) && !dansLeCorps;
+  // Ctrl/Cmd held from the press never targets the rotation handle: it always meant "candidate
+  // for a selection toggle" before this feature, never rotate, and the release-time toggle
+  // fallback below is only wired for the solo/group DRAG branches, not for rotation.
+  const isRot = !ctrlDown && !!(cible && cible.dataset && cible.dataset["rot"]) && !dansLeCorps;
   const noeud = cont && cont.querySelector<HTMLElement>(`.piece[data-id="${cssId(p.id)}"]`);
   try { noeud?.setPointerCapture(e.pointerId); } catch (_) { /* the gesture holds up without capture */ }
   // Chairs docked under this table at the start of the gesture follow it. A fresh Alt duplicate
@@ -288,9 +312,11 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
       const cm = toApt(ev.clientX, ev.clientY);
       let px = cm.x - grabX, py = cm.y - grabY;
       // G-5. RELATIVE snap: the 5 cm grid counts STEPS from the starting position, it
-      // does not rewrite the absolute position.
-      if (ctx.etat.opts.snap) { px = p0x + Math.round((px - p0x) / 5) * 5; py = p0y + Math.round((py - p0y) / 5) * 5; }
-      else { px = Math.round(px); py = Math.round(py); }
+      // does not rewrite the absolute position. Ctrl/Cmd (`sansGrille`) suppresses the grid: the
+      // step becomes 1 cm instead of 5, still counted from the SAME starting position, so the
+      // round-trip property (G-5) survives unchanged.
+      const snapOn = !!ctx.etat.opts.snap, noGrid = sansGrille(ev);
+      px = pasGrille(p0x, px, snapOn, noGrid); py = pasGrille(p0y, py, snapOn, noGrid);
       const dax = px - p0x, day = py - p0y;
       lastDax = dax; lastDay = day;
       members.forEach((m) => {
@@ -313,6 +339,19 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     const beforeGrp = poses(members.map((m) => m.pc));
     const up = (): void => {
       window.removeEventListener("pointermove", move);
+      // Ctrl/Cmd held from the press, and the release never moved: roll back to the selection
+      // BEFORE this gesture and TOGGLE this piece instead, same as the solo branch above.
+      if (ctrlDown && !movedG) {
+        ctx.selection.ids.clear();
+        preSelIds!.forEach((id) => ctx.selection.ids.add(id));
+        selRecomputePrimary(ctx);
+        selToggle(ctx, p.id);
+        render(ctx);
+        if (ctx.selection.primaire != null) ctx.crochets.openInspector?.();
+        else ctx.crochets.hideInspector?.();
+        ctx.crochets.dragEnd?.();
+        return;
+      }
       // G-4. Bounding falls ONLY if the gesture really moved: without this guard, a simple click
       // on a group would bound its 5 to 11 members all at once.
       if (!canceled && movedG) {
@@ -393,8 +432,9 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     // round trip gained 1 cm, without end. The corner is the recorded quantity: it is what we
     // round, and only once.
     let pxA = cm.x - grabX, pyA = cm.y - grabY;
-    if (ctx.etat.opts.snap) { pxA = p0x + Math.round((pxA - p0x) / 5) * 5; pyA = p0y + Math.round((pyA - p0y) / 5) * 5; }
-    else { pxA = Math.round(pxA); pyA = Math.round(pyA); }
+    // Ctrl/Cmd (`sansGrille`) suppresses the 5 cm grid for the same reason as the group branch above.
+    const snapOn = !!ctx.etat.opts.snap, noGrid = sansGrille(ev);
+    pxA = pasGrille(p0x, pxA, snapOn, noGrid); pyA = pasGrille(p0y, pyA, snapOn, noGrid);
     // G-7. Pushing BEYOND the overflow already acquired is FLATLY REFUSED (the furniture stays at its last
     // legal placement) rather than projected onto the outline: a projection slides ALONG the outline wall,
     // so the round trip never returned to the same spot (measured: 1 cm per cycle).
@@ -417,6 +457,20 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
   const before = poses([p].concat(riders));
   const up = (): void => {
     window.removeEventListener("pointermove", move);
+    // Ctrl/Cmd held from the press, and the release never moved: this was a click, not a drag.
+    // Roll back the ordinary selection change made at press time (selReplace, above) and TOGGLE
+    // instead, exactly as a plain Ctrl+click always has.
+    if (ctrlDown && !moved) {
+      ctx.selection.ids.clear();
+      preSelIds!.forEach((id) => ctx.selection.ids.add(id));
+      selRecomputePrimary(ctx);
+      selToggle(ctx, p.id);
+      render(ctx);
+      if (ctx.selection.primaire != null) ctx.crochets.openInspector?.();
+      else ctx.crochets.hideInspector?.();
+      ctx.crochets.dragEnd?.();
+      return;
+    }
     let fits = true;
     // G-4. PICKING UP A PIECE OF FURNITURE DOES NOT MOVE IT: bounding falls ONLY if the gesture has
     // really moved.
