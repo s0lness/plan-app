@@ -109,6 +109,37 @@ export function personColor(o: unknown, fallback?: string): string {
   return PALETTE[hachage(cle) % PALETTE.length]!;
 }
 
+/**
+ * DUPLICATE-NAME DISPLAY (docs/decisions/0004-partage-par-lien.md, design edge 3). Two peers can
+ * end up with the SAME rendered name (two guests who both typed "Marie", or a guest who typed
+ * the same label a household member's email derives to): the wire still keys them apart by
+ * `tag` (a device is never confused), but the SCREEN would show two identical-looking dots or
+ * cursors, which is its own kind of lie.
+ *
+ * PURE and DISPLAY-ONLY: it never touches what is stored anywhere (the invite row, `wsMe.name`,
+ * the wire) — only what THIS call paints. `all` should be the FULL peer set (self included): the
+ * discriminator is derived by sorting every collision's `tag` and reading off the target's rank,
+ * so every screen that received the same peer list computes the SAME numbering independently,
+ * with no coordination and no extra round trip. A target with no `tag` at all (e.g. a value read
+ * before the wire ever set one) simply never collides: it always renders plain.
+ */
+export function dedupedDisplayName(all: Iterable<unknown>, target: unknown): string {
+  const nom = displayName(target);
+  if (!nom) return nom;
+  const tagCible = (target && typeof target === "object" && !Array.isArray(target))
+    ? (target as Record<string, unknown>).tag : undefined;
+  if (tagCible === undefined || tagCible === null || tagCible === "") return nom;
+  const tagsMemeNom = new Set<string>();
+  for (const p of all) {
+    if (displayName(p) !== nom) continue;
+    const t = (p && typeof p === "object" && !Array.isArray(p)) ? (p as Record<string, unknown>).tag : undefined;
+    if (t !== undefined && t !== null && t !== "") tagsMemeNom.add(String(t));
+  }
+  if (tagsMemeNom.size <= 1) return nom;
+  const rang = [...tagsMemeNom].sort().indexOf(String(tagCible));
+  return rang <= 0 ? nom : `${nom} (${rang + 1})`;
+}
+
 function wsCursorArrowSVG(color: string): string {
   return `<svg viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg"><path d="M1 1 L1 12 L4.2 9 L6.4 13.5 L8.4 12.6 L6.2 8.2 L10.5 8 Z" fill="${color}" stroke="#fff" stroke-width="1"/></svg>`;
 }

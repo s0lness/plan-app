@@ -7,7 +7,7 @@
 import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { escapeHtml } from "../noyau/nombres.ts";
-import { PLANS_URL, SYNC_ON, memoriserPlan, planCourant } from "../fil/drapeaux.ts";
+import { PLANS_URL, SYNC_ON, estMenage, memoriserPlan, planCourant } from "../fil/drapeaux.ts";
 import { toast } from "../app/toast.ts";
 
 interface PlanListe {
@@ -248,7 +248,14 @@ export function brancherPlans(ctx: Contexte): void {
   // failing that), the title carries the plan's IDENTIFIER: never "Flat plan", never a title that
   // doesn't say which one we're looking at.
   peindreTitre();
-  if (SYNC_ON) void charger().then(() => peindreTitre()).catch(() => { /* title = identifier */ });
+  // BATCH 3. `/api/plans` is 403 on the guest door in every method, whether invited or
+  // local-only (docs/decisions/0004-partage-par-lien.md): fetching it there would only ever
+  // produce a failed request nobody reads (the Plans panel itself is hidden for a guest,
+  // `fil/invite.ts`). `estMenage()` is already known by this synchronous point for an INVITED
+  // tab (the redemption that set it happens before `amorcer()` runs); a fresh LOCAL-ONLY visitor
+  // is still `"menage"` here (discovered only after the boot GET answers), so this one fetch can
+  // still fire once before that discovery — harmless, and the price of "discover by trying".
+  if (SYNC_ON && estMenage()) void charger().then(() => peindreTitre()).catch(() => { /* title = identifier */ });
   $("planName")?.addEventListener("dblclick", (e) => {
     e.preventDefault();
     const el = $("planName");

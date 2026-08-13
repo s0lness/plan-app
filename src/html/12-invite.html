@@ -1,0 +1,37 @@
+<!-- THE GUEST DOOR (batch 3, docs/decisions/0004-partage-par-lien.md): the name step, the dead
+     end, and the local-only banner. All three stay hidden and inert unless src/ts/fil/invite.ts
+     shows them; they are never reached from the household door. -->
+
+<!-- The name step. Reuses the `.setup` chrome (help/plans already do). Nobody reaches the wire
+     unnamed (edge 17): the Join button stays disabled while the field is empty, and the close
+     cross only appears once a name already exists (reopened later, from the sync chip, to
+     change it). -->
+<div class="setup" id="inviteNameDlg" hidden role="dialog" aria-modal="true" aria-labelledby="inviteNameTitle">
+  <div class="setup-card invite-name-card" role="document">
+    <div class="setup-body">
+      <div class="setup-head" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+        <h2 id="inviteNameTitle">Join the plan</h2>
+        <button class="flow-x" id="inviteNameClose" type="button" title="Close" aria-label="Close" hidden>×</button>
+      </div>
+      <p id="inviteNameText"></p>
+      <div class="setup-field">
+        <div class="in"><input id="inviteNameInput" type="text" maxlength="40" placeholder="Your name" autocomplete="off" spellcheck="false"></div>
+      </div>
+      <div class="setup-actions">
+        <button class="btn pri" id="inviteNameJoin" type="button" disabled>Join</button>
+      </div>
+      <p class="invite-back">Not a guest? Open the household site you normally use.</p>
+    </div>
+  </div>
+</div>
+
+<!-- The dead end: a full screen, never a banner, nothing behind it. Not closable: there is
+     nothing here to go back to. -->
+<div class="dead-end" id="inviteDeadEnd" hidden role="alertdialog" aria-modal="true" aria-labelledby="inviteDeadEndTitle">
+  <div class="dead-end-card">
+    <h2 id="inviteDeadEndTitle">This link no longer works.</h2>
+    <p>Ask whoever sent it for a new one.</p>
+    <p id="inviteDeadEndSaved" class="dead-end-saved" hidden></p>
+    <p class="invite-back">Not a guest? Open the household site you normally use.</p>
+  </div>
+</div>

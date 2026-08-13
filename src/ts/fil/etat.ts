@@ -79,10 +79,12 @@ export interface RefusRevision {
   rev: number;
 }
 
-/** What the chip can say. NO SIXTH STATE: a revision refusal is not a TRANSPORT state (D-10).
- *  `__ws__` is the only state the collaboration layer sets. */
+/** What the chip can say. NO SIXTH SYNC STATE: a revision refusal is not a TRANSPORT state
+ *  (D-10). `__ws__` is the only state the collaboration layer sets. `local-only` is not one of
+ *  the five sync states either (batch 3): it is not a household tab that lost its link, it is a
+ *  visitor whose work was never meant to leave this browser. */
 export type EtatPuce =
-  | "ok" | "saving" | "offline" | "slow" | "local" | "unsaved" | "__ws__"
+  | "ok" | "saving" | "offline" | "slow" | "local" | "unsaved" | "__ws__" | "local-only"
   | { by: string };
 
 export interface Fil {

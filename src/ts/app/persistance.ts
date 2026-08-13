@@ -17,8 +17,8 @@
 
 import type { Contexte } from "./contexte.ts";
 import type { EtatFil } from "../partage/plan.ts";
-import { OPTS_KEY, keyPourPlan } from "../noyau/nombres.ts";
-import { planCourant } from "../fil/drapeaux.ts";
+import { OPTS_KEY, keyPourMode } from "../noyau/nombres.ts";
+import { modeCourant, planCourant, planIdInvite } from "../fil/drapeaux.ts";
 import { $ } from "../noyau/dom.ts";
 import { v5StateWire } from "../fil/pseudo-fil.ts";
 import { endActiveGesture, gesteActif, gestureStale } from "../gestes/sortie.ts";
@@ -80,7 +80,10 @@ export function save(ctx: Contexte): void {
   // 2.5 s after a drag started, mid-gesture.
   if (gesteActif()) { ctx.crochets.toucherFraicheur?.(); return; }
   try {
-    localStorage.setItem(keyPourPlan(planCourant()), JSON.stringify(serialize(ctx)));
+    // Batch 3: which key depends on the MODE (household/invited/local-only), not only on which
+    // plan a `?p=` might name — see `noyau/nombres.ts`'s `keyPourMode` for why `main`'s bare-key
+    // exemption cannot survive off the household door (design edge 13).
+    localStorage.setItem(keyPourMode(modeCourant(), planIdInvite() || planCourant()), JSON.stringify(serialize(ctx)));
     _saveCount++;
     notePersistOk();
   } catch (e) { notePersistFailed(ctx, e); }

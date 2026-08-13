@@ -27,6 +27,44 @@ export const SYNC_ON: boolean = !EMBEDDED && /^https?:$/.test(location.protocol)
 export const SYNC_URL = "/api/plan";
 export const PLANS_URL = "/api/plans";
 
+// ---- THE GUEST DOOR: WHICH KIND OF SESSION THIS TAB IS (batch 3) -----------------------------
+// `SYNC_ON` alone answers "are we a real, top-level http(s) origin, capable of the network at
+// all". It says NOTHING about whether this particular origin is willing to let us WRITE into
+// someone else's plan: that is `mode`, a MUTABLE piece of state alongside the const, so this
+// module keeps importing nothing (docs/decisions/0004-partage-par-lien.md, batch 3).
+//
+// Three values: `"menage"` (the household door, or a not-yet-discovered guest door: the default,
+// so nothing changes for a household member the instant this file loads), `"invite"` (a redeemed
+// invitation: set the moment `POST /api/invite` succeeds, in `fil/invite.ts`), `"local"` (the
+// guest door WITHOUT an invitation, discovered by TRYING: the boot GET answers 403 and nothing
+// else about this origin can be trusted to say so sooner). Once `"local"` or `"invite"` is set,
+// it never reverts for the life of the tab: a reload is what re-decides, exactly like `SYNC_ON`.
+export type ModePlan = "menage" | "invite" | "local";
+let _mode: ModePlan = "menage";
+// Only known once `"invite"` is entered: the id and human name of the plan the token names.
+let _planIdInvite: string | null = null;
+let _planNomInvite: string | null = null;
+
+export const modeCourant = (): ModePlan => _mode;
+export const estMenage = (): boolean => _mode === "menage";
+export const estInvite = (): boolean => _mode === "invite";
+export const estLocalSeul = (): boolean => _mode === "local";
+export const planIdInvite = (): string | null => _planIdInvite;
+export const planNomInvite = (): string | null => _planNomInvite;
+
+/** Called once, right after `POST /api/invite` succeeds. Irreversible for the tab's life. */
+export function definirModeInvite(planId: string, planNom: string): void {
+  _mode = "invite";
+  _planIdInvite = planId;
+  _planNomInvite = planNom;
+}
+
+/** Called once, when the boot GET answers 403 `porte_refusee`/`invite_invalide` WITHOUT an
+ *  invitation ever having been redeemed: the guest door, visited by a stranger. */
+export function definirModeLocalSeul(): void {
+  if (_mode === "menage") _mode = "local";
+}
+
 // ---- WHICH PLAN THIS TAB IS LOOKING AT --------------------------------------------------------
 // `main` is the household plan and the default: a tab that asks for nothing falls onto it, so
 // nothing changes for anyone not using multi-plans.

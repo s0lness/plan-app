@@ -25,14 +25,15 @@ import type { Contexte } from "../app/contexte.ts";
 import type { Fil, Pair } from "./etat.ts";
 import type { Fp, Op } from "../partage/plan.ts";
 import { wsDevKey, wsFromMe, wsSameAccount } from "./etat.ts";
-import { SYNC_ON, WIRE_ROOM, avecPlan } from "./drapeaux.ts";
+import { SYNC_ON, WIRE_ROOM, avecPlan, estInvite } from "./drapeaux.ts";
+import { guestIdCourant } from "./identite.ts";
 import { $ } from "../noyau/dom.ts";
 import { toast } from "../app/toast.ts";
 import { migrate } from "../modele/etat.ts";
 import { histNoteRemoteOp } from "../historique/pile.ts";
 import { assistant } from "../panneaux/configuration.ts";
 import { aptToScreen, screenToApt } from "../rendu/vue.ts";
-import { creerNoeudCurseur, displayName, personColor } from "../mesure/curseur-pair.ts";
+import { creerNoeudCurseur, dedupedDisplayName, displayName, personColor } from "../mesure/curseur-pair.ts";
 import {
   opsNonAcquittees, wsAckOp, wsAckDisarm, wsPublishWholePlan, wsRetransmit, wsSend,
   wsShadowAdopted, wsShadowFromServer,
@@ -67,12 +68,17 @@ export function wsRenderPeers(fil: Fil): void {
   box.innerHTML = "";
   if (!fil.wsOpen || !others.length) { box.hidden = true; return; }
   box.hidden = false;
+  const tousLesPairs = [...fil.peers.values()];
   others.forEach((p) => {
     const d = document.createElement("span");
     d.className = "peer-dot";
     d.style.background = personColor(p, p.color);
     d.textContent = initial(p);
-    const dn = displayName(p);
+    // Design edge 3: two peers can pick the SAME name (two guests, or a guest naming themselves
+    // after a household member's derived name). Display only, disambiguated from the FULL peer
+    // set (self included: the discriminator must be the SAME on every screen) — never the stored
+    // name, which is what the wire and the invite row keep.
+    const dn = dedupedDisplayName(tousLesPairs, p);
     if (wsSameAccount(fil, p)) {
       d.classList.add("self");
       d.title = (dn || p.email || "") + " (your other device)";
@@ -115,7 +121,7 @@ export function wsUpsertCursor(
   if (!c) {
     // MY OWN account on ANOTHER device does not carry MY name on my own screen: that would be me.
     // It announces itself for what it is.
-    const label = wsSameAccount(fil, msg) ? "Other device" : (displayName(msg) || "?");
+    const label = wsSameAccount(fil, msg) ? "Other device" : (dedupedDisplayName([...fil.peers.values()], msg) || "?");
     const el = creerNoeudCurseur(label, col, !!msg.guest);
     $("peerCursors")?.appendChild(el);
     const s = aptToScreen(ctx, msg.x, msg.y);
@@ -213,6 +219,10 @@ function wsAppendChat(fil: Fil, msg: MessageChat): void {
   const row = document.createElement("div");
   row.className = "chat-msg";
   const col = personColor(msg);
+  // NOT deduplicated: a chat entry (server's `chatWire`) carries no `tag`, so there is nothing
+  // reliable to disambiguate AGAINST here (unlike a peer dot or a cursor, both keyed by device).
+  // Two "Marie"s in the chat history read the same as two "Marie"s ever did; the screen-wide lie
+  // the discriminator fixes is two SIMULTANEOUS dots or cursors that look identical, not a log.
   const who = displayName(msg) || "?";
   const dot = document.createElement("span");
   dot.className = "cd";
@@ -510,7 +520,15 @@ export function wsConnect(ctx: Contexte, fil: Fil): void {
   if (!SYNC_ON || fil.detached) return;
   try {
     const proto = location.protocol === "https:" ? "wss://" : "ws://";
-    fil.ws = new WebSocket(avecPlan(proto + location.host + "/ws"));
+    let url = avecPlan(proto + location.host + "/ws");
+    // BATCH 3. `?g=` identifies THIS guest's own second tab (design edge 8): a browser cannot
+    // set a header on a WebSocket upgrade, so the invite token travels as the session cookie
+    // (functions/api/invite.ts) and this small, non-credential id travels in the query — it
+    // grants nothing by itself, `functions/ws.ts` still requires the cookie to open the socket at
+    // all. Household sockets never send it (`estInvite()` false there): `wsMe.guestId` then stays
+    // empty, exactly as before this batch.
+    if (estInvite()) url += "&g=" + encodeURIComponent(guestIdCourant());
+    fil.ws = new WebSocket(url);
   } catch (_) { wsScheduleReconnect(ctx, fil); return; }
   fil.ws.addEventListener("open", () => {
     try { fil.ws?.send(JSON.stringify({ t: "hello" })); } catch (_) { /* nothing */ }
@@ -522,11 +540,21 @@ export function wsConnect(ctx: Contexte, fil: Fil): void {
     if (!fil.wsOpen) { fil.wsOpen = true; fil.wsReconnectDelay = 1000; }   // first message = live
     wsOnMessage(ctx, fil, String((e as MessageEvent).data));
   });
-  fil.ws.addEventListener("close", () => wsOnDown(ctx, fil));
+  fil.ws.addEventListener("close", (e) => wsOnDown(ctx, fil, (e as CloseEvent).code));
   fil.ws.addEventListener("error", () => { try { fil.ws?.close(); } catch (_) { /* nothing */ } });
 }
 
-export function wsOnDown(ctx: Contexte, fil: Fil): void {
+/**
+ * `code` (batch 3): the WebSocket close code. `4001` is `live-worker/worker.ts`'s
+ * `REVOKE_CLOSE_CODE`, sent ONLY by `/revoke` closing a guest's live socket on purpose — the
+ * "revoked mid-gesture" edge case (design edge 7). It is checked BEFORE any of the ordinary
+ * reconnect machinery below runs: a revoked link must never schedule a reconnect attempt (there
+ * is nothing left to reconnect TO), and the dead-end screen states plainly whether the last
+ * change was saved, which `ctx.crochets.accesRefuseInvite` reads off `fil` before anything below
+ * clears it.
+ */
+export function wsOnDown(ctx: Contexte, fil: Fil, code?: number): void {
+  if (estInvite() && code === 4001) { ctx.crochets.accesRefuseInvite?.(); return; }
   const was = fil.wsOpen;
   fil.wsOpen = false;
   fil.ws = null;

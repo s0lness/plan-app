@@ -18,7 +18,8 @@
     "css/14-overlays.css",
     "css/15-collab.css",
     "css/16-impression.css",
-    "css/17-etroit.css"
+    "css/17-etroit.css",
+    "css/18-invite.css"
   ],
   "html": [
     "html/01-coque-rail.html",
@@ -31,6 +32,7 @@
     "html/08-liste-mobilier.html",
     "html/09-aide.html",
     "html/11-plans.html",
-    "html/10-impression.html"
+    "html/10-impression.html",
+    "html/12-invite.html"
   ]
 }
