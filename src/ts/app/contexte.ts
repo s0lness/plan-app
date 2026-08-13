@@ -187,6 +187,16 @@ export interface Crochets {
    */
   accesRefuseSansInvite?: (() => void) | undefined;
   accesRefuseInvite?: (() => void) | undefined;
+  /**
+   * SELF-HEALING FOR THE LOCAL-ONLY DOOR FLAG (`plan-porte-locale`, `fil/invite.ts`). That flag is
+   * a GUESS made before confirmation, replayed synchronously on every later boot so a returning
+   * local-only visitor doesn't read the household's storage key by mistake. A boot read that
+   * SUCCEEDS proves this origin does serve a plan to this tab, which makes the guess wrong: wired
+   * from `fil/rest.ts`'s `syncBoot`/`pollPull` (the same two places that lift `bootReconciled`) to
+   * `fil/invite.ts`, through a crochet for the same reason `accesRefuseSansInvite` is one — `rest.ts`
+   * is imported BY `invite.ts` (for `setSyncChip`), so the reverse import would be a cycle.
+   */
+  porteMenageConfirmee?: (() => void) | undefined;
 }
 
 export function creerContexte(etat: Etat, canvas: HTMLElement, viewport: HTMLElement): Contexte {

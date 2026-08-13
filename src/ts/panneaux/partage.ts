@@ -25,6 +25,7 @@ import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { escapeHtml } from "../noyau/nombres.ts";
 import { INVITES_URL, SYNC_ON, estMenage } from "../fil/drapeaux.ts";
+import { toast } from "../app/toast.ts";
 
 // =================================================================================================
 //  THE WIRE SHAPE (functions/api/invites.ts's `versJson`)
@@ -203,8 +204,16 @@ async function revoquer(token: string): Promise<void> {
 export function ouvrirPartage(planId: string, planNom: string): void {
   // Belt-and-suspenders (see header comment): the button that calls this lives inside a panel a
   // guest never reaches, but the check costs nothing and matches how the server-side routes are
-  // written.
-  if (!SYNC_ON || !estMenage()) return;
+  // written. THIS GESTURE MUST SAY WHY, EVERY TIME (AGENTS.md, "a gesture that cannot succeed
+  // must say so"): returning silently here was the reported defect — clicking Share did nothing
+  // at all, no panel, no message, and a confused owner clicked it again and again for nothing.
+  // Two distinct reasons get two distinct sentences, `{geste:true}` so a repeated click repeats
+  // the message instead of being swallowed by the system-message throttle.
+  if (!SYNC_ON) { toast("Sharing needs the online app.", { geste: true }); return; }
+  if (!estMenage()) {
+    toast("This tab is not connected to the household plan: there is nothing to share from here.", { geste: true });
+    return;
+  }
   _planId = planId;
   _invites = [];
   _guestHost = null;
