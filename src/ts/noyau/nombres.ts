@@ -101,3 +101,32 @@ export const V5_MIN_AREA = 400;
 export const WALL = 12;
 
 export const v5R2 = (v: number): number => Math.round(v * 100) / 100;
+
+// ---- free-draw wall trace ("trace libre") constants --------------------------------------------
+// The owner's request: "sometimes you want to make a corner ... and it's not easy" (drawing two
+// straight walls that must meet exactly, fighting the magnet). A free-hand stroke becomes a
+// CHAIN of walls: geometrie/trace-libre.ts simplifies it, straightens near-axis runs, and shares
+// the corner vertex between consecutive walls.
+
+/**
+ * cm: Ramer-Douglas-Peucker tolerance when simplifying a freehand stroke into straight runs.
+ * Chosen BELOW one wall's thickness (WALL=12): a deviation this size is a genuine corner, not
+ * hand jitter, and must survive simplification. Chosen ABOVE the 5cm snap grid used elsewhere,
+ * so ordinary mouse tremor at working zoom collapses into a single straight run instead of
+ * spawning a wall per wobble. Verified against a 200-point shaky stroke (tests/trace-libre.ts):
+ * a lower value lets jitter through, a higher one starts eating real corners.
+ */
+export const TRACE_LIBRE_RDP_TOL_CM = 8;
+
+/**
+ * deg: a simplified run within this many degrees of horizontal/vertical snaps onto the axis.
+ * Wide enough that an ordinary hand-drawn "straight" line, which wanders a few degrees, locks
+ * cleanly onto the grid; narrow enough that a deliberate diagonal (a cut corner) stays diagonal.
+ */
+export const TRACE_LIBRE_ANGLE_TOL_DEG = 12;
+
+/**
+ * cm: a stroke shorter than this, measured along its own path, is a click, not a wall. Same
+ * floor as the single-segment tool's own minimum drag (`v5StartDraw`).
+ */
+export const TRACE_LIBRE_MIN_CM = 20;

@@ -100,7 +100,7 @@ export interface SondeGestes {
   /** The FULL TOGGLE (palette, handles, card, banner): it overwrites the render batch's own. */
   wallsMode(on?: boolean): boolean;
   setWallsMode(on: boolean): boolean;
-  readonly v5ui: { selWall: string | null; selCell: string | null; draw: boolean };
+  readonly v5ui: { selWall: string | null; selCell: string | null; draw: boolean; drawFree: boolean };
   canDeleteWall(id: unknown): boolean;
   wallDeleteVerdict(id: unknown, plan?: unknown): string;
   delWall(id: unknown): number;
@@ -240,7 +240,9 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
 
     wallsMode(on?: boolean) { if (on !== undefined) setWallsMode(ctx, !!on); return ctx.wallsMode; },
     setWallsMode(on: boolean) { setWallsMode(ctx, !!on); return ctx.wallsMode; },
-    get v5ui() { return { selWall: ctx.ihm.selWall, selCell: ctx.ihm.selCell, draw: ctx.ihm.draw }; },
+    get v5ui() {
+      return { selWall: ctx.ihm.selWall, selCell: ctx.ihm.selCell, draw: ctx.ihm.draw, drawFree: ctx.ihm.drawFree };
+    },
     canDeleteWall: (id: unknown) => v5CanDeleteWall(ctx.etat.plan, String(id)),
     wallDeleteVerdict: (id: unknown, plan?: unknown) =>
       v5WallDeleteVerdict((plan as never) || ctx.etat.plan, String(id)),

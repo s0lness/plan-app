@@ -246,9 +246,9 @@ try {
   const putsAvant = putCount;
   const D = await openBrowser("seul", URL_OF("/"));   // no hash, no stored token: a stranger
   opened.push(D);
-  const local = await attendre(async () => (await D.evaluate(`document.getElementById("syncChip").textContent`)) === "local only");
+  const local = await attendre(async () => (await D.evaluate(`(document.getElementById("syncChip")||{}).textContent`)) === "local only");
   check("le chip affiche « local only » pour un visiteur sans invitation", local,
-    "vu " + await D.evaluate(`document.getElementById("syncChip").textContent`));
+    "vu " + await D.evaluate(`(document.getElementById("syncChip")||{}).textContent`));
   const banniere = await D.J(`!document.getElementById("localBanner").hidden`);
   check("le bandeau local (export mis en avant) est visible", banniere);
   const assistantOuvert = await D.J(`!document.getElementById("setup").hidden`);
@@ -262,7 +262,7 @@ try {
   await sleep(2500);   // longer than the 1 s push debounce
   check("aucun PUT n'est jamais parti en mode local seul", putCount === putsAvant,
     (putCount - putsAvant) + " PUT reçu(s) : " + JSON.stringify(putLog.slice(-2)));
-  const chipEncoreLocal = await D.evaluate(`document.getElementById("syncChip").textContent`);
+  const chipEncoreLocal = await D.evaluate(`(document.getElementById("syncChip")||{}).textContent`);
   check("le chip reste « local only » après l'édition (jamais « slow sync » ni « offline »)",
     chipEncoreLocal === "local only", "vu " + chipEncoreLocal);
 
@@ -279,9 +279,9 @@ try {
   // ce visiteur possède. Ici on recharge le MÊME onglet, donc le même stockage.
   await D.evaluate(`location.href = "/revisite"`);
   const revenu = await attendre(async () =>
-    (await D.evaluate(`document.getElementById("syncChip").textContent`)) === "local only");
+    (await D.evaluate(`(document.getElementById("syncChip")||{}).textContent`)) === "local only");
   check("après rechargement, le visiteur est encore en local seul", revenu,
-    "vu " + await D.evaluate(`document.getElementById("syncChip").textContent`));
+    "vu " + await D.evaluate(`(document.getElementById("syncChip")||{}).textContent`));
   const nomCellule = await D.evaluate(
     `(function(){var c=window.__plan&&window.__plan.plan&&window.__plan.plan.cells[0];return c?String(c.name):"(pas de cellule)";})()`);
   check("le plan dessiné à la visite précédente est TOUJOURS là", nomCellule === "Salon local seul",
