@@ -71,6 +71,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/plan-abime.ts",              chrome: 2 },
   { f: "tests/porte-invitee.ts",           chrome: 2 },   // the guest door in a real browser: token capture, name step, dead end, local-only
   { f: "tests/interactions.ts",            chrome: 1 },
+  { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
   { f: "tests/boot-vierge.ts",             chrome: 1 },
@@ -88,6 +89,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/repartir-espacement.ts",     chrome: 0 },   // PURE computation: no browser
   { f: "tests/fenetre-battement.ts",       chrome: 0 },   // PURE tracing: no browser
   { f: "tests/mur-libre.ts",               chrome: 0 },   // PURE geometry: no browser
+  { f: "tests/trace-libre.ts",             chrome: 0 },   // PURE geometry, freehand wall trace: no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
   { f: "tests/exports-morts.ts",           chrome: 0 },   // reads the SOURCE: no browser
   { f: "tests/no-dead-selectors.ts",       chrome: 0 },                        // CSS classes taken by src/ts

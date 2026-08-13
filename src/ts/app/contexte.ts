@@ -37,6 +37,9 @@ export interface EtatIHM {
   selWall: string | null;
   selCell: string | null;
   draw: boolean;
+  /** Which draw tool is armed while `draw` is true: the single-segment tool (false) or the
+   * freehand trace, which becomes a CHAIN of walls (true). Meaningless while `draw` is false. */
+  drawFree: boolean;
 }
 
 /**
@@ -190,7 +193,7 @@ export function creerContexte(etat: Etat, canvas: HTMLElement, viewport: HTMLEle
   return {
     etat,
     vue: { scale: 1, ox: 0, oy: 0 },
-    ihm: { selWall: null, selCell: null, draw: false },
+    ihm: { selWall: null, selCell: null, draw: false, drawFree: false },
     selection: { ids: new Set<string>(), primaire: null },
     wallsMode: false,
     editRoom: false,

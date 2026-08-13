@@ -72,6 +72,10 @@ import { checkShapeWarn, clearStitchGuides, drawOrthoGuides, orthoSnapVertex } f
 // same `w20` and every other wall would disappear without a word. This is not a function of the plan,
 // hence its own separate module.
 import { v5NewId } from "../fil/identite.ts";
+// FREEHAND WALL TRACE (a stroke becomes a CHAIN of walls). One-directional import ONLY (this
+// file -> trace-libre.ts): trace-libre.ts must not import back from here, see its own header for
+// why (a cycle between the two is exactly the shape of bug "Blank startup" warns about).
+import { v5StartFreeDraw } from "./trace-libre.ts";
 
 // =================================================================================================
 //  SELECTING A WALL, A CELL, AND DELETION
@@ -364,12 +368,26 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
 //  TOOL 2: DRAWING A WALL
 // =================================================================================================
 
-export function v5SetDraw(ctx: Contexte, on: boolean): void {
+/**
+ * Arms (or disarms) a draw tool. `libre` picks WHICH one while `on` is true: the single-segment
+ * tool (default, unchanged behaviour) or the freehand trace (`gestes/trace-libre.ts`), which
+ * turns a stroke into a chain of walls. Two buttons, one state machine: activating one clears
+ * the other, matching the segmented Furniture/Walls control's own look.
+ */
+export function v5SetDraw(ctx: Contexte, on: boolean, libre?: boolean): void {
   ctx.ihm.draw = !!on;
-  const b = $("btnDrawWall");
-  if (b) {
-    b.classList.toggle("pri", !!on);
-    b.setAttribute("aria-pressed", on ? "true" : "false");
+  ctx.ihm.drawFree = !!on && !!libre;
+  const bSeg = $("btnDrawWall");
+  if (bSeg) {
+    const actif = ctx.ihm.draw && !ctx.ihm.drawFree;
+    bSeg.classList.toggle("pri", actif);
+    bSeg.setAttribute("aria-pressed", actif ? "true" : "false");
+  }
+  const bLibre = $("btnDrawWallFree");
+  if (bLibre) {
+    const actif = ctx.ihm.draw && ctx.ihm.drawFree;
+    bLibre.classList.toggle("pri", actif);
+    bLibre.setAttribute("aria-pressed", actif ? "true" : "false");
   }
   const l = ctx.canvas.querySelector<HTMLElement>(".v5layer");
   if (l) l.classList.toggle("drawing", !!on);
@@ -712,7 +730,12 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
   // The old version only diverted the "+": a drawing started on the outline wall band
   // still reached v5StartOutlineEdgeDrag, and a simple click there triggered a
   // v5AfterGeometry(true) that lengthened a partition three meters away from there.
-  if (ctx.ihm.draw) { e.stopPropagation(); v5StartDraw(ctx, e); return; }
+  if (ctx.ihm.draw) {
+    e.stopPropagation();
+    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e, () => v5SetDraw(ctx, false));
+    else v5StartDraw(ctx, e);
+    return;
+  }
 }
 
 // =================================================================================================
@@ -722,7 +745,11 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
 export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (!v5On(ctx) || measureMode() || spaceHeld()) return;
   if (e.button !== undefined && e.button !== 0) return;
-  if (ctx.ihm.draw) { v5StartDraw(ctx, e); return; }
+  if (ctx.ihm.draw) {
+    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e, () => v5SetDraw(ctx, false));
+    else v5StartDraw(ctx, e);
+    return;
+  }
   const t = e.target as Element | null;
   if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx")) return;
   const wallEl = (t && t.closest) ? t.closest<HTMLElement>("[data-w]") : null;
@@ -749,10 +776,11 @@ export function v5LayerDbl(ctx: Contexte, e: MouseEvent): void {
 // =================================================================================================
 
 export function v5SyncTools(ctx: Contexte): void {
-  const b = $("btnDrawWall");
-  if (!b) return;
   const on = v5On(ctx) && ctx.wallsMode;
-  b.hidden = !on;
+  const bSeg = $("btnDrawWall");
+  if (bSeg) bSeg.hidden = !on;
+  const bLibre = $("btnDrawWallFree");
+  if (bLibre) bLibre.hidden = !on;
   if (!on && ctx.ihm.draw) v5SetDraw(ctx, false);
 }
 
@@ -812,7 +840,15 @@ export function brancherOutilsMurs(ctx: Contexte): void {
   // G-14. IN CAPTURE, on the canvas: an armed tool passes BEFORE all handles.
   ctx.canvas.addEventListener("pointerdown", (e) => v5CaptureDown(ctx, e as PointerEvent), true);
   const b = $("btnDrawWall");
-  if (b) b.addEventListener("click", () => { v5SetDraw(ctx, !ctx.ihm.draw); render(ctx); });
+  if (b) b.addEventListener("click", () => {
+    v5SetDraw(ctx, !(ctx.ihm.draw && !ctx.ihm.drawFree), false);
+    render(ctx);
+  });
+  const bLibre = $("btnDrawWallFree");
+  if (bLibre) bLibre.addEventListener("click", () => {
+    v5SetDraw(ctx, !(ctx.ihm.draw && ctx.ihm.drawFree), true);
+    render(ctx);
+  });
   // The Furniture / Walls segmented control. In the old client it was wired FROM js/29
   // (the config modal), i.e. three files away from the function it calls:
   // the application's most visible button lived inside a module with nothing to do with it. It is
