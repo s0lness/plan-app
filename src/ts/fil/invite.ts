@@ -313,6 +313,12 @@ function masquerCommandesFoyer(): void {
   // it would work, but on a plan nobody else will ever see, which is worse than absent.
   const btnPlans = $("btnPlans"); if (btnPlans) btnPlans.hidden = true;
   const btnImport = $("btnImport"); if (btnImport) btnImport.hidden = true;
+  // ET « Invite », POUR UNE RAISON DE TEMPS. `panneaux/plans.ts` le révèle à l'amorçage sous
+  // `SYNC_ON && estMenage()`, or le mode local-seul se découvre APRÈS, sur le 403 : au moment où
+  // la question est posée la réponse est encore « foyer », donc le bouton apparaît, et plus rien
+  // ne le reprend. Vu en PRODUCTION sur le bac à sable, après avoir corrigé les deux autres.
+  // Cacher ici, à la découverte, est le seul endroit qui connaisse la vraie réponse.
+  const btnInvite = $("btnInvite"); if (btnInvite) btnInvite.hidden = true;
 }
 
 export function finirGuestOnboarding(ctx: Contexte, fil: Fil): void {
