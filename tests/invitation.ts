@@ -48,10 +48,10 @@ function base() {
   return { db, env: { ...env, ...HOTES_ENV } };
 }
 
-const inserePlan = (db: DonneeDynamique, id: string, nom: string | null) => {
+const inserePlan = (db: DonneeDynamique, id: string, nom: string | null, auteur = "sylve@example.com") => {
   db.prepare("INSERT INTO plans(id,data,rev,updated_at,updated_by,name) VALUES(?1,?2,1,?3,?4,?5)")
     .run(id, JSON.stringify({ outline: [], walls: [], openings: [], pieces: [], cells: [] }),
-      new Date().toISOString(), "sylve@example.com", nom);
+      new Date().toISOString(), auteur, nom);
 };
 
 /**
@@ -344,6 +344,36 @@ await test("invites_creation_liste_revocation_aller_retour", async () => {
   return expect(resInconnu.status === 200, "révoquer un jeton INCONNU doit aussi rester 200 (pas de 404 qui confirmerait)");
 });
 
+await test("invites_delete_appelle_le_do_revoke_avec_le_marqueur_interne", async () => {
+  // Batch 2, design edge 6: "Revoke must close live sockets, not merely block new ones." This
+  // proves the WIRING from this route to `live-worker/worker.ts`'s `handleRevoke` — the DO-side
+  // behaviour itself (which sockets close, which don't) is covered in `live-worker/test-local.ts`.
+  const { db, env } = CTX_FOYER();
+  insereInvite(db, { token: "wire1", planId: "appartement" });
+  const { etat, room } = fakeRoom();
+  const res = await invitesDelete({ ...env, ROOM: room }, HOTE_FOYER, jeton("wire1"));
+  const corps = await res.json<DonneeDynamique>();
+  const vue = etat.requete;
+  return expect(res.status === 200 && corps.ok === true, "la révocation reste 200, vu " + res.status)
+      && expect(!!vue, "le DO doit avoir reçu un appel (via le binding ROOM, jamais le réseau)")
+      && expect(new URL(vue!.url).pathname === "/revoke", "l'appel doit cibler /revoke, vu " + vue!.url)
+      && expect(vue!.headers.get("X-Plan-Internal") === "1", "et porter le marqueur interne")
+      && expect((await vue!.clone().json<DonneeDynamique>()).token === jeton("wire1"), "avec le JETON révoqué dans le corps");
+});
+
+await test("invites_delete_ne_casse_pas_si_le_do_echoue", async () => {
+  // BEST-EFFORT: the row is revoked either way (see the route's own comment), so a Worker/DO
+  // failure must never turn an otherwise-successful revoke into an error response.
+  const { db, env } = CTX_FOYER();
+  insereInvite(db, { token: "wire2", planId: "appartement" });
+  const roomEnPanne = { idFromName: (n: string) => n, get: () => ({ fetch: async () => { throw new Error("DO indisponible"); } }) };
+  const res = await invitesDelete({ ...env, ROOM: roomEnPanne }, HOTE_FOYER, jeton("wire2"));
+  const corps = await res.json<DonneeDynamique>();
+  const ligne = db.prepare("SELECT revoked FROM invites WHERE token=?1").get(jeton("wire2")) as DonneeDynamique;
+  return expect(res.status === 200 && corps.ok === true, "la révocation reste 200 même si le DO est en panne, vu " + res.status)
+      && expect(ligne.revoked === 1, "la ligne D1 est révoquée quand même");
+});
+
 await test("invites_plan_inexistant_est_404", async () => {
   const { env } = base();   // no plan inserted
   const res = await invitesPost(env, HOTE_FOYER, { planId: "fantome" });
@@ -395,17 +425,21 @@ async function planPutVia(env: DonneeDynamique, url: string, token: string | und
 
 await test("plan_get_ignore_p_sur_la_porte_invite", async () => {
   const { db, env } = base();
-  inserePlan(db, "appartement", "Chez nous");
-  inserePlan(db, "autre-logement", "Ailleurs");
+  // LES DEUX PLANS ONT DES AUTEURS DIFFÉRENTS, et c'est ce qui rend ce test probant. Avant, les
+  // deux lignes portaient le MÊME `updated_by`, donc l'assertion passait quel que soit le plan
+  // servi : elle ne prouvait rien. Un test qui ne peut pas échouer sur le défaut qu'il décrit est
+  // pire qu'absent, il rassure.
+  inserePlan(db, "appartement", "Chez nous", "sylve@example.com");
+  inserePlan(db, "autre-logement", "Ailleurs", "quelquun.dautre@example.com");
   insereInvite(db, { token: "getp1", planId: "appartement" });
   // `?p=` POINTS AT THE OTHER PLAN: a guest editing the URL must not reach it (design edge 5).
   const res = await planGetVia(env, "https://share.example.com/api/plan?p=autre-logement", "getp1");
   const corps = await res.json<DonneeDynamique>();
   return expect(res.status === 200, "doit répondre 200, vu " + res.status)
-      && expect(JSON.stringify(corps.data) !== "null" || corps.data === null, "réponse exploitable")
-      // The served row is the INVITED plan's, not the one named by ?p=: prove it by checking
-      // updatedBy, which was written as "sylve@example.com" only on the invited plan.
-      && expect(corps.updatedBy === "sylve@example.com", "doit servir le plan de l'invite, pas celui de ?p=, vu " + JSON.stringify(corps));
+      // Servi = le plan de l'invitation, PAS celui de `?p=` : les deux auteurs diffèrent.
+      && expect(corps.updatedBy === "Sylve", "doit servir le plan de l'invite, pas celui de ?p=, vu " + JSON.stringify(corps))
+      // Et l'auteur est RÉDUIT : une adresse du foyer ne traverse pas jusqu'à un invité (edge 16).
+      && expect(!String(corps.updatedBy).includes("@"), "aucune adresse ne doit atteindre un invité, vu " + JSON.stringify(corps.updatedBy));
 });
 
 await test("plan_get_jeton_invalide_est_403", async () => {

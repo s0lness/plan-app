@@ -349,6 +349,64 @@ export function colorFor(email: string): string {
   return COLORS[h % COLORS.length];
 }
 
+// ---- GUEST IDENTITY (docs/decisions/0004-partage-par-lien.md, "batch 2, wire identity") --------
+// A guest carries no Access-verified email, so the server must clean and derive identity fields
+// on its own, twice over: once when `functions/ws.ts` forwards the invite's `last_name` as an
+// HTTP header, and again here, because a name can also arrive later over an OPEN SOCKET via the
+// `{t:"name"}` message (item 5), which never passes through a Pages Function at all.
+
+// Same cap as `functions/nom.ts` applies to a guest name (design edge 2): a plan name keeps its
+// historical 80/60, a guest's self-declared name is capped tighter.
+export const GUEST_NAME_MAX = 40;
+const CONTROLE_BAS = 32, DEL = 127;
+// LRE, RLE, PDF, LRO, RLO
+const BIDI_MIN_1 = 0x202a, BIDI_MAX_1 = 0x202e;
+// LRI, RLI, FSI, PDI
+const BIDI_MIN_2 = 0x2066, BIDI_MAX_2 = 0x2069;
+
+/**
+ * SAME RULE AS `functions/nom.ts`, deliberately COPIED rather than imported: this Worker is
+ * bundled separately from the Pages Functions (see the header note on `colorFor`/`hoteAutorise`
+ * in worker.ts — one repository, two independent bundles). A plain `c < 32` filter lets bidi
+ * override code points through; those do not corrupt the name itself, they visually reorder the
+ * TEXT AROUND it (a chat line, a cursor label, a peer-dot tooltip). Unlike `cleanName` above (used
+ * for plan entities, which THROWS on a non-string so a malformed op is refused outright), this
+ * never throws: a guest's `{t:"name"}` message is not an op, and a malformed one should just
+ * produce an empty name rather than drop the whole socket.
+ */
+export function cleanGuestName(v: unknown): string {
+  if (typeof v !== "string") return "";
+  let out = "";
+  for (const ch of v.trim()) {
+    const c = ch.codePointAt(0) as number;
+    if (c < CONTROLE_BAS || c === DEL) continue;
+    if ((c >= BIDI_MIN_1 && c <= BIDI_MAX_1) || (c >= BIDI_MIN_2 && c <= BIDI_MAX_2)) continue;
+    if (out.length + ch.length > GUEST_NAME_MAX) break;
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * Same derivation as the client's `displayName()` (`src/ts/mesure/curseur-pair.ts`): the local
+ * part of the address, capitalized, trailing digits stripped. Duplicated here for the same reason
+ * `cleanGuestName` is: this Worker cannot import from `src/ts`.
+ *
+ * ITS ONLY CALLER IS THE GUEST-AUDIENCE PATH. "Emails never cross to a guest" (design edge 16)
+ * does not mean a guest sees a BLANK dot for every household member instead: item 2 of batch 2
+ * says every outgoing message "must carry a display name instead [of the email] and no email at
+ * all" — a household author has no self-declared `name` (that field only exists for guests), so
+ * without this, a guest would see "?" where a household peer's dot should be.
+ */
+export function nameFromEmail(email: string): string {
+  const s = String(email || "").trim();
+  if (!s) return "";
+  const local = (s.split("@")[0] || "").replace(/\d+$/, "");
+  const mots = local.split(/[._\-+]+/).filter(Boolean);
+  if (!mots.length) return "";
+  return mots.map((m) => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase()).join(" ").slice(0, 32);
+}
+
 // ---- validations ----
 
 // ---- "ABSENT FIELD = NO OPINION", generalized to all entities ----------------------------------

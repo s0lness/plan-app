@@ -5,7 +5,7 @@
 import type { DonneeDynamique } from "../tests/_types.ts";
 import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan } from "./ops.ts";
 import type { CursorMessage, DragMessage, Operation, Piece, PlanState, Point } from "./ops.ts";
-import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy } from "./worker.ts";
+import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy, attachmentFromRequest } from "./worker.ts";
 
 // The doubles only implement the surface actually read by PlanRoom. These two boundaries
 // concentrate the adaptation to the full Cloudflare contract, without weighing down each scenario.
@@ -1315,10 +1315,16 @@ function fakeD1Room({ data = null, by = "live", rev = 1 }: {
   const row = data === null ? null : { data, rev, updated_by: by, updated_at: "2026-08-03T10:00:00Z" };
   const world = { row, writes: [] as DonneeDynamique[] };
   const sockets: DonneeDynamique[] = [];
-  const mkWs = (email: string, tag: string) => {
-    const att = { email, color: "#1f6f78", tag };
-    const w = { sent: [] as DonneeDynamique[], deserializeAttachment: () => att, serializeAttachment: (a: DonneeDynamique) => Object.assign(att, a),
-      send: (s: DonneeDynamique) => w.sent.push(JSON.parse(s)), close: () => {} };
+  // `extra` (batch 2): guest/name/guestId/token, defaulted to the household shape so every
+  // PRE-EXISTING call site (household sockets) is unaffected.
+  const mkWs = (email: string, tag: string, extra: DonneeDynamique = {}) => {
+    const att = { email, color: "#1f6f78", tag, name: "", guest: false, guestId: "", token: "", ...extra };
+    const w = {
+      sent: [] as DonneeDynamique[], closed: false, closeCode: null as number | null, closeReason: null as string | null,
+      deserializeAttachment: () => att, serializeAttachment: (a: DonneeDynamique) => Object.assign(att, a),
+      send: (s: DonneeDynamique) => w.sent.push(JSON.parse(s)),
+      close: (code?: number, reason?: string) => { w.closed = true; w.closeCode = code ?? null; w.closeReason = reason ?? null; },
+    };
     sockets.push(w);
     return w;
   };
@@ -1827,6 +1833,284 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   ok(P({ pair: "" }).pair === "", "empty pair clears the pairing");
   throws(() => P({ pair: { id: "x" } }), "pair as an object rejected");
   throws(() => P({ pair: "a b c" }), "pair with spaces rejected (same grammar as any id)");
+}
+
+// =================================================================================================
+//  BATCH 2 — WIRE IDENTITY (docs/decisions/0004-partage-par-lien.md, "batch 2, wire identity")
+// =================================================================================================
+// `functions/ws.ts` builds the headers (covered by tests/invitation.ts); `attachmentFromRequest`
+// reads them, a PURE function so it is testable under plain node without the real `WebSocketPair`
+// this file cannot construct (see the header note at the top of this file). The rest of this
+// section exercises the Durable Object's behaviour once a socket carries that identity:
+// per-recipient redaction, the name message, the two guest-only op refusals, the rate cap, and
+// revocation.
+
+// ---- 1. attachmentFromRequest: household vs guest, and `??` NOT `||` on email -------------------
+{
+  const reqH = (headers: Record<string, string>) => new Request("https://x/ws", { headers });
+  const menage = attachmentFromRequest(reqH({ "X-Plan-Email": "a@example.com", "X-Plan-Guest": "0", "X-Plan-Name": "" }), "tagA");
+  ok(!menage.guest && menage.email === "a@example.com" && menage.name === "", "attachement foyer : pas invite, email present, pas de nom");
+  ok(menage.color === colorFor("a@example.com"), "couleur foyer derivee de l'email, comme avant");
+
+  const invite = attachmentFromRequest(reqH({
+    "X-Plan-Email": "", "X-Plan-Guest": "1", "X-Plan-Name": "Marie",
+    "X-Plan-Guest-Id": "abc123", "X-Plan-Token": "tok-abc",
+  }), "tagB");
+  ok(invite.guest === true && invite.email === "" && invite.name === "Marie" && invite.guestId === "abc123" && invite.token === "tok-abc",
+    "attachement invite : guest=true, email VIDE (jamais 'inconnu'), nom/guestId/token transportes");
+  ok(invite.color === colorFor("Marie"), "couleur invite derivee du nom (colorFor(nom||guestId||tag))");
+
+  // `??` NOT `||`: an EXPLICIT empty header (the guest's real shape) must stay "", never be
+  // coerced back into the literal "inconnu" that means something else on the household door.
+  ok(attachmentFromRequest(reqH({ "X-Plan-Email": "", "X-Plan-Guest": "1" }), "tagC").email === "",
+    "email explicitement vide reste vide (le || precedent le remontait a 'inconnu')");
+  // Header truly ABSENT (an older forwarder, or a test double that never set it): "inconnu",
+  // exactly like before this batch.
+  ok(attachmentFromRequest(reqH({}), "tagD").email === "inconnu", "email absent (jamais envoye) -> inconnu, comportement historique");
+
+  // guestId re-validated server-side (defence in depth: this Worker trusts nothing forwarded to
+  // it without re-checking, cf. the header note above `GUEST_ID_RE`).
+  ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1", "X-Plan-Guest-Id": "not valid!" }), "tagE").guestId === "",
+    "guestId mal forme (espace, ponctuation) est efface");
+  ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1", "X-Plan-Guest-Id": "x".repeat(80) }), "tagF").guestId === "",
+    "guestId trop long est efface");
+
+  // A name arriving via the HEADER is re-cleaned too, capped at 40: defence in depth, the same
+  // reasoning as re-checking porteDe() downstream of the middleware. (Bidi override code points
+  // cannot reach this SPECIFIC path at all: the Fetch API's Headers are ByteString, one byte per
+  // code point, and U+202E is far above that ceiling — `new Request` throws before this function
+  // ever sees it. The bidi case is therefore exercised where it CAN actually arrive: the `{t:"name"}`
+  // WebSocket message, a JSON string with no such ceiling — see section 3 below.)
+  ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1", "X-Plan-Name": "x".repeat(60) }), "tagG2").name.length === 40,
+    "un nom recu par en-tete trop long est coupe a 40 cote Worker aussi");
+
+  // A GUEST'S OWN colour formula falls back through name -> guestId -> tag, in that order.
+  ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1" }), "tagH").color === colorFor("tagH"),
+    "sans nom ni guestId, la couleur retombe sur le tag (jamais deux inconnus avec la meme teinte)");
+}
+
+// ---- 2. PER-RECIPIENT PROJECTION: a guest never receives an email, a household one still does --
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const menage = f.mkWs("sylve@example.com", "hhh111");
+  const invite1 = f.mkWs("", "ggg111", { guest: true, name: "Marie", guestId: "g1", token: "tokA" });
+  const invite2 = f.mkWs("", "ggg222", { guest: true, name: "", guestId: "g2", token: "tokB" });
+
+  // hello for a GUEST: no email anywhere, not even for the household peer (a name derived from
+  // its address instead — item 2, "a display name instead of the email, never the email itself").
+  await messageSocket(f.room, invite1, JSON.stringify({ t: "hello" }));
+  const helloG = invite1.sent.find((m) => m.t === "hello");
+  ok(!("email" in helloG.you), "hello.you cote invite ne porte pas d'email");
+  ok(helloG.peers.every((p: DonneeDynamique) => !("email" in p)), "hello.peers cote invite ne porte AUCUN email, meme pour le foyer");
+  const peerFoyerVuParInvite = helloG.peers.find((p: DonneeDynamique) => p.tag === "hhh111");
+  ok(peerFoyerVuParInvite && peerFoyerVuParInvite.name === "Sylve",
+    "un pair du foyer est vu par l'invite avec un nom DERIVE de l'email, jamais vide, vu " + JSON.stringify(peerFoyerVuParInvite));
+  const peerInvite2VuParInvite1 = helloG.peers.find((p: DonneeDynamique) => p.tag === "ggg222");
+  ok(peerInvite2VuParInvite1 && peerInvite2VuParInvite1.guest === true && peerInvite2VuParInvite1.guestId === "g2",
+    "un autre invite est vu avec guest:true et son guestId (pas un secret)");
+
+  // hello for the HOUSEHOLD: full fidelity, unchanged shape (older client compatible).
+  await messageSocket(f.room, menage, JSON.stringify({ t: "hello" }));
+  const helloF = menage.sent.find((m) => m.t === "hello");
+  ok(helloF.you.email === "sylve@example.com", "hello.you cote foyer garde l'email (retro-compatibilite)");
+  const peerInviteVuParFoyer = helloF.peers.find((p: DonneeDynamique) => p.tag === "ggg111");
+  ok(peerInviteVuParFoyer && peerInviteVuParFoyer.name === "Marie" && peerInviteVuParFoyer.guest === true,
+    "le foyer voit le nom choisi par l'invite et son statut guest");
+
+  // A HOUSEHOLD-authored op reaches the guest with a name derived from the email, no `by` at all.
+  invite1.sent.length = 0; invite2.sent.length = 0;
+  await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "Vu depuis le foyer" } }));
+  const opVuParInvite = invite1.sent.find((m) => m.t === "op");
+  ok(opVuParInvite && !("by" in opVuParInvite) && opVuParInvite.name === "Sylve",
+    "l'op du foyer, vue par un invite, ne porte pas 'by' et porte un nom derive, vu " + JSON.stringify(opVuParInvite));
+
+  // A GUEST-authored op reaches the household WITH `by`, and reaches the OTHER guest WITHOUT it.
+  menage.sent.length = 0; invite2.sent.length = 0;
+  await messageSocket(f.room, invite1, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "Vu depuis Marie" } }));
+  const opVuParFoyer = menage.sent.find((m) => m.t === "op");
+  ok(opVuParFoyer && opVuParFoyer.by === "" && opVuParFoyer.name === "Marie" && opVuParFoyer.guest === true,
+    "l'op de l'invite, vue par le foyer, porte 'by' (vide, pas d'email a avoir) ET son nom choisi");
+  const opVuParAutreInvite = invite2.sent.find((m) => m.t === "op");
+  ok(opVuParAutreInvite && !("by" in opVuParAutreInvite), "l'op d'un invite, vue par un AUTRE invite, ne porte jamais 'by'");
+
+  // cursor: same redaction rule, same author fields.
+  invite1.sent.length = 0;
+  await messageSocket(f.room, menage, JSON.stringify({ t: "cursor", room: "__apt__", x: 1, y: 2 }));
+  const curVu = invite1.sent.find((m) => m.t === "cursor");
+  ok(curVu && !("by" in curVu) && curVu.name === "Sylve", "curseur du foyer vu par un invite : pas de by, nom derive");
+
+  // drag: same rule again.
+  invite1.sent.length = 0;
+  await messageSocket(f.room, menage, JSON.stringify({ t: "drag", room: "__apt__", pieceId: "p1", x: 1, y: 2 }));
+  const dragVu = invite1.sent.find((m) => m.t === "drag");
+  ok(dragVu && !("by" in dragVu) && dragVu.name === "Sylve", "fantome de drag du foyer vu par un invite : pas de by, nom derive");
+
+  // chat: entries carry name/guest at SEND TIME and are redacted per recipient on REPLAY too.
+  await messageSocket(f.room, menage, JSON.stringify({ t: "chat", text: "bonjour depuis le foyer" }));
+  await messageSocket(f.room, invite1, JSON.stringify({ t: "chat", text: "bonjour depuis Marie" }));
+  const invite3 = f.mkWs("", "ggg333", { guest: true, name: "Léo", guestId: "g3", token: "tokC" });
+  await messageSocket(f.room, invite3, JSON.stringify({ t: "hello" }));
+  const helloId = invite3.sent.find((m) => m.t === "hello");
+  ok(helloId.chat.every((c: DonneeDynamique) => !("by" in c)), "l'historique de chat rejoue a un invite ne porte AUCUN by");
+  const chatFoyerVu = helloId.chat.find((c: DonneeDynamique) => c.text === "bonjour depuis le foyer");
+  ok(chatFoyerVu && chatFoyerVu.name === "Sylve", "message du foyer dans l'historique : nom derive pour l'invite, vu " + JSON.stringify(chatFoyerVu));
+  const chatMarieVu = helloId.chat.find((c: DonneeDynamique) => c.text === "bonjour depuis Marie");
+  ok(chatMarieVu && chatMarieVu.name === "Marie" && chatMarieVu.guest === true, "message de Marie garde son nom choisi et guest:true");
+
+  menage.sent.length = 0;
+  await messageSocket(f.room, menage, JSON.stringify({ t: "hello" }));
+  const helloFoyer2 = menage.sent.find((m) => m.t === "hello");
+  const chatMarieVuParFoyer = helloFoyer2.chat.find((c: DonneeDynamique) => c.text === "bonjour depuis Marie");
+  ok(chatMarieVuParFoyer && chatMarieVuParFoyer.by === "", "le foyer voit 'by' (vide, pas d'email a avoir) sur le message de Marie");
+
+  // peer broadcast on departure (webSocketClose): the departing socket leaves the LIST, and the
+  // redaction rule still applies to whoever remains.
+  invite1.sent.length = 0;
+  await fermeSocket(f.room, invite3);
+  const peerApresDepart = invite1.sent.find((m) => m.t === "peer");
+  ok(peerApresDepart && !peerApresDepart.peers.some((p: DonneeDynamique) => p.tag === "ggg333"),
+    "au depart d'un invite, la liste de presence ne le porte plus");
+  ok(peerApresDepart.peers.every((p: DonneeDynamique) => !("email" in p)), "et cette liste, vue par un invite, ne porte toujours aucun email");
+}
+
+// ---- 3. THE "name" MESSAGE: set/change at any time, cleaned server-side (item 5) ----------------
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const invite = f.mkWs("", "nnn111", { guest: true, name: "", guestId: "g9", token: "tokN" });
+  const menage = f.mkWs("sylve@example.com", "nnn222");
+
+  await messageSocket(f.room, invite, JSON.stringify({ t: "name", name: "  Léo‮oel  " }));
+  const rep = invite.sent.find((m) => m.t === "name");
+  ok(rep && rep.ok === true && rep.name === "Léooel", "reponse au message name : nettoye (bidi retire), vu " + JSON.stringify(rep));
+  const att = invite.deserializeAttachment();
+  ok(att.name === "Léooel", "l'attachement retient le nom nettoye");
+  ok(att.color === colorFor("Léooel"), "la couleur d'un invite suit le NOUVEAU nom immediatement");
+  const peerAnnonce = menage.sent.find((m) => m.t === "peer");
+  ok(peerAnnonce && peerAnnonce.peers.some((p: DonneeDynamique) => p.tag === "nnn111" && p.name === "Léooel"),
+    "un changement de nom re-annonce la presence a tout le monde, meme sans op");
+
+  // Capped at 40, same as functions/nom.ts / cleanGuestName.
+  await messageSocket(f.room, invite, JSON.stringify({ t: "name", name: "x".repeat(60) }));
+  const rep2 = invite.sent.filter((m) => m.t === "name").pop();
+  ok(rep2 && rep2.name.length === 40, "un nom trop long est coupe a 40, meme via le message name");
+
+  // A HOUSEHOLD socket's colour is NEVER affected by its own name change: it stays tied to email.
+  const avant = menage.deserializeAttachment().color;
+  await messageSocket(f.room, menage, JSON.stringify({ t: "name", name: "Test" }));
+  ok(menage.deserializeAttachment().color === avant, "le nom d'un compte du foyer ne change jamais sa couleur (liee a l'email)");
+  ok(menage.deserializeAttachment().name === "Test", "mais le nom lui-meme est bien pris en compte, pour le foyer aussi");
+}
+
+// ---- 4. `plan5.replace` REFUSED FROM A GUEST (item 4) --------------------------------------------
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const invite = f.mkWs("", "rrr111", { guest: true, name: "Marie", guestId: "g4", token: "tokR" });
+  const before = JSON.stringify(f.room.plan);
+  const replacePlan: PlanState = { outline: null, walls: [], openings: [], pieces: [], cells: [], setupDone: true };
+  await messageSocket(f.room, invite, JSON.stringify({ t: "op", n: 1, op: { kind: "plan5.replace", plan: replacePlan } }));
+  ok(JSON.stringify(f.room.plan) === before, "plan5.replace d'un invite : le plan partage ne bouge pas");
+  ok(invite.sent.some((m) => m.t === "err" && m.reason === "guest_no_replace" && m.n === 1),
+    "plan5.replace d'un invite : refus numerote, chemin ordinaire (le client peut annuler)");
+
+  // NEGATIVE CONTROL: the SAME op from a household socket is never caught by THIS gate.
+  const menage = f.mkWs("sylve@example.com", "rrr222");
+  await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: 1, op: { kind: "plan5.replace", plan: replacePlan } }));
+  ok(!menage.sent.some((m) => m.t === "err" && m.reason === "guest_no_replace"),
+    "le meme op depuis le foyer n'est jamais refuse pour ce motif");
+}
+
+// ---- 5. OPS REFUSED WHEN UNNAMED, SYNC/HELLO STILL ALLOWED (item 5) ------------------------------
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const invite = f.mkWs("", "uuu111", { guest: true, name: "", guestId: "g5", token: "tokU" });
+
+  await messageSocket(f.room, invite, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "X" } }));
+  ok(invite.sent.some((m) => m.t === "err" && m.reason === "guest_unnamed" && m.n === 1),
+    "un invite SANS nom ne peut pas ecrire : refus numerote guest_unnamed");
+  ok(f.room.plan.cells[0].name !== "X", "le plan partage n'a pas bouge");
+
+  invite.sent.length = 0;
+  await messageSocket(f.room, invite, JSON.stringify({ t: "hello" }));
+  ok(invite.sent.some((m) => m.t === "hello"), "hello reste autorise sans nom (il faut pouvoir VOIR le plan)");
+  invite.sent.length = 0;
+  await messageSocket(f.room, invite, JSON.stringify({ t: "sync" }));
+  ok(invite.sent.some((m) => m.t === "state"), "sync reste autorise sans nom");
+
+  // Once named, the SAME kind of op goes through.
+  await messageSocket(f.room, invite, JSON.stringify({ t: "name", name: "Léo" }));
+  await messageSocket(f.room, invite, JSON.stringify({ t: "op", n: 2, op: { kind: "cell.set", cellId: "c1", name: "X" } }));
+  ok(f.room.plan.cells[0].name === "X", "une fois nomme, l'op de meme nature passe");
+}
+
+// ---- 6. PER-TOKEN RATE CAP (item 7) ---------------------------------------------------------------
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const invite = f.mkWs("", "ttt111", { guest: true, name: "Marie", guestId: "g6", token: "tokRate" });
+  let refusEnCours = 0;
+  for (let i = 1; i <= 120; i++) {
+    await messageSocket(f.room, invite, JSON.stringify({ t: "op", n: i, op: { kind: "cell.set", cellId: "c1", name: "n" + i } }));
+    if (invite.sent.some((m) => m.t === "err" && m.reason === "rate_limited")) refusEnCours++;
+  }
+  ok(refusEnCours === 0, "120 ops en une fenetre glissante passent (la borne est genereuse)");
+  await messageSocket(f.room, invite, JSON.stringify({ t: "op", n: 121, op: { kind: "cell.set", cellId: "c1", name: "n121" } }));
+  ok(invite.sent.some((m) => m.t === "err" && m.reason === "rate_limited" && m.n === 121),
+    "la 121e op sur la MEME fenetre depasse le plafond : refus numerote rate_limited");
+  ok(f.room.plan.cells[0].name !== "n121", "et le plan partage n'a pas bouge sur ce refus");
+
+  // A DIFFERENT token is on its OWN window: never affected by another link's traffic.
+  const invite2 = f.mkWs("", "ttt222", { guest: true, name: "Leo", guestId: "g7", token: "tokAutre" });
+  await messageSocket(f.room, invite2, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "autre" } }));
+  ok(!invite2.sent.some((m) => m.t === "err" && m.reason === "rate_limited"), "un AUTRE jeton n'est jamais affecte par le plafond du premier");
+
+  // A HOUSEHOLD socket (empty token) is NEVER capped (see the header note on RATE_MAX_OPS).
+  const menage = f.mkWs("sylve@example.com", "ttt333");
+  for (let i = 1; i <= 130; i++) {
+    await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: i, op: { kind: "cell.set", cellId: "c1", name: "f" + i } }));
+  }
+  ok(!menage.sent.some((m) => m.t === "err" && m.reason === "rate_limited"), "un compte du foyer (jeton vide) n'est jamais plafonne");
+}
+
+// ---- 7. REVOKE CLOSES MATCHING SOCKETS ONLY (item 6) ----------------------------------------------
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const a1 = f.mkWs("", "vvv111", { guest: true, name: "A", guestId: "gA1", token: "tokRevoke" });
+  const a2 = f.mkWs("", "vvv222", { guest: true, name: "A2", guestId: "gA2", token: "tokRevoke" });
+  const b = f.mkWs("", "vvv333", { guest: true, name: "B", guestId: "gB", token: "tokAutre" });
+  const menage = f.mkWs("sylve@example.com", "vvv444");
+
+  const revokeReq = (body: DonneeDynamique, headers: Record<string, string> = { "X-Plan-Internal": "1" }) =>
+    new Request("https://plan-live-internal/revoke", { method: "POST", headers, body: JSON.stringify(body) });
+
+  // Missing internal marker: refused outright, nothing closed. `/revoke` is not reachable this
+  // way in production (it never crosses the network, see `handleRevoke`'s header note) — this
+  // proves the header check itself works, independent of that structural guarantee.
+  const resNoHeader = await f.room.fetch(revokeReq({ token: "tokRevoke" }, {}));
+  ok(resNoHeader.status === 403, "sans l'en-tete interne, /revoke est refuse (403)");
+  ok(!a1.closed && !a2.closed, "et rien n'est ferme");
+
+  const resNoToken = await f.room.fetch(revokeReq({}));
+  ok(resNoToken.status === 400, "sans jeton dans le corps, /revoke est un 400");
+
+  const res = await f.room.fetch(revokeReq({ token: "tokRevoke" }));
+  const corps = await res.json<DonneeDynamique>();
+  ok(res.status === 200 && corps.ok === true && corps.closed === 2,
+    "revoke ferme EXACTEMENT les sockets du jeton revoque, vu " + JSON.stringify(corps));
+  ok(a1.closed && a2.closed, "les deux sockets du jeton revoque sont fermes");
+  ok(a1.closeCode === 4001 && a1.closeReason === "invite_revoked",
+    "avec un code/motif distinguable, vu " + a1.closeCode + " " + a1.closeReason);
+  ok(!b.closed, "un AUTRE jeton n'est jamais touche");
+  ok(!menage.closed, "un compte du foyer (jeton vide) n'est jamais ferme par /revoke");
+
+  // Idempotent-shaped: a second call on the same (now-stale) token still answers cleanly.
+  const res2 = await f.room.fetch(revokeReq({ token: "tokRevoke" }));
+  const corps2 = await res2.json<DonneeDynamique>();
+  ok(res2.status === 200 && corps2.ok === true, "un second appel sur le meme jeton reste 200");
 }
 
 console.log("OK " + n + " assertions");

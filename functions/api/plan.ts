@@ -48,7 +48,7 @@
 // path never calls it at all).
 import type { Env } from "../env.ts";
 import { identiteFoyer, porteDe } from "../porte.ts";
-import { cleanName } from "../nom.ts";
+import { auteurPourInvite, cleanName } from "../nom.ts";
 import { chargerInvitation, invitationValide, tokenDuCookie } from "../invitation.ts";
 
 interface PlanRow {
@@ -103,7 +103,15 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     data: JSON.parse(row.data),
     rev: row.rev,
     updatedAt: row.updated_at,
-    updatedBy: row.updated_by,
+    // THE LAST PLACE A HOUSEHOLD ADDRESS COULD CROSS TO A GUEST. Batch 2 stopped emails on the
+    // WIRE (the Durable Object projects every message per recipient), but this is the REST
+    // fallback, a Pages Function that shares no code with it — and it reads the raw `updated_by`
+    // column, which holds an Access email. One GET from the guest door and anyone holding a link
+    // collects the couple's address. Design edge 16 covers the wire; this is its other half.
+    // A guest is told WHAT they need (someone else wrote before you) and not WHO in a form they
+    // could mail: an author already written as `invite:<name>` passes through, an email is
+    // reduced to the same display name the wire would have shown.
+    updatedBy: porte === "invite" ? auteurPourInvite(row.updated_by) : row.updated_by,
   });
 };
 

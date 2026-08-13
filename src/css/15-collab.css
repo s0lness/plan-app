@@ -9,6 +9,13 @@
   /* MY other device (same account, different socket): same person, so same color and same
      initial; what changes is a light outline. Two pills = two devices. */
   .peer-dot.self{border-width:2px;border-color:rgba(255,255,255,.9)}
+  /* GUEST identity (design edge 4): self-declared, not Access-proven like every other peer —
+     someone COULD name themselves after the owner, so provenance must be visible on its own,
+     never inferred from the name. A DASHED ring reads as "unverified" against `.self`'s solid
+     one, in the same warm-paper visual language. */
+  .peer-dot.guest{border-width:2px;border-style:dashed;border-color:rgba(255,255,255,.85)}
+  .peer-cur.guest .pc-name{border:1px dashed rgba(255,255,255,.8)}
+  .chat-msg .cwho.guest{border-bottom:1px dashed var(--faint)}
   /* peer cursors, projected onto the canvas (viewport px) */
   .peer-cursors{position:absolute;inset:0;pointer-events:none;z-index:250;overflow:hidden}
   /* peer cursor: positioned via transform:translate3d (GPU compositor), NO transition

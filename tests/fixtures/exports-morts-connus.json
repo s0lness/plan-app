@@ -17,7 +17,6 @@
     "src/ts/fil/emission.ts → wsAckArm",
     "src/ts/fil/emission.ts → wsUndoOpsFor",
     "src/ts/fil/hud.ts → rtStats",
-    "src/ts/fil/presence.ts → wsAppendChat",
     "src/ts/fil/presence.ts → wsRenderPeers",
     "src/ts/fil/reception.ts → wsClearGhost",
     "src/ts/fil/rest.ts → adoptPayload",

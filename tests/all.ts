@@ -92,6 +92,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/no-dead-selectors.ts",       chrome: 0 },                        // CSS classes taken by src/ts
   { f: "tests/porte.ts",                   chrome: 0 },   // door + identity: functions/porte.ts, no browser
   { f: "tests/invitation.ts",              chrome: 0 },   // the invite: functions/api/invite(s).ts, no browser
+  { f: "tests/identite-fil.ts",            chrome: 0 },   // wire identity, client side: src/ts/fil/etat.ts + mesure/curseur-pair.ts, no browser
   // The SERVER validator doesn't know about the client: same file, same verdict, in both modes.
   { f: "live-worker/test-local.ts",        chrome: 0 },
 ];

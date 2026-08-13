@@ -118,6 +118,29 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
   // here would let a caller learn whether a guessed token ever existed — exactly what
   // functions/api/invite.ts's single 404 shape already refuses to leak on the guest side, so the
   // owner side must not reopen the same leak from the other direction.
-  if (token) await env.DB.prepare("UPDATE invites SET revoked=1 WHERE token=?1").bind(token).run();
+  if (token) {
+    // The plan id BEFORE the write: needed to reach the right Durable Object, and reading it after
+    // marking the row revoked would work just as well, but there is no reason to make the D1 write
+    // wait on it.
+    const ligne = await env.DB.prepare("SELECT plan_id FROM invites WHERE token=?1").bind(token).first<{ plan_id: string }>();
+    await env.DB.prepare("UPDATE invites SET revoked=1 WHERE token=?1").bind(token).run();
+    // Design edge 6: "Revoke must close live sockets, not merely block new ones." BEST-EFFORT — the
+    // row is already revoked regardless of whether this call succeeds, so a Worker hiccup here must
+    // never turn an otherwise-successful revoke into an error response. If it fails, the ONLY
+    // leftover risk is an already-open socket staying open until it drops on its own (heartbeat,
+    // reconnect): every OTHER guest-facing route (`/api/invite`, `/api/plan`, a fresh `/ws` upgrade)
+    // already re-checks `invitationValide()` against the now-revoked row, so nothing NEW can be
+    // reached through it.
+    if (ligne && ligne.plan_id && env.ROOM) {
+      try {
+        const stub = env.ROOM.get(env.ROOM.idFromName(ligne.plan_id));
+        await stub.fetch(new Request("https://plan-live-internal/revoke", {
+          method: "POST",
+          headers: { "content-type": "application/json", "X-Plan-Internal": "1" },
+          body: JSON.stringify({ token }),
+        }));
+      } catch { /* best-effort, see above */ }
+    }
+  }
   return json({ ok: true });
 };

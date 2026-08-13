@@ -230,7 +230,10 @@ repository.
 | `tests/compat-donnees.ts` | 0 | **THE DATA COMPATIBILITY ORACLE**. Reads the corpus again and compares its fingerprints with `tests/fixtures/empreintes-compat.json`. `--b <dir>` compares two module directories; the barrier uses only the frozen reference. `--figer` remains a deliberate act. A private corpus can be pointed at with `--corpus <dir>` (a directory outside the repository), and its fingerprints stay with it. |
 | `tests/harnais-graine.ts` | 0 | Deterministic seeded harness: convergence and undo/redo round trip, client code imported from `src/ts`, real server imported from `live-worker/`. |
 | `tests/no-dead-selectors.ts` | 0 | Static: no CSS class without a consumer in `src/ts` or `src/html`. |
-| `live-worker/test-local.ts` | 0 | 601 SERVER assertions: validator, ops, Durable Object, D1 fallback, sequence, and deduplication by `(tag, n)`. |
+| `live-worker/test-local.ts` | 0 | 657 SERVER assertions: validator, ops, Durable Object, D1 fallback, sequence, deduplication by `(tag, n)`, and the guest wire (per-recipient redaction, the `name` message, refused `plan5.replace`, the rate cap, revoke closing sockets). |
+| `tests/porte.ts` | 0 | THE DOOR: the `HOUSEHOLD_HOSTS` / `GUEST_HOST` allowlists and their `*.` wildcard, the ONE `who()`, and the middleware's refusals. |
+| `tests/invitation.ts` | 0 | THE INVITE: token redemption and its single 404, the session cookie, the owner's create/list/revoke, and the guest door's effect on `/api/plan` and `/ws`. |
+| `tests/identite-fil.ts` | 0 | WHO A NAME BELONGS TO: `displayName` / `personColor` / `wsSameAccount` including guest-vs-guest, and the proof that a name of `<img onerror=…>` renders as TEXT. |
 | `tests/run.ts` | 1 | 30 general regression tests on the deliverable. |
 | `tests/model-v5-*.ts` (7 suites) | 1 each | 74 tests: walls-only model, server rejection, D1 fallback. Filter: `all.ts model-v5`. |
 | `tests/boot-vierge.ts` | 1 | THE NUMBER ONE TRAP: the page mounts without a JS error, with a blank profile THEN a seeded floor plan. |

@@ -20,12 +20,23 @@
 import type { Fp, Id, Miroir, Op, OpKind } from "../partage/plan.ts";
 import { nouveauMiroir } from "../partage/plan.ts";
 
-/** A peer, as the server announces it. `tag` = the DEVICE, `email` = the PERSON (C-7). */
+/**
+ * A peer, as the server announces it. `tag` = the DEVICE, `email` = the PERSON (C-7).
+ *
+ * Batch 2 (wire identity): `name`/`guest` accompany every peer message now, household and guest
+ * alike (a guest recipient never gets `email`/`by` at all: `live-worker/worker.ts` omits the key
+ * rather than sending "" — this interface allows it because JSON simply doesn't carry it, not
+ * because the value would be falsy). `guestId` exists ONLY for a guest author: it is what
+ * `wsSameAccount` compares to tell a guest's OWN other tab from a different guest entirely.
+ */
 export interface Pair {
   email?: string | undefined;
   by?: string | undefined;
   tag?: string | undefined;
   color?: string | undefined;
+  name?: string | undefined;
+  guest?: boolean | undefined;
+  guestId?: string | undefined;
 }
 
 /** A peer cursor being smoothed. `s*` = rendered position, `t*` = target. */
@@ -134,8 +145,13 @@ export interface Fil {
   wsAcksOn: boolean;
   wsReconnectDelay: number;
   wsReconnectTimer: ReturnType<typeof setTimeout> | null;
-  /** The identity returned by the `hello`. `tag` = THIS SOCKET, hence THIS device (C-7). */
-  wsMe: { email: string; tag: string | null; color: string };
+  /**
+   * The identity returned by the `hello`. `tag` = THIS SOCKET, hence THIS device (C-7).
+   * `guest`/`guestId` (batch 2): this device's OWN guest fallback identity, if it is one — the
+   * "same person" key `wsSameAccount` compares against a peer's `guestId`, since a guest carries
+   * no email to compare instead.
+   */
+  wsMe: { email: string; tag: string | null; color: string; name: string; guest: boolean; guestId: string };
   /** True while applying a remote op: no echo (mirror of `suppressPush`). */
   wsSuppress: boolean;
   /** True during a furniture drag: the diff falls silent, only ephemeral ghosts go out. */
@@ -226,7 +242,7 @@ export function creerFil(): Fil {
     wsAcksOn: false,
     wsReconnectDelay: 1000,
     wsReconnectTimer: null,
-    wsMe: { email: "", tag: null, color: "var(--accent)" },
+    wsMe: { email: "", tag: null, color: "var(--accent)", name: "", guest: false, guestId: "" },
     wsSuppress: false,
     wsDragActive: false,
     opSeq: 0,
@@ -291,9 +307,26 @@ export function wsFromMe(fil: Fil, o: Pair | null | undefined): boolean {
   return String(o.by || o.email || "") === String(fil.wsMe.email || "");
 }
 
-/** Is this device an OTHER device of MY account? (outline ring, tooltip, "Other device") */
+/**
+ * Is this device an OTHER device of MY account? (outline ring, tooltip, "Other device") — the
+ * strongest trust marker in the UI.
+ *
+ * Design edge 8: BEFORE `guest` existed, every unauthenticated caller shared the SAME fallback
+ * identity ("inconnu"), so this comparison silently married every stranger holding a link to "my
+ * other device". It FAILED TOWARD TRUST, which is the wrong direction for a marker this strong.
+ *
+ * If EITHER side is a guest, email is never the arbiter: `email`/`by` compares two ADDRESSES, and
+ * a guest carries none (routing it through the empty-string branch is exactly the old bug). The
+ * comparison instead runs on `guestId` — a value the GUEST'S OWN BROWSER generated and stores
+ * locally (batch 3), read back identically by every tab of that SAME browser profile, and never by
+ * anyone else's. Two different guests therefore never match (two different random ids), the same
+ * guest's two tabs do (same stored id), and a guest can never match a household member (one side
+ * has no `guestId` at all).
+ */
 export function wsSameAccount(fil: Fil, o: Pair | null | undefined): boolean {
-  return !!(o && fil.wsMe.email
-    && String(o.by || o.email || "") === String(fil.wsMe.email)
-    && !wsFromMe(fil, o));
+  if (!o || wsFromMe(fil, o)) return false;
+  if (o.guest || fil.wsMe.guest) {
+    return !!(fil.wsMe.guest && o.guest && fil.wsMe.guestId && String(o.guestId || "") === fil.wsMe.guestId);
+  }
+  return !!(fil.wsMe.email && String(o.by || o.email || "") === String(fil.wsMe.email));
 }

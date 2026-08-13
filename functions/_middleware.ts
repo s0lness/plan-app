@@ -26,14 +26,23 @@
 import { porteDe } from "./porte.ts";
 import type { Env } from "./env.ts";
 
-// Rebuilds the request with every `Cf-Access-*` header and the `CF_Authorization` cookie
-// removed, BEFORE anything downstream can read them. `identiteFoyer` already refuses to trust
-// these off the household door, but this strips them at the source so a future handler that
-// reads `request.headers` directly (bypassing `identiteFoyer`) finds nothing believable either.
+// Rebuilds the request with every `Cf-Access-*` header, the `CF_Authorization` cookie, AND the
+// `/revoke` internal marker (`X-Plan-Internal`, see `live-worker/worker.ts`) removed, BEFORE
+// anything downstream can read them. `identiteFoyer` already refuses to trust the Access ones off
+// the household door, but this strips them at the source so a future handler that reads
+// `request.headers` directly (bypassing `identiteFoyer`) finds nothing believable either.
+//
+// `X-Plan-Internal` is never legitimate on ANY inbound request, on ANY door — it is set only by
+// `functions/api/invites.ts`'s OWN outgoing call to the `ROOM` binding, a request built AFTER
+// middleware already let the original DELETE through, which this file never sees. It is stripped
+// here (the non-foyer doors) rather than on the foyer door too, so as not to disturb the foyer
+// branch's own contract ("next() is called with NO argument": nothing about the request is
+// rewritten there) — the one place this header could otherwise be FORWARDED from an inbound
+// request is `functions/ws.ts`, which deletes it explicitly for the same reason.
 const sansAccess = (request: Request): Request => {
   const headers = new Headers();
   for (const [nom, valeur] of request.headers) {
-    if (nom.startsWith("cf-access-")) continue;
+    if (nom.startsWith("cf-access-") || nom === "x-plan-internal") continue;
     if (nom === "cookie") {
       const reste = valeur.split(";").map((p) => p.trim())
         .filter((p) => p && !/^CF_Authorization=/.test(p));

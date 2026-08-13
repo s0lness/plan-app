@@ -20,6 +20,25 @@ const BIDI_MIN_1 = 0x202a, BIDI_MAX_1 = 0x202e;
 // LRI, RLI, FSI, PDI
 const BIDI_MIN_2 = 0x2066, BIDI_MAX_2 = 0x2069;
 
+/**
+ * WHAT A GUEST IS ALLOWED TO LEARN ABOUT AN AUTHOR. Mirrors the wire's own redaction
+ * (`nameFromEmail` in live-worker/ops.ts) for the REST fallback, which shares no code with the
+ * Durable Object and would otherwise hand a raw `updated_by` column to anyone holding a link.
+ *
+ * Three shapes reach this: `live` (the DO's own snapshot marker), `invite:<name>` (a guest's own
+ * write, already a display name), and an Access email. Only the last needs reducing, to the local
+ * part with its trailing digits and separators smoothed out — enough to say WHO wrote before you,
+ * not enough to write to them.
+ */
+export function auteurPourInvite(v: string | null): string | null {
+  if (!v) return v;
+  if (v === "live" || v.startsWith("invite:")) return v;
+  const local = v.split("@")[0];
+  const mots = local.replace(/\d+$/, "").split(/[._\-+]+/).filter(Boolean);
+  const nom = mots.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(" ").slice(0, 32);
+  return nom || "Quelqu'un";
+}
+
 export function cleanName(v: unknown, max: number): string {
   if (typeof v !== "string") return "";
   let out = "";
