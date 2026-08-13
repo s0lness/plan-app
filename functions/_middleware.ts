@@ -1,11 +1,27 @@
 // THE CHOKE POINT. Runs before every Pages Function, on every hostname the project serves:
 // Functions are bound to the PROJECT, not to a hostname, so a convention each route "remembers"
 // to call is deny-by-convention, and the next route added in six months would be open on an
-// unrecognized host by default. See docs/decisions/0004-partage-par-lien.md ("batch 1a").
+// unrecognized host by default. See docs/decisions/0004-partage-par-lien.md ("batch 1a, hardening,
+// no new surface", then "batch 1b, the invite").
 //
-// Batch 1a adds no guest surface: only two verdicts exist today (`porte.ts`), "foyer" and
-// "inconnue". There is no invite token to accept here yet, so "inconnue" gets nothing beyond
-// static assets.
+// Three verdicts now exist (`porte.ts`): `"foyer"` (unchanged since batch 1a, full access),
+// `"invite"` (no Access, no household identity — a valid invite token is the only credential),
+// and `"inconnue"` (refused outright). The guest door reaches exactly three routes: the token
+// exchange (`/api/invite`), the plan it names (`/api/plan`), and the realtime wire (`/ws`) —
+// because that is the entire guest product. Every other route under `/api/` (`/api/plans`,
+// `/api/invites`, `/api/err`) stays 403 here, the same way `/api/plans` was already unreachable
+// off the household door before this feature existed.
+//
+// `/api/invite` and `/api/plan` are only ALLOWED THROUGH by this middleware, never AUTHORIZED by
+// it: neither route can be granted identity here, because a valid door does not mean a valid
+// TOKEN — that decision needs a D1 read, which this choke point deliberately does not make (one
+// extra query on every static-asset request would be a bad trade). `functions/api/invite.ts`
+// re-validates the token itself, and `functions/api/plan.ts` / `functions/ws.ts` both re-derive
+// the plan from the session cookie, exactly the way `functions/api/invites.ts` re-checks the
+// household door itself rather than trusting that only `"foyer"` requests ever reach it: every
+// direct-import test in this codebase (tests/repli-conflit.ts, tests/plan-abime.ts, this batch's
+// tests/invitation.ts) calls a route file directly and bypasses this middleware entirely, so a
+// route that trusted the choke point alone would be unguarded under test.
 
 import { porteDe } from "./porte.ts";
 import type { Env } from "./env.ts";
@@ -29,25 +45,40 @@ const sansAccess = (request: Request): Request => {
   return new Request(request, { headers });
 };
 
+const refuse = (erreur: string) => new Response(JSON.stringify({ error: erreur }), {
+  status: 403,
+  headers: { "content-type": "application/json" },
+});
+
 export const onRequest: PagesFunction<Env> = async ({ request, next, env }) => {
   const porte = porteDe(request, env);
   if (porte === "foyer") return next();
 
   const propre = sansAccess(request);
   const chemin = new URL(request.url).pathname;
-  // `/ws` IS REFUSED HERE TOO, and it is not an afterthought. On the household host a zone route
-  // sends `/ws*` straight to the `plan-live` Worker, so this middleware never sees it; on any
-  // OTHER host there is no such route, so `/ws` arrives right here, and `functions/ws.ts` would
-  // happily forward the upgrade to the Durable Object for `?p=main` with the identity merely
-  // downgraded to `inconnu`. Stripping the headers is not enough: a socket with no name is still
-  // a socket ON THE HOUSEHOLD PLAN, able to read it and write ops into it. Until an invite token
-  // exists to authorize one (batch 1b), an unrecognized host gets no wire at all.
-  if (chemin.startsWith("/api/") || chemin === "/ws" || chemin.startsWith("/ws/")) {
-    return new Response(JSON.stringify({ error: "porte_inconnue" }), {
-      status: 403,
-      headers: { "content-type": "application/json" },
-    });
+  // `/ws` IS CHECKED HERE TOO, and it is not an afterthought. `/ws` is served by Pages
+  // (`functions/ws.ts` forwards the upgrade to the Durable Object through the `ROOM` binding), so
+  // it arrives right here like every other route. Without this it would forward the upgrade for
+  // `?p=main` with the identity merely downgraded to `inconnu`, and stripping headers is not
+  // enough: a socket with no name is still a socket ON THE HOUSEHOLD PLAN, able to read it and
+  // write ops into it.
+  // (`live-worker/DEPLOY.md` §2 describes a zone route that would send `/ws*` straight to the
+  // Worker and bypass this file. It was never applied: see decision 0004. If it ever is, this
+  // check stops covering the household host, and the copy in `worker.ts` becomes the only one.)
+  const surLeFil = chemin === "/ws" || chemin.startsWith("/ws/");
+
+  if (porte === "invite") {
+    // A NAMED surface, not "everything except the owner routes": the token exchange, the plan it
+    // unlocks, and the wire. `/api/plan` and `/ws` here are UNVALIDATED passes — the invite token
+    // itself is checked downstream, by the route that can actually read D1.
+    const surfaceInvite = chemin === "/api/invite" || chemin === "/api/plan" || surLeFil;
+    if (chemin.startsWith("/api/") && !surfaceInvite) return refuse("porte_refusee");
+    return next(propre);
   }
+
+  // "inconnue": exactly today's behaviour (batch 1a). There is no invite token to accept on this
+  // door, so it gets nothing beyond static assets.
+  if (chemin.startsWith("/api/") || surLeFil) return refuse("porte_inconnue");
   // Static assets (the app shell) still pass, with Access identity stripped.
   return next(propre);
 };

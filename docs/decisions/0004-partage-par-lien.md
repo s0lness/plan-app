@@ -59,26 +59,31 @@ opt into what they accept:
 - **Any other Host** → refuse outright. Nothing is served and no token is
   accepted.
 
-### `/ws` IS A FOURTH DOOR, and middleware does not cover it
+### `/ws` IS A SECOND DOOR, and it is worth knowing WHICH one serves it
 
-A zone route (`live-worker/DEPLOY.md` §2) sends `plan.example.com/ws*` straight
-to the `plan-live` Worker. A zone route takes precedence over Pages, so on the
-household host `/ws` **never reaches `functions/ws.ts`**, and a choke point
-living only in Pages Functions misses the most privileged route in the product.
-`worker.ts` has its own public `fetch` that reads
-`Cf-Access-Authenticated-User-Email` and `?p=` from the incoming request.
+`live-worker/DEPLOY.md` §2 describes a zone route sending `/ws*` straight to the
+`plan-live` Worker, which would take precedence over Pages and mean `/ws` never
+reaches `functions/ws.ts`. **That route was never applied**, and the evidence is
+consistent on three sides: this file's own network table describes `/ws` as a
+pass-through that forwards to the Durable Object through the `ROOM` binding; the
+wrangler warning says that losing the Pages `ROOM` binding makes `/ws` answer
+503, which can only be true if a Pages Function serves it; and the Pages project
+does carry `ROOM` in production. `DEPLOY.md` §2 is a procedure that was written
+and not run.
 
-Worse, the asymmetry is invisible: a zone route is bound to a hostname, so
-`share.example.com/ws` would NOT match it and WOULD go through Pages. Two hosts,
-two different code paths, one of which is easy to forget.
+So today `/ws` goes through Pages, and therefore through `functions/_middleware.ts`
+like every other route. That is why the middleware refuses `/ws` and not only
+`/api/*` on an unrecognized host: a socket with no name is still a socket ON THE
+HOUSEHOLD PLAN, able to read it and write ops into it.
 
-So the authoritative door check lives in `worker.ts`'s `fetch`, the only place
-that sees every socket whatever the route, and `functions/ws.ts` enforces the
-same rule as defence in depth. Checked while writing this: the `workers.dev`
-subdomain on `plan-live` is disabled (`enabled:false`, `previews_enabled:false`),
-so the Worker is not directly reachable today. Batch 5 must verify that it stays
-disabled, because if it is ever turned on, that route answers with no Access, no
-middleware, and a caller-supplied identity header.
+The Worker's own `fetch` remains a door in waiting: it reads
+`Cf-Access-Authenticated-User-Email` and `?p=` straight from the request, and it
+would become live the day that zone route is applied. Its `workers.dev`
+subdomain is disabled (`enabled:false`, `previews_enabled:false`, checked), so it
+is not reachable from outside today. Batch 1a therefore applies the same
+allowlist in BOTH places, and batch 5 must verify the subdomain stays disabled:
+if it is ever enabled, that path answers with no Access, no middleware, and a
+caller-supplied identity header.
 
 ### `Cf-Access-*` headers and the `who()` cookie fallback are safe ONLY behind Access
 
@@ -355,11 +360,16 @@ Batches 1a through 2 touch DATA and SYNCHRONIZATION, so the full barrier
 ## Review
 
 Reviewed by a second model before implementation. It found six factual errors in
-the first draft, all corrected above: the `/ws` zone route bypassing Pages
-Functions entirely, the `updated_by: "live"` magic value, the storage-key
+the first draft, all corrected above: the `updated_by: "live"` magic value, the
+`/ws` route question, the storage-key
 collision on `main`, the inverted "your other device" failure, "undo covers it"
 being false for the owner, and read-only being "one line". It also caught that
 the blind PUT is `plan5.replace` by another name, that a WebSocket cannot carry a
-header, and that middleware beats a convention. One of its findings did not
-survive checking: `workers.dev` on `plan-live` is already disabled, so there is
-no live bypass today.
+header, and that middleware beats a convention.
+
+Two of its findings did not survive checking, and both were checked rather than
+believed. `workers.dev` on `plan-live` is already disabled, so there is no live
+bypass today. And the zone route it read in `DEPLOY.md` was never applied, so
+`/ws` does go through Pages: it took a written procedure for a deployed fact,
+which is the same class of error the rest of the review was catching. Reading a
+deploy document is not reading a deployment.

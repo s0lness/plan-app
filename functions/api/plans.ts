@@ -29,22 +29,17 @@ interface PlanRow {
 
 import type { Env } from "../env.ts";
 import { identiteFoyer, porteDe } from "../porte.ts";
+import { cleanName as nettoieNom } from "../nom.ts";
 
 const json = (o: unknown, status?: number) => new Response(JSON.stringify(o),
   { status: status || 200, headers: { "content-type": "application/json" } });
 
-/** Clean name: no control characters, no edge whitespace, truncated. "" = no name. */
-const cleanName = (v: unknown) => {
-  if (typeof v !== "string") return "";
-  let out = "";
-  for (const ch of v.trim()) {
-    const c = ch.codePointAt(0);
-    if (c < 32 || c === 127) continue;
-    if (out.length + ch.length > NAME_MAX) break;
-    out += ch;
-  }
-  return out;
-};
+/** Clean name: no control characters, no bidi overrides, no edge whitespace, truncated at
+ * NAME_MAX. "" = no name. Now THE SAME implementation a guest's self-declared name goes through
+ * (functions/nom.ts) — a plan name sits on the same screen as a guest name, so it gets the same
+ * bidi-override stripping (docs/decisions/0004-partage-par-lien.md, edge case 2), just with the
+ * historical 60-character cap instead of a guest's 40. */
+const cleanName = (v: unknown) => nettoieNom(v, NAME_MAX);
 
 /**
  * An identifier DERIVED from the name, but never EQUAL to the name: the name is free (accents,

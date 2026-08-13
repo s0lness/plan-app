@@ -34,8 +34,22 @@
 // Identity: `identiteFoyer` (../porte.ts) is THE ONE implementation of `who()`. It reads the
 // header set by Access, with a JWT-decoding fallback, but ONLY on the household door: off it,
 // every one of those inputs is caller-supplied and unsigned. See docs/decisions/0004-partage-par-lien.md.
+//
+// ---- THE "invite" DOOR (batch 1b) ----------------------------------------------------------
+// A guest carries no Access identity and no `?p=`: `?p=` is IGNORED on this door (design edge 5,
+// a guest editing the URL must not reach another plan), and the plan comes from the SESSION
+// COOKIE set by functions/api/invite.ts, resolved through the SAME `invites` row every other
+// guest-facing route reads (functions/invitation.ts). A PUT here also drops the OLD blind-write
+// contract entirely: `rev` is required, because a blind PUT is `plan5.replace` by another name
+// (last writer wins, whole document), the old contract exists for a tab opened before this
+// feature deployed, and no guest tab predates it. `updated_by` for a guest write is
+// `"invite:" + <name or "?">`, built from the invite row's `last_name` — never an email (there is
+// none to have), and never the literal `"live"` (identiteFoyer already screens that out; this
+// path never calls it at all).
 import type { Env } from "../env.ts";
 import { identiteFoyer, porteDe } from "../porte.ts";
+import { cleanName } from "../nom.ts";
+import { chargerInvitation, invitationValide, tokenDuCookie } from "../invitation.ts";
 
 interface PlanRow {
   data: string;
@@ -60,10 +74,26 @@ const planIdDe = (request: Request) => {
 };
 const mauvaisPlan = () => new Response(JSON.stringify({ error: "bad_plan_id" }),
   { status: 400, headers: { "content-type": "application/json" } });
+// ONE shape for "no invite cookie", "unknown token", "revoked" and "expired": telling them apart
+// would confirm a guess. Also what a revoked guest gets mid-session (design edge 18): "offline"
+// would dress a PERMISSION answer as a NETWORK one, in the codebase whose rule is that the chip
+// never lies, so 403 (not the 401/404 mix used elsewhere) routes the client to its dead-end
+// screen instead of a retry loop.
+const inviteInvalide = () => new Response(JSON.stringify({ error: "invite_invalide" }),
+  { status: 403, headers: { "content-type": "application/json" } });
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const planId = planIdDe(request);
-  if (!planId) return mauvaisPlan();
+  const porte = porteDe(request, env);
+  let planId: string;
+  if (porte === "invite") {
+    const invit = await chargerInvitation(env, tokenDuCookie(request));
+    if (!invitationValide(invit)) return inviteInvalide();
+    planId = invit.plan_id;   // `?p=` IGNORED: design edge 5.
+  } else {
+    const pid = planIdDe(request);
+    if (!pid) return mauvaisPlan();
+    planId = pid;
+  }
   const row = await env.DB
     .prepare("SELECT data, rev, updated_at, updated_by FROM plans WHERE id=?1")
     .bind(planId)
@@ -116,8 +146,22 @@ async function currentRow(env: Env, planId: string) {
 }
 
 export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
-  const planId = planIdDe(request);
-  if (!planId) return mauvaisPlan();
+  const porte = porteDe(request, env);
+  let planId: string;
+  // Non-empty only when the write comes through the invite door: captured here, at the point
+  // where the invite row is still in scope, so the write below never has to re-resolve it.
+  let nomEcrivainInvite = "?";
+  if (porte === "invite") {
+    const invit = await chargerInvitation(env, tokenDuCookie(request));
+    if (!invitationValide(invit)) return inviteInvalide();
+    planId = invit.plan_id;   // `?p=` IGNORED: same reason as the GET above.
+    nomEcrivainInvite = cleanName(invit.last_name, 40) || "?";
+  } else {
+    const pid = planIdDe(request);
+    if (!pid) return mauvaisPlan();
+    planId = pid;
+  }
+
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
   const st = body && body.state;
@@ -126,10 +170,23 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
   const data = JSON.stringify(st);
   if (data.length > 2_000_000) return new Response("too big", { status: 413 });
   const now = new Date().toISOString();
-  const by = identiteFoyer(request, porteDe(request, env));
 
-  // BLIND write (old contract): no expected revision, last writer wins.
   const expected = body && Number.isInteger(body.rev) ? Number(body.rev) : null;
+  if (porte === "invite" && expected === null) {
+    // A BLIND PUT is `plan5.replace` by another name: no expected revision, last writer wins, the
+    // whole document at once. The old contract exists for a tab opened BEFORE this feature
+    // deployed; no guest tab predates it, so the guest door requires `rev` on every write.
+    return new Response(JSON.stringify({ error: "rev_requis" }),
+      { status: 400, headers: { "content-type": "application/json" } });
+  }
+  const by = porte === "invite"
+    // NEVER an email (there is none), NEVER the literal "live": a guest's identity is
+    // self-declared and lives in the invite row, not in an Access header this door doesn't have.
+    ? "invite:" + nomEcrivainInvite
+    : identiteFoyer(request, porte);
+
+  // BLIND write (old contract): no expected revision, last writer wins. Never reachable from the
+  // invite door: refused above.
   if (expected === null) {
     await env.DB
       .prepare(

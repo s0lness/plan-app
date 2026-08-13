@@ -305,6 +305,10 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   project, an unset variable means the door never closes. Set it BEFORE adding any hostname.
   Functions are bound to the PROJECT, not to a hostname, so `/api/plan`, `/api/plans`, `/api/err`
   and `/ws` answer on every hostname the project serves. See `docs/decisions/0004-partage-par-lien.md`.
+- **`GUEST_HOST` is the ONE hostname of the guest door**, the one Access does NOT cover. Unset, the
+  `"invite"` verdict can never occur and the guest door simply does not exist, which is the state
+  the repository ships in. It is checked only AFTER the household allowlist misses, so a host named
+  in both stays `"foyer"`: the door can only ever be loosened deliberately, never by a typo.
 - **NEVER ADD `wrangler.toml` TO THIS REPOSITORY.** This project does not have one, and that is what
   keeps its bindings alive: `DB` (D1) and `ROOM` (the Durable Object namespace) are set ON THE Pages
   PROJECT, in the dashboard. As soon as a Pages project contains `wrangler.toml`, **that file becomes
@@ -319,8 +323,9 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - D1 `plan` (uuid `<d1_database_id>`, get your own from the Cloudflare dashboard), `plans` table with one `main` row
   (`data` JSON, increasing `rev`, `updated_at`, `updated_by`). Bound to the Pages project as `DB`
   (production + preview), configured through the REST API (no wrangler here).
-- **Four network entry points, not one more**, all on the app origin and therefore all behind Access
-  by default. Identity is the `Cf-Access-Authenticated-User-Email` header set by Access (fallback:
+- **Six network entry points, not one more.** The first four are on the app origin and therefore
+  behind Access by default; the last two exist because of the guest door, and `functions/_middleware.ts`
+  is what decides which door may reach which route (`docs/decisions/0004-partage-par-lien.md`). Identity is the `Cf-Access-Authenticated-User-Email` header set by Access (fallback:
   the `Cf-Access-Jwt-Assertion` JWT payload, already verified upstream); otherwise, `inconnu`.
 
 | Route | Method | Purpose | Contract |
@@ -328,7 +333,9 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 | `/api/plan` | `GET` | Read the household floor plan. | `{data, rev, updatedAt, updatedBy}` · missing row = `{data:null, rev:0}` |
 | `/api/plan` | `PUT` | Write the floor plan through FALLBACK (realtime down). | `{state, rev}` = compare-and-swap: **409** with the winning revision, author, AND state if the row moved. `{state}` alone = BLIND write, the old contract, kept for a tab opened before deployment. |
 | `/api/err` | `POST` | Collect an uncaught client JS error in D1 for remote diagnosis. | free-form body, response without useful content |
-| `/ws` | `GET` + `Upgrade` | Open the realtime wire. | Pass-through: adds `X-Plan-Email` and forwards to the `PlanRoom` Durable Object (binding `ROOM`). **426** without an `Upgrade` header. |
+| `/ws` | `GET` + `Upgrade` | Open the realtime wire. | Pass-through: adds `X-Plan-Email`, `X-Plan-Guest` and `X-Plan-Name` (always SET, never conditionally, so a caller cannot forge them) and forwards to the `PlanRoom` Durable Object (binding `ROOM`). **426** without an `Upgrade` header. |
+| `/api/invite` | `POST` | GUEST DOOR ONLY. Trade the link's `#k=` token for a session. | `{token, name?}` → `{planId, planName, role, name}` + an `HttpOnly; Secure; SameSite=Strict` cookie. Unknown, revoked, expired and deleted-plan all answer the SAME **404**, so a probe never learns it guessed a real token. |
+| `/api/invites` | `GET` `POST` `DELETE` | HOUSEHOLD DOOR ONLY. Create, list and revoke a plan's links. | 20 live invites per plan max (**409**), revoke is idempotent (**200** even for an unknown token, same reason as the 404 above). |
 - **`rev` IS THE LOCK, no longer mere information.** TWO writers write to the D1 row (the Durable
   Object snapshot, and the client PUT when realtime is down): blind PUT let two people in fallback
   silently overwrite each other (measured: two writes accepted, rev 3 then 5, the row retaining only

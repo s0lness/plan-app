@@ -120,6 +120,51 @@ await test("porte_liste_est_nettoyee", () => {
 });
 
 // =================================================================================================
+//  1bis. porteDe — the "invite" verdict (batch 1b)
+// =================================================================================================
+
+await test("porte_invite_correspond_au_guest_host", () => {
+  const env = { HOUSEHOLD_HOSTS: "plan.example.com", GUEST_HOST: "share.example.com" };
+  const r = requeteVers("https://share.example.com/api/invite", { Host: "share.example.com" });
+  return expect(porteDe(r, env) === "invite", "l'hôte GUEST_HOST doit donner le verdict invite");
+});
+
+await test("porte_invite_guest_host_absent_est_inaccessible", () => {
+  // GUEST_HOST UNSET means "invite" can never be the verdict: the same host that would be an
+  // invite door once configured is just an unrecognized one until an operator declares it,
+  // exactly like HOUSEHOLD_HOSTS before it existed.
+  const env = { HOUSEHOLD_HOSTS: "plan.example.com" };
+  const r = requeteVers("https://share.example.com/api/invite", { Host: "share.example.com" });
+  return expect(porteDe(r, env) === "inconnue", "sans GUEST_HOST, aucun hôte ne doit jamais donner invite");
+});
+
+await test("porte_invite_guest_host_vide_est_inaccessible", () => {
+  const env = { HOUSEHOLD_HOSTS: "plan.example.com", GUEST_HOST: "" };
+  const r = requeteVers("https://share.example.com/api/invite", { Host: "share.example.com" });
+  return expect(porteDe(r, env) === "inconnue", "GUEST_HOST vide doit se comporter comme absent");
+});
+
+await test("porte_foyer_gagne_le_conflit", () => {
+  // A host that appears in BOTH lists (a misconfiguration, but one that must fail SAFE): the
+  // household's own hostname must never be downgraded to "invite" by a stray GUEST_HOST entry.
+  const env = { HOUSEHOLD_HOSTS: "plan.example.com", GUEST_HOST: "plan.example.com" };
+  const r = requeteVers("https://plan.example.com/api/plan", { Host: "plan.example.com" });
+  return expect(porteDe(r, env) === "foyer", "un hôte présent dans les deux listes doit rester foyer");
+});
+
+await test("porte_invite_port_retire", () => {
+  const env = { HOUSEHOLD_HOSTS: "plan.example.com", GUEST_HOST: "share.example.com" };
+  const r = requeteVers("https://share.example.com:8788/api/invite", { Host: "share.example.com:8788" });
+  return expect(porteDe(r, env) === "invite", "le port doit être retiré avant comparaison, comme pour HOUSEHOLD_HOSTS");
+});
+
+await test("porte_invite_hote_different_reste_inconnue", () => {
+  const env = { HOUSEHOLD_HOSTS: "plan.example.com", GUEST_HOST: "share.example.com" };
+  const r = requeteVers("https://autre.example.com/api/plan", { Host: "autre.example.com" });
+  return expect(porteDe(r, env) === "inconnue", "un hôte qui n'est ni le foyer ni l'invité reste inconnue");
+});
+
+// =================================================================================================
 //  2. identiteFoyer — reads nothing off an unrecognized door, and never returns `live`
 // =================================================================================================
 
@@ -170,6 +215,15 @@ await test("identite_marqueur_live_jamais_hors_foyer", () => {
   const r = requeteVers("https://share.example.com/api/plan",
     { "Cf-Access-Authenticated-User-Email": "live" });
   return expect(identiteFoyer(r, "inconnue") === "inconnu", "'live' ne doit survivre sur AUCUNE porte");
+});
+
+await test("identite_hote_invite_ignore_aussi_l_en_tete_direct", () => {
+  // Same rule as "inconnue": a valid invite token is not an Access identity, and the "invite"
+  // verdict must not become a second way to smuggle a household email through.
+  const r = requeteVers("https://share.example.com/api/plan",
+    { "Cf-Access-Authenticated-User-Email": "sylve@example.com" });
+  return expect(identiteFoyer(r, "invite") === "inconnu",
+    "sur la porte invite, même l'en-tête direct ne doit JAMAIS être cru");
 });
 
 // =================================================================================================
@@ -246,6 +300,84 @@ await test("middleware_retire_les_en_tetes_cf_access_et_seulement_cf_authorizati
         "l'en-tête du JWT Access doit disparaître")
       && expect(vue!.headers.get("cookie") === "other=stays; foo=bar",
         "seul CF_Authorization doit être retiré du cookie, vu " + JSON.stringify(vue!.headers.get("cookie")));
+});
+
+// =================================================================================================
+//  3bis. functions/_middleware.ts — the "invite" door (batch 1b): a NAMED surface, not
+//  "everything except the owner routes". /api/invite, /api/plan and /ws pass through UNVALIDATED
+//  (the token itself is checked downstream, by the route that can read D1); everything else under
+//  /api/ is 403, /api/plans and /api/invites explicitly included.
+// =================================================================================================
+
+const ENV_INVITE = { HOUSEHOLD_HOSTS: "plan.example.com", GUEST_HOST: "share.example.com" };
+
+await test("middleware_invite_laisse_passer_api_invite", async () => {
+  const r = requeteVers("https://share.example.com/api/invite", { Host: "share.example.com" });
+  const { appel, next } = fauxNext();
+  await middleware(ctx(r, ENV_INVITE, next));
+  return expect(appel.appelee, "next() doit être appelé pour /api/invite sur la porte invite");
+});
+
+await test("middleware_invite_laisse_passer_api_plan", async () => {
+  const r = requeteVers("https://share.example.com/api/plan", { Host: "share.example.com" });
+  const { appel, next } = fauxNext();
+  await middleware(ctx(r, ENV_INVITE, next));
+  return expect(appel.appelee, "next() doit être appelé pour /api/plan sur la porte invite");
+});
+
+await test("middleware_invite_laisse_passer_le_fil", async () => {
+  for (const chemin of ["/ws", "/ws?p=main"]) {
+    const r = requeteVers("https://share.example.com" + chemin, {
+      Host: "share.example.com", Upgrade: "websocket",
+    });
+    const { appel, next } = fauxNext();
+    await middleware(ctx(r, ENV_INVITE, next));
+    const ok = expect(appel.appelee, chemin + " : next() doit être appelé sur la porte invite");
+    if (!ok) return false;
+  }
+  return true;
+});
+
+await test("middleware_invite_refuse_api_plans", async () => {
+  const r = requeteVers("https://share.example.com/api/plans", { Host: "share.example.com" });
+  const { appel, next } = fauxNext();
+  const res = await middleware(ctx(r, ENV_INVITE, next));
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 403, "doit répondre 403, vu " + res.status)
+      && expect(corps && corps.error === "porte_refusee", "corps attendu {error:'porte_refusee'}, vu " + JSON.stringify(corps))
+      && expect(!appel.appelee, "next() ne doit PAS être appelé pour /api/plans sur la porte invite");
+});
+
+await test("middleware_invite_refuse_api_invites", async () => {
+  const r = requeteVers("https://share.example.com/api/invites", { Host: "share.example.com" });
+  const { appel, next } = fauxNext();
+  const res = await middleware(ctx(r, ENV_INVITE, next));
+  return expect(res.status === 403, "doit répondre 403, vu " + res.status)
+      && expect(!appel.appelee, "next() ne doit PAS être appelé pour /api/invites sur la porte invite");
+});
+
+await test("middleware_invite_refuse_api_err", async () => {
+  const r = requeteVers("https://share.example.com/api/err", { Host: "share.example.com" });
+  const { appel, next } = fauxNext();
+  const res = await middleware(ctx(r, ENV_INVITE, next));
+  return expect(res.status === 403, "doit répondre 403, vu " + res.status)
+      && expect(!appel.appelee, "next() ne doit PAS être appelé pour /api/err sur la porte invite");
+});
+
+await test("middleware_invite_retire_les_en_tetes_access", async () => {
+  const r = requeteVers("https://share.example.com/api/plan", {
+    Host: "share.example.com",
+    "Cf-Access-Authenticated-User-Email": "sylve@example.com",
+    Cookie: "other=stays; CF_Authorization=" + jwtForge("sylve@example.com"),
+  });
+  const { appel, next } = fauxNext();
+  await middleware(ctx(r, ENV_INVITE, next));
+  const vue = appel.requete;
+  return expect(!!vue, "next() doit recevoir une requête reconstruite")
+      && expect(vue!.headers.get("cf-access-authenticated-user-email") === null,
+        "l'en-tête d'identité Access doit disparaître aussi sur la porte invite")
+      && expect(vue!.headers.get("cookie") === "other=stays",
+        "seul CF_Authorization doit être retiré du cookie");
 });
 
 // =================================================================================================

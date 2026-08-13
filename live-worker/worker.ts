@@ -68,9 +68,14 @@ interface WireMessage {
 }
 
 // ---- THE SAME DOOR AS functions/porte.ts, applied here too ------------------------------------
-// A zone route sends `plan.example.com/ws*` straight to THIS Worker, bypassing Pages Functions
-// entirely (docs/decisions/0004-partage-par-lien.md): `functions/_middleware.ts` never sees this
-// request, so a choke point living only there misses the most privileged route in the product.
+// A DOOR IN WAITING, and that is the point. Today `/ws` is served by Pages
+// (`functions/ws.ts` forwards through the `ROOM` binding), so `functions/_middleware.ts` covers
+// it and this `fetch` is not reachable from outside: the `workers.dev` subdomain is disabled.
+// But `live-worker/DEPLOY.md` §2 describes a zone route that would send `/ws*` straight HERE and
+// take precedence over Pages, and that document is a procedure someone may yet run. The day it
+// is run, this function becomes the front door of the most privileged route in the product,
+// reading a caller-supplied identity header with no middleware in front of it.
+// See docs/decisions/0004-partage-par-lien.md.
 // Kept as an independent copy, not an import from `functions/`: this file is bundled and
 // deployed as its own Worker (`live-worker/build-worker.ts`), a separate unit from the Pages
 // Functions it happens to share a repository with.
@@ -96,11 +101,10 @@ export default {
     // it through. Off an unrecognized host (HOUSEHOLD_HOSTS declared and not matching) the header
     // is caller-supplied and unsigned, so it is never trusted: force "inconnu" instead.
     // It DOWNGRADES rather than refuses, unlike `functions/_middleware.ts`, which answers 403 on
-    // an unrecognized host. The asymmetry is deliberate: this Worker is reachable only through
-    // the zone route (its `workers.dev` subdomain is disabled), so an unrecognized host here means
-    // a MISCONFIGURED allowlist far more often than an attack, and refusing would take the whole
-    // wire down rather than merely lose attribution. The exposed path is the Pages one, and that
-    // one fails closed.
+    // an unrecognized host. The asymmetry is deliberate: this handler is not reachable from
+    // outside today, so an unrecognized host here means a MISCONFIGURED allowlist far more often
+    // than an attack, and refusing would take the whole wire down rather than merely lose
+    // attribution. The exposed path is the Pages one, and that one fails closed.
     const email = hoteAutorise(request, env)
       ? (request.headers.get("Cf-Access-Authenticated-User-Email") || "inconnu")
       : "inconnu";
