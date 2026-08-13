@@ -1834,6 +1834,44 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   throws(() => P({ pair: { id: "x" } }), "pair as an object rejected");
   throws(() => P({ pair: "a b c" }), "pair with spaces rejected (same grammar as any id)");
 }
+{
+  // free (wall): 0, 1 and nothing else (WALL_FREE). ABSENT stays absent, same rule as `leaf`
+  // above: a wall that never opted in did not "choose" to reach through, it does so by DEFAULT,
+  // and writing 0 everywhere would move the fingerprint of every existing plan for nothing.
+  ok(sanitizeState(v5State({ walls: [wall({ free: 1 })] })).walls[0].free === 1, "free 1 kept");
+  ok(sanitizeState(v5State({ walls: [wall()] })).walls[0].free === undefined,
+     "free ABSENT stays absent: an untouched wall stays through-going, not \"free 0\"");
+  // an explicit 0 is a real value in WALL_FREE's domain (kept for a hypothetical future client
+  // that clears the flag by SAYING SO): it is accepted, and does NOT get stored as a key either,
+  // it produces the exact same absence as never having set it.
+  ok(sanitizeState(v5State({ walls: [wall({ free: 0 })] })).walls[0].free === undefined,
+     "free 0 accepted, and stored the same as absent");
+  throws(() => sanitizeState(v5State({ walls: [wall({ free: 2 })] })), "free 2 rejected");
+  throws(() => sanitizeState(v5State({ walls: [wall({ free: -1 })] })), "free -1 rejected");
+  throws(() => sanitizeState(v5State({ walls: [wall({ free: "oui" })] })), "free string rejected");
+  throws(() => sanitizeState(v5State({ walls: [wall({ free: { a: 1 } })] })), "free object rejected");
+
+  // wall.set: a PARTIAL op only touching `free` on an existing wall must not disturb its geometry,
+  // and must actually flip the flag (the field-by-field merge, same as any other wall key).
+  let pf = freshV5();
+  applyOp(pf, { kind: "wall.set", wall: { id: "w1", free: 1 } });
+  ok(pf.walls[0].free === 1 && pf.walls[0].a[0] === 0 && pf.walls[0].t === 10,
+     "wall.set free-only op flips the flag and leaves geometry untouched");
+  // and it survives being echoed straight back through sanitizeState (revalidating stored data
+  // is idempotent, same requirement as every other field here).
+  ok(sanitizeState(pf).walls[0].free === 1, "a stored free wall survives a re-sanitize");
+  // clearing it back explicitly (free:0) on the SAME wall works through the op path too.
+  applyOp(pf, { kind: "wall.set", wall: { id: "w1", free: 0 } });
+  ok(pf.walls[0].free === undefined, "wall.set free:0 clears a previously free wall");
+
+  // planFp: a free/through-going wall must be a DIFFERENT floor plan (this is the whole point of
+  // the field: two households must not silently converge on one wall's behavior).
+  const sansFree = sanitizeState(v5State({ walls: [wall()] }));
+  const avecFree = sanitizeState(v5State({ walls: [wall({ free: 1 })] }));
+  ok(planFp(sansFree) !== planFp(avecFree), "free changes the plan's fingerprint");
+  ok(planFp(sanitizeState(v5State({ walls: [wall({ free: 0 })] }))) === planFp(sansFree),
+     "an explicit free:0 fingerprints identically to absence (same stored shape)");
+}
 
 // =================================================================================================
 //  BATCH 2 — WIRE IDENTITY (docs/decisions/0004-partage-par-lien.md, "batch 2, wire identity")

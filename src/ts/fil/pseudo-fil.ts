@@ -37,12 +37,20 @@ import type {
 } from "../partage/plan.ts";
 
 function v5WallWire(w: Mur): MurFil {
-  return {
+  const out: MurFil = {
     id: String(w.id),
     a: [v5R2(w.a[0]), v5R2(w.a[1])],
     b: [v5R2(w.b[0]), v5R2(w.b[1])],
     t: clamp(Math.round(w.t || WALL), WALL_T_MIN, WALL_T_MAX),
   };
+  // Same rule as an opening's `leaf`, below: `free` is ONLY EMITTED if it is set. Emitting 0 by
+  // default would rewrite the fingerprint of every wall in every plan on the first op that
+  // touches it, whereas absence means "through-going", the historical default (C-5: an absent
+  // field is not a field set to zero). This is exactly the field that used to be dropped here
+  // entirely, so a free-standing partition (the freehand tool's loose end) LOOKED right locally
+  // but reverted to through-going the moment it reached a peer or the D1 fallback.
+  if (w.free) out.free = 1;
+  return out;
 }
 
 /**

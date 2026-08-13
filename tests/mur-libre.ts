@@ -26,6 +26,7 @@ import type { DonneeDynamique } from "./_types.ts";
 import { v5ThroughWall } from "../src/ts/modele/edition.ts";
 import { sanitizeV5Plan } from "../src/ts/modele/migrations.ts";
 import { RATIO_PRECIS, pointSuivi } from "../src/ts/gestes/etat-pointeur.ts";
+import { v5StateWire } from "../src/ts/fil/pseudo-fil.ts";
 import type { Mur, PlanV5 } from "../src/ts/partage/plan.ts";
 
 let ok = 0, ko = 0;
@@ -137,6 +138,36 @@ test("sanitize_garde_free_a_la_relecture", (a: DonneeDynamique) => {
   // and an ordinary (through-going) wall must NOT gain `free` out of nowhere
   const w2 = out && out.walls.find((q) => q.id === "o1");
   a(!!(w2 && w2.free === undefined), `une façade ne doit jamais récupérer \`free\`, vu ${JSON.stringify(w2)}`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// C-5: `v5WallWire` (`fil/pseudo-fil.ts`) is the OTHER half of the same defect as `sanitizeV5Plan`
+// above: it builds the object that actually crosses the network (`v5StateWire`, the PUT body, the
+// realtime diff base), and it used to drop `free` too, WALL_KEYS ("id","a","b","t","free") in
+// `partage/contrat-serveur.ts` notwithstanding: that constant only pins the whitelist a key is
+// ALLOWED to use, it says nothing about whether the wire function actually EMITS the key. A free
+// partition therefore looked right locally (`sanitize_garde_free_a_la_relecture` above already
+// passed) but reverted to through-going the instant it reached a peer or the D1 fallback, because
+// the object that traveled never carried the flag in the first place.
+test("le_fil_porte_free_pour_une_cloison_libre", (a: DonneeDynamique) => {
+  const libre: Mur = { id: "w9", a: [150, 120], b: [150, 180], t: 12, isOutline: false, free: 1 };
+  const P = plan([libre]);
+  const fil = v5StateWire(P, true);
+  const w = fil.walls.find((q) => q.id === "w9");
+  a(!!w, "la cloison libre doit être présente sur le fil");
+  a(!!(w && w.free === 1), `et porter \`free:1\`, vu ${JSON.stringify(w)}`);
+});
+
+// The reverse: a wall that was NEVER free must not gain the key out of nowhere on the wire
+// either, otherwise every existing plan's fingerprint would move the first time ANY field on
+// ANY of its walls is touched (same reasoning as `leaf` on an opening, see `v5WallWire`'s comment).
+test("le_fil_ne_porte_pas_free_pour_une_cloison_traversante", (a: DonneeDynamique) => {
+  const trav: Mur = { id: "w1", a: [150, 120], b: [150, 180], t: 12, isOutline: false };
+  const P = plan([trav]);
+  const fil = v5StateWire(P, true);
+  const w = fil.walls.find((q) => q.id === "w1");
+  a(!!w, "la cloison traversante doit être présente sur le fil");
+  a(!!(w && !("free" in w)), `elle ne doit MÊME PAS porter la clé \`free\`, vu ${JSON.stringify(w)}`);
 });
 
 // ---------------------------------------------------------------------------------------------
