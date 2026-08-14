@@ -96,7 +96,18 @@ export interface Operation {
   ay?: number | null;
 }
 
-export interface CursorMessage { room?: string | null; x?: number | null; y?: number | null }
+export interface CursorMessage {
+  room?: string | null; x?: number | null; y?: number | null;
+  /**
+   * CURSOR CHAT ("/", FigJam-style): the LIVE text of what its author is typing, riding the
+   * SAME `cursor` message so it follows the pointer with no extra synchronization. Absent =
+   * "no opinion" (an ordinary position ping, box not open); `null` = an EXPLICIT "I stopped
+   * speaking" (box closed: Enter, Escape, blur); a string = the current, letter-by-letter text.
+   * Cleaned by `cleanCursorSay` below: never persisted, never entered into chat history, never
+   * an op — it never touches `plan`.
+   */
+  say?: string | null;
+}
 export interface DragMessage extends CursorMessage { pieceId?: string; rot?: number | null }
 
 const COLORS = ["#1f6f78", "#b04a3d", "#7c8a6b", "#8a6e8e"];
@@ -382,6 +393,31 @@ export function cleanGuestName(v: unknown): string {
     if (c < CONTROLE_BAS || c === DEL) continue;
     if ((c >= BIDI_MIN_1 && c <= BIDI_MAX_1) || (c >= BIDI_MIN_2 && c <= BIDI_MAX_2)) continue;
     if (out.length + ch.length > GUEST_NAME_MAX) break;
+    out += ch;
+  }
+  return out;
+}
+
+// ---- CURSOR CHAT ("/", docs pending): the SECOND untrusted string this client renders --------
+// The guest name above was the FIRST. This is the second: it rides the `cursor` message (see
+// `CursorMessage.say`), so it reaches every peer's `.pc-say` bubble (`src/ts/mesure/curseur-pair.ts`,
+// `textContent` only, never `innerHTML`) long before anyone submits anything.
+export const CURSOR_SAY_MAX = 140;
+
+/**
+ * SAME RULE AS `cleanGuestName` (control characters and bidi overrides stripped, never throws),
+ * a DELIBERATE COPY rather than a shared helper for the same reason `cleanGuestName` itself is
+ * a copy of `functions/nom.ts`'s rule: two independent bundles, and a name's cap (40) has nothing
+ * to do with a cursor bubble's cap (140) beyond sharing the same shape of danger.
+ */
+export function cleanCursorSay(v: unknown): string {
+  if (typeof v !== "string") return "";
+  let out = "";
+  for (const ch of v.trim()) {
+    const c = ch.codePointAt(0) as number;
+    if (c < CONTROLE_BAS || c === DEL) continue;
+    if ((c >= BIDI_MIN_1 && c <= BIDI_MAX_1) || (c >= BIDI_MIN_2 && c <= BIDI_MAX_2)) continue;
+    if (out.length + ch.length > CURSOR_SAY_MAX) break;
     out += ch;
   }
   return out;
@@ -1151,7 +1187,15 @@ export function sanitizeCursor(msg: CursorMessage): CursorMessage | null {
   // room/x/y set to null = "cursor off canvas", a shape explicitly emitted by the client.
   if (room === null || msg.x == null || msg.y == null) return { room: null, x: null, y: null };
   if (!isWireNum(msg.x) || !isWireNum(msg.y)) return null;
-  return { room, x: msg.x, y: msg.y };
+  const out: CursorMessage = { room, x: msg.x, y: msg.y };
+  // `say` ABSENT from the wire = no opinion (out.say stays undefined, so JSON drops the key: an
+  // old client, or one that never opened the chat box, changes nothing for anyone). `say: null`
+  // is preserved AS-IS, the explicit "stopped speaking" a closed box sends once. A string is
+  // cleaned (control characters, bidi overrides, capped at CURSOR_SAY_MAX): it may clean down to
+  // "", which is still a valid (empty) opinion, not the same as never having one.
+  if (msg.say === null) out.say = null;
+  else if (msg.say !== undefined) out.say = cleanCursorSay(msg.say);
+  return out;
 }
 
 export function sanitizeDrag(msg: DragMessage): DragMessage | null {

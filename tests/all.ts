@@ -64,6 +64,8 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/repli-conflit.ts",           chrome: 2 },
   { f: "tests/faces-pose-copie.ts",        chrome: 1 },
   { f: "tests/deux-appareils.ts",          chrome: 1 },
+  { f: "tests/curseur-dire.ts",            chrome: 1 },   // cursor chat ("/"), real mouse + keyboard: opens, follows the pointer, closes on Escape, plan untouched
+  { f: "tests/curseur-dire-deux-appareils.ts", chrome: 1 },   // cursor chat's WIRE half, style of deux-appareils.ts: letter-by-letter, disappears on close, XSS
   { f: "tests/collab-accuses.ts",          chrome: 1 },
   { f: "tests/garde-fous.ts",              chrome: 1 },
   { f: "tests/gestes-perte-de-travail.ts", chrome: 1 },

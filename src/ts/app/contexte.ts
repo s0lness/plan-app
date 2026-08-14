@@ -236,6 +236,23 @@ export interface Crochets {
    * (it already imports `wsSend`) — it does not need this hook to WRITE, only to READ.
    */
   guestNomLocal?: (() => string) | undefined;
+  /**
+   * CURSOR CHAT ("/", FigJam-style, `fil/dire.ts`). `gestes/clavier.ts` cannot call `fil/dire.ts`
+   * directly at the moment "/" is pressed: `dire.ts` needs `fil`, which does not exist yet when
+   * `brancherClavier(ctx)` is wired (it runs before `brancherFil(ctx)` — see `main.ts`). Wired by
+   * `brancherDire(ctx, fil)` (`fil/branchement.ts`, right beside `brancherChat`), the same crochet
+   * pattern as `guestSansNom`/`accesRefuseSansInvite` and for the same reason.
+   */
+  direOuvrir?: (() => void) | undefined;
+  /**
+   * SAME FEATURE, THE OTHER DIRECTION: `fil/presence.ts`'s `wsOnDown` (the socket just dropped)
+   * needs to close the LOCAL floating box and forget its text — "a text box stuck to a cursor
+   * forever would be a bug" — but `presence.ts` cannot import `fil/dire.ts` back (that module
+   * already imports FROM `presence.ts`, for `direTexte`/`direArreter`; the reverse import would be
+   * a cycle, the exact shape "Blank startup" warns about). `wsOnDown` already resets `fil.sayText`
+   * itself; this crochet only has to clean up the DOM.
+   */
+  direFermerUI?: (() => void) | undefined;
 }
 
 export function creerContexte(etat: Etat, canvas: HTMLElement, viewport: HTMLElement): Contexte {

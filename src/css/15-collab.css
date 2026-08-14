@@ -63,3 +63,18 @@
   .chat-input input{width:100%;border:0;background:transparent;padding:7px 8px;font-size:12.5px;color:var(--ink)}
   .chat-input input:focus{outline:none}
 
+  /* ---------- cursor chat ("/"), FigJam-style: ephemeral, never persisted ---------- */
+  /* the LOCAL author's own floating box: follows the pointer while open (position set via
+     translate3d, same GPU-compositor path as .peer-cur, no CSS transition). Relies on the shared
+     [hidden]{display:none!important} rule (css/01) rather than a redundant [hidden] selector here. */
+  .say-box{position:absolute;left:0;top:0;z-index:260;width:170px;
+    font-family:var(--mono);font-size:12px;padding:4px 9px;border-radius:12px;
+    border:1px solid var(--line);background:var(--panel);color:var(--ink);
+    box-shadow:var(--shadow);will-change:transform}
+  .say-box:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  /* a PEER'S live text, painted above their name tag, same pill language as .pc-name */
+  .peer-cur .pc-say{position:absolute;left:13px;bottom:16px;
+    font-family:var(--mono);font-size:10px;font-weight:600;color:#fff;padding:1px 6px;
+    border-radius:3px;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;
+    box-shadow:0 1px 2px rgba(20,30,30,.2)}
+

@@ -33,7 +33,8 @@ import { migrate } from "../modele/etat.ts";
 import { histNoteRemoteOp } from "../historique/pile.ts";
 import { assistant } from "../panneaux/configuration.ts";
 import { aptToScreen, screenToApt } from "../rendu/vue.ts";
-import { creerNoeudCurseur, dedupedDisplayName, displayName, personColor } from "../mesure/curseur-pair.ts";
+import { lastCursorApt } from "../gestes/etat-pointeur.ts";
+import { creerNoeudCurseur, dedupedDisplayName, displayName, majDireCurseur, personColor } from "../mesure/curseur-pair.ts";
 import {
   opsNonAcquittees, wsAckOp, wsAckDisarm, wsPublishWholePlan, wsRetransmit, wsSend,
   wsShadowAdopted, wsShadowFromServer,
@@ -109,7 +110,7 @@ export function wsUpsertCursor(
   ctx: Contexte, fil: Fil,
   msg: {
     by?: string; tag?: string; color?: string; name?: string; guest?: boolean;
-    room?: unknown; x?: number | null; y?: number | null;
+    room?: unknown; x?: number | null; y?: number | null; say?: string | null;
   },
 ): void {
   if (wsFromMe(fil, msg)) return;
@@ -140,6 +141,10 @@ export function wsUpsertCursor(
   wsPaintCursor(c, false);
   hudRecordPaint(fil, performance.now() - t0);
   c.el.style.display = "";
+  // CURSOR CHAT ("/"): a string is this peer's CURRENT text (even ""), anything else (absent,
+  // `null`) means "not speaking right now" — no need to tell `null` from absent here, both read
+  // the same on screen, only the WIRE contract (`live-worker/ops.ts`) distinguishes them.
+  majDireCurseur(c.el, typeof msg.say === "string" ? msg.say : null);
   wsEnsureCursorLoop(fil);
   if (c.timer) clearTimeout(c.timer);
   c.timer = setTimeout(() => wsHideCursor(fil, key), 4000);
@@ -602,6 +607,13 @@ export function wsOnDown(ctx: Contexte, fil: Fil, code?: number): void {
   fil.ghosts.clear();
   const cb = $("chatBtn"); if (cb) cb.hidden = true;
   const cp = $("chatPanel"); if (cp) cp.hidden = true;
+  // CURSOR CHAT ("/"): a box stuck open forever, with nothing left to tell anyone it's still
+  // open, would be exactly the bug the feature must never have. There is no peer left to notify
+  // (the socket is already down), so this only resets local state and the DOM box itself
+  // (`fil/dire.ts`, wired through a crochet: `presence.ts` cannot import it back, same
+  // cycle-avoidance reason as `guestSansNom`/`accesRefuseSansInvite`, see `app/contexte.ts`).
+  fil.sayText = null;
+  ctx.crochets.direFermerUI?.();
   // Live dropped -> D1 fallback (poll + PUT): "slow sync", NEVER "offline". A silent WS outage
   // must not look like a healthy sync, nor like a total absence of network.
   if (was && !fil.detached) setSyncChip(fil, "slow");
@@ -624,13 +636,22 @@ function wsScheduleReconnect(ctx: Contexte, fil: Fil): void {
 // The hottest path in the application: we capture every `pointermove`, keep only the LAST point,
 // and emit it on the next rAF. Zero timer, zero work per movement beyond a variable write.
 
-function wsFlushCursor(fil: Fil): void {
+// Exported so a test probe can FORCE an immediate send of whatever is pending, the same way
+// `ghostIds()` forces the ghost render loop before counting: this suite's cadence is real
+// `requestAnimationFrame`, which a single-pass headless dump does not reliably let run to
+// completion inside a synchronous probe body.
+export function wsFlushCursor(fil: Fil): void {
   fil.curRafId = 0;
   if (!fil.wsOpen || !fil.curPending) return;
   const p = fil.curPending;
   fil.curPending = null;
   // The cursor travels in APARTMENT cm; `room` is just a label relayed as-is.
-  wsSend(fil, { t: "cursor", room: WIRE_ROOM, x: p.x, y: p.y });
+  const msg: { t: string; room: string; x: number; y: number; say?: string } = { t: "cursor", room: WIRE_ROOM, x: p.x, y: p.y };
+  // CURSOR CHAT ("/", `fil/dire.ts`): rides THIS SAME message, at THIS SAME cadence — no new
+  // message type, no message-per-keystroke. `fil.sayText` is `null` while the box is closed, so
+  // an ordinary cursor ping (the overwhelming majority of these) carries no extra key at all.
+  if (fil.sayText !== null) msg.say = fil.sayText;
+  wsSend(fil, msg);
   fil.curOut++;
 }
 
@@ -651,6 +672,48 @@ export function brancherCurseursSortants(ctx: Contexte, fil: Fil): void {
     fil.curPending = null;
     if (fil.wsOpen) wsSend(fil, { t: "cursor", room: null, x: null, y: null });
   });
+}
+
+// =================================================================================================
+//  CURSOR CHAT ("/"): THE WIRE HALF. THE BOX ITSELF LIVES IN `fil/dire.ts`.
+// =================================================================================================
+// Two entry points, both called from `fil/dire.ts` on every keystroke / on close — never from a
+// gesture, never touching `ctx.etat.plan`: this is presence, not a plan edit, so there is nothing
+// here for `save()`, history, or an op to ever see.
+
+/**
+ * The LOCAL author just typed (or the box just opened with nothing typed yet: `texte === ""`).
+ * Rides the ordinary cursor-position throttle (`curPending`/rAF, `wsFlushCursor` above): if a
+ * position is already queued (the pointer is moving), this keystroke simply rides along; if not
+ * (typing without moving the mouse, the common case), we seed `curPending` from the last known
+ * pointer position so the flush has SOMETHING coherent to send.
+ */
+export function direTexte(fil: Fil, texte: string): void {
+  fil.sayText = texte;
+  if (!fil.wsOpen) return;
+  if (!fil.curPending) {
+    const c = lastCursorApt();
+    if (c) fil.curPending = { x: Math.round(c.x), y: Math.round(c.y) };
+  }
+  if (fil.curPending && !fil.curRafId) fil.curRafId = requestAnimationFrame(() => wsFlushCursor(fil));
+}
+
+/**
+ * The box just closed (Enter, Escape, blur, or the auto-fade after a few idle seconds). Bypasses
+ * the throttle on purpose: this is a ONE-OFF state change, not a continuous stream, and every peer
+ * still watching the bubble must see it vanish right away, not on whatever the next ordinary
+ * position ping happens to be. Idempotent: closing an already-closed box announces nothing twice.
+ */
+export function direArreter(fil: Fil): void {
+  if (fil.sayText === null) return;
+  fil.sayText = null;
+  if (!fil.wsOpen) return;
+  const c = lastCursorApt();
+  // No known position: there is nothing coherent to send (peers still showing the old text fall
+  // back to their own 4 s cursor-hide timeout, exactly like a cursor that goes silent).
+  if (!c) return;
+  wsSend(fil, { t: "cursor", room: WIRE_ROOM, x: Math.round(c.x), y: Math.round(c.y), say: null });
+  fil.curOut++;
 }
 
 /** Outgoing ghost during a drag, throttled to ~40 ms: the observer sees continuous movement. */

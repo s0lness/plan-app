@@ -117,6 +117,8 @@ interface WireMessage {
   y?: number | null;
   rot?: number | null;
   name?: string;
+  /** Cursor chat ("/"): see `CursorMessage.say` in `ops.ts`. */
+  say?: string | null;
 }
 
 // ---- THE SAME DOOR AS functions/porte.ts, applied here too ------------------------------------
@@ -994,10 +996,15 @@ export class PlanRoom {
       case "cursor": {
         // Ephemeral, not persisted. room:null = cursor off canvas.
         // Relayed as-is to the other tab: therefore validated, cf. sanitizeCursor.
+        // `say` (cursor chat, "/"): `c.say` is `undefined` when the sender had no opinion (an
+        // old client, or an ordinary ping with the box closed) — `undefined` is dropped by
+        // `JSON.stringify`, so this changes NOTHING for a recipient on an older client. A string
+        // or an explicit `null` (the box just closed) travels as-is, per-recipient audience rule
+        // unchanged: same `authorWire` redaction as every other relayed message.
         const c = sanitizeCursor(msg);
         if (!c) break;
         this.broadcastFor((guestAudience) => ({
-          t: "cursor", color: att.color, room: c.room, x: c.x, y: c.y,
+          t: "cursor", color: att.color, room: c.room, x: c.x, y: c.y, say: c.say,
           ...this.authorWire(att, guestAudience),
         }), ws);
         break;
