@@ -60,9 +60,47 @@ const refuse = (erreur: string) => new Response(JSON.stringify({ error: erreur }
   headers: { "content-type": "application/json" },
 });
 
+// ---------------------------------------------------------------------------------------------
+// LINK PREVIEW CARD (Open Graph / Twitter). The invite token lives in the URL FRAGMENT (`#k=…`),
+// which is never sent to a server: a link-preview crawler fetching an invite URL sees only the
+// origin, never which plan it names. The card is therefore GENERIC BY CONSTRUCTION — `src/head.html`
+// carries the static tags (title, description, type, image size), and none of them may become
+// plan-specific without turning the fragment into a leak. Only `og:url` and the two image tags
+// need an ABSOLUTE address, and an absolute address needs a host; this repository is public (no
+// real hostname committed anywhere), so those three are the ONLY ones injected here, built from
+// THIS REQUEST's own Host — correct on the household host, the guest host, and any future preview
+// host, with nothing real ever landing in a commit.
+//
+// Gate is the response CONTENT TYPE, not the door and not the path: a JSON response from
+// `/api/plan`, `/api/invite`, or anywhere else under `/api/` never contains `</head>` and is
+// therefore returned completely untouched by `.startsWith("text/html")` failing first — this
+// function does not need its own `/api/` exclusion to keep that promise, it falls out of the
+// gate. Only a served `text/html` document (the one-file app shell) is rewritten, on any door
+// that reaches `next()` at all; the door's own verdict (refuse vs. pass) is untouched above this.
+const CARTE_OG_IMAGE = "apercu-lien.png"; // repo root, 1200x630, warm-paper palette, an INVENTED apartment — see AGENTS.md "Design".
+
+async function avecCarteOg(reponse: Response, request: Request): Promise<Response> {
+  const type = (reponse.headers.get("content-type") || "").toLowerCase();
+  if (!type.startsWith("text/html")) return reponse;
+  const texte = await reponse.text();
+  const i = texte.indexOf("</head>");
+  if (i === -1) return new Response(texte, { status: reponse.status, statusText: reponse.statusText, headers: reponse.headers });
+  const url = new URL(request.url);
+  const origine = `${url.protocol}//${url.host}`;
+  const image = `${origine}/${CARTE_OG_IMAGE}`;
+  const balises =
+    `<meta property="og:url" content="${origine}/">\n` +
+    `<meta property="og:image" content="${image}">\n` +
+    `<meta name="twitter:image" content="${image}">\n`;
+  const corps = texte.slice(0, i) + balises + texte.slice(i);
+  const headers = new Headers(reponse.headers);
+  headers.delete("content-length"); // the body just grew by the injected tags
+  return new Response(corps, { status: reponse.status, statusText: reponse.statusText, headers });
+}
+
 export const onRequest: PagesFunction<Env> = async ({ request, next, env }) => {
   const porte = porteDe(request, env);
-  if (porte === "foyer") return next();
+  if (porte === "foyer") return avecCarteOg(await next(), request);
 
   const propre = sansAccess(request);
   const chemin = new URL(request.url).pathname;
@@ -86,12 +124,12 @@ export const onRequest: PagesFunction<Env> = async ({ request, next, env }) => {
     const surfaceInvite = chemin === "/api/invite" || chemin === "/api/plan" ||
       chemin === "/api/feedback" || surLeFil;
     if (chemin.startsWith("/api/") && !surfaceInvite) return refuse("porte_refusee");
-    return next(propre);
+    return avecCarteOg(await next(propre), request);
   }
 
   // "inconnue": exactly today's behaviour (batch 1a). There is no invite token to accept on this
   // door, so it gets nothing beyond static assets.
   if (chemin.startsWith("/api/") || surLeFil) return refuse("porte_inconnue");
   // Static assets (the app shell) still pass, with Access identity stripped.
-  return next(propre);
+  return avecCarteOg(await next(propre), request);
 };

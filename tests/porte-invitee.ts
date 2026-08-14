@@ -212,7 +212,7 @@ try {
   // ============================================================================================
   const B = await openBrowser("anonyme", URL_OF("/#k=" + jeton("anonyme1")));
   opened.push(B);
-  const dlgOuvert = await attendre(async () => !(await A2Hidden(B, "inviteNameDlg")));
+  const dlgOuvert = await attendre(async () => (await A2Hidden(B, "inviteNameDlg")) === false);
   check("un invité JAMAIS nommé voit l'étape du nom", dlgOuvert);
   const videDesactive = await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`);
   check("le bouton Join reste désactivé tant que le champ est vide", videDesactive === true, "disabled=" + videDesactive);
@@ -221,21 +221,31 @@ try {
     var i = document.getElementById("inviteNameInput");
     i.value = "Julien"; i.dispatchEvent(new Event("input", {bubbles:true}));
   })()`);
-  const rempliActive = await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`);
-  check("le bouton Join s'active une fois un nom saisi", rempliActive === false, "disabled=" + rempliActive);
+  // ON ATTEND LA CONDITION, PAS UNE DUREE, et surtout pas « rien ». Le gestionnaire `input` qui
+  // reactive le bouton tourne dans la page, apres que CDP a rendu la main : lire `disabled` dans
+  // la foulee marchait sur une machine au repos et tombait sous charge, en signalant
+  // « disabled=true » comme si le produit etait casse. C'est la regle du depot (AGENTS.md) :
+  // attendre une CONDITION partout, jamais une duree, sinon on ne fait que deplacer le seuil ou
+  // ca retombe.
+  const rempliActive = await attendre(async () =>
+    (await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`)) === false);
+  check("le bouton Join s'active une fois un nom saisi", rempliActive,
+    "disabled=" + await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`));
 
   await B.evaluate(`document.getElementById("inviteNameJoin").click()`);
-  const dlgFerme = await attendre(async () => A2Hidden(B, "inviteNameDlg"));
+  const dlgFerme = await attendre(async () => (await A2Hidden(B, "inviteNameDlg")) === true);
   check("Join ferme l'étape du nom", dlgFerme);
-  const nomStocke = await B.evaluate(`localStorage.getItem("plan-invite-nom")`);
-  check("le nom saisi est mémorisé", nomStocke === "Julien", "vu " + JSON.stringify(nomStocke));
+  const nomStocke = await attendre(async () =>
+    (await B.evaluate(`localStorage.getItem("plan-invite-nom")`)) === "Julien");
+  check("le nom saisi est mémorisé", nomStocke,
+    "vu " + JSON.stringify(await B.evaluate(`localStorage.getItem("plan-invite-nom")`)));
 
   // ============================================================================================
   //  3. A DEAD-END LINK SHOWS THE FULL SCREEN, AND NO PLANNER BOOTS AT ALL
   // ============================================================================================
   const C = await openBrowser("mort", URL_OF("/#k=" + jeton("invalide1")));
   opened.push(C);
-  const impasse = await attendre(async () => !(await A2Hidden(C, "inviteDeadEnd")));
+  const impasse = await attendre(async () => (await A2Hidden(C, "inviteDeadEnd")) === false);
   check("un jeton inconnu affiche l'écran plein, jamais de bandeau", impasse);
   const rienDerriere = await C.J(`(function(){
     return {plan: typeof window.__plan, setupHidden: (document.getElementById("setup")||{}).hidden};})()`);
@@ -313,6 +323,17 @@ try {
   opened.forEach((b) => b.close());
 }
 
+/**
+ * `hidden` de l'element, ou `null` s'il n'existe pas ENCORE. Les trois etats comptent, et c'est
+ * pour ca que les appelants comparent a `=== false` ou `=== true` plutot que d'ecrire `!hidden`.
+ *
+ * Mesure : le harnais serialise `(expr) ?? null` pour qu'un element absent ne fasse plus tomber le
+ * scenario. Bien. Mais `!null` vaut `true`, donc `!(await A2Hidden(...))` repondait « visible »
+ * pour un element qui n'etait PAS ENCORE dans la page : l'attente se terminait aussitot, le test
+ * attaquait un dialogue inexistant, et signalait « le bouton reste desactive : disabled=null »
+ * comme si le produit etait casse. Une garde qui transforme un plantage en reponse FAUSSE mais
+ * plausible est pire que le plantage : elle accuse quelqu'un d'autre.
+ */
 async function A2Hidden(b: { J: (e: string) => Promise<VerdictSonde> }, id: string): Promise<boolean> {
   return b.J(`(document.getElementById(${JSON.stringify(id)})||{}).hidden`) as unknown as Promise<boolean>;
 }
