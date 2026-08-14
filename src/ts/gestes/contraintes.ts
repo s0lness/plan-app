@@ -357,8 +357,14 @@ export function snapChairToTable(
   // chair front (+y local) must face the table: front = -edge-normal (in table local), then to world
   const fnx = -c.nrm.x, fny = -c.nrm.y;                       // local front dir (toward table)
   const wfx = fnx * ca - fny * sa, wfy = fnx * sa + fny * ca; // world front dir
-  // rot such that rotate((0,1),rot) == (wfx,wfy)  => rot = atan2(wfx, wfy)
-  p.rot = ((Math.round(Math.atan2(wfx, wfy) * 180 / Math.PI) % 360) + 360) % 360;
+  // rot such that rotating the chair's own front (0,1) by `rot`, THE SAME WAY THE RENDERER
+  // ROTATES IT (pieceCorners/CSS `rotate(deg)`: world=(lx*ca'-ly*sa', lx*sa'+ly*ca')), lands on
+  // (wfx,wfy). For lx=0,ly=1 that world vector is (-sin(rot), cos(rot)), so
+  // wfx=-sin(rot) and wfy=cos(rot) => rot = atan2(-wfx, wfy), NOT atan2(wfx, wfy).
+  // MEASURED BUG: atan2(wfx,wfy) mirrors left/right (a chair docked on either side of the table
+  // came out rotated 180deg from the other side's correct answer, backrest toward the table
+  // instead of away from it; top/bottom were accidentally right because wfx=0 there).
+  p.rot = ((Math.round(Math.atan2(-wfx, wfy) * 180 / Math.PI) % 360) + 360) % 360;
   return { x: wfx, y: wfy };
 }
 
