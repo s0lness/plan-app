@@ -33,7 +33,7 @@ import type { Contexte } from "../app/contexte.ts";
 import type { Mur, PlanV5, Pt } from "../partage/plan.ts";
 import { v5Touch, v5On, v5WallById } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
-import { WALL, v5R2 } from "../noyau/nombres.ts";
+import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
 import { closestOnSeg } from "../geometrie/polygones.ts";
 import { v5DedupeWalls, v5Seg } from "../modele/murs.ts";
 import { v5RebuildCells } from "../modele/cellules.ts";
@@ -42,7 +42,6 @@ import {
   v5ClampOpenings,
   v5ClampPieces,
   v5FlushOpeningsBorned,
-  v5LineInt,
   v5SnapPoint,
   v5SnapVertex,
   v5SyncOutlineWalls,
@@ -241,18 +240,58 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 }
 
 // =================================================================================================
-//  TOOL 1: DRAGGING A WALL
+//  TOOL 1: DRAGGING A WALL, AND THE JUNCTIONS THAT MUST HOLD (C-19)
 // =================================================================================================
-// The wall is A SINGLE shared object: moving it adjusts BOTH cells by construction. No more
-// shared-wall coupling to maintain. The walls that ended on it (T junctions) follow
-// it; the wall itself is re-traversed every frame.
+// The wall is A SINGLE shared object: moving it adjusts BOTH cells by construction. Any OTHER
+// wall whose endpoint sits on the dragged wall (a corner it was drawn from, or a T further along
+// it) is a FOLLOWER: it is decided ONCE, from the geometry at `pointerdown`
+// (`v5WallDragCtx`), never re-evaluated mid-drag — re-deciding it on every frame would let a wall
+// pick up a NEW neighbor it merely swept past, which is not what "this wall was already
+// connected there" means.
+//
+// A follower's touching point is stored as `t`, its FRACTION along the dragged wall's ORIGINAL
+// a0->b0 (0 at `a0`, 1 at `b0`, and anything in between for a T-junction on the middle). On
+// every frame, that follower's near end is set to the SAME fraction along the dragged wall's
+// CURRENT a/b: its OTHER end (`k`'s opposite) is left untouched, so the follower stretches or
+// pivots around it, exactly like pushing one panel of a room and watching its neighbors flex.
+//
+// WHY A FRACTION, NOT A LINE INTERSECTION (what this replaced, and why it tore): the previous
+// version intersected the follower's OWN line (fixed direction, anchored at its far end) with the
+// dragged wall's NEW line. That degenerates the moment a follower is PARALLEL to the dragged
+// wall — collinear segments, exactly what "draw a partition as two strokes" produces — because two
+// parallel lines have no intersection, so the follower's near end silently stayed at its OLD
+// position while everything around it moved: a real gap opened, a room did too. Measured: dragging
+// the middle segment of a 5-wall run left a collinear neighbor exactly where it started, a visible
+// tear, while the two PERPENDICULAR neighbors of that same drag followed correctly (see
+// `tests/jonction-glisser-mur.ts`, `star_avec_voisin_colineaire_reste_soude`). A fraction along
+// the segment has no such degenerate case: parallel, perpendicular, or oblique, it is always
+// well-defined, and for a follower that touched EXACTLY at an endpoint (t=0 or t=1, the ordinary
+// case of two hand-drawn walls meeting corner to corner) it lands on that exact new endpoint,
+// byte-identical to what the old formula gave for a perpendicular junction.
+//
+// AN OUTLINE WALL NEITHER FOLLOWS NOR IS FOLLOWED: it is DERIVED from the outline
+// (`v5SyncOutlineWalls` owns its geometry), never from an interior wall's drag. Making it "slide
+// along" would need a projection rule that exists nowhere else in this model and would fight the
+// next `v5SyncOutlineWalls` rebuild; leaving it alone is the choice already in force (`x.isOutline`
+// is excluded from followers, and the dragged wall itself can never be an outline wall). Where a
+// dragged wall's OWN end rests against a facade, `v5ThroughWall`'s trim (below) is what keeps it
+// from leaving the apartment; that is unrelated to this follower list and unchanged by it.
+//
+// CHAINS ARE ONE HOP, DELIBERATELY: if A meets B and B meets C, dragging B carries A and C (their
+// near ends, touching B), but dragging A carries ONLY B — C is not touching A, so it is not in
+// A's follower list, and B's OWN far end (the one touching C) is never written by this function,
+// so C stays exactly where it was. Propagating transitively would mean grabbing one wall silently
+// drags the whole connected partition system across the apartment: that is a MASS operation, the
+// same shape as the mass-renormalization this codebase already refuses elsewhere (G-8, AGENTS.md
+// "NO MASS RENORMALIZATION"). A person pushing one wall of a room expects that wall's own corners
+// to react, not the far side of the apartment.
 
-/** A T junction that follows the dragged wall: its end `k`, its direction, its OTHER end. */
+/** A junction that follows the dragged wall: its end `k`, and WHERE along the dragged wall (`t`,
+ * 0..1) it was touching when the gesture started. */
 interface Suiveur {
   x: Mur;
   k: "a" | "b";
-  dir: { ux: number; uy: number };
-  p0: Pt;
+  t: number;
 }
 
 /** Context for a wall drag, fixed at `pointerdown`: original segment + junctions to follow. */
@@ -264,6 +303,15 @@ export interface ContexteGlisserMur {
   followers: Suiveur[];
 }
 
+/** The fraction along a0->b0 (clamped 0..1) closest to `p`. Mirrors `closestOnSeg`'s own formula
+ * (geometrie/polygones.ts), which computes the same `t` internally but only returns the clamped
+ * POINT: this is the one extra number that formula throws away and C-19 needs kept. */
+function v5Fraction(p: Pt, a0: Pt, b0: Pt): number {
+  const dx = b0[0] - a0[0], dy = b0[1] - a0[1];
+  const len2 = dx * dx + dy * dy || 1e-9;
+  return clamp(((p[0] - a0[0]) * dx + (p[1] - a0[1]) * dy) / len2, 0, 1);
+}
+
 export function v5WallDragCtx(ctx: Contexte, wallId: unknown): ContexteGlisserMur | null {
   const P = ctx.etat.plan;
   const w = v5WallById(ctx, wallId);
@@ -272,21 +320,17 @@ export function v5WallDragCtx(ctx: Contexte, wallId: unknown): ContexteGlisserMu
   const followers: Suiveur[] = [];
   (P.walls || []).forEach((x) => {
     if (x === w || x.isOutline) return;
-    const sx = v5Seg(x);
     (["a", "b"] as const).forEach((k) => {
       const c = closestOnSeg(x[k][0], x[k][1], a0[0], a0[1], b0[0], b0[1]);
-      if (c.dist <= 2) {
-        const autre = (k === "a") ? x.b : x.a;
-        followers.push({ x, k, dir: { ux: sx.ux, uy: sx.uy }, p0: [autre[0], autre[1]] });
-      }
+      if (c.dist <= 2) followers.push({ x, k, t: v5Fraction(x[k], a0, b0) });
     });
   });
   return { w, a0, b0, s: v5Seg({ a: a0, b: b0 }), followers };
 }
 
 /**
- * Applies a PERPENDICULAR offset `d` (cm): the wall moves, gets re-traversed, its T junctions
- * follow it, the openings stay within it. `final` recomputes cells + furniture.
+ * Applies a PERPENDICULAR offset `d` (cm): the wall moves, gets re-traversed, its junctions
+ * follow it (C-19), the openings stay within it. `final` recomputes cells + furniture.
  */
 export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number, final: boolean): Mur {
   const { w, a0, b0, s, followers } = g;
@@ -294,10 +338,9 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
   w.a = [v5R2(a0[0] + s.nx * d), v5R2(a0[1] + s.ny * d)];
   w.b = [v5R2(b0[0] + s.nx * d), v5R2(b0[1] + s.ny * d)];
   v5ThroughWall(P, w);
-  const sw = v5Seg(w);
   followers.forEach((f) => {
-    const p = v5LineInt(f.p0, f.dir, w.a, sw);
-    if (p && Math.hypot(p[0] - f.p0[0], p[1] - f.p0[1]) < 4000) f.x[f.k] = [v5R2(p[0]), v5R2(p[1])];
+    const px = w.a[0] + f.t * (w.b[0] - w.a[0]), py = w.a[1] + f.t * (w.b[1] - w.a[1]);
+    f.x[f.k] = [v5R2(px), v5R2(py)];
   });
   v5ClampOpenings(P);
   if (final) { v5RebuildCells(P); bornerLesMeubles(ctx); }
