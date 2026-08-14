@@ -322,6 +322,17 @@ export function brancherClavier(ctx: Contexte): void {
       if (p) { dTenue = true; drawGuides(ctx, p, null); }
       return;
     }
+    // CURSOR CHAT ("/", FigJam-style, `fil/dire.ts`). REUSES `typing` rather than inventing a
+    // second guard (own header note in AGENTS.md): while the chat box itself has focus it IS an
+    // `<input>`, so `typing` is already true and a "/" typed into it lands as an ordinary
+    // character, never reopening the box. Blocked during an armed placement or an active gesture
+    // for the same reason "D held" is above: Enter/Escape already mean something else there, and
+    // opening a second floating box on top of one already following the pointer would confuse both.
+    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !gesteActif() && !poseArme() && e.key === "/") {
+      e.preventDefault();
+      ctx.crochets.direOuvrir?.();
+      return;
+    }
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !typing) {
       const k = (e.key || "").toLowerCase();

@@ -3,7 +3,7 @@
 // importing it under node has no side effect, which makes `coldLoad` testable as-is.
 // Run: node live-worker/test-local.ts
 import type { DonneeDynamique } from "../tests/_types.ts";
-import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan } from "./ops.ts";
+import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan, cleanCursorSay, CURSOR_SAY_MAX } from "./ops.ts";
 import type { CursorMessage, DragMessage, Operation, Piece, PlanState, Point } from "./ops.ts";
 import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy, attachmentFromRequest } from "./worker.ts";
 
@@ -812,6 +812,19 @@ ok(sanitizeCursor({ room: "__apt__", x: -250000, y: 3 }).x === -250000, "cursor 
 ok(sanitizeCursor({ room: "__apt__", x: 2e7, y: 3 }) === null, "cursor au-dela de la borne du fil rejete");
 ok(sanitizeCursor({ room: 'a"]', x: 1, y: 2 }) === null, "cursor room forge rejete");
 ok(sanitizeCursor(null) === null, "cursor null rejete");
+
+// ---- CURSOR CHAT ("/"): `say` rides the SAME cursor message ----------------------------------
+ok(sanitizeCursor({ room: "__apt__", x: 10, y: 20 }).say === undefined, "say absent = aucune opinion, jamais invente");
+ok(sanitizeCursor({ room: "__apt__", x: 10, y: 20, say: "bonjour" }).say === "bonjour", "say normal relaye");
+ok(sanitizeCursor({ room: "__apt__", x: 10, y: 20, say: null }).say === null, "say:null (fermeture) reste EXPLICITE, jamais confondu avec l'absence");
+ok(sanitizeCursor({ room: "__apt__", x: 10, y: 20, say: "  bonjour  " }).say === "bonjour", "say nettoye (espaces) comme un nom d'invite");
+ok(sanitizeCursor({ room: "__apt__", x: 10, y: 20, say: "a".repeat(500) }).say.length === CURSOR_SAY_MAX,
+  "say tronque a CURSOR_SAY_MAX, jamais refuse (un texte trop long ne doit pas faire disparaitre le message)");
+ok(sanitizeCursor({ room: "__apt__", x: 10, y: 20, say: "<img src=x onerror=1>" }).say === "<img src=x onerror=1>",
+  "say n'est PAS echappe cote serveur : c'est au client de rendre en textContent, jamais en innerHTML");
+ok(cleanCursorSay("a\u0007b") === "ab", "say retire les caracteres de controle");
+ok(cleanCursorSay("a\u202eb") === "ab", "say retire les inversions bidi, meme regle que cleanGuestName");
+ok(cleanCursorSay(42) === "", "say non-chaine ne leve jamais, rend une chaine vide");
 ok(sanitizeDrag({ room: "__apt__", pieceId: "12", x: 1, y: 2, rot: 90 }).rot === 90, "drag normal relaye");
 ok(sanitizeDrag({ room: "__apt__", pieceId: "12", x: 1, y: 2 }).rot === null, "drag sans rot -> rot null");
 ok(sanitizeDrag({ room: "__apt__", pieceId: 'p"] , *', x: 1, y: 2 }) === null, "drag pieceId injectant un selecteur rejete");
@@ -1017,6 +1030,29 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
   ok(relaye.some((m) => m.t === "cursor" && m.tag === "aaaaaa"), "le curseur relaye porte l'appareil");
   await messageSocket(f.room, f.ws, JSON.stringify({ t: "drag", room: "__apt__", pieceId: "p1", x: 1, y: 2 }));
   ok(relaye.some((m) => m.t === "drag" && m.tag === "aaaaaa"), "le fantome relaye porte l'appareil");
+}
+// ---- CURSOR CHAT ("/"): `say` travels on the REAL wire (through actual JSON.stringify/parse,
+// not a captured raw object) between two DIFFERENT sockets, exactly like a live peer would see it.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const a = f.mkWs("a@example.com", "aaaaaa");
+  const b = f.mkWs("b@example.com", "bbbbbb");
+  await messageSocket(f.room, a, JSON.stringify({ t: "cursor", room: "__apt__", x: 1, y: 2, say: "salut" }));
+  const m1 = b.sent.find((m: DonneeDynamique) => m.t === "cursor");
+  ok(m1 && m1.say === "salut", "le curseur relaye porte le texte de dire-curseur, vu " + JSON.stringify(m1));
+  b.sent.length = 0;
+  await messageSocket(f.room, a, JSON.stringify({ t: "cursor", room: "__apt__", x: 1, y: 2 }));
+  const m2 = b.sent.find((m: DonneeDynamique) => m.t === "cursor");
+  ok(m2 && !("say" in m2), "un ping ordinaire (say absent) ne doit porter AUCUNE cle say sur le fil JSON, vu " + JSON.stringify(m2));
+  b.sent.length = 0;
+  await messageSocket(f.room, a, JSON.stringify({ t: "cursor", room: "__apt__", x: 1, y: 2, say: null }));
+  const m3 = b.sent.find((m: DonneeDynamique) => m.t === "cursor");
+  ok(m3 && ("say" in m3) && m3.say === null, "la fermeture (say:null) doit rester EXPLICITE sur le fil JSON, vu " + JSON.stringify(m3));
+  b.sent.length = 0;
+  await messageSocket(f.room, a, JSON.stringify({ t: "cursor", room: "__apt__", x: 1, y: 2, say: "x".repeat(500) }));
+  const m4 = b.sent.find((m: DonneeDynamique) => m.t === "cursor");
+  ok(m4 && m4.say.length === CURSOR_SAY_MAX, "say est tronque a CURSOR_SAY_MAX avant de partir sur le fil, longueur vue=" + (m4 && m4.say.length));
 }
 // Two sockets of the SAME person get two different labels: the email alone would not be enough.
 {

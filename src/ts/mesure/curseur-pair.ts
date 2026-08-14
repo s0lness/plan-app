@@ -164,9 +164,33 @@ function wsCursorArrowSVG(color: string): string {
 export function creerNoeudCurseur(label: string, color: string, guest?: boolean): HTMLElement {
   const el = document.createElement("div");
   el.className = guest ? "peer-cur guest" : "peer-cur";
+  // `.pc-say` (cursor chat, "/", `fil/dire.ts` + `fil/presence.ts`): built into the SAME
+  // `innerHTML` string as `.pc-name`, empty and `hidden`, rather than appended afterward via
+  // `appendChild` — this keeps `creerNoeudCurseur`'s DOM footprint exactly what it was
+  // (`createElement` + `.className` + one `.innerHTML` write), which `tests/identite-fil.ts`'s
+  // minimal DOM stub relies on. Nothing UNTRUSTED goes into this string: `color` is always one
+  // of the server's small fixed palette (`colorFor`, `live-worker/ops.ts`), never wire-supplied
+  // free text, exactly like `.pc-name`'s own `background:${color}` right above it. The untrusted
+  // part — a peer's live-typed text — is applied ONLY afterward, by `majDireCurseur`, and ONLY
+  // through `.textContent` (R-9): never baked into this markup.
   el.innerHTML = wsCursorArrowSVG(color)
-    + `<span class="pc-name" style="background:${color}">${escapeHtml(label)}</span>`;
+    + `<span class="pc-name" style="background:${color}">${escapeHtml(label)}</span>`
+    + `<span class="pc-say" style="background:${color}" hidden></span>`;
   return el;
+}
+
+/**
+ * CURSOR CHAT ("/"): paints a PEER'S live text next to their cursor, or clears it. `textContent`
+ * ONLY (R-9) — the second untrusted string this client renders, right after a guest's own name.
+ * Unlike `creerNoeudCurseur`'s `escapeHtml`-into-`innerHTML` path, there is no `innerHTML` here to
+ * escape INTO at all: `textContent` makes the injection class structurally unreachable rather
+ * than merely escaped, exactly like `wsAppendChat`'s own chat-text write.
+ */
+export function majDireCurseur(el: HTMLElement, texte: string | null): void {
+  const s = el.querySelector<HTMLElement>(".pc-say");
+  if (!s) return;
+  if (texte) { s.textContent = texte; s.hidden = false; }
+  else { s.textContent = ""; s.hidden = true; }
 }
 
 export interface MessageCurseur {
