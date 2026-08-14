@@ -13,6 +13,11 @@
 //   trace_libre_en_l_fait_deux_murs_partages   drawing an L makes 2 walls, exact shared corner,
 //                                               both loose ends `free`, ONE Ctrl+Z removes both
 //   clic_net_outil_libre_arme_ne_cree_rien     a press-release without movement creates nothing
+//   trace_libre_equerre_maladroite_devient_un_angle_droit
+//                                               2026-08-15: the owner's own defect, real mouse.
+//                                               An L drawn ~15deg off axis on BOTH legs (past the
+//                                               OLD 12deg tolerance) still comes out an EXACT
+//                                               right angle, exact shared corner
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -222,7 +227,50 @@ await test("trace_libre_en_l_fait_deux_murs_partages", async () => {
 });
 
 // =============================================================================
-//  2. clic_net_outil_libre_arme_ne_cree_rien
+//  2. trace_libre_equerre_maladroite_devient_un_angle_droit
+// =============================================================================
+// The owner's OWN defect, reproduced with a REAL mouse (never a synthetic PointerEvent, which
+// bypasses hit-testing and would prove nothing about the real capture-phase wiring): an L drawn
+// ~15deg off axis on BOTH legs, comfortably past the OLD 12deg tolerance that let a badly-drawn
+// corner through unstraightened. It must still come out as a TRUE right angle: both walls
+// exactly horizontal/vertical, sharing one exact point.
+await test("trace_libre_equerre_maladroite_devient_un_angle_droit", async () => {
+  await click(await centerOf("#btnModeWalls"));
+  const bbox = await largestCellBBox();
+  const leg = Math.max(40, Math.min(90, (bbox.maxX - bbox.minX) / 3, (bbox.maxY - bbox.minY) / 3));
+  ok(leg >= 30, `précondition : la plus grande pièce doit avoir la place pour un L maladroit (leg=${leg})`);
+  const derive = leg * Math.tan(15 * Math.PI / 180); // ~15deg off axis on each leg
+  const A = { x: bbox.minX + 40, y: bbox.minY + 40 };
+  const B = { x: A.x + leg, y: A.y + derive };        // ~15deg off HORIZONTAL, not axis-aligned
+  const C = { x: B.x - derive, y: B.y + leg };         // ~15deg off VERTICAL, not axis-aligned
+
+  const avant = await wallIds();
+  await click(await centerOf("#btnDrawWallFree"));
+  ok(await evaluate(`String(__plan.v5ui.drawFree)`) === "true", "l'outil trace libre doit s'armer au clic");
+  const sA = await aptPoint(A.x, A.y), sB = await aptPoint(B.x, B.y), sC = await aptPoint(C.x, C.y);
+  await tracePath([sA, sB, sC]);
+
+  const apres = await wallIds();
+  const nouveaux = apres.filter((id: string) => avant.indexOf(id) < 0);
+  ok(nouveaux.length === 2, `une équerre maladroite doit créer exactement 2 murs, vu ${nouveaux.length} (${JSON.stringify(nouveaux)})`);
+  if (nouveaux.length === 2) {
+    const murs = await J(`${JSON.stringify(nouveaux)}.map(function(id){var w=__plan.v5WallById(id);
+      return {id:id, a:w.a, b:w.b};})`);
+    const [m0, m1] = murs;
+    ok(m0.b[0] === m1.a[0] && m0.b[1] === m1.a[1],
+      `les deux murs doivent partager EXACTEMENT le même coin, vu ${JSON.stringify(m0.b)} vs ${JSON.stringify(m1.a)}`);
+    ok(m0.a[1] === m0.b[1], `le premier mur (tracé ~15deg hors axe) doit être PARFAITEMENT horizontal, vu ${JSON.stringify(m0)}`);
+    ok(m1.a[0] === m1.b[0], `le second mur (tracé ~15deg hors axe) doit être PARFAITEMENT vertical, vu ${JSON.stringify(m1)}`);
+    // perpendicularity, measured directly rather than assumed from the two axis checks above:
+    // dot product of the two wall vectors must be exactly zero.
+    const v0x = m0.b[0] - m0.a[0], v0y = m0.b[1] - m0.a[1];
+    const v1x = m1.b[0] - m1.a[0], v1y = m1.b[1] - m1.a[1];
+    ok(v0x * v1x + v0y * v1y === 0, `les deux murs doivent être EXACTEMENT perpendiculaires, produit scalaire vu ${v0x * v1x + v0y * v1y}`);
+  }
+});
+
+// =============================================================================
+//  3. clic_net_outil_libre_arme_ne_cree_rien
 // =============================================================================
 // "A press-release without movement never writes, anywhere" (AGENTS.md): with the freehand
 // tool armed, a plain click must create nothing and push nothing into history, same as the
