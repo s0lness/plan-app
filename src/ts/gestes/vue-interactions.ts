@@ -32,6 +32,33 @@ import {
 /** px of travel before a drag becomes a band (below: it's a click). */
 export const RUBBER_THRESH = 4;
 
+/**
+ * True when a wheel event's target sits inside a panel that scrolls its OWN overflow (today, only
+ * the chat message list, `.chat-list` — it lives INSIDE `#viewport`, see `html/02-scene.html`, so
+ * its wheel events reach this listener by ordinary bubbling). Measured live, two people testing
+ * multiplayer together: the wheel over the open chat panel zoomed the plan underneath it instead
+ * of scrolling the messages, because the viewport's own wheel handler ran first and called
+ * `preventDefault()` unconditionally, on every target, everywhere inside it.
+ *
+ * Walks from the event's target up to (but not including) `viewport` itself: nothing OUTSIDE the
+ * viewport ever reaches this listener in the first place (bubbling stops caring past the element
+ * the listener is attached to), so anywhere this returns true is provably a panel nested inside
+ * the viewport. Deliberately a GENERAL rule — "does the nearest scrolling ancestor actually have
+ * something to scroll" — rather than a hardcoded `.chat-list` check, so a later panel added inside
+ * the viewport inherits the fix instead of needing its own copy of it.
+ */
+function surPanneauDeroulant(viewport: HTMLElement, cible: EventTarget | null): boolean {
+  let el = cible instanceof Element ? cible : null;
+  while (el && el !== viewport) {
+    if (el.scrollHeight > el.clientHeight) {
+      const overflowY = getComputedStyle(el).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll") return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
 let rubberLive = false;
 /** Test probe: is a lasso in progress? */
 export const lassoVivant = (): boolean => rubberLive;
@@ -241,8 +268,12 @@ export function brancherInteractionsVue(ctx: Contexte): void {
     if (e.code === "Space") { setSpaceHeld(false); viewport.classList.remove("spaceready"); }
   });
 
-  // wheel = zoom (ctrl/⌘ = trackpad pinch, same handling), centered on the pointer
+  // wheel = zoom (ctrl/⌘ = trackpad pinch, same handling), centered on the pointer — UNLESS the
+  // pointer is over a panel that scrolls its own content (`surPanneauDeroulant`), in which case we
+  // get out of the way entirely: no `preventDefault()`, no zoom, so the browser's native scroll
+  // runs exactly as it would with no listener here at all.
   viewport.addEventListener("wheel", (e) => {
+    if (surPanneauDeroulant(viewport, e.target)) return;
     e.preventDefault();
     const rect = viewport.getBoundingClientRect();
     const cx = e.clientX - rect.left, cy = e.clientY - rect.top;

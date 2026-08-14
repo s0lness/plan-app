@@ -54,10 +54,21 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     if (!invitationValide(invit)) return new Response("invite invalide", { status: 403 });
     planId = invit.plan_id;   // `?p=` IGNORED, forced from the invite row.
     guest = true;
-    name = cleanName(invit.last_name, 40);
     token = invit.token;
     const gBrut = (new URL(request.url).searchParams.get("g") || "").trim();
     if (GUEST_ID_RE.test(gBrut)) guestId = gBrut;
+    // THE SAME DEVICE-MATCH RULE AS THE REDEMPTION ENDPOINT (`functions/api/invite.ts`), and for
+    // the SAME reason: `invites.last_name` is ONE row shared by everyone holding the link, not a
+    // per-socket identity. Reading it unconditionally here was the OTHER half of the defect that
+    // endpoint's own fix closed — worse, in fact, live: every client re-sends its own locally
+    // stored name on each redemption (overwriting `last_name`), so BOTH sockets on a shared link
+    // read back whichever name landed there last, and BOTH peer dots showed the same person. A
+    // guest whose `guestId` does not own the row connects with an EMPTY name instead of a
+    // borrowed one; the Durable Object already refuses every op with `guest_unnamed` for an empty
+    // name (`live-worker/worker.ts`), which is correct and untouched here — what changes is that
+    // "empty" now means "not yet named on the wire", never "wearing someone else's name".
+    name = (guestId && invit.last_guest_id && guestId === invit.last_guest_id)
+      ? cleanName(invit.last_name, 40) : "";
   } else {
     // Household door (and, defensively, anything else this route is reached from: `identiteFoyer`
     // already reads no header off a non-household door, so `email` naturally stays "inconnu" —

@@ -324,6 +324,19 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
       fil.wsMe.name = fil.wsMe.name || "";
       fil.wsMe.guest = !!fil.wsMe.guest;
       fil.wsMe.guestId = fil.wsMe.guestId || "";
+      // THIS DEVICE'S OWN NAME BEATS WHAT THE SHARED INVITE ROW HAPPENS TO SAY RIGHT NOW.
+      // `functions/ws.ts` resolves the wire name from `invites.last_name`, ONE slot shared by
+      // every device holding the link: whichever device last redeemed the token WITH a name owns
+      // it, so a second guest active on the same link can find that slot reclaimed by the OTHER
+      // device by the time IT reconnects (a network blip, the heartbeat's dead-socket close — no
+      // `/api/invite` POST happens on a plain reconnect, only on a fresh page load). The device's
+      // OWN choice never left `localStorage`: reassert it on the wire the moment the server hands
+      // back nothing, rather than let this socket sit silently unnamed until `guest_unnamed`
+      // rejects its first edit.
+      if (fil.wsMe.guest && !fil.wsMe.name) {
+        const nomLocal = ctx.crochets.guestNomLocal?.() || "";
+        if (nomLocal) { fil.wsMe.name = nomLocal; wsSend(fil, { t: "name", name: nomLocal }); }
+      }
       // C-4. Does this server acknowledge receipt? In front of an OLDER server (`acks` absent),
       // all the resend machinery stays dormant: without acknowledgement, it would republish the
       // whole plan every 2.5 s. The client then behaves EXACTLY as before this fix.
@@ -487,6 +500,13 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
       // a burst of refusals must not let the following divergences through.
       const defait = wsRevertRefused(ctx, fil, msg["n"] as number | null | undefined);
       wsErrToast(fil, reason, defait ? WS_ERR_SUITE_ANNULEE : WS_ERR_SUITE_RELECTURE);
+      // A THROTTLED TOAST IS NOT ENOUGH FOR THIS ONE REASON. Every other `guest_unnamed` write
+      // this guest attempts is silently undone, and the toast that explains why is capped to one
+      // per 5 s: a session of real edits can lose the ONLY sentence that says why nothing is
+      // sticking. The name step is what happens next instead, every time — `ouvrirEtapeNomInvite`
+      // is idempotent, so a burst of refusals within one gesture reopens nothing that is already
+      // open.
+      if (reason === "guest_unnamed") ctx.crochets.guestSansNom?.();
       // `too_big` / `persist_fail`: the link is HEALTHY, the server just refused THIS write.
       // Closing the socket would fix nothing (the next send would hit the same wall) and would
       // lose presence, cursors, and chat. We keep the link open.

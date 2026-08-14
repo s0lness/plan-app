@@ -241,8 +241,11 @@ try {
     compteApresEchec === 1, "vu " + compteApresEchec + " ligne(s) en base");
 
   // ============================================================================================
-  //  RIG B: the GUEST door. Redeem a link (known name, skips the name step), then the same round
-  //  trip: the row must be attributed to "invite" and to the guest's name, never an email.
+  //  RIG B: the GUEST door. Redeem a link and go through the name step (design edge 20, corrected
+  //  2026-08-14: a name known for the TOKEN no longer skips the step for a DIFFERENT device — this
+  //  browser has never named itself before, so it must be asked, same as any real first visit),
+  //  then the same round trip: the row must be attributed to "invite" and to the guest's OWN name,
+  //  never an email.
   // ============================================================================================
   const { db: dbB, env: envBaseB } = fakeD1(null);
   const envB = { ...envBaseB, HOUSEHOLD_HOSTS: HOTE_MENAGE, GUEST_HOST: HOTE_INVITE };
@@ -252,8 +255,8 @@ try {
   const jeton = (etiquette: string) => (etiquette + "-".repeat(22)).slice(0, 22);
   const dansTrenteJours = new Date(Date.now() + 30 * 86_400_000).toISOString();
   dbB.prepare(
-    "INSERT INTO invites(token,plan_id,role,created_at,created_by,expires_at,revoked,uses,last_used_at,last_name) " +
-    "VALUES(?1,'appartement','edit',?2,'sylve@example.com',?3,0,0,NULL,'Marie')"
+    "INSERT INTO invites(token,plan_id,role,created_at,created_by,expires_at,revoked,uses,last_used_at,last_name,last_guest_id) " +
+    "VALUES(?1,'appartement','edit',?2,'sylve@example.com',?3,0,0,NULL,NULL,NULL)"
   ).run(jeton("nomme1"), now, dansTrenteJours);
 
   let feedbackPostCountB = 0;
@@ -299,8 +302,16 @@ try {
 
   const B = await openBrowser("invite", URL_B("/#k=" + jeton("nomme1")));
   opened.push(B);
+  const dlgNomOuvert = await attendre(async () => (await B.evaluate(`(document.getElementById("inviteNameDlg")||{}).hidden`)) === false);
+  check("un appareil qui n'a jamais choisi de nom voit l'étape du nom", dlgNomOuvert);
+  await B.evaluate(`(function(){
+    var i = document.getElementById("inviteNameInput");
+    i.value = "Marie"; i.dispatchEvent(new Event("input", {bubbles:true}));
+  })()`);
+  await attendre(async () => (await B.evaluate(`(document.getElementById("inviteNameJoin")||{}).disabled`)) === false);
+  await B.evaluate(`document.getElementById("inviteNameJoin").click()`);
   const bootB = await attendre(async () => (await B.evaluate(`typeof window.__plan`)) === "object");
-  check("le planificateur démarre sur la porte invité (nom déjà connu)", bootB,
+  check("le planificateur démarre sur la porte invité une fois le nom choisi", bootB,
     "vu typeof window.__plan = " + await B.evaluate(`typeof window.__plan`));
 
   const btnVisibleB = await B.J(`(function(){var b=document.getElementById("btnFeedback");return {present:!!b,hidden:b&&b.hidden};})()`);

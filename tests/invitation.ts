@@ -67,15 +67,15 @@ const jeton = (etiquette: string) => (etiquette + "-".repeat(22)).slice(0, 22);
 
 interface GraineInvite {
   token: string; planId: string; role?: string; expiresAt?: string | null;
-  revoked?: number; uses?: number; lastName?: string | null;
+  revoked?: number; uses?: number; lastName?: string | null; lastGuestId?: string | null;
 }
 const insereInvite = (db: DonneeDynamique, g: GraineInvite) => {
   db.prepare(
-    "INSERT INTO invites(token,plan_id,role,created_at,created_by,expires_at,revoked,uses,last_used_at,last_name) " +
-    "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,NULL,?9)"
+    "INSERT INTO invites(token,plan_id,role,created_at,created_by,expires_at,revoked,uses,last_used_at,last_name,last_guest_id) " +
+    "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,NULL,?9,?10)"
   ).run(jeton(g.token), g.planId, g.role || "edit", new Date().toISOString(), "sylve@example.com",
     g.expiresAt === undefined ? new Date(Date.now() + 30 * JOUR_MS).toISOString() : g.expiresAt,
-    g.revoked || 0, g.uses || 0, g.lastName ?? null);
+    g.revoked || 0, g.uses || 0, g.lastName ?? null, g.lastGuestId ?? null);
 };
 
 const req = (url: string, opts: { method?: string; host: string; headers?: Record<string, string>; body?: unknown } = { host: HOTE_INVITE }) => {
@@ -238,13 +238,53 @@ await test("invite_nom_absent_rend_null_pour_un_premier_arrivant", async () => {
   return expect(corps.name === null, "name doit être null quand rien n'a jamais été déclaré, vu " + JSON.stringify(corps.name));
 });
 
-await test("invite_nom_deja_connu_prefiltre_un_visiteur_qui_revient", async () => {
+await test("invite_nom_deja_connu_prefiltre_un_visiteur_qui_revient_du_meme_appareil", async () => {
+  // The prefill is keyed by DEVICE, not by token alone (design edge 20, corrected 2026-08-14):
+  // the SAME `guestId` that recorded `last_name` is the one asking for it back.
   const { db, env } = base();
   inserePlan(db, "appartement", "Chez nous");
-  insereInvite(db, { token: "revient1", planId: "appartement", lastName: "Marie" });
-  const res = await redeemAvecToken(db, env, "revient1");
+  insereInvite(db, { token: "revient1", planId: "appartement", lastName: "Marie", lastGuestId: "device-marie" });
+  const res = await redeemAvecToken(db, env, "revient1", { token: jeton("revient1"), guestId: "device-marie" });
   const corps = await res.json<DonneeDynamique>();
-  return expect(corps.name === "Marie", "name doit préremplir depuis last_name, vu " + JSON.stringify(corps.name));
+  return expect(corps.name === "Marie", "name doit préremplir depuis last_name pour le MÊME appareil, vu " + JSON.stringify(corps.name));
+});
+
+await test("invite_nom_ne_prefiltre_pas_un_appareil_different_meme_jeton", async () => {
+  // THE DEFECT THIS FIX CLOSES, confirmed live from two people testing multiplayer together:
+  // the owner opened his own invite link and named himself, his friend opened the SAME link
+  // right after and silently became him on both screens. `last_name` alone, keyed by TOKEN, had
+  // no way to tell the two apart.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "partage1", planId: "appartement", lastName: "Marie", lastGuestId: "device-marie" });
+  const res = await redeemAvecToken(db, env, "partage1", { token: jeton("partage1"), guestId: "device-autre" });
+  const corps = await res.json<DonneeDynamique>();
+  return expect(corps.name === null, "un AUTRE appareil ne doit jamais hériter du nom, vu " + JSON.stringify(corps.name));
+});
+
+await test("invite_deux_invites_sur_le_meme_lien_gardent_chacun_leur_nom", async () => {
+  // THE FULL SCENARIO from the report: A names themselves, B redeems the SAME token on a
+  // DIFFERENT device and must NOT be handed A's name, then A returns and IS handed theirs — B's
+  // own (nameless) redemption must not have clobbered A's remembered identity along the way.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "duo1", planId: "appartement" });
+
+  const resA = await redeemAvecToken(db, env, "duo1", { token: jeton("duo1"), name: "Alice", guestId: "device-a" });
+  const corpsA = await resA.json<DonneeDynamique>();
+  const ok1 = expect(corpsA.name === "Alice", "A doit se voir renvoyer son propre nom, vu " + JSON.stringify(corpsA.name));
+  if (!ok1) return false;
+
+  // B's FIRST call, exactly like a real page load: no name yet, just the silent check the client
+  // makes before the name step would even show.
+  const resB = await redeemAvecToken(db, env, "duo1", { token: jeton("duo1"), guestId: "device-b" });
+  const corpsB = await resB.json<DonneeDynamique>();
+  const ok2 = expect(corpsB.name === null, "B ne doit JAMAIS recevoir le nom d'Alice, vu " + JSON.stringify(corpsB.name));
+  if (!ok2) return false;
+
+  const resARevient = await redeemAvecToken(db, env, "duo1", { token: jeton("duo1"), guestId: "device-a" });
+  const corpsARevient = await resARevient.json<DonneeDynamique>();
+  return expect(corpsARevient.name === "Alice", "A doit retrouver son nom en revenant sur SON appareil, vu " + JSON.stringify(corpsARevient.name));
 });
 
 await test("invite_nom_envoye_est_nettoye_persiste_et_renvoye", async () => {
@@ -599,11 +639,13 @@ await test("ws_invite_valide_force_le_plan_et_marque_l_identite_invite", async (
   const { db, env } = base();
   inserePlan(db, "appartement", "Chez nous");
   inserePlan(db, "autre-logement", "Ailleurs");
-  insereInvite(db, { token: "ws1", planId: "appartement", lastName: "Marie" });
+  // `lastGuestId` matches the `?g=` this socket sends below: SAME device, so the wire may carry
+  // its remembered name.
+  insereInvite(db, { token: "ws1", planId: "appartement", lastName: "Marie", lastGuestId: "device-marie" });
   const { etat, room } = fakeRoom();
   const res = await wsUpgrade({
     // `?p=` POINTS AT THE OTHER PLAN: must be ignored, exactly like the REST routes.
-    request: wsReq("https://share.example.com/ws?p=autre-logement", HOTE_INVITE, { Cookie: cookieDe("ws1") }),
+    request: wsReq("https://share.example.com/ws?p=autre-logement&g=device-marie", HOTE_INVITE, { Cookie: cookieDe("ws1") }),
     env: { ...env, ROOM: room },
   } as unknown as Parameters<typeof wsUpgrade>[0]);
   const vue = etat.requete;
@@ -613,6 +655,66 @@ await test("ws_invite_valide_force_le_plan_et_marque_l_identite_invite", async (
       && expect(vue!.headers.get("X-Plan-Guest") === "1", "X-Plan-Guest doit être 1 pour un invité")
       && expect(vue!.headers.get("X-Plan-Email") === "", "X-Plan-Email doit être VIDE pour un invité, jamais 'inconnu'")
       && expect(vue!.headers.get("X-Plan-Name") === "Marie", "X-Plan-Name doit porter le nom nettoyé, vu " + vue!.headers.get("X-Plan-Name"));
+});
+
+await test("ws_invite_un_nom_connu_pour_le_jeton_ne_traverse_pas_vers_un_autre_appareil", async () => {
+  // THE OTHER HALF OF THE DEFECT, confirmed live: `functions/ws.ts` used to read
+  // `invites.last_name` UNCONDITIONALLY, so BOTH sockets on a shared link carried whichever name
+  // last landed on that ONE row — the two people testing together both appeared under one name.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "ws2", planId: "appartement", lastName: "Marie", lastGuestId: "device-marie" });
+  const { etat, room } = fakeRoom();
+  const res = await wsUpgrade({
+    // `?g=` is a DIFFERENT device than the one the row remembers.
+    request: wsReq("https://share.example.com/ws?g=un-autre-appareil", HOTE_INVITE, { Cookie: cookieDe("ws2") }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  const vue = etat.requete;
+  return expect(res.status !== 403 && res.status !== 400, "la bascule doit être transmise, vu " + res.status)
+      && expect(!!vue, "le Durable Object doit avoir reçu une requête transmise")
+      && expect(vue!.headers.get("X-Plan-Name") === "",
+        "un appareil DIFFÉRENT ne doit JAMAIS recevoir le nom d'un autre sur le fil, vu " + JSON.stringify(vue!.headers.get("X-Plan-Name")));
+});
+
+await test("ws_invite_sans_g_ne_recoit_jamais_un_nom_devine", async () => {
+  // No `?g=` at all (an older client, or a malformed one): same refusal as a mismatched device,
+  // never a fallback that guesses.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "ws3", planId: "appartement", lastName: "Marie", lastGuestId: "device-marie" });
+  const { etat, room } = fakeRoom();
+  const res = await wsUpgrade({
+    request: wsReq("https://share.example.com/ws", HOTE_INVITE, { Cookie: cookieDe("ws3") }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  const vue = etat.requete;
+  return expect(res.status !== 403 && res.status !== 400, "la bascule doit être transmise, vu " + res.status)
+      && expect(vue!.headers.get("X-Plan-Name") === "", "sans ?g=, X-Plan-Name doit rester vide, vu " + JSON.stringify(vue!.headers.get("X-Plan-Name")));
+});
+
+await test("ws_invite_deux_appareils_sur_le_meme_jeton_gardent_chacun_leur_propre_nom", async () => {
+  // THE FULL SCENARIO: two guests, same token, different `guestId` — each socket must carry ITS
+  // OWN name, and neither is left nameless because of the other.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  // The row remembers Bob (whoever redeemed most recently WITH a name, functions/api/invite.ts).
+  insereInvite(db, { token: "duoWs1", planId: "appartement", lastName: "Bob", lastGuestId: "device-bob" });
+  const { etat: etatAlice, room: roomAlice } = fakeRoom();
+  const resAlice = await wsUpgrade({
+    request: wsReq("https://share.example.com/ws?g=device-alice", HOTE_INVITE, { Cookie: cookieDe("duoWs1") }),
+    env: { ...env, ROOM: roomAlice },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  const { etat: etatBob, room: roomBob } = fakeRoom();
+  const resBob = await wsUpgrade({
+    request: wsReq("https://share.example.com/ws?g=device-bob", HOTE_INVITE, { Cookie: cookieDe("duoWs1") }),
+    env: { ...env, ROOM: roomBob },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  return expect(resAlice.status !== 403 && resBob.status !== 403, "les deux bascules doivent être transmises")
+      && expect(etatAlice.requete!.headers.get("X-Plan-Name") === "",
+        "Alice n'est PAS le propriétaire actuel de la ligne : jamais le nom de Bob, vu " + JSON.stringify(etatAlice.requete!.headers.get("X-Plan-Name")))
+      && expect(etatBob.requete!.headers.get("X-Plan-Name") === "Bob",
+        "Bob EST le propriétaire actuel de la ligne : son propre nom, vu " + JSON.stringify(etatBob.requete!.headers.get("X-Plan-Name")));
 });
 
 await test("ws_foyer_marque_guest_a_zero", async () => {

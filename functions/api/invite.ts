@@ -21,6 +21,12 @@ import { cleanName } from "../nom.ts";
 import { chargerInvitation, dureeCookieSecondes, INVITE_COOKIE, invitationValide } from "../invitation.ts";
 
 const GUEST_NAME_MAX = 40;
+// Same shape as `src/ts/fil/identite.ts`'s `guestIdCourant()` (what generates it) and
+// `functions/ws.ts` / `live-worker/worker.ts`'s own copies (what re-checks it on the socket):
+// not a credential, so no cryptographic requirement, just narrow enough to carry nothing but
+// itself. Kept a fourth local copy rather than a shared import: `live-worker/worker.ts` cannot
+// import from `functions/`, and the other three already each state "same shape as" rather than share code.
+const GUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 const refuse = () => new Response(JSON.stringify({ error: "porte_refusee" }),
   { status: 403, headers: { "content-type": "application/json" } });
@@ -47,16 +53,32 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!plan) return deadEnd();
 
   // The name lives in the invite row, not in local storage (edge case 20): iOS in-app browsers
-  // partition and discard storage, exactly where a shared link is most likely to be opened. A
-  // name sent with this call becomes the new `last_name`; a returning guest who sends none keeps
-  // the one already on file, which the response echoes back to prefill the name step.
+  // partition and discard storage, exactly where a shared link is most likely to be opened. But
+  // the row remembers only ONE (name, device) pair, and the token is a LINK-scoped capability, not
+  // a device-scoped one: sending the name back to whoever redeems the token next, with no check on
+  // who is asking, handed a second person the first person's identity. Confirmed in production:
+  // one row carrying `last_name` and 5 `uses`, one name shown on two different people's screens.
+  // `guestId` is the fix: the SAME durable per-browser-profile id already on the wire
+  // (`src/ts/fil/identite.ts`'s `guestIdCourant()`), stored beside the name as `last_guest_id`. The
+  // remembered name is only ever handed back to the device it was recorded for.
   const nomEnvoye = cleanName(body.name, GUEST_NAME_MAX);
+  const guestIdBrut = typeof body.guestId === "string" ? body.guestId : "";
+  const guestId = GUEST_ID_RE.test(guestIdBrut) ? guestIdBrut : "";
+  // NOT a credential: it grants nothing by itself (the token above already did the granting), so
+  // an absent or malformed id simply means "cannot be recognized as a returning device", never a
+  // refusal. Validated all the same, because it is about to sit in a stored column.
+  const nomRendu = nomEnvoye || ((guestId && row.last_guest_id && guestId === row.last_guest_id) ? row.last_name : null);
+
   // BEST-EFFORT bookkeeping: a write failure here must never turn an already-valid invite into a
   // refused one — the guest earned entry above, on the row as it stood before this update.
+  // A REDEMPTION WITH NO NAME (the first call of every visit, before the name step even shows)
+  // must never touch `last_name`/`last_guest_id`: that is what lets a SECOND device's silent probe
+  // (checking whether a name is already on file) coexist with a FIRST device's remembered identity,
+  // without one overwriting the other. Only a call that CARRIES a name claims the row.
   try {
     if (nomEnvoye) {
-      await env.DB.prepare("UPDATE invites SET uses=uses+1, last_used_at=?2, last_name=?3 WHERE token=?1")
-        .bind(token, new Date().toISOString(), nomEnvoye).run();
+      await env.DB.prepare("UPDATE invites SET uses=uses+1, last_used_at=?2, last_name=?3, last_guest_id=?4 WHERE token=?1")
+        .bind(token, new Date().toISOString(), nomEnvoye, guestId || null).run();
     } else {
       await env.DB.prepare("UPDATE invites SET uses=uses+1, last_used_at=?2 WHERE token=?1")
         .bind(token, new Date().toISOString()).run();
@@ -70,6 +92,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     planId: row.plan_id,
     planName: plan.name || row.plan_id,
     role: row.role,
-    name: nomEnvoye || row.last_name || null,
+    name: nomRendu,
   }), { status: 200, headers: { "content-type": "application/json", "Set-Cookie": cookie } });
 };

@@ -94,7 +94,7 @@ export interface SondeFil {
 
   // ---- identity, presence, ghosts -------------------------------------------------------------
   newDerivedId(prefix: string): string;
-  wsMeInfo(): { email: string | null; tag: string | null };
+  wsMeInfo(): { email: string | null; tag: string | null; name: string | null; guest: boolean; guestId: string | null };
   wsPeerKeys(): string[];
   peerDots(): { txt: string | null; title: string; self: boolean; bg: string }[];
   peerCursors(): { label: string | null; hidden: boolean; transform: string }[];
@@ -196,7 +196,10 @@ export function sondeFil(ctx: Contexte, fil: Fil): SondeFil {
     },
 
     newDerivedId: (prefix: string) => v5DerivedId(prefix),
-    wsMeInfo: () => ({ email: fil.wsMe.email || null, tag: fil.wsMe.tag || null }),
+    wsMeInfo: () => ({
+      email: fil.wsMe.email || null, tag: fil.wsMe.tag || null,
+      name: fil.wsMe.name || null, guest: !!fil.wsMe.guest, guestId: fil.wsMe.guestId || null,
+    }),
     wsPeerKeys: () => [...fil.peers.keys()],
     peerDots(): { txt: string | null; title: string; self: boolean; bg: string }[] {
       const b = $("peers");

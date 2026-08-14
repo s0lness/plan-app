@@ -123,14 +123,17 @@ try {
       now, "sylve@example.com", "Chez nous");
 
   const jeton = (etiquette: string) => (etiquette + "-".repeat(22)).slice(0, 22);
-  const insereInvite = (token: string, lastName: string | null) => {
+  const insereInvite = (token: string, lastName: string | null, lastGuestId: string | null = null) => {
     db.prepare(
-      "INSERT INTO invites(token,plan_id,role,created_at,created_by,expires_at,revoked,uses,last_used_at,last_name) " +
-      "VALUES(?1,'appartement','edit',?2,'sylve@example.com',?3,0,0,NULL,?4)"
-    ).run(jeton(token), now, dansTrenteJours, lastName);
+      "INSERT INTO invites(token,plan_id,role,created_at,created_by,expires_at,revoked,uses,last_used_at,last_name,last_guest_id) " +
+      "VALUES(?1,'appartement','edit',?2,'sylve@example.com',?3,0,0,NULL,?4,?5)"
+    ).run(jeton(token), now, dansTrenteJours, lastName, lastGuestId);
   };
-  insereInvite("nomme1", "Marie");     // already named: skips the name step
-  insereInvite("anonyme1", null);      // not yet named: the name step must show
+  // `lastGuestId` deliberately does NOT match anything a freshly-opened browser will ever generate
+  // for itself (`plan-guest-id` is random per profile): this row represents a name recorded by
+  // SOME OTHER device, exactly like the owner naming himself before a friend opens the same link.
+  insereInvite("nomme1", "Marie", "un-autre-appareil-1234");
+  insereInvite("anonyme1", null);      // never named by anyone: the name step must show
   // "invalide1" is NEVER inserted: an unknown token, the ordinary dead end.
 
   let putCount = 0;
@@ -182,7 +185,12 @@ try {
   const URL_OF = (p: string) => `http://127.0.0.1:${PORT}${p}`;
 
   // ============================================================================================
-  //  1. A #k= LINK IS CAPTURED, STORED, AND STRIPPED — and a KNOWN name skips the modal
+  //  1. A #k= LINK IS CAPTURED, STORED, AND STRIPPED — and a name known for the token but NOT for
+  //     THIS DEVICE does not skip the step (docs/decisions/0004-partage-par-lien.md, edge 20,
+  //     corrected 2026-08-14). Confirmed live, two people testing multiplayer together: the owner
+  //     named himself, his friend opened the SAME link right after and silently became him on both
+  //     screens. `nomme1`'s row already carries `last_name="Marie"`, recorded by a `guestId` this
+  //     freshly-opened browser cannot possibly have (it generates its own, at random, on first use).
   // ============================================================================================
   const A = await openBrowser("nomme", URL_OF("/#k=" + jeton("nomme1")));
   opened.push(A);
@@ -190,6 +198,21 @@ try {
   check("le # est retiré de la barre d'adresse", capture, "hash = " + await A.evaluate("location.hash"));
   const jetonStocke = await A.evaluate(`localStorage.getItem("plan-invite-token")`);
   check("le jeton est mémorisé en localStorage", jetonStocke === jeton("nomme1"), "vu " + JSON.stringify(jetonStocke));
+
+  const dlgOuvertA = await attendre(async () => (await A2Hidden(A, "inviteNameDlg")) === false);
+  check("un nom déjà connu POUR LE JETON mais pas pour CET APPAREIL ne saute PAS l'étape du nom", dlgOuvertA);
+  const champVideA = await A.J(`(document.getElementById("inviteNameInput")||{}).value`);
+  check("le champ n'est jamais pré-rempli avec le nom mémorisé pour un AUTRE appareil",
+    champVideA === "", "vu " + JSON.stringify(champVideA));
+
+  await A.evaluate(`(function(){
+    var i = document.getElementById("inviteNameInput");
+    i.value = "Julien"; i.dispatchEvent(new Event("input", {bubbles:true}));
+  })()`);
+  const rempliActiveA = await attendre(async () =>
+    (await A.J(`(document.getElementById("inviteNameJoin")||{}).disabled`)) === false);
+  check("le bouton Join s'active une fois un nom saisi (deuxième appareil)", rempliActiveA);
+  await A.evaluate(`document.getElementById("inviteNameJoin").click()`);
 
   const trim = await attendre(async () => (await A.J(`(function(){
     var g=document.getElementById("btnGuestName");
@@ -199,13 +222,18 @@ try {
     var g=document.getElementById("btnGuestName");
     return {guestBtn: g && !g.hidden, plans: !document.getElementById("btnPlans") || (document.getElementById("btnPlans")||{}).hidden,
             imp: !document.getElementById("btnImport") || (document.getElementById("btnImport")||{}).hidden};})()`);
-  check("un nom déjà connu (Marie) saute l'étape du nom : le bouton 'Name…' apparaît directement",
+  check("une fois SON PROPRE nom choisi, le bouton 'Name…' apparaît",
     trim, "vu " + JSON.stringify(trimme));
   check("le panneau Plans est masqué pour un invité", trimme.plans, "vu " + JSON.stringify(trimme));
   check("« Charger un plan… » est masqué pour un invité", trimme.imp, "vu " + JSON.stringify(trimme));
 
+  const nomStockeA = await attendre(async () =>
+    (await A.evaluate(`localStorage.getItem("plan-invite-nom")`)) === "Julien");
+  check("le nom TAPÉ par ce deuxième appareil est mémorisé, jamais celui de l'autre",
+    nomStockeA, "vu " + JSON.stringify(await A.evaluate(`localStorage.getItem("plan-invite-nom")`)));
+
   const planteur = await A.evaluate(`JSON.stringify((JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]).map(function(e){return e&&e.msg;}))`);
-  check("aucune erreur JS sur le chemin d'accueil invité nommé", planteur === "[]", "vu " + planteur);
+  check("aucune erreur JS sur le chemin d'accueil du deuxième appareil", planteur === "[]", "vu " + planteur);
 
   // ============================================================================================
   //  2. THE NAME STEP BLOCKS AN EMPTY NAME

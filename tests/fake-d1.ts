@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS invites(
   created_at TEXT, created_by TEXT,
   expires_at TEXT,
   revoked INTEGER NOT NULL DEFAULT 0,
-  uses INTEGER NOT NULL DEFAULT 0, last_used_at TEXT, last_name TEXT
+  uses INTEGER NOT NULL DEFAULT 0, last_used_at TEXT, last_name TEXT, last_guest_id TEXT
 );
 -- 'feedback' was added for tests/retour.ts (functions/api/feedback.ts): EXACT schema from
 -- live-worker/schema.sql, same reasoning as 'invites' above.
