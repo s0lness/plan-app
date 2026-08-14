@@ -187,7 +187,11 @@ await test("trace_libre_en_l_fait_deux_murs_partages", async () => {
   const apres = await wallIds();
   const nouveaux = apres.filter((id: string) => avant.indexOf(id) < 0);
   ok(nouveaux.length === 2, `un trace en L doit créer exactement 2 murs, vu ${nouveaux.length} (${JSON.stringify(nouveaux)})`);
-  ok(await evaluate(`String(__plan.v5ui.draw)`) === "false", "l'outil doit se désarmer tout seul après le trait");
+  // THE DEFAULT CHANGED (2026-08-14, AGENTS.md "the tool disarms after every wall"): the owner's
+  // complaint applied equally to the freehand tool. It now STAYS ARMED after a stroke, exactly
+  // like the single-segment tool (`tests/mur-outil-geste.ts` covers that one) — disarming is a
+  // deliberate act (the button again, Escape, leaving Walls mode), not automatic on release.
+  ok(await evaluate(`String(__plan.v5ui.drawFree)`) === "true", "l'outil trace libre doit rester armé après le trait");
 
   if (nouveaux.length === 2) {
     const murs = await J(`${JSON.stringify(nouveaux)}.map(function(id){var w=__plan.v5WallById(id);

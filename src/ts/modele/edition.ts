@@ -795,8 +795,24 @@ export function v5FlushPlaceNarrowed(): string | null {
 // is now capped at one wall thickness: it can no longer jump across a gap that genuinely exists.
 // `echelle` = the view's `vScale`, `snap` = `state.opts.snap`: two settings that are not part of
 // the plan, hence two arguments.
-export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, snap: boolean): Pt {
-  const tol = Math.min(WALL, Math.max(8, 14 / (echelle || 1)));
+
+/** The tolerance shared by every point-snap in this file: one wall thickness at most, never less
+ * than 8 cm, and shrinking with zoom (14 screen px converted to cm) so it stays a SCREEN-sized
+ * target rather than a fixed apartment distance. */
+function v5SnapTol(echelle: number): number {
+  return Math.min(WALL, Math.max(8, 14 / (echelle || 1)));
+}
+
+/**
+ * VERTEX-ONLY snap: outline corners and interior wall endpoints, nothing else (no edge, no grid).
+ * Factored out of `v5SnapPoint` so a caller that needs to know "did this land EXACTLY on an
+ * existing joint" (closing a room by drawing back onto another wall's end, `gestes/murs.ts`) can
+ * ask the same question `v5SnapPoint` already answers first, without a second notion of snapping.
+ * Returns null outside `tol` cm (see `v5SnapTol`).
+ */
+export function v5SnapVertex(P: PlanV5 | null | undefined, x: number, y: number, echelle: number): Pt | null {
+  if (!P) return null;
+  const tol = v5SnapTol(echelle);
   let best: Pt | null = null, bd = tol;
   const tryPt = (q: Pt): void => {
     const d = Math.hypot(q[0] - x, q[1] - y);
@@ -804,8 +820,14 @@ export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, sn
   };
   (P.outline || []).forEach((q) => tryPt(q));
   (P.walls || []).forEach((w) => { if (!w.isOutline) { tryPt(w.a); tryPt(w.b); } });
-  if (best) return [v5R2((best as Pt)[0]), v5R2((best as Pt)[1])];
-  bd = tol;
+  return best ? [v5R2((best as Pt)[0]), v5R2((best as Pt)[1])] : null;
+}
+
+export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, snap: boolean): Pt {
+  const tol = v5SnapTol(echelle);
+  const vtx = v5SnapVertex(P, x, y, echelle);
+  if (vtx) return vtx;
+  let best: Pt | null = null, bd = tol;
   v5Barriers(P, null).forEach((s) => {
     const c = closestOnSeg(x, y, s.a[0], s.a[1], s.b[0], s.b[1]);
     if (c.dist <= bd) { bd = c.dist; best = [c.x, c.y]; }

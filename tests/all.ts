@@ -78,6 +78,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/retour-navigateur.ts",       chrome: 2 },   // the Feedback button in a real browser: both doors, server received it, text survives a failed send
   { f: "tests/interactions.ts",            chrome: 1 },
   { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
+  { f: "tests/mur-outil-geste.ts",         chrome: 1 },   // single-segment wall tool, real mouse+keyboard: stays armed across walls, endpoint snap shares the exact point, a drawn wall keeps its length, D-held guides on a wall write nothing
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
   { f: "tests/etiquettes-recouvrement.ts", chrome: 1 },   // room labels vs furniture labels vs each other, real DOM, the owner's real apartment

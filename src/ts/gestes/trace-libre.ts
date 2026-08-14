@@ -8,14 +8,16 @@
 // (to arm the tool from its own capture-phase and layer pointer-down handlers, and to wire the
 // toolbar button), and a cycle between the two is exactly the shape of bug this codebase has
 // already been bitten by three times (AGENTS.md, "Blank startup, the number one trap"). The few
-// duplicated lines are the price of keeping the module graph a DAG; the function that owns the
-// toolbar buttons' pressed state stays the single source of truth in `murs.ts` and is handed to
-// this file as a callback instead (`onDone`), rather than imported.
+// duplicated lines are the price of keeping the module graph a DAG.
 //
 // G-1: arms through `armGesture`, never listens to `pointerup` itself.
 // G-13: a gesture that produces nothing SAYS why, on every attempt.
 // "A press-release without movement never writes, anywhere": a click with the tool armed
 // creates nothing, same as the single-segment tool.
+// THE TOOL STAYS ARMED across strokes (2026-08-14, same owner's decision as the single-segment
+// tool): this file used to disarm itself on every release via an injected `onDone` callback,
+// which no longer exists. Disarming is now entirely `murs.ts`'s job (the button again, Escape,
+// leaving Walls mode) and this file has nothing left to call back into it for.
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5Touch } from "../app/contexte.ts";
@@ -124,11 +126,14 @@ function creerChaineDeMurs(ctx: Contexte, rawPts: readonly Pt[], libre: boolean)
 }
 
 /**
- * Arms the freehand tool for ONE gesture. `onDone` is `murs.ts`'s `() => v5SetDraw(ctx, false)`,
- * injected rather than imported (see the header): the tool disarms itself after every stroke,
- * same as the single-segment tool.
+ * Arms the freehand tool for ONE stroke. THE TOOL STAYS ARMED across strokes (owner's decision,
+ * same as the single-segment tool in `murs.ts`'s own `v5StartDraw`: re-clicking the button
+ * between every wall was the #1 complaint about drawing a room). Disarming is therefore no longer
+ * this function's job; it happens only where it is a deliberate act (the button again, Escape,
+ * leaving Walls mode), all owned by `murs.ts`. The `onDone` callback this used to take has no
+ * more work to do and was removed rather than kept as a no-op parameter.
  */
-export function v5StartFreeDraw(ctx: Contexte, e: PointerEvent, onDone: () => void): void {
+export function v5StartFreeDraw(ctx: Contexte, e: PointerEvent): void {
   const P = ctx.etat.plan;
   if (!P) return;
   if (e.button !== undefined && e.button !== 0) return;
@@ -152,7 +157,6 @@ export function v5StartFreeDraw(ctx: Contexte, e: PointerEvent, onDone: () => vo
   const up = (): void => {
     window.removeEventListener("pointermove", move);
     effacerTraceLibre(ctx);
-    onDone();
     if (!moved) { render(ctx); return; } // a clean click creates nothing, same as the segment tool
     creerChaineDeMurs(ctx, pts, libre);
   };

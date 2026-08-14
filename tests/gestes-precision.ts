@@ -615,6 +615,16 @@ await test("poignee_rotation_ne_vole_pas_le_centre_meuble_mince", async () => {
   if (!cible) return;
   await evaluate(`__plan.selReplace(${JSON.stringify(cible.id)}); __plan.render(); true`);
   await pause(160);
+  // L'ECHELLE EST IMPOSEE, ELLE N'EST PLUS SUBIE. Ce cas repose sur une coincidence au pixel :
+  // la poignee flotte a ~24 pixels ECRAN au-dessus du centre, donc elle ne recouvre le centre d'un
+  // meuble de 13 cm de profondeur qu'en dessous d'une certaine echelle. Elle etait heritee de
+  // `fitView()`, donc de la hauteur de la zone de dessin, donc de la BARRE D'OUTILS : ajouter trois
+  // boutons dans la nuit du 13/08 a suffi a faire tomber la precondition et a rendre ce cas rouge
+  // sans qu'aucun defaut produit n'apparaisse. Un test dont la validite depend du nombre de boutons
+  // ne mesure pas ce qu'il annonce. On fixe donc l'echelle, et la precondition redevient ce qu'elle
+  // aurait toujours du etre : un garde-fou, pas un tirage au sort.
+  await evaluate(`__plan.setZoom(0.5); true`);
+  await pause(120);
   // Precondition: the handle really is painted, and really does cover the piece's own exact
   // center (otherwise the case tests nothing, or tests a different, unrelated defect).
   const a0 = await posDe(cible.id);

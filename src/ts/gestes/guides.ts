@@ -16,9 +16,10 @@
 // None of them render, none of them save, none of them announce anything.
 
 import type { Contexte } from "../app/contexte.ts";
-import type { Meuble, Ouverture, PlanV5, Pt } from "../partage/plan.ts";
+import type { Meuble, Mur, Ouverture, PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, isWallMount, pieceVisible, type CalquesVisibles } from "../catalogue/catalogue.ts";
 import { v5CellsAt, v5Seg, v5WallById } from "../modele/murs.ts";
+import { v5RayHits } from "../modele/edition.ts";
 import { focusEl } from "../rendu/calque.ts";
 import { resolveColor } from "../rendu/couleurs.ts";
 import { aptBBox } from "../rendu/vue.ts";
@@ -238,6 +239,42 @@ export function drawGuides(
     }
     if (gap > 400 || gap < 1) continue;
     addGuideLine(ctx, cont, a, b, Math.round(gap) + " cm", sp.axis);
+  }
+  if (cont.children.length) { const host = focusEl(ctx); if (host) host.appendChild(cont); }
+}
+
+/**
+ * Hold-`D` ON A WALL (2026-08-14), the same LOOK-never-WRITE guide as `drawGuides` gives a piece
+ * of furniture: its length, and its distance to what surrounds it. Cleared by the SAME
+ * `clearGuides` (same `.guides` container class), so a running drag's own dimensions
+ * (`v5DrawWallDims`/`v5ClearDims` in `gestes/murs.ts`, a DIFFERENT overlay for a DIFFERENT
+ * moment: while the wall is actually moving) are never fought over.
+ *
+ * A wall can run at any angle (a diagonal drawn with Alt), so both the length and the two gap
+ * lines go through `addGuideSeg` (arbitrary-angle segment + label), not `addGuideLine` (which
+ * assumes an axis-aligned line): the furniture case never needed the general form because an
+ * AABB's own edges are always axis-aligned.
+ *
+ * "Distance to what surrounds it": from the wall's MIDPOINT, one ray cast on each side along its
+ * NORMAL, stopping at the first wall or outline edge (`v5RayHits`, the exact primitive
+ * `v5ThroughWall` already uses to decide how far a THROUGH wall would reach) — read here without
+ * writing anything back. Reads `ctx.etat.plan`; touches no history, no save, no op.
+ */
+export function drawWallGuides(ctx: Contexte, w: Mur): void {
+  clearGuides(ctx);
+  const P = ctx.etat.plan;
+  const s = v5Seg(w);
+  if (!s.L) return;
+  const cont = document.createElement("div"); cont.className = "guides";
+  addGuideSeg(ctx, cont, { x: w.a[0], y: w.a[1] }, { x: w.b[0], y: w.b[1] }, Math.round(s.L) + " cm");
+  const mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
+  for (const sign of [1, -1] as const) {
+    const nx = s.nx * sign, ny = s.ny * sign;
+    const hits = v5RayHits(P, mx, my, nx, ny, w.id, 0.5);
+    if (!hits.length) continue;
+    const t = hits[0]!.t;
+    if (t < 1 || t > 2000) continue;   // nothing in reach, or a barrier too far to be useful
+    addGuideSeg(ctx, cont, { x: mx, y: my }, { x: mx + nx * t, y: my + ny * t }, Math.round(t) + " cm");
   }
   if (cont.children.length) { const host = focusEl(ctx); if (host) host.appendChild(cont); }
 }
