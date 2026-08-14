@@ -24,9 +24,10 @@ export interface LigneInvitation {
   uses: number;
   last_used_at: string | null;
   last_name: string | null;
+  last_guest_id: string | null;
 }
 
-const COLONNES = "token, plan_id, role, created_at, created_by, expires_at, revoked, uses, last_used_at, last_name";
+const COLONNES = "token, plan_id, role, created_at, created_by, expires_at, revoked, uses, last_used_at, last_name, last_guest_id";
 
 /**
  * THE SHAPE OF A TOKEN, checked before it is ever used for anything. `jetonInvitation` only ever

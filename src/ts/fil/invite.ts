@@ -36,6 +36,7 @@ import { toast } from "../app/toast.ts";
 import { wsSend } from "./emission.ts";
 import { assistant } from "../panneaux/configuration.ts";
 import { hashSansJeton, jetonDepuisHash } from "./jeton-hash.ts";
+import { guestIdCourant } from "./identite.ts";
 
 // =================================================================================================
 //  LOCAL STORAGE: THE TOKEN AND NAME KEPT ACROSS RELOADS (a CACHE, never the source of truth for
@@ -97,14 +98,23 @@ function effaceStockage(cle: string): void {
   try { localStorage.removeItem(cle); } catch (_) { /* nothing to reclaim */ }
 }
 
-// NOT exported: each of these five has exactly one caller, and it lives in this same file
+// NOT exported: each of these four has exactly one caller, and it lives in this same file
 // (`preparerAccueil`, `appliquerNomInvite`, `finirGuestOnboarding`). `tests/exports-morts.ts`
 // enforces the rule this follows: a symbol used only locally does not need to be exported.
+// `nomInviteStocke` USED TO be a fifth here, until `nomInviteConnu()` below gave it a second
+// caller outside this file.
 const jetonInviteStocke = (): string | null => litStockage(JETON_KEY);
 const stockerJetonInvite = (t: string): void => ecritStockage(JETON_KEY, t);
 const oublierJetonInvite = (): void => effaceStockage(JETON_KEY);
 const nomInviteStocke = (): string => litStockage(NOM_KEY) || "";
 const stockerNomInvite = (n: string): void => ecritStockage(NOM_KEY, n);
+
+/**
+ * Wired to `ctx.crochets.guestNomLocal` (`main.ts`), read by `fil/presence.ts` on `hello`: this
+ * DEVICE's own remembered name, the one thing `invites.last_name` (ONE slot, shared by the whole
+ * link) cannot always carry for every device at once. See `wsReaffirmerNomSurAccueil` for why.
+ */
+export function nomInviteConnu(): string { return nomInviteStocke(); }
 
 /**
  * STORED FIRST, STRIPPED SECOND. A reload must still find the token even if the strip never
@@ -136,7 +146,11 @@ interface ReponseInvite {
 
 async function redeemerInvite(token: string, nom?: string): Promise<ReponseInvite | null> {
   try {
-    const corps: Record<string, unknown> = { token };
+    // `guestId` is what lets the SERVER tell "this device already named itself on this link" apart
+    // from "a different visitor just opened the same link" (functions/api/invite.ts). Sent on
+    // EVERY redemption, named or not: the durable per-browser id from `identite.ts`, the same one
+    // `fil/presence.ts` puts on the WebSocket upgrade.
+    const corps: Record<string, unknown> = { token, guestId: guestIdCourant() };
     if (nom) corps.name = nom;
     const res = await fetch("/api/invite", {
       method: "POST",
@@ -321,6 +335,30 @@ function masquerCommandesFoyer(): void {
   const btnInvite = $("btnInvite"); if (btnInvite) btnInvite.hidden = true;
 }
 
+/**
+ * Opens the name step ON DEMAND: the "Name…" button, AND `ctx.crochets.guestSansNom` (wired in
+ * `main.ts`, called from `fil/presence.ts` on a `guest_unnamed` server refusal). Idempotent —
+ * checked BEFORE reopening — because the second caller can fire in a BURST: the Durable Object
+ * refuses every op with `guest_unnamed` while the socket carries no name (`live-worker/worker.ts`),
+ * so several rejections can land within one gesture, and reopening an ALREADY OPEN dialog on each
+ * would steal focus back from someone who has already started typing.
+ *
+ * WHY THIS EXISTS AT ALL: `invites.last_name` is ONE row shared by every device holding the link,
+ * never a per-socket identity (`functions/ws.ts` now resolves the wire's name by matching
+ * `guestId`, the SAME device-scoped rule `functions/api/invite.ts` applies to the redemption
+ * response). A device whose `guestId` does not own the row therefore connects with an EMPTY name,
+ * which the server correctly refuses to let write — but until this fix, the ONLY sign of that was
+ * a throttled toast easy to miss (measured live: a guest could see the plan, every edit visibly
+ * did nothing, and the reason scrolled past). Popping the SAME name step a fresh guest sees on
+ * arrival turns "editing silently does nothing" into "of course, I still need to say who I am."
+ */
+export function ouvrirEtapeNomInvite(fil: Fil): void {
+  const dlg = $("inviteNameDlg");
+  if (dlg && dlg.hidden === false) return;   // already open: a burst of refusals must not restart it
+  afficherEtapeNom(planNomInvite() || "", fil.wsMe.name || nomInviteStocke(),
+    (nom) => { void appliquerNomInvite(fil, nom); });
+}
+
 export function finirGuestOnboarding(ctx: Contexte, fil: Fil): void {
   void ctx;
   masquerCommandesFoyer();
@@ -328,10 +366,7 @@ export function finirGuestOnboarding(ctx: Contexte, fil: Fil): void {
   const btnNom = $("btnGuestName");
   if (btnNom) {
     btnNom.hidden = false;
-    btnNom.addEventListener("click", () => {
-      afficherEtapeNom(planNomInvite() || "", fil.wsMe.name || nomInviteStocke(),
-        (nom) => { void appliquerNomInvite(fil, nom); });
-    });
+    btnNom.addEventListener("click", () => ouvrirEtapeNomInvite(fil));
   }
 }
 

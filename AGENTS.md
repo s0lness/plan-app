@@ -272,7 +272,7 @@ repository.
 | `tests/run.ts` | 1 | 30 general regression tests on the deliverable. |
 | `tests/model-v5-*.ts` (7 suites) | 1 each | 74 tests: walls-only model, server rejection, D1 fallback. Filter: `all.ts model-v5`. |
 | `tests/boot-vierge.ts` | 1 | THE NUMBER ONE TRAP: the page mounts without a JS error, with a blank profile THEN a seeded floor plan. |
-| `tests/interactions.ts` | 1 | 5 REAL MOUSE tests (CDP): gestures, view, remote op, rail, openings. |
+| `tests/interactions.ts` | 1 | 6 REAL MOUSE tests (CDP): gestures, view, remote op, rail, openings, wheel routed to the panel under the pointer. |
 | `tests/garde-fous.ts` | 1 | 9 REAL MOUSE + KEYBOARD tests: input, panels, bounds, messages. |
 | `tests/gestes-perte-de-travail.ts` | 1 | 7 REAL MOUSE tests: SILENT work loss. |
 | `tests/gestes-usage-reel.ts` | 1 | 10 REAL MOUSE tests: ordinary use (selection, round trips, stacks). |

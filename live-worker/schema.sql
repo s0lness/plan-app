@@ -90,6 +90,13 @@ CREATE TABLE IF NOT EXISTS feedback(
 --                self-declared name, not local storage: an iOS in-app browser (a link opened from
 --                a message) partitions and discards storage, so "a returning guest skips the name
 --                step" would be false exactly where links get opened (design edge 20).
+--   last_guest_id : the DEVICE `last_name` belongs to (functions/api/invite.ts's `guestId`, the
+--                same per-browser-profile id `src/ts/fil/identite.ts`'s `guestIdCourant()` puts on
+--                the wire). Corrected 2026-08-14: a name prefill keyed by TOKEN ALONE handed the
+--                first redeemer's name to whoever opened the same link next, silently, on both
+--                screens (measured in production: one row carrying `last_name` and 5 `uses`, two
+--                people sharing one identity). `last_name` is only ever echoed back to the caller
+--                whose `guestId` matches this column; a different device gets asked, never guessed.
 CREATE TABLE IF NOT EXISTS invites(
   token TEXT PRIMARY KEY,
   plan_id TEXT NOT NULL,
@@ -97,5 +104,5 @@ CREATE TABLE IF NOT EXISTS invites(
   created_at TEXT, created_by TEXT,
   expires_at TEXT,
   revoked INTEGER NOT NULL DEFAULT 0,
-  uses INTEGER NOT NULL DEFAULT 0, last_used_at TEXT, last_name TEXT
+  uses INTEGER NOT NULL DEFAULT 0, last_used_at TEXT, last_name TEXT, last_guest_id TEXT
 );

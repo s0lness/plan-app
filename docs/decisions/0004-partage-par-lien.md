@@ -292,10 +292,26 @@ Each of these is a test case, not a note.
 19. **`chat` needs `name`/`guest` too.** It is persisted and replayed in full to
     the household on every `hello`, and `wsAppendChat` derives its label from the
     email.
-20. **The name lives in the invite row, not in local storage.** iOS in-app
-    browsers (a link opened from a message) partition and discard storage, so
-    "a returning guest skips the name step" would be false exactly where links
-    get opened. `invites.last_name` is the store; local storage is a cache.
+20. **The name lives in the invite row, not in local storage — but it belongs
+    to the DEVICE, not to the LINK.** iOS in-app browsers (a link opened from a
+    message) partition and discard storage, so "a returning guest skips the
+    name step" would be false exactly where links get opened. `invites.last_name`
+    is the store; local storage is a cache. The first draft of this stopped
+    there, and it shipped a real defect: the row remembers ONE name per TOKEN,
+    and a link is meant to be opened by more than one person. Confirmed in
+    production, two people testing together on one link: the owner named
+    himself, his guest opened the SAME link right after, and the guest
+    silently became the owner on both screens — the row's `last_name` came
+    back on the next redemption with no check on who was asking. Correctness
+    beats the iOS convenience here, so the row also keeps `last_guest_id`, the
+    durable per-browser id already generated for the wire (`guestIdCourant()`,
+    `src/ts/fil/identite.ts`), and the redemption endpoint hands `last_name`
+    back ONLY when the caller's `guestId` matches it. The accepted cost: a
+    guest whose storage is wiped (a new `guestId`) is asked their name again,
+    which is an inconvenience; being handed someone else's name was a real
+    defect. A redemption that carries no name (the silent check every page
+    load makes before the name step would even show) never touches either
+    column, so it cannot clobber a name already on file for another device.
 
 ## What this deliberately is not
 

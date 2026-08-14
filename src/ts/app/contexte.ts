@@ -209,6 +209,33 @@ export interface Crochets {
    * is imported BY `invite.ts` (for `setSyncChip`), so the reverse import would be a cycle.
    */
   porteMenageConfirmee?: (() => void) | undefined;
+  /**
+   * BATCH 3+, corrected 2026-08-14. `fil/presence.ts` detects a `guest_unnamed` refusal from the
+   * server (the socket carries no name — see `functions/ws.ts`'s device-matched resolution of
+   * `invites.last_name`); it does not decide what to DO about it, because that decision lives in
+   * `fil/invite.ts`'s name-step UI, which THIS module (`presence.ts`, via `fil/rest.ts`) is
+   * imported BY — the same cycle `accesRefuseSansInvite` above avoids the same way. Wired
+   * unconditionally in `main.ts`, right beside the other two: never invoked on the household door,
+   * since only a guest socket can carry an empty name in the first place.
+   */
+  guestSansNom?: (() => void) | undefined;
+  /**
+   * SAME BATCH, THE OTHER HALF: `invites.last_name`/`last_guest_id` is ONE slot, shared by every
+   * device holding the link — it remembers whichever device redeemed the token MOST RECENTLY WITH
+   * A NAME, not one name per device. Two guests active on the same link at once therefore keep
+   * reclaiming that one slot from each other on every fresh `/api/invite` POST (a page load), and
+   * a plain WebSocket RECONNECT (no POST at all — a network blip, the heartbeat's dead-socket
+   * close) reads the row exactly as the OTHER device last left it: whoever reconnects second, on a
+   * row the peer currently owns, gets an EMPTY name from `functions/ws.ts` even though THIS
+   * device chose one long ago and never forgot it.
+   *
+   * `fil/presence.ts`'s `hello` handler is what notices ("the server gave me no name"); it does
+   * not decide what to reassert, because the name it should reassert is a client-storage read that
+   * belongs in `fil/invite.ts` (`nomInviteConnu()`), same cycle-avoidance reason as
+   * `accesRefuseSansInvite`. When both are non-empty, `presence.ts` sends `{t:"name"}` itself
+   * (it already imports `wsSend`) — it does not need this hook to WRITE, only to READ.
+   */
+  guestNomLocal?: (() => string) | undefined;
 }
 
 export function creerContexte(etat: Etat, canvas: HTMLElement, viewport: HTMLElement): Contexte {

@@ -9,12 +9,13 @@
 //
 //   node tests/interactions.ts [path/to/app.html]
 //
-// Five cases, all born from a PROVEN bug:
+// Six cases, all born from a PROVEN bug:
 //   gesture_always_ends         a gesture that never ends kills session recording
 //   view_gestures_never_persist a pan wrote the whole plan on every frame
 //   remote_replace_during_drag  a remote replacement wiped out the local gesture
 //   rail_chips_follow_cells     the rail announced 10 rooms when the plan had 11
 //   opening_fields_round_trip   renaming a window emitted NO op at all
+//   wheel_scrolls_panel_under_pointer_not_the_plan  the wheel over the open chat zoomed the plan
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -510,6 +511,46 @@ await test("opening_fields_round_trip", async () => {
   const back = await J(`(function(){var o=__plan.v5OpeningById(window.__oid); return o?{name:o.name,h:o.h}:null;})()`);
   ok(back && back.name === "Fenetre cuisine" && back.h === prof,
     "l'édition doit survivre à un remplacement de plan : " + JSON.stringify(back));
+});
+
+// =============================================================================
+//  6. wheel_scrolls_panel_under_pointer_not_the_plan
+// =============================================================================
+// The chat message list lives INSIDE `#viewport` (html/02-scene.html), so its wheel events reach
+// the viewport's own wheel listener by ordinary bubbling. Measured live, two people testing
+// multiplayer together: the wheel over the OPEN chat panel zoomed the plan underneath it instead
+// of scrolling the messages — the viewport's handler called `preventDefault()` unconditionally, on
+// every target inside it. We force the chat panel open (a real one needs a live socket, irrelevant
+// to this defect) and stuff it with more messages than fit, so there is something to scroll.
+await test("wheel_scrolls_panel_under_pointer_not_the_plan", async () => {
+  await evaluate(`(function(){
+    var list = document.getElementById("chatList");
+    document.getElementById("chatPanel").hidden = false;
+    for (var i = 0; i < 40; i++) {
+      var d = document.createElement("div");
+      d.className = "chat-msg"; d.style.height = "24px"; d.textContent = "msg " + i;
+      list.appendChild(d);
+    }
+    list.scrollTop = 0;
+  })(); true`);
+  const chatCenter = await J(`(function(){
+    var r = document.getElementById("chatList").getBoundingClientRect();
+    return {x: r.left + r.width / 2, y: r.top + r.height / 2};})()`);
+  const scrollAvant = await J(`document.getElementById("chatList").scrollTop`);
+  await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: chatCenter.x, y: chatCenter.y, deltaX: 0, deltaY: 120 });
+  await pause(60);
+  const scrollApres = await J(`document.getElementById("chatList").scrollTop`);
+  ok(scrollApres !== scrollAvant,
+    `la molette au-dessus du chat doit faire défiler la liste des messages, scrollTop ${scrollAvant} -> ${scrollApres}`);
+
+  // The zoom behaviour over the PLAN ITSELF must stay exactly as it was: this is a routing fix,
+  // never a removal of the zoom.
+  const vScaleAvant = await J(`__plan.vScale`);
+  await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: 800, y: 500, deltaX: 0, deltaY: -120 });
+  await pause(60);
+  const vScaleApres = await J(`__plan.vScale`);
+  ok(vScaleApres > vScaleAvant,
+    `la molette au-dessus du plan doit toujours zoomer, vScale ${vScaleAvant} -> ${vScaleApres}`);
 });
 
 // ---- verdict -----------------------------------------------------------------------------------
