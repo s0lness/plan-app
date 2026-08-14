@@ -221,14 +221,24 @@ try {
     var i = document.getElementById("inviteNameInput");
     i.value = "Julien"; i.dispatchEvent(new Event("input", {bubbles:true}));
   })()`);
-  const rempliActive = await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`);
-  check("le bouton Join s'active une fois un nom saisi", rempliActive === false, "disabled=" + rempliActive);
+  // ON ATTEND LA CONDITION, PAS UNE DUREE, et surtout pas « rien ». Le gestionnaire `input` qui
+  // reactive le bouton tourne dans la page, apres que CDP a rendu la main : lire `disabled` dans
+  // la foulee marchait sur une machine au repos et tombait sous charge, en signalant
+  // « disabled=true » comme si le produit etait casse. C'est la regle du depot (AGENTS.md) :
+  // attendre une CONDITION partout, jamais une duree, sinon on ne fait que deplacer le seuil ou
+  // ca retombe.
+  const rempliActive = await attendre(async () =>
+    (await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`)) === false);
+  check("le bouton Join s'active une fois un nom saisi", rempliActive,
+    "disabled=" + await B.J(`(document.getElementById("inviteNameJoin")||{}).disabled`));
 
   await B.evaluate(`document.getElementById("inviteNameJoin").click()`);
   const dlgFerme = await attendre(async () => A2Hidden(B, "inviteNameDlg"));
   check("Join ferme l'étape du nom", dlgFerme);
-  const nomStocke = await B.evaluate(`localStorage.getItem("plan-invite-nom")`);
-  check("le nom saisi est mémorisé", nomStocke === "Julien", "vu " + JSON.stringify(nomStocke));
+  const nomStocke = await attendre(async () =>
+    (await B.evaluate(`localStorage.getItem("plan-invite-nom")`)) === "Julien");
+  check("le nom saisi est mémorisé", nomStocke,
+    "vu " + JSON.stringify(await B.evaluate(`localStorage.getItem("plan-invite-nom")`)));
 
   // ============================================================================================
   //  3. A DEAD-END LINK SHOWS THE FULL SCREEN, AND NO PLANNER BOOTS AT ALL
