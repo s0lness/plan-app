@@ -22,7 +22,7 @@
 // clicked in a row with no effect, and the incident filed as "not reproducible."
 
 import type { Contexte } from "../app/contexte.ts";
-import type { Meuble, Ouverture } from "../partage/plan.ts";
+import type { Meuble, Mur, Ouverture } from "../partage/plan.ts";
 import { pieceById, v5OpeningById, v5Touch, v5WallById } from "../app/contexte.ts";
 import { TYPEMAP, isSideable, isWallMount } from "../catalogue/catalogue.ts";
 import { $ } from "../noyau/dom.ts";
@@ -42,7 +42,7 @@ import { toast } from "../app/toast.ts";
 import { pushHistory, redo, undo } from "../historique/pile.ts";
 import { escapeActiveGesture, gesteActif } from "./sortie.ts";
 import { lastCursorApt, measureMode } from "./etat-pointeur.ts";
-import { clearGuides, drawGuides, rotatePieceWithChairs } from "./guides.ts";
+import { clearGuides, drawGuides, drawWallGuides, rotatePieceWithChairs } from "./guides.ts";
 import { cur, delSel, flipWallMountSide } from "./selection-actions.ts";
 import { unstackGroup } from "./pose.ts";
 import { annulerPoseArmee, poseArme, poserAuCentre } from "./pose.ts";
@@ -103,6 +103,27 @@ function pieceSousD(ctx: Contexte): Meuble | null {
     const id = el.dataset["id"]; if (!id) continue;
     const p = pieceById(ctx, id);
     if (p && !isWallMount(p.type)) return p;
+  }
+  return null;
+}
+
+/**
+ * D key (held), WALLS MODE: same idea as `pieceSousD`, for a wall instead of a piece of
+ * furniture. The selection wins; with nothing selected, we hit-test the pointer's last known spot
+ * against `[data-w]` (the wall's own wide invisible hit band, `rendu/calque.ts`), topmost first.
+ * Walls do not stack the way furniture does (no `stackedAt`-style paint-rank cycling): the
+ * topmost element under the pointer is enough for a LOOK.
+ */
+function murSousD(ctx: Contexte): Mur | null {
+  if (ctx.ihm.selWall) return v5WallById(ctx, ctx.ihm.selWall);
+  const c = lastCursorApt();
+  if (!c || !document.elementsFromPoint) return null;
+  const s = aptToScreen(ctx, c.x, c.y);
+  const vr = ctx.viewport.getBoundingClientRect();
+  for (const el of document.elementsFromPoint(vr.left + s.x, vr.top + s.y)) {
+    const hit = (el as Element).closest ? (el as Element).closest<HTMLElement>("[data-w]") : null;
+    const id = hit && hit.dataset["w"];
+    if (id) return v5WallById(ctx, id);
   }
   return null;
 }
@@ -315,11 +336,19 @@ export function brancherClavier(ctx: Contexte): void {
     }
     // D (held): show the selected piece's dimensions, or the pointer's if nothing is selected.
     // `!dTenue` makes the OS key-repeat a no-op (the guides are already up); `!gesteActif()` keeps
-    // this from starting while a real drag owns the guides.
-    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !ctx.wallsMode && !measureMode() && !poseArme()
+    // this from starting while a real drag owns the guides. WALLS MODE (2026-08-14): the same
+    // look, for the wall under the pointer (or selected) instead of a piece of furniture
+    // (`murSousD`/`drawWallGuides`); `finirDTenue` below clears either kind through the SAME
+    // `clearGuides`, so nothing here needs to remember which one it drew.
+    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !measureMode() && !poseArme()
       && !dTenue && !gesteActif() && (e.key === "d" || e.key === "D")) {
-      const p = pieceSousD(ctx);
-      if (p) { dTenue = true; drawGuides(ctx, p, null); }
+      if (ctx.wallsMode) {
+        const w = murSousD(ctx);
+        if (w) { dTenue = true; drawWallGuides(ctx, w); }
+      } else {
+        const p = pieceSousD(ctx);
+        if (p) { dTenue = true; drawGuides(ctx, p, null); }
+      }
       return;
     }
     // CURSOR CHAT ("/", FigJam-style, `fil/dire.ts`). REUSES `typing` rather than inventing a

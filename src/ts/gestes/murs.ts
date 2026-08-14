@@ -44,6 +44,7 @@ import {
   v5FlushOpeningsBorned,
   v5LineInt,
   v5SnapPoint,
+  v5SnapVertex,
   v5SyncOutlineWalls,
   v5ThroughWall,
   v5WallCovering,
@@ -416,10 +417,22 @@ export interface OptionsTrace {
  * it was still far from (2, 5, 10 cm): otherwise the gesture just seems to evaporate.
  */
 export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | null): Mur | null {
-  // ALT = FREE PARTITION. The modifier already meant "free drawing" (no imposed right angle,
-  // no snap); it now means the same thing all the way through: the wall stays where it was
-  // placed instead of lengthening to the first barrier. This is one gesture for one idea,
-  // rather than a third setting to find somewhere.
+  // OWNER'S DECISION (2026-08-14): A WALL DRAWN WITH THE TOOL KEEPS THE ENDS YOU DREW.
+  // Before, every drawn wall was through-going (`v5ThroughWall` pushes each end to the first
+  // barrier beyond it): a 60 cm stub drawn by hand shot across the room to the facade, which is
+  // right for a wall REBUILT from the outline but surprises everyone drawing by hand. `free` is
+  // the model's existing escape hatch for exactly this (see AGENTS.md "free partition", the
+  // "Ends: Through | Free" control): a wall born from THIS tool now sets it unconditionally,
+  // no `Alt` required. `Alt` keeps its OTHER, unrelated meaning below (no imposed right angle,
+  // no magnet): it never touches `free` here.
+  //
+  // BLAST RADIUS: this is the ONLY function that turns a drawn stroke into a wall object
+  // (`v5StartDraw`'s single caller, plus the identical test probe `sonde-fil.ts`'s `drawWall`,
+  // which exists precisely to exercise this same code path). It does not touch outline walls
+  // (`v5SyncOutlineWalls`), walls rebuilt from the outline, walls received from a peer
+  // (`historique/rejeu.ts`, `fil/*`), walls read from a stored plan (`modele/migrations.ts`), or
+  // conversion from the old format (`modele/conversion-v4.ts`): none of those call this function,
+  // and none of them were touched by this change.
   const P = ctx.etat.plan;
   if (!P) return null;
   const dup = v5WallCovering(P, a, b);
@@ -432,10 +445,9 @@ export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | 
     return null;
   }
   pushHistory(ctx);
-  const w: Mur = { id: v5NewId("w"), a: [a[0], a[1]], b: [b[0], b[1]], t: WALL, isOutline: false };
-  if (o && o.libre) w.free = 1;
+  const w: Mur = { id: v5NewId("w"), a: [a[0], a[1]], b: [b[0], b[1]], t: WALL, isOutline: false, free: 1 };
   P.walls.push(w);
-  v5ThroughWall(P, w);            // owner's decision: a v5 wall ALWAYS traverses
+  v5ThroughWall(P, w);            // `free`: trimmed by the outline only, kept as drawn otherwise
   v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx);
   v5SelectWall(ctx, w.id);
   render(ctx); save(ctx);
@@ -454,15 +466,32 @@ export function v5StartDraw(ctx: Contexte, e: PointerEvent): void {
   // evaporate. The refusal is legitimate (two overlapping walls are invisible), but there needs to be
   // an exit door AND a message that names it.
   const snap = !!ctx.etat.opts.snap;
+  // START POINT: `v5SnapPoint` already checks vertices (outline corners, wall endpoints) BEFORE
+  // edges and the grid, so a stroke starting near an existing joint already lands exactly on it.
   const a: Pt = e.altKey ? [v5R2(A.x), v5R2(A.y)] : v5SnapPoint(P, A.x, A.y, ctx.vue.scale, snap);
   let draft: [Pt, Pt] | null = null, libre = !!e.altKey, brut: Pt | null = null;
   const move = (ev: PointerEvent): void => {
     const cm = evtApt(ctx, ev);
-    let b: Pt = ev.altKey ? [v5R2(cm.x), v5R2(cm.y)] : v5SnapPoint(P, cm.x, cm.y, ctx.vue.scale, snap);
     brut = [v5R2(cm.x), v5R2(cm.y)];
     libre = !!ev.altKey;
-    if (!ev.altKey) {   // orthogonal by default (Alt = free)
-      if (Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1])) b = [b[0], a[1]]; else b = [a[0], b[1]];
+    let b: Pt;
+    if (ev.altKey) {
+      b = [v5R2(cm.x), v5R2(cm.y)];
+    } else {
+      // END POINT, TWO ROOMS CLOSING ON ONE ANOTHER: an existing joint (outline corner or wall
+      // endpoint) wins over the orthogonal constraint below. `v5SnapVertex` is the SAME vertex
+      // check `v5SnapPoint` already runs first (reused, not a second notion of snapping); when it
+      // finds one within reach (tolerance: one wall thickness, capped between 8 cm and 12 cm,
+      // shrinking with zoom, `v5SnapPoint`'s own header) the two walls share that EXACT point,
+      // rather than merely the same axis as it. Only the fallback (grid/edge) below still folds
+      // onto the orthogonal line, exactly as before.
+      const vtx = v5SnapVertex(P, cm.x, cm.y, ctx.vue.scale);
+      if (vtx) {
+        b = vtx;
+      } else {
+        b = v5SnapPoint(P, cm.x, cm.y, ctx.vue.scale, snap);
+        if (Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1])) b = [b[0], a[1]]; else b = [a[0], b[1]];
+      }
     }
     draft = [a, b];
     v5DrawDraft(ctx, draft);
@@ -470,7 +499,13 @@ export function v5StartDraw(ctx: Contexte, e: PointerEvent): void {
   };
   const up = (): void => {
     window.removeEventListener("pointermove", move);
-    v5ClearDraft(ctx); v5ClearDims(ctx); v5SetDraw(ctx, false);
+    v5ClearDraft(ctx); v5ClearDims(ctx);
+    // THE TOOL STAYS ARMED (owner's #1 complaint: drawing a room meant re-clicking "Draw a wall"
+    // between every single segment). Disarming now happens only where it is a DELIBERATE act: the
+    // button again (toggles off, `brancherOutilsMurs`), Escape while no gesture is running
+    // (`gestes/clavier.ts`, the Walls-mode branch), or leaving Walls mode
+    // (`setWallsMode`/`v5SyncTools` below). The toolbar button's `.pri` class and `aria-pressed`
+    // (`v5SetDraw`) already track the armed state continuously, so staying armed stays VISIBLE.
     const d = draft;
     if (!d || Math.hypot(d[1][0] - d[0][0], d[1][1] - d[0][1]) < 20) { render(ctx); return; }
     v5TryCreateWall(ctx, d[0], d[1], { libre, brut });
@@ -739,7 +774,7 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
   // v5AfterGeometry(true) that lengthened a partition three meters away from there.
   if (ctx.ihm.draw) {
     e.stopPropagation();
-    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e, () => v5SetDraw(ctx, false));
+    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
     else v5StartDraw(ctx, e);
     return;
   }
@@ -753,7 +788,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (!v5On(ctx) || measureMode() || spaceHeld()) return;
   if (e.button !== undefined && e.button !== 0) return;
   if (ctx.ihm.draw) {
-    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e, () => v5SetDraw(ctx, false));
+    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
     else v5StartDraw(ctx, e);
     return;
   }

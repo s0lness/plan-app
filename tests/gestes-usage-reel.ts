@@ -202,9 +202,15 @@ await test("outil_arme_ne_deforme_aucun_mur", async () => {
     "le bouton de tracé est masqué")) return;
   const cibles = await J(`[].slice.call(document.querySelectorAll(".v5layer .edge,.v5layer .mid,.v5layer .vtx"))
     .map(function(e){ var r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; }).slice(0,8)`);
+  // THE TOOL NOW STAYS ARMED ACROSS WALLS (2026-08-14, AGENTS.md "the tool disarms after every
+  // wall"): arming it ONCE before the loop is the real usage now. Re-clicking the button on every
+  // iteration, as this test used to, would DISARM it instead of "(re)arming" it, and the second
+  // iteration onward would exercise ordinary handle clicks rather than the armed-tool path this
+  // test is named for.
+  await click(await centerOf("#btnDrawWall"));
+  if (await evaluate(`String(__plan.v5ui.draw)`) !== "true") { ok(false, "l'outil ne s'arme pas"); return; }
   for (const c of cibles) {
-    await click(await centerOf("#btnDrawWall"));   // (re)arm
-    if (await evaluate(`String(__plan.v5ui.draw)`) !== "true") { ok(false, "l'outil ne s'arme pas"); return; }
+    ok(await evaluate(`String(__plan.v5ui.draw)`) === "true", "l'outil de tracé s'est désarmé tout seul entre deux cibles");
     await click(c);
     await pause(150);
     ok((await empreinte()) === avant,
