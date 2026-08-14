@@ -152,19 +152,6 @@ export function v5RayHits(
   return out;
 }
 
-/** Intersection of two lines (point + direction). null if (nearly) parallel. */
-export function v5LineInt(
-  p1: Pt,
-  d1: Pick<SegmentMur, "ux" | "uy">,
-  p2: Pt,
-  d2: Pick<SegmentMur, "ux" | "uy">,
-): Pt | null {
-  const den = d1.ux * d2.uy - d1.uy * d2.ux;
-  if (Math.abs(den) < 1e-6) return null;
-  const t = ((p2[0] - p1[0]) * d2.uy - (p2[1] - p1[1]) * d2.ux) / den;
-  return [p1[0] + d1.ux * t, p1[1] + d1.uy * t];
-}
-
 // =================================================================================================
 //  A v5 WALL RUNS THROUGH, AND IT DOES SO OVER ITS ENTIRE LENGTH
 // =================================================================================================

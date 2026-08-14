@@ -387,7 +387,11 @@ export function brancherClavier(ctx: Contexte): void {
         if (ctx.ihm.selWall) v5DeleteSelectedWall(ctx);
         else if (ctx.selVtx >= 0) v5DeleteVertex(ctx, ctx.selVtx);
       } else if (e.key === "Escape") {
-        if (ctx.ihm.draw) v5SetDraw(ctx, false);
+        // Turning the tool off must repaint: the hit bands that make a wall clickable are gated
+        // on `ctx.ihm.draw` (`rendu/calque.ts`), and without a render here the canvas kept
+        // showing the stale, hit-band-less layer from while the tool was still armed. The
+        // button already called `render(ctx)` right after `v5SetDraw`; Escape now does the same.
+        if (ctx.ihm.draw) { v5SetDraw(ctx, false); render(ctx); }
         else if (ctx.ihm.selWall) { v5SelectWall(ctx, null); render(ctx); }
         else {
           // G-12bis, see the header: leaving Walls mode in silence is indistinguishable from a glitch.

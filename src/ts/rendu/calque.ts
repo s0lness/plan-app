@@ -55,9 +55,14 @@ export function renderV5(ctx: Contexte): void {
   layer.classList.toggle("cellpick", !ctx.wallsMode);
   layer.classList.toggle("drawing", !!ctx.ihm.draw);
   const o = ctx.etat.opts;
+  // `ctx.ihm.draw` gates the HIT shapes below (walls/cells only get their clickable band while
+  // the draw tool is OFF): leaving it out of the cache key is exactly the bug that made "turn the
+  // tool off" and "never having turned it on" two different renders. Escape happened to work by
+  // accident, through a DIFFERENT branch (`v5SelectWall(ctx,null)`) that bumps `ctx.rev` as a
+  // side effect of clearing the selection, not because it releases anything the button doesn't.
   const sig = S.toFixed(4) + "|" + ctx.rev + "|" + (o.labels ? 1 : 0) + "|" + (o.layFurn !== false ? 1 : 0)
     + (o.layLight !== false ? 1 : 0) + (o.layPlug !== false ? 1 : 0)
-    + "|" + (ctx.wallsMode ? 1 : 0) + "|" + (ctx.ihm.selWall || "");
+    + "|" + (ctx.wallsMode ? 1 : 0) + "|" + (ctx.ihm.selWall || "") + "|" + (ctx.ihm.draw ? 1 : 0);
   if (layer.dataset["sig"] !== sig) { layer.dataset["sig"] = sig; renderFond(ctx, layer, P, bb, S); }
   renderPieces(ctx, layer, bb);
   renderOuvertures(ctx, layer, bb, S);
