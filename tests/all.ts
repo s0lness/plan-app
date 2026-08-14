@@ -59,6 +59,8 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/model-v5-ancien-plan.ts",    chrome: 1 },
   { f: "tests/model-v5-conversion-rendu.ts", chrome: 1 },
   { f: "tests/gestes-usage-reel.ts",       chrome: 1 },
+  { f: "tests/chaise-dossier-geste.ts",    chrome: 1 },   // REAL MOUSE: a chair docked against a table faces it (backrest outward), relative to the table's OWN rotation, round trip exact
+
   { f: "tests/geste-ami.ts",               chrome: 1 },   // REAL MOUSE + KEYBOARD: Ctrl/Cmd no-grid drag, D-held dimensions peek
   { f: "tests/chasse-usage.ts",            chrome: 1 },   // REAL MOUSE + KEYBOARD: re-grabbing a selected wall no longer deletes it, Escape mid-drag no longer wastes a Ctrl+Z
   { f: "tests/repli-conflit.ts",           chrome: 2 },
@@ -101,6 +103,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/trace-libre.ts",             chrome: 0 },   // PURE geometry, freehand wall trace: no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
   { f: "tests/etiquettes-disposition.ts",  chrome: 0 },   // PURE placement math: room labels vs furniture obstacles, no browser
+  { f: "tests/chaise-dossier.ts",          chrome: 0 },   // PURE geometry: snapChairToTable's rotation, relative to the table's OWN rot, no browser
   { f: "tests/exports-morts.ts",           chrome: 0 },   // reads the SOURCE: no browser
   { f: "tests/no-dead-selectors.ts",       chrome: 0 },                        // CSS classes taken by src/ts
   { f: "tests/porte.ts",                   chrome: 0 },   // door + identity: functions/porte.ts, no browser
