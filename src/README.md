@@ -14,8 +14,8 @@ repository and is available in the history of the private repository.
 | Path | Role | Ordering contract |
 | --- | --- | --- |
 | `head.html` | Contents of `<head>` after the preamble produced by `build.ts`. | Single `head` entry in the manifest. |
-| `css/` | The product's 17 stylesheets. `01-jetons-base.css` contains the tokens; the following files build the cascade. | EXPLICIT order in `manifest.json`; a file missing from the manifest makes the build fail. |
-| `html/` | The 11 fragments for the shell, scene, panels, and modals. | EXPLICIT order in `manifest.json`; a file missing from the manifest makes the build fail. |
+| `css/` | The product's stylesheets. `01-jetons-base.css` contains the tokens; the following files build the cascade. | EXPLICIT order in `manifest.json`; a file missing from the manifest makes the build fail. |
+| `html/` | The fragments for the shell, scene, panels, and modals. | EXPLICIT order in `manifest.json`; a file missing from the manifest makes the build fail. |
 | `ts/` | The only client: TypeScript ES modules grouped by domain. | `import` graph from `main.ts`; no list in the manifest. |
 | `manifest.json` | Manually maintained order for the head, CSS, and HTML. | Never describes TypeScript: esbuild follows imports. |
 

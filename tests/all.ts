@@ -46,9 +46,9 @@ const NODE = process.execPath;
 // it finishes alone while everything else is already done (the classic "long pole").
 //
 // ---- THE POINT NEVER TO LOSE SIGHT OF IN THIS LIST ----------------------------------------
-// The 26 browser suites open `index.html` by default: that's the TYPED client and the file
-// actually served. The others read `src/ts` directly, check pure computation, or are
-// agnostic of the client. There is no longer a second copy nor an old client source.
+// Suites with `chrome > 0` open `index.html` by default: that's the TYPED client and the file
+// actually served. The others read `src/ts` directly, check pure computation, or are agnostic
+// of the client. There is no longer a second copy nor an old client source.
 const SUITES: EntreeSuite[] = [
   { f: "tests/gestes-precision.ts",        chrome: 1 },
   { f: "tests/collab-annuler.ts",          chrome: 1 },
@@ -86,7 +86,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/artefact-autonome.ts",       chrome: 1 },
   { f: "tests/etiquette-renommer.ts",      chrome: 1 },
   { f: "tests/train-ouvertures.ts",        chrome: 1 },
-  // ---- the four that read the SOURCE, not the artifact: they read src/ts ----------------
+  // ---- browserless source and pure checks ------------------------------------------------
   { f: "tests/harnais-graine.ts",          chrome: 0 },                        // src/ts, by import
   { f: "tests/rapide.ts",                  chrome: 0 },                        // src/ts, by import
   // THE DATA ORACLE directly confronts a reading of src/ts against the frozen fingerprints.

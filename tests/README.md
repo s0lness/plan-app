@@ -6,9 +6,9 @@ Everything runs through **ONE single command**:
 node tests/all.ts
 ```
 
-36 suites run in parallel on the development machine. The total check count is printed by
-the launcher: several suites have gained cases since the historical measurement of 2026-08-05. Nonzero exit
-code as soon as one suite fails; only the FAILURE detail is reprinted.
+Every suite registered by the launcher runs in parallel on the development machine. The current
+suite list comes from `node tests/all.ts --list`, and the total check count is printed by the
+launcher. Nonzero exit code as soon as one suite fails; only the FAILURE detail is reprinted.
 
 ```
 node tests/all.ts --list        # list the suites
@@ -37,7 +37,7 @@ in `AGENTS.md`, section "The barrier runs at LOW PRIORITY".
 
 ## What each suite covers
 
-*(table regenerated from `node tests/all.ts --list` and a real barrier log)*
+*(coverage map from a real barrier log; `node tests/all.ts --list` is the authoritative current list)*
 
 | Suite | Checks | Covers |
 |---|---|---|
