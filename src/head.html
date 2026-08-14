@@ -3,3 +3,18 @@
 <meta name="theme-color" content="#1f6f78">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2032%2032%22%3E%3Crect%20width=%2232%22%20height=%2232%22%20rx=%227%22%20fill=%22%231f6f78%22/%3E%3Cg%20fill=%22none%22%20stroke=%22%23fbfaf8%22%20stroke-width=%222.6%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22M6%206h20v20h-7.5%22/%3E%3Cpath%20d=%22M13%2026H6V6%22/%3E%3Cpath%20d=%22M18%206v11H6%22/%3E%3C/g%3E%3C/svg%3E">
 <title>Plan d'appartement</title>
+<!-- Link preview card (Open Graph / Twitter). Static, generic tags only: nothing here may name a
+     real plan or carry the invite token, which lives in the URL FRAGMENT and never reaches a
+     server. `og:url` and the image URLs need an ABSOLUTE address, and this repository is public
+     (no real hostname committed), so those three are injected at the edge by
+     functions/_middleware.ts, built from the request's own Host. See AGENTS.md "Design" and
+     docs/decisions/0004-partage-par-lien.md. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Flat plan">
+<meta property="og:title" content="Flat plan">
+<meta property="og:description" content="A shared floor plan. Open the link to see it.">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Flat plan">
+<meta name="twitter:description" content="A shared floor plan. Open the link to see it.">

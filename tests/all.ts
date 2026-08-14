@@ -103,6 +103,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/porte.ts",                   chrome: 0 },   // door + identity: functions/porte.ts, no browser
   { f: "tests/invitation.ts",              chrome: 0 },   // the invite: functions/api/invite(s).ts, no browser
   { f: "tests/retour.ts",                  chrome: 0 },   // the feedback drop: functions/api/feedback.ts, no browser
+  { f: "tests/carte-og.ts",                chrome: 0 },   // the link preview card: functions/_middleware.ts, no browser
   { f: "tests/identite-fil.ts",            chrome: 0 },   // wire identity, client side: src/ts/fil/etat.ts + mesure/curseur-pair.ts, no browser
   { f: "tests/invite-fil.ts",              chrome: 0 },   // guest client pure logic: token-from-hash, storage key per mode, duplicate-name display, no browser
   { f: "tests/partage-fil.ts",             chrome: 0 },   // owner share panel pure logic: link construction, guestHost fallback, live filter, row formatting, no browser
