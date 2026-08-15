@@ -63,8 +63,8 @@ plan/
     manifest.json           manually maintained order of the head, CSS, and HTML
     head.html               the deliverable's <head>
     README.md               the actual source map
-    css/                    17 stylesheets in cascade order
-    html/                   11 shell and panel fragments
+    css/                    stylesheets in cascade order
+    html/                   shell and panel fragments
     ts/                     THE ONLY CLIENT: typed ES modules; main.ts boots it
   functions/                Pages Functions: D1 floor plan, errors, and WebSocket upgrade
   live-worker/              Realtime Worker, server validator, and local tests
@@ -77,7 +77,7 @@ plan/
 edit src/ts/…
 node build.ts                    # builds index.html, THE DELIVERABLE
 node tests/rapide.ts             # THE FAST LOOP, without a browser, < 1 s
-node tests/all.ts                # THE PRE-DEPLOY BARRIER: 36 suites, in parallel
+node tests/all.ts                # THE PRE-DEPLOY BARRIER: every registered suite, in parallel
 git add -A && git commit && git push
 ```
 `tests/all.ts` is the ONLY pre-deploy barrier launcher. It gives every suite a private `%TEMP%`,
@@ -254,10 +254,10 @@ the way. If a case becomes unstable again, apply this rule, do not extend a dela
 All are launched with `node tests/all.ts <filtre>`. "Chrome" says how many browsers the suite opens:
 this is what caps barrier concurrency.
 
-**Four of these suites do NOT read the artifact, they read `src/ts` directly**: `rapide`,
-`harnais-graine`, `no-dead-selectors`, and `compat-donnees`. Under the now-removed `--legacy` mode,
-they were counted as `absent` with their real reason: the archived client had no source in this
-repository.
+**Browserless source checks do NOT read the artifact; they read `src/ts` directly**. This includes
+`rapide`, `harnais-graine`, `compat-donnees`, `exports-morts`, and `no-dead-selectors`, alongside
+the pure domain suites. Under the now-removed `--legacy` mode, source checks were counted as
+`absent` with their real reason: the archived client had no source in this repository.
 
 | Suite | Chrome | Covers |
 | --- | --- | --- |
