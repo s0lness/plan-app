@@ -18,6 +18,12 @@
   .v5wx{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;z-index:60;
         background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 13px/16px var(--mono);
         text-align:center;cursor:pointer;pointer-events:auto;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  /* a selected interior wall's own ENDPOINT handles: drag to extend or connect (owner's report) */
+  .v5wend{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
+        background:var(--room-bg);border:2px solid var(--accent);z-index:41;cursor:grab;
+        pointer-events:auto;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .v5wend:hover{background:var(--accent-soft)}
+  .v5wend:active{cursor:grabbing}
   .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;
          font:600 11px/1 var(--mono);color:var(--accent-ink);background:var(--room-bg);
          border:1px solid var(--accent);border-radius:3px;padding:2px 5px;white-space:nowrap}

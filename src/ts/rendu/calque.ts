@@ -335,7 +335,7 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
  * 16 pieces of furniture.
  */
 export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
-  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx").forEach((n) => n.remove());
+  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend").forEach((n) => n.remove());
   if (!ctx.wallsMode) return;
   const poly = ctx.etat.plan.outline, np = poly.length;
   const toC = (x: number, y: number): { x: number; y: number } => ({ x: (x - bb.minX) * S, y: (y - bb.minY) * S });
@@ -385,6 +385,25 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   });
   const w = ctx.ihm.selWall ? (ctx.etat.plan.walls || []).find((q) => String(q.id) === String(ctx.ihm.selWall)) : null;
   if (w && !w.isOutline) {
+    // ENDPOINT HANDLES (owner's report: "choper les extrémités des murs et pouvoir étendre et
+    // relier à d'autres murs"). One per end, sitting EXACTLY on the endpoint: unlike the
+    // outline's "+" (G-15) there is no selection click to steal here, since the wall's own drag
+    // band already covers the whole segment INCLUDING its very tip, and grabbing the small
+    // circle right on top of it starts `v5StartWallEndDrag` instead (wired through
+    // `ctx.gestes.boutMurPointerDown`, `gestes/branchement.ts`), which moves ONLY that end.
+    (["a", "b"] as const).forEach((bout) => {
+      const p = w[bout];
+      const s = toC(p[0], p[1]);
+      const h = document.createElement("div");
+      h.className = "v5wend";
+      h.dataset["w"] = String(w.id);
+      h.dataset["bout"] = bout;
+      h.style.left = s.x + "px";
+      h.style.top = s.y + "px";
+      h.title = "Drag to extend this wall, or connect it to another";
+      h.addEventListener("pointerdown", (ev) => ctx.gestes.boutMurPointerDown?.(ev as PointerEvent, String(w.id), bout));
+      layer.appendChild(h);
+    });
     // G-15-BIS: SAME TRAP AS THE OUTLINE'S "+", one wall family over. Dead-center on the wall's
     // own segment, this "x" used to sit exactly where `[data-w]` (the drag band, G-3's "grab it
     // again to nudge it") is grabbed: selecting a wall by dragging it once, then reaching for the
