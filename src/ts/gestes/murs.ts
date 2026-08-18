@@ -44,6 +44,7 @@ import {
   v5FlushOpeningsBorned,
   v5SnapPoint,
   v5SnapVertex,
+  v5SnapWallEnd,
   v5SyncOutlineWalls,
   v5ThroughWall,
   v5WallCovering,
@@ -76,6 +77,14 @@ import { v5NewId } from "../fil/identite.ts";
 // file -> trace-libre.ts): trace-libre.ts must not import back from here, see its own header for
 // why (a cycle between the two is exactly the shape of bug "Blank startup" warns about).
 import { v5StartFreeDraw } from "./trace-libre.ts";
+// THE 45-DEGREE TABLE, from the PURE half of the freehand trace (`geometrie/trace-libre.ts`, no
+// `Contexte`, no DOM): the wall-endpoint drag below quantises a dragged end's direction the SAME
+// way a freehand stroke's own runs are quantised (AGENTS.md, "same convention as the freehand
+// trace"), so it reuses the exact table rather than a second hand-rolled `cos`/`sin` (which would
+// reintroduce the `1.2246e-16` trap that table exists to avoid). No cycle risk: this is a
+// DIFFERENT file from `./trace-libre.ts` above (the impure gesture half), and the pure
+// `geometrie/` module imports nothing from `gestes/`.
+import { DIR8, quantizeAngleDeg } from "../geometrie/trace-libre.ts";
 
 // =================================================================================================
 //  SELECTING A WALL, A CELL, AND DELETION
@@ -217,6 +226,22 @@ export function v5ClearDraft(ctx: Contexte): void {
 // =================================================================================================
 
 /**
+ * THE GEOMETRY PIPELINE ITSELF, no screen effects: re-sync the outline walls, re-traverse every
+ * interior wall, keep openings inside their wall, and (`final`) rebuild the cells. Extracted out
+ * of `v5AfterGeometry` (below) so a headless test can drive the SAME pipeline without a DOM
+ * (`ctx.canvas`, `render()`, `document`) in the loop — exactly how `v5WallDragCtx`/
+ * `v5WallDragApply` above are already tested directly, `tests/jonction-glisser-mur.ts`. Pure
+ * function of the plan.
+ */
+export function v5ResoudreGeometrie(P: PlanV5 | null | undefined, final: boolean): void {
+  if (!P) return;
+  v5SyncOutlineWalls(P);
+  (P.walls || []).forEach((w) => { if (!w.isOutline) v5ThroughWall(P, w); });
+  v5ClampOpenings(P);
+  if (final) v5RebuildCells(P);
+}
+
+/**
  * The outline or a wall just moved. `final` = the gesture is OVER.
  *
  * C-11, bounding belongs to the gesture's AUTHOR: it bounds once, on the FINAL geometry, it
@@ -226,13 +251,10 @@ export function v5ClearDraft(ctx: Contexte): void {
 export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
   const P = ctx.etat.plan;
   if (!P) return;
-  v5SyncOutlineWalls(P);
-  (P.walls || []).forEach((w) => { if (!w.isOutline) v5ThroughWall(P, w); });
-  v5ClampOpenings(P);
+  v5ResoudreGeometrie(P, final);
   if (final) {
     const msg = v5FlushOpeningsBorned();
     if (msg) toast(msg, { geste: true });
-    v5RebuildCells(P);
     bornerLesMeubles(ctx);
   }
   checkShapeWarn(ctx);   // the outline just moved: the "walls cross" alert follows
@@ -496,6 +518,150 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const cancel = (): void => { v5WallDragApply(ctx, g, 0, true); moved = false; render(ctx); };
   window.addEventListener("pointermove", move);
   armGesture(up, null, cancel);   // guaranteed end (G-1)
+}
+
+// =================================================================================================
+//  TOOL 1-BIS: DRAGGING A WALL'S OWN ENDPOINT, TO EXTEND OR CONNECT IT
+// =================================================================================================
+// The owner's report, verbatim: "j'aimerais aussi pouvoir choper les extrémités des murs et
+// pouvoir étendre et relier à d'autres murs. parfois je fais un mur mais je me rate, je voulais
+// le faire plus long, et là je dois le delete et recommencer." Before this, a SELECTED interior
+// wall carried exactly ONE handle, the "×" that deletes it (`rendu/calque.ts`'s `drawHandles`):
+// a wall drawn too short could only be deleted and redrawn.
+//
+// ONE endpoint moves, the OTHER stays exactly where it was. This is NOT the perpendicular-offset
+// drag of TOOL 1 above (`v5WallDragCtx`/`v5WallDragApply`, which moves the WHOLE wall and carries
+// its junctions as FOLLOWERS, decided once at `pointerdown`): here there is no follower list,
+// because `v5ResoudreGeometrie` already re-traverses EVERY wall on each frame — the same
+// mechanism a vertex drag and an outline edge drag already lean on (`v5AfterGeometry`). A
+// neighbor that was resting against this wall reacts to the endpoint's NEW position exactly as
+// it would to any other geometry edit; there is nothing extra to decide or carry.
+//
+// THE DRAGGED END BECOMES `free`, DELIBERATELY (same reasoning as the "exact length" field
+// further down, and the 2026-08-14 decision on drawn walls, see `v5TryCreateWall`'s own note):
+// `v5ThroughWall` extends a non-free wall's ends to the nearest barrier on every recompute, which
+// would silently undo a deliberate placement in open space the instant the gesture ends.
+// Connection to another wall is made through SNAPPING (`v5SnapWallEnd`) at drop time, never
+// through staying through-going: a `free` wall does not "reconnect" if a neighbor is later
+// dragged away, which is exactly what a deliberately extended stub should do.
+
+/**
+ * Where the dragged endpoint lands THIS FRAME, in priority order:
+ *   1-3. a junction (another wall's endpoint, a point on another wall's segment, or the same on
+ *        the outline) within reach — `v5SnapWallEnd` covers all three as one two-stage cascade,
+ *        EXACT, regardless of Alt: a deliberate connection is not something "free hand" mode
+ *        should make harder to hit.
+ *   4. otherwise, the wall's DIRECTION quantised to the nearest 45° measured from the FIXED end
+ *      (`DIR8`/`quantizeAngleDeg`, the freehand trace's own table) — unless Alt is held, which
+ *      frees the angle, "same convention as the freehand trace" (AGENTS.md).
+ *   5. `step` (5cm, or 1cm under Ctrl/Cmd — the caller passes it, see `sansGrille`) rounds the
+ *      result along whichever direction stage 4 picked.
+ * Mirrors `v5StartDraw`'s own precedence (vertex > edge > grid) so extending a wall feels
+ * identical to drawing one.
+ */
+export function v5WallEndDrop(
+  P: PlanV5 | null | undefined,
+  wallId: unknown,
+  anchor: Pt,
+  x: number,
+  y: number,
+  echelle: number,
+  alt: boolean,
+  step: number,
+): Pt {
+  const snapped = v5SnapWallEnd(P, String(wallId), x, y, echelle);
+  if (snapped) return snapped;
+  if (alt) return [Math.round(x / step) * step, Math.round(y / step) * step];
+  const dx = x - anchor[0], dy = y - anchor[1];
+  const dir = DIR8[quantizeAngleDeg(Math.atan2(dy, dx) * 180 / Math.PI) / 45]!;
+  const t = dx * dir[0] + dy * dir[1];
+  const tq = Math.round(t / step) * step;
+  return [v5R2(anchor[0] + dir[0] * tq), v5R2(anchor[1] + dir[1] * tq)];
+}
+
+/**
+ * Applies the drop: moves ONLY `bout`, marks the wall `free` (see file header), re-settles the
+ * geometry (`final` also rebuilds the cells and bounds furniture). Mirrors `v5WallDragApply`'s
+ * own shape exactly, including being safe to call headlessly with a stub `Contexte`
+ * (`ctx.etat.plan` and `ctx.canvas.querySelector` only — no `render()`, no `document`), so the
+ * SAME function drives both the real gesture below and `tests/bouts-de-mur.ts`.
+ */
+export function v5WallEndDragApply(
+  ctx: Contexte,
+  wallId: unknown,
+  bout: "a" | "b",
+  target: Pt,
+  final: boolean,
+): Mur | null {
+  const P = ctx.etat.plan;
+  const w = v5WallById(ctx, wallId);
+  if (!P || !w || w.isOutline) return null;
+  w[bout] = target;
+  w.free = 1;
+  v5ResoudreGeometrie(P, final);
+  if (final) bornerLesMeubles(ctx);
+  v5Touch(ctx);
+  return w;
+}
+
+export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unknown, bout: "a" | "b"): void {
+  const P = ctx.etat.plan;
+  const w = v5WallById(ctx, wallId);
+  if (!P || !w || w.isOutline) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  if (spaceHeld() || measureMode()) return;
+  e.preventDefault(); e.stopPropagation();
+  v5SelectWall(ctx, wallId); render(ctx);
+  const fixe: "a" | "b" = bout === "a" ? "b" : "a";
+  const p0: Pt = [w[bout][0], w[bout][1]];
+  const anchor: Pt = [w[fixe][0], w[fixe][1]];
+  const freeAvant = w.free;
+  beginGesture();
+  ctx.crochets.dragStart?.();
+  const px0 = e.clientX, py0 = e.clientY;
+  let moved = false;
+  // G-3. A clean click on the handle SELECTS the wall (already done above): neither history nor
+  // geometry touched until the pointer has crossed 3 px, same threshold as every other geometry
+  // gesture in this file.
+  const move = (ev: PointerEvent): void => {
+    if (!moved) {
+      if (Math.hypot(ev.clientX - px0, ev.clientY - py0) < 3) return;
+      moved = true; pushHistory(ctx);
+    }
+    const cm = evtApt(ctx, ev);
+    const step = sansGrille(ev) ? 1 : (ctx.etat.opts.snap ? 5 : 1);
+    const target = v5WallEndDrop(P, w.id, anchor, cm.x, cm.y, ctx.vue.scale, ev.altKey, step);
+    v5WallEndDragApply(ctx, w.id, bout, target, false);
+    render(ctx);
+    v5DrawWallDims(ctx, [w]);
+    ctx.crochets.liveAnalyze?.();
+  };
+  const up = (): void => {
+    window.removeEventListener("pointermove", move);
+    v5ClearDims(ctx);
+    if (moved) {
+      v5ResoudreGeometrie(P, true);
+      const msg = v5FlushOpeningsBorned();
+      if (msg) toast(msg, { geste: true });
+      bornerLesMeubles(ctx);
+      v5Touch(ctx);
+    }
+    render(ctx);
+    endGesture();
+    ctx.crochets.dragEnd?.();
+  };
+  // G-12. Escape: the endpoint AND its `free` flag return to before the gesture, then everything
+  // touching it re-settles (a neighbor may have reacted to the endpoint while it was away).
+  const cancel = (): void => {
+    w[bout] = p0; w.free = freeAvant;
+    v5ResoudreGeometrie(P, true);
+    bornerLesMeubles(ctx);
+    v5Touch(ctx);
+    moved = false;
+    render(ctx);
+  };
+  window.addEventListener("pointermove", move);
+  armGesture(up, null, cancel);
 }
 
 // =================================================================================================
@@ -923,7 +1089,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
     return;
   }
   const t = e.target as Element | null;
-  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx")) return;
+  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend")) return;
   const wallEl = (t && t.closest) ? t.closest<HTMLElement>("[data-w]") : null;
   if (wallEl && ctx.wallsMode) {
     // An outline wall does not drag by its band (it follows the outline): it gets SELECTED.

@@ -82,6 +82,9 @@ export interface Gestes {
   contourSommetPointerDown?: (e: PointerEvent, i: number) => void;
   contourSommetSupprimer?: (e: PointerEvent, i: number) => void;
   supprimerMurSelectionne?: (e: PointerEvent) => void;
+  /** A selected interior wall's own ENDPOINT handle (owner's report: "choper les extrémités des
+   * murs et pouvoir étendre et relier à d'autres murs"), `gestes/murs.ts`'s `v5StartWallEndDrag`. */
+  boutMurPointerDown?: (e: PointerEvent, wallId: string, bout: "a" | "b") => void;
   /** Placing an object turns its layer back on (G-22, gestes/pose.ts): the toggles follow (js/28). */
   syncLayerToggles?: () => void;
   /** The rail drawer (js/09): an armed placement closes it, otherwise it covers what you're aiming at. */

@@ -16,7 +16,7 @@ import type { Contexte } from "./contexte.ts";
 import { $ } from "../noyau/dom.ts";
 
 const HINTS: Record<string, string> = {
-  walls: "Grab <b>any wall</b>; <b>Shift</b> forces the axis.",
+  walls: "Grab <b>any wall</b>, or one of its <b>ends</b> to extend it; <b>Alt</b> frees the angle, <b>Ctrl</b> the centimetre.",
   multi: "Drag to move the group; <b>Del</b> deletes them all, <b>Ctrl+C</b> copies it.",
   measure: "Click two points; the cursor shows the distances around it.",
   // Placement is a drag-and-drop: the click ARMS it. Said ONE time, on the first click on a thumbnail.
