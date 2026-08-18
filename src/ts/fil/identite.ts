@@ -43,8 +43,8 @@ export function v5DeviceTag(): string {
 let _plan: (() => PlanV5 | null | undefined) | null = null;
 export function brancherPlanIdentite(fn: () => PlanV5 | null | undefined): void { _plan = fn; }
 
-const radicauxUtilises = (avecEtiquette: boolean): Set<string> => {
-  const P = (_plan && _plan()) || ({} as PlanV5);
+const radicauxUtilises = (avecEtiquette: boolean, plan?: PlanV5 | null): Set<string> => {
+  const P = plan || (_plan && _plan()) || ({} as PlanV5);
   const used = new Set<string>();
   (["walls", "openings", "pieces", "cells"] as const).forEach((k) => {
     const l = (P as unknown as Record<string, { id: unknown }[]>)[k] || [];
@@ -53,11 +53,13 @@ const radicauxUtilises = (avecEtiquette: boolean): Set<string> => {
   return used;
 };
 
-export function v5NewId(prefix: string): string {
+export function v5NewId(prefix: string, plan?: PlanV5 | null): string {
   const tag = v5DeviceTag();
   // We number on the STEM (label stripped): the sequence stays readable ("w20-a3f9c1" after w19)
   // instead of restarting at w1 as soon as a label frees up the small numbers.
-  const used = radicauxUtilises(true);
+  // A pure model operation may pass the plan it is editing. The ordinary UI path keeps using the
+  // plan wired at boot, so existing callers and their identifiers remain unchanged.
+  const used = radicauxUtilises(true, plan);
   let n = 1, base: string;
   do { base = prefix + (n++); } while (used.has(base));
   return base + "-" + tag;
