@@ -120,6 +120,7 @@ async function moveTo(p: VerdictSonde, steps = 8, from: VerdictSonde) {
 }
 async function release(p: VerdictSonde) { await M("mouseReleased", p.x, p.y); await pause(90); }
 async function drag(from: VerdictSonde, to: VerdictSonde, steps = 16) { await press(from); await moveTo(to, steps, from); await release(to); }
+async function click(p: VerdictSonde) { await press(p); await release(p); }
 async function key(k: string, code: string, type: "keyDown" | "keyUp") { await send("Input.dispatchKeyEvent", { type, key: k, code }); }
 
 // ---- micro-harness -----------------------------------------------------------------------------
@@ -137,8 +138,10 @@ async function test(name: string, fn: (...args: VerdictSonde[]) => VerdictSonde 
   cur.fails.forEach((f: VerdictSonde) => console.log("        - " + f));
 }
 
-const wallsMode = (on: VerdictSonde) => evaluate(`__plan.wallsMode(${on ? "true" : "false"}); true`).then(() => pause(120));
-const wallRect = (id: string) => J(`(function(){var e=document.querySelector('[data-w="'+${JSON.stringify(id)}+'"]');
+const wallRect = (id: string) => J(`(function(){var w=__plan.v5WallById(${JSON.stringify(id)});if(!w)return null;
+  var p=__plan.aptToScreen(w.a[0]+.2*(w.b[0]-w.a[0]),w.a[1]+.2*(w.b[1]-w.a[1])),r=document.getElementById("viewport").getBoundingClientRect();
+  return {x:r.left+p.x,y:r.top+p.y};})()`);
+const moveRect = (id: string) => J(`(function(){var e=document.querySelector('.v5wmove[data-w="'+${JSON.stringify(id)}+'"]');
   if(!e) return null; var r=e.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2};})()`);
 const pieceRect = (id: string) => J(`(function(){var e=document.querySelector('#canvas .piece[data-id="'+${JSON.stringify(id)}+'"]');
   if(!e) return null; var r=e.getBoundingClientRect();
@@ -150,20 +153,23 @@ const undoCount = async () => Number(await evaluate(`String(__plan.histInfo().un
 //  1. mur_re_glisse_apres_selection_ne_le_supprime_pas
 // =============================================================================
 // The delete "x" of the SELECTED wall (painted by the handle pass of rendu/calque.ts) used to sit dead-center on
-// the wall's own segment: exactly where `[data-w]` (the drag band) is grabbed. Selecting a wall by
-// dragging it once, then reaching for the SAME spot to nudge it again, hit the delete cross
+// the wall's own segment. Selecting a wall by dragging it once, then reaching for the SAME spot
+// to nudge it again, hit the delete cross
 // instead — the wall vanished, silently (no toast: the layer's own early return hands the event to
 // `.v5wx` before the wall-drag gesture is ever armed).
 await test("mur_re_glisse_apres_selection_ne_le_supprime_pas", async () => {
-  await wallsMode(true);
   const w = await J(`(function(){var x=__plan.plan.walls.filter(function(w){return !w.isOutline;})[0];
     return x?{id:String(x.id), a:x.a, b:x.b}:null;})()`);
   if (!ok(w, "aucune cloison intérieure dans le gabarit")) return;
   const n0 = await J(`__plan.plan.walls.length`);
 
-  // First grab: selects AND moves the wall (this is also what paints the delete cross).
-  const p0 = await wallRect(w.id);
-  if (!ok(p0, "bande de mur introuvable (data-w)")) return;
+  // Reveal and select through the midpoint handle, then use that same dedicated target twice.
+  const bande = await wallRect(w.id);
+  if (!ok(bande, "centre du mur introuvable")) return;
+  await M("mouseMoved", bande.x, bande.y, { button: "none", buttons: 0 }); await pause(120);
+  let p0 = await moveRect(w.id);
+  if (!ok(p0, "poignée move introuvable")) return;
+  await click(p0); p0 = await moveRect(w.id);
   await drag(p0, { x: p0.x + 30, y: p0.y + 30 }, 16);
   await pause(150);
   ok(await J(`__plan.plan.walls.length`) === n0, "le premier geste ne doit ni créer ni supprimer de mur");
@@ -173,8 +179,8 @@ await test("mur_re_glisse_apres_selection_ne_le_supprime_pas", async () => {
   if (!ok(moved || w1.a[0] !== w.a[0], "précondition: le premier geste doit déplacer la cloison")) return;
 
   // Second grab, from the wall's OWN rendered center (the natural "adjust it again" gesture).
-  const p1 = await wallRect(w.id);
-  if (!ok(p1, "bande de mur introuvable après le premier geste")) return;
+  const p1 = await moveRect(w.id);
+  if (!ok(p1, "poignée move introuvable après le premier geste")) return;
   await drag(p1, { x: p1.x - 30, y: p1.y - 30 }, 16);
   await pause(150);
 

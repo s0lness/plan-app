@@ -7,7 +7,6 @@
      page disappear (blank page, no JS exception). The definition comes from the wall band, drawn on the
      polygon in the layer's svg. */
   /* Murs mode: furniture is dimmed and frozen across the whole canvas */
-  .app.walls .piece{pointer-events:none!important;opacity:.5}
   /* measure mode: NOTHING on the canvas is grabbable — only measure points get placed. All pieces
      + shape/resize/rotate handles + cell labels go pointer-inert so left clicks reach the
      #viewport measure handler (snapping is geometric, it does NOT need the piece DOM to be hit). */

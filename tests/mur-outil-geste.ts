@@ -117,6 +117,7 @@ const M = (type: string, x: VerdictSonde, y: VerdictSonde, extra?: Record<string
   type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1,
   clickCount: 1, pointerType: "mouse",
 }, extra || {}));
+const touch = (type: string, pts: VerdictSonde) => send("Input.dispatchTouchEvent", { type, touchPoints: pts || [] });
 const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function press(p: VerdictSonde) { await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await M("mousePressed", p.x, p.y); await pause(20); }
 async function moveTo(p: VerdictSonde, steps = 10, from: VerdictSonde) {
@@ -169,13 +170,11 @@ const interiorWalls = () => J(`__plan.plan.walls.filter(function(w){return !w.is
   .map(function(w){return {id:String(w.id), a:w.a, b:w.b, free:w.free||0};})`);
 const undoCount = () => evaluate(`String(__plan.histInfo().undo)`);
 const armed = () => evaluate(`String(__plan.v5ui.draw)`);
-// Installs the default blank apartment (no interior walls) and switches to Walls mode.
+// Installs the default blank apartment with no interior walls.
 async function seedBlank() {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
     walls:[], openings:[], pieces:[], cells:[]}); true`);
   await pause(150);
-  await evaluate(`__plan.wallsMode(true); true`);
-  await pause(80);
 }
 const armDraw = async () => {
   if (await armed() !== "true") await click(await centerOf("#btnDrawWall"));
@@ -272,11 +271,10 @@ await test("d_tenu_sur_un_mur_affiche_des_guides_et_n_ecrit_rien", async () => {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
     walls:[{id:"w1", a:[100,50], b:[100,300], t:12}], openings:[], pieces:[], cells:[]}); true`);
   await pause(150);
-  await evaluate(`__plan.wallsMode(true); true`);
-  await pause(80);
-
-  // Select the wall with a clean click (G-3: selecting never writes).
-  await click(await aptPoint(100, 175));
+  const p = await aptPoint(100, 175);
+  await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await pause(100);
+  const h = await centerOf('.v5wmove[data-w="w1"]'); if (!ok(h, "poignée move absente au survol")) return;
+  await click(h);
   ok(await evaluate(`String(__plan.v5ui.selWall)`) === "w1", "le mur w1 doit être sélectionné");
 
   const avant = await evaluate(`JSON.stringify(__plan.serialize())`);
@@ -299,6 +297,53 @@ await test("d_tenu_sur_un_mur_affiche_des_guides_et_n_ecrit_rien", async () => {
   const apres = await evaluate(`JSON.stringify(__plan.serialize())`);
   ok(apres === avant, "le plan doit rester OCTET POUR OCTET identique avant/après D tenu");
   ok(await undoCount() === undoAvant, "D tenu ne doit rien pousser dans l'historique");
+});
+
+// =============================================================================
+//  4. clic_vide_n_ecrit_rien_puis_glisser_trace_un_mur
+// =============================================================================
+await test("clic_vide_n_ecrit_rien_puis_glisser_trace_un_mur", async () => {
+  await seedBlank();
+  const A = await aptPoint(100, 100), B = await aptPoint(100, 220);
+  const mursAvant = await interiorWalls();
+  const historiqueAvant = await undoCount();
+  await evaluate(`__plan.selAdd("selection-temoin"); true`);
+  await click(A);
+  const mursApresClic = await interiorWalls();
+  ok(mursApresClic.length === mursAvant.length,
+    `un clic propre dans le vide ne doit créer aucun mur, vu ${mursAvant.length} puis ${mursApresClic.length}`);
+  ok(await undoCount() === historiqueAvant, "un clic propre dans le vide ne doit rien pousser dans l'historique");
+  ok((await J(`__plan.selDump()`)).modele.length === 0, "un clic propre dans le vide doit désélectionner ce qui l'était avant");
+
+  await drag(A, B, 14);
+  const mursApresGlisser = await interiorWalls();
+  ok(mursApresGlisser.length === mursAvant.length + 1,
+    `le glisser sans outil armé doit ensuite créer un mur, vu ${mursApresGlisser.length}`);
+});
+
+// =============================================================================
+//  5. au_doigt_le_vide_pan_sans_creer_de_mur
+// =============================================================================
+await test("au_doigt_le_vide_pan_sans_creer_de_mur", async () => {
+  await seedBlank();
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  const A = await aptPoint(150, 140), B = { x: A.x + 100, y: A.y + 70 };
+  const vueAvant = await J(`__plan.viewTransform()`);
+  await touch("touchStart", [{ x: A.x, y: A.y, id: 1 }]);
+  await touch("touchMove", [{ x: B.x, y: B.y, id: 1 }]); await pause(120);
+  await touch("touchEnd", []); await pause(120);
+  const vueApres = await J(`__plan.viewTransform()`);
+  const mursApresDoigt = await interiorWalls();
+  ok(vueApres.ox !== vueAvant.ox || vueApres.oy !== vueAvant.oy,
+    `le glisser au doigt doit déplacer la vue, vu ${JSON.stringify(vueAvant)} puis ${JSON.stringify(vueApres)}`);
+  ok(mursApresDoigt.length === 0, `le glisser au doigt ne doit créer aucun mur, vu ${mursApresDoigt.length}`);
+
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  const C = await aptPoint(280, 100), D = await aptPoint(280, 220);
+  await drag(C, D, 14);
+  const mursApresSouris = await interiorWalls();
+  ok(mursApresSouris.length === 1,
+    `le même espace doit rester traçable à la souris sans outil armé, vu ${mursApresSouris.length} mur(s)`);
 });
 
 // ---- verdict -----------------------------------------------------------------------------------

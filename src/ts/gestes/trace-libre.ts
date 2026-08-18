@@ -17,7 +17,7 @@
 // THE TOOL STAYS ARMED across strokes (2026-08-14, same owner's decision as the single-segment
 // tool): this file used to disarm itself on every release via an injected `onDone` callback,
 // which no longer exists. Disarming is now entirely `murs.ts`'s job (the button again, Escape,
-// leaving Walls mode) and this file has nothing left to call back into it for.
+// pressing Escape while idle) and this file has nothing left to call back into it for.
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5Touch } from "../app/contexte.ts";
@@ -130,7 +130,7 @@ function creerChaineDeMurs(ctx: Contexte, rawPts: readonly Pt[], libre: boolean)
  * same as the single-segment tool in `murs.ts`'s own `v5StartDraw`: re-clicking the button
  * between every wall was the #1 complaint about drawing a room). Disarming is therefore no longer
  * this function's job; it happens only where it is a deliberate act (the button again, Escape,
- * leaving Walls mode), all owned by `murs.ts`. The `onDone` callback this used to take has no
+* pressing Escape while idle), all owned by `murs.ts`. The `onDone` callback this used to take has no
  * more work to do and was removed rather than kept as a no-op parameter.
  */
 export function v5StartFreeDraw(ctx: Contexte, e: PointerEvent): void {
@@ -145,7 +145,7 @@ export function v5StartFreeDraw(ctx: Contexte, e: PointerEvent): void {
   const px0 = e.clientX, py0 = e.clientY;
   let moved = false;
   const move = (ev: PointerEvent): void => {
-    // G-3-style threshold: the same 3px the rest of Walls mode uses before it decides a gesture
+// G-3-style threshold: the same 3px the other wall gestures use before deciding a gesture
     // is really underway (the wall drag, the vertex drag, the outline edge drag, `gestes/murs.ts`).
     if (!moved && Math.hypot(ev.clientX - px0, ev.clientY - py0) < 3) return;
     moved = true;

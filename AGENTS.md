@@ -77,7 +77,7 @@ plan/
 edit src/ts/…
 node build.ts                    # builds index.html, THE DELIVERABLE
 node tests/rapide.ts             # THE FAST LOOP, without a browser, < 1 s
-node tests/all.ts                # THE PRE-DEPLOY BARRIER: 36 suites, in parallel
+node tests/all.ts                # THE PRE-DEPLOY BARRIER: 60 suites, in parallel
 git add -A && git commit && git push
 ```
 `tests/all.ts` is the ONLY pre-deploy barrier launcher. It gives every suite a private `%TEMP%`,
@@ -233,6 +233,52 @@ the client's JS. The three longest suites make up a full run by themselves
 (`model-v5-modele-defaut` ~226 s, `gestes-precision` ~201 s, `model-v5-fil-serveur` ~188 s): look
 there to save time, not in `--jobs`.
 
+**EVERY FIGURE IN THIS SECTION DESCRIBES A HARNESS THAT NO LONGER EXISTS.** They were measured on
+28 suites, with six of them spawning a whole Chrome per test case. The repository now has 60
+suites, and those six share one browser per suite. See the next section for the current numbers;
+what SURVIVES from this one is the reasoning about scheduler fairness, the `--jobs` default, and
+the second-chance retry, none of which the harness change touches.
+
+### One browser per suite (measured on 2026-08-17 and 2026-08-18)
+
+Six suites had each copied the same harness: build a page, `spawnSync` a whole headless Chrome on
+it with `--dump-dom` and a brand-new profile, read the verdict back. That was **159 cold starts per
+barrier run** (`model-v5-*` 54, `run` 29, `collab-annuler` 34, `deux-appareils` 24, `collab-accuses`
+13, `curseur-dire-deux-appareils` 5), each under a FIXED `spawnSync` timeout. On a busy machine a
+cold start passed that bound, Chrome was killed before rendering, and a whole suite reported `0/11`
+without a word about the code. `tests/_navigateur.ts` replaced it: one Chrome per suite driven over
+CDP, a case is a `Page.navigate`, and the verdict is awaited as a CONDITION under a bound that
+calibrates itself on the suite's median. Why, and what was rejected:
+`docs/decisions/0006-un-navigateur-par-suite.md`.
+
+Same machine, same parallelism (8 tasks), same priority setting, the six converted suites INSIDE
+the barrier:
+
+| suite | before | after |
+|---|---|---|
+| `model-v5-modele-defaut` | 542,7 s | 8,6 s |
+| `model-v5-ancien-plan` | 379,9 s | 3,0 s |
+| `model-v5-fil-serveur` | 334,4 s | 3,8 s |
+| `collab-accuses` | 301,1 s | 2,4 s |
+| `model-v5-edition` | 274,5 s | 5,9 s |
+| `model-v5-conversion-rendu` | 257,5 s | 5,1 s |
+
+Whole barrier, `PLAN_TESTS_PRIORITE=normale`, machine otherwise idle: **before, it had NOT finished
+after 600 s** (57 of 60 suites); **after, 421,8 s, 60/60 suites, 4966/4966 checks**. Two suites
+(`partage-navigateur`, `retour-navigateur`) still needed the sequential second chance, which is the
+known instability, not a defect.
+
+**AND THE LOW-PRIORITY SETTING HAS BECOME THE FIRST COST, which is a reversal.** It was measured
+against browsers that lived less than a second each; against a browser that lives for a whole
+suite, pinning the tree at `BELOW_NORMAL` starves the page for the entire run. Measured the same
+day on the five `model-v5` suites in parallel: **24,2 s at normal priority, 137,5 s with the
+lowering**, i.e. every suite roughly forty times slower. Making the watcher idempotent (never
+re-lowering a PID it already handled) does NOT recover it: 197,8 s, so the cost is the low priority
+itself and not the fight with Chrome raising its renderers back. The default is LEFT AS IS in this
+batch: what the lowering buys is the owner's keyboard comfort, it was decided from a jitter
+measurement, and reversing it needs its own measurement rather than a duration argument. Replay
+with `node tests/all.ts model-v5` against `PLAN_TESTS_PRIORITE=normale node tests/all.ts model-v5`.
+
 **The concurrency optimum did not move enough to change the default.** 10 tasks took 311 s versus
 334 s with 8, a 7% difference, over one run each; that is within this machine's noise. The default
 remains `floor(cœurs × 2/3)` = 8, which matches the ceiling measured elsewhere on this workstation
@@ -269,7 +315,7 @@ repository.
 | `tests/porte.ts` | 0 | THE DOOR: the `HOUSEHOLD_HOSTS` / `GUEST_HOST` allowlists and their `*.` wildcard, the ONE `who()`, and the middleware's refusals. |
 | `tests/invitation.ts` | 0 | THE INVITE: token redemption and its single 404, the session cookie, the owner's create/list/revoke, and the guest door's effect on `/api/plan` and `/ws`. |
 | `tests/identite-fil.ts` | 0 | WHO A NAME BELONGS TO: `displayName` / `personColor` / `wsSameAccount` including guest-vs-guest, and the proof that a name of `<img onerror=…>` renders as TEXT. |
-| `tests/run.ts` | 1 | 30 general regression tests on the deliverable. |
+| `tests/run.ts` | 1 | 29 general regression tests on the deliverable. |
 | `tests/model-v5-*.ts` (7 suites) | 1 each | 74 tests: walls-only model, server rejection, D1 fallback. Filter: `all.ts model-v5`. |
 | `tests/boot-vierge.ts` | 1 | THE NUMBER ONE TRAP: the page mounts without a JS error, with a blank profile THEN a seeded floor plan. |
 | `tests/interactions.ts` | 1 | 6 REAL MOUSE tests (CDP): gestures, view, remote op, rail, openings, wheel routed to the panel under the pointer. |
@@ -282,7 +328,7 @@ repository.
 | `tests/selection-visible.ts` | 1 | 7 REAL MOUSE tests: the lasso also takes OPENINGS, and what it catches is marked DURING the gesture, without writing anything. |
 | `tests/faces-pose-copie.ts` | 1 | Faces of a wall-mounted object: placement, copy, side change. |
 | `tests/textes-lisibles.ts` | 1 | 5 tests, NO UPSIDE-DOWN TEXT: the semicircle rule across every text family, screen + PNG + print. |
-| `tests/deux-appareils.ts` | 1 | 15 tests, TWO DEVICES behind one address: replay log, presence, cursors, undone server rejection, banners. |
+| `tests/deux-appareils.ts` | 1 | 24 tests, TWO DEVICES behind one address: replay log, presence, cursors, undone server rejection, banners. |
 | `tests/collab-annuler.ts` | 1 | 34 tests, realtime wire: fingerprint, identifiers, field-by-field diff, server mirror, new household, two-person UNDO, receive-time bounds, announced disappearance, banner throttling. **Also checks that no visible text contains an em dash.** |
 | `tests/collab-accuses.ts` | 1 | 13 tests, LOSSY TRANSPORT: the REAL `PlanRoom` runs in the page, frames are lost / delayed / reordered; acknowledgement, acknowledged mirror, retransmission, reconnection. |
 | `tests/plan-abime.ts` | 2 | 13 tests, slow GET: a damaged device does not overwrite the household floor plan. |

@@ -7,6 +7,7 @@
 //   node tests/all.ts run model-v5    # only run suites whose name contains this
 //   node tests/all.ts --repeat 5      # rerun the whole barrier 5 times (stability proof)
 //   node tests/all.ts --list          # list the suites and exit
+//   node tests/all.ts --sans-verrou   # run even if another barrier holds the lock (see below)
 //
 // WHAT THE DEFAULT MODE MEASURES, AND THAT IS THE WHOLE POINT OF THE SWITCHOVER (batch E5c): the
 // SERVED file, i.e. `index.html`, now produced from `src/ts` by `node build.ts`. Before the
@@ -82,6 +83,10 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
   { f: "tests/mur-outil-geste.ts",         chrome: 1 },   // single-segment wall tool, real mouse+keyboard: stays armed across walls, endpoint snap shares the exact point, a drawn wall keeps its length, D-held guides on a wall write nothing
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
+  { f: "tests/poignees-survol-geste.ts",    chrome: 1 }, // real mouse: wall handles on hover, dedicated move target, body draws, facade selects, short-wall crowding
+  { f: "tests/sans-mode-geste.ts",          chrome: 1 }, // real mouse and finger: one aim-based canvas with no persistent structural toggle
+  { f: "tests/bouts-de-mur-geste.ts",      chrome: 1 },   // real mouse: a wall's own endpoint handle is hittable and extends it, the wall body still drags the whole wall, a clean click writes nothing
+  { f: "tests/coude-mur-geste.ts",         chrome: 1 },   // real mouse: midpoint elbow handle, wall body remains reachable, clean click writes nothing
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
   { f: "tests/etiquettes-recouvrement.ts", chrome: 1 },   // room labels vs furniture labels vs each other, real DOM, the owner's real apartment
@@ -101,6 +106,8 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/fenetre-battement.ts",       chrome: 0 },   // PURE tracing: no browser
   { f: "tests/mur-libre.ts",               chrome: 0 },   // PURE geometry: no browser
   { f: "tests/jonction-glisser-mur.ts",    chrome: 0 },   // PURE geometry: junctions carried by a wall drag, outline left alone, one-hop chains, exact round trip, the wire diff
+  { f: "tests/bouts-de-mur.ts",            chrome: 0 },   // PURE geometry: a wall endpoint's snap cascade (junction, segment, outline, then 45°, then the grid) and the `free` rule
+  { f: "tests/coude-mur.ts",               chrome: 0 },   // PURE geometry: midpoint split, opening ownership and absolute positions
   { f: "tests/sans-grille.ts",             chrome: 0 },   // PURE: the Ctrl/Cmd modifier and the relative grid math, no browser
   { f: "tests/trace-libre.ts",             chrome: 0 },   // PURE geometry, freehand wall trace: no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
@@ -169,6 +176,41 @@ if (!fs.existsSync(APP)) {
   process.exit(1);
 }
 if (flag("--list")) { liste.forEach((s) => console.log(s.f)); process.exit(0); }
+
+// ---- ONE BARRIER AT A TIME ---------------------------------------------------------------
+// On 2026-08-17, THREE barriers ran at once on this machine and not one of them finished: each
+// had been launched by a different agent told to verify its own work. Sixty-odd browsers fought
+// over twelve cores, every suite ran past the bounds it measures itself against, and the run that
+// eventually printed a verdict was measuring the other two, not the code. Five suites launched at
+// 08:10 were still alive at 13:25.
+//
+// Same guard as the performance sampler's `Global\pcmon-sylve` mutex, in the only shape Node
+// offers on Windows: a lock file holding the owner's PID, ignored the moment that PID is gone, so
+// a barrier killed with Ctrl+C never blocks the next one. `--sans-verrou` steps over it, for the
+// deliberate case of comparing two barriers side by side.
+const VERROU = path.join(os.tmpdir(), "plan-barriere.lock");
+function pidVivant(pid: number): boolean {
+  // `kill(pid, 0)` sends nothing: it only asks whether the process can be signalled. EPERM means
+  // it exists and belongs to someone else, which still counts as alive.
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; }
+}
+if (!flag("--sans-verrou")) {
+  let tenuPar = 0;
+  try { tenuPar = Number(fs.readFileSync(VERROU, "utf8").trim()) || 0; } catch { /* pas de verrou */ }
+  if (tenuPar && tenuPar !== process.pid && pidVivant(tenuPar)) {
+    console.error(`Une barrière tourne déjà sur cette machine (PID ${tenuPar}).`);
+    console.error(`Deux barrières en parallèle ne mesurent plus le code, elles se mesurent l'une l'autre.`);
+    console.error(`  attendez qu'elle finisse, ou  node tests/all.ts --sans-verrou  pour passer outre.`);
+    process.exit(1);
+  }
+  try { fs.writeFileSync(VERROU, String(process.pid)); } catch { /* pas de verrou possible : on continue */ }
+  process.on("exit", () => {
+    // Only the holder erases it: a run that stepped over the lock must not free someone else's.
+    try { if (Number(fs.readFileSync(VERROU, "utf8").trim()) === process.pid) fs.rmSync(VERROU, { force: true }); }
+    catch { /* déjà parti */ }
+  });
+}
 
 // ---- reading a suite's verdict -------------------------------------------------------------
 // Suites don't all have the same last word. We read what they say, we don't guess it:
@@ -292,6 +334,20 @@ function tueArbresEtEfface(dir: string): Promise<void> {
   });
 }
 
+// ---- SAYING WHAT IS RUNNING, WHILE IT RUNS -----------------------------------------------------
+// The barrier only spoke when a suite FINISHED. On 2026-08-17 that meant five hours of a blank
+// terminal while five suites were stuck, with no way to tell a slow run from a dead one without
+// going to look at the process list. A suite now announces itself when it STARTS, and every
+// minute the barrier names what is still in flight and for how long. A stall becomes visible in
+// sixty seconds instead of never.
+const enVol = new Map<string, number>();
+const battement = setInterval(() => {
+  if (!enVol.size) return;
+  const t = [...enVol].map(([f, d]) => path.basename(f, ".ts") + " " + ((Date.now() - d) / 1000).toFixed(0) + " s");
+  process.stdout.write("  ...   " + enVol.size + " en cours : " + t.join(" · ") + "\n");
+}, 60000);
+battement.unref();
+
 function lance(suite: EntreeSuite): Promise<ResultatSuite> {
   return new Promise<ResultatSuite>((res) => {
     const t0 = Date.now();
@@ -299,6 +355,8 @@ function lance(suite: EntreeSuite): Promise<ResultatSuite> {
     const priv = fs.mkdtempSync(path.join(os.tmpdir(), "plan-run-" + nom + "-"));
     dossiersVivants.add(priv);
     dossiersCrees.add(priv);
+    enVol.set(suite.f, t0);
+    process.stdout.write("  ..    " + suite.f + "\n");
     const p = spawn(NODE, [suite.f, ...(suite.args || [])], {
       cwd: ROOT,
       stdio: ["ignore", "pipe", "pipe"],
@@ -309,6 +367,7 @@ function lance(suite: EntreeSuite): Promise<ResultatSuite> {
     p.stdout.on("data", (d) => { out += d; });
     p.stderr.on("data", (d) => { out += d; });
     const fin = (code: number | null, err?: Error) => {
+      enVol.delete(suite.f);
       const r = { suite, code, out: err ? out + String(err) : out, ms: Date.now() - t0 };
       tueArbresEtEfface(priv).then(() => res(r));
     };

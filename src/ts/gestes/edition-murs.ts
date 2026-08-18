@@ -7,7 +7,7 @@
 // gives a 90° corner. ORDER: the caller applies the GRID first, then this.
 //
 // THE OUTLINE MUST NOT SELF-INTERSECT, AND ONLY ONE PLACE SAYS SO: the cell card (`#rcWarn`),
-// which is on screen at all times in Walls mode. The old `#shapeWarn` banner used to live INSIDE
+// which follows a selected facade or corner. The old `#shapeWarn` banner used to live INSIDE
 // the config modal, hidden as soon as you edit the outline: it could never display.
 
 import type { Contexte } from "../app/contexte.ts";
@@ -109,5 +109,8 @@ export function drawOrthoGuides(ctx: Contexte, guides: GuideOrtho[] | null | und
 export function checkShapeWarn(ctx: Contexte): void {
   const rw = $("rcWarn"); if (!rw) return;
   const poly = (ctx.etat.plan && ctx.etat.plan.outline) || [];
-  rw.classList.toggle("on", ctx.wallsMode && poly.length > 2 && selfIntersects(poly));
+  const selection = ctx.ihm.selWall
+    ? (ctx.etat.plan.walls || []).find((w) => String(w.id) === String(ctx.ihm.selWall))
+    : null;
+  rw.classList.toggle("on", (!!selection?.isOutline || ctx.selVtx >= 0) && poly.length > 2 && selfIntersects(poly));
 }

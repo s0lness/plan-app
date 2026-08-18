@@ -10,25 +10,28 @@
 //             in <!doctype><head>. We wrap it ourselves at runtime.
 //   - probe : runs AFTER the app booted, drives the window.__plan test hook,
 //             writes a JSON verdict onto <html data-plan-test="...">.
-// Chrome is launched headless with --dump-dom --virtual-time-budget; we parse the
-// <html ...> open tag out of stdout and compare its dataset to what we expect.
+//
+// THE BROWSER ITSELF LIVES IN `_navigateur.ts`, shared with the five other suites that had
+// each copied this same harness: ONE Chrome for the whole suite instead of one cold start per
+// case (a case is a `Page.navigate`, not a process), and a verdict awaited as a CONDITION
+// instead of a fixed `--virtual-time-budget`. Read that file for the measurements and the why.
+//
+// `test()` and `runProbe()` are therefore ASYNC: every call site needs its `await`, and
+// `tests/` sits outside `tsconfig.json`'s `include`, so nothing here catches a forgotten one.
 //
 // Run:   node tests/run.ts [path-to-app-html]
 // Exit:  0 if every test passes, 1 otherwise.
 
 import type { DonneeDynamique } from "./_types.ts";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ControleSonde, ResultatTest, VerdictSonde } from "./_types.ts";
+import { ouvrirSonde, CHROME } from "./_navigateur.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---- config -----------------------------------------------------------------
-const NODE = process.execPath;
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 // Default source: the repo's REBUILT deliverable (`node build.ts` from src/).
 // The old monolithic working copy from the Claude job remains usable as an explicit argument.
 const DEFAULT_APP = path.join(__dirname, "..", "index.html");
@@ -42,74 +45,20 @@ if (!fs.existsSync(CHROME)) { console.error("Chrome not found:", CHROME); proces
 const APP_SRC = fs.readFileSync(APP_PATH, "utf8");
 
 // ---- harness ----------------------------------------------------------------
-// Build a temp html and run it in headless chrome, returning the parsed
-// data-* attributes of the <html> element (our verdict channel).
-let RUN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "plan-tests-"));
+// THE BROWSER ITSELF LIVES IN `_navigateur.ts`, shared with the five other suites that had each
+// copied this same harness: ONE Chrome for the whole suite instead of one cold start per case.
+// See that file for the measurements and the why.
+const sonde = ouvrirSonde(APP_SRC);
 
-function runProbe(name: string, seedJs: string, probeBody: string): VerdictSonde {
-  const caseDir = fs.mkdtempSync(path.join(RUN_DIR, "c-"));
-  const htmlPath = path.join(caseDir, "case.html");
-  const profileDir = path.join(caseDir, "profile");
-
-  // seed runs first; sets the test flag + localStorage before the app IIFE.
-  const seed = `<!doctype html><html><head><meta charset="utf-8"><script>
-    window.__PLAN_TEST__ = 1;
-    // The WALLS-ONLY model is the ONLY model: a plan seeded here in the old format is read and
-    // converted on load, exactly as for the user.
-    try { localStorage.clear(); } catch(e){}
-    ${seedJs || ""}
-  </script></head><body>`;
-
-  // probe runs last; wrapped so any throw is captured as a verdict rather than
-  // a silent white page. It writes JSON onto <html data-plan-test="...">.
-  const probe = `<script>(function(){
-    function emit(o){ try{ document.documentElement.dataset.planTest = JSON.stringify(o); }catch(e){} }
-    function run(){
-      try {
-        var errs = [];
-        try { errs = JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]; } catch(e){}
-        var __out = (function(){ ${probeBody} })();
-        __out = __out || {};
-        __out.jsErrors = errs.map(function(e){ return e && e.msg; });
-        emit(__out);
-      } catch(e) {
-        emit({ __probeError: String(e && e.stack || e) });
-      }
-    }
-    // Give the app's synchronous boot + any microtasks a beat; virtual-time
-    // makes this effectively instant but deterministic.
-    setTimeout(run, 0);
-  })();</script></body></html>`;
-
-  fs.writeFileSync(htmlPath, seed + APP_SRC + probe, "utf8");
-
-  const args = [
-    "--headless=new", "--disable-gpu", "--no-sandbox",
-    "--no-first-run", "--no-default-browser-check",
-    "--user-data-dir=" + profileDir,
-    "--virtual-time-budget=8000",
-    "--run-all-compositor-stages-before-draw",
-    "--dump-dom",
-    "file:///" + htmlPath.replace(/\\/g, "/"),
-  ];
-  const res = spawnSync(CHROME, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 60000 });
-  const stdout = res.stdout || "";
-
-  // parse data-plan-test off the <html ...> tag
-  const m = stdout.match(/<html[^>]*\bdata-plan-test="([^"]*)"/i);
-  if (!m) {
-    return { __noVerdict: true, __stdoutHead: stdout.slice(0, 600), __stderr: (res.stderr||"").slice(0,600) };
-  }
-  const raw = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'");
-  try { return JSON.parse(raw); }
-  catch (e) { return { __parseError: String(e), __raw: raw.slice(0, 400) }; }
+async function runProbe(name: string, seedJs: string, probeBody: string): Promise<VerdictSonde> {
+  return sonde.sonder(seedJs, probeBody);
 }
 
 // ---- assertion plumbing -----------------------------------------------------
 const results: ResultatTest[] = [];
-function test(name: string, seedJs: string, probeBody: string, check: ControleSonde): void {
+async function test(name: string, seedJs: string, probeBody: string, check: ControleSonde): Promise<void> {
   let pass = false, detail = "";
-  const v = runProbe(name, seedJs, probeBody);
+  const v = await runProbe(name, seedJs, probeBody);
   if (v.__noVerdict) { detail = "no verdict emitted (app failed to boot?)\n  stdout: " + (v.__stdoutHead||"") + "\n  stderr: " + (v.__stderr||""); }
   else if (v.__probeError) { detail = "probe threw: " + v.__probeError; }
   else if (v.__parseError) { detail = "verdict parse error: " + v.__parseError + " raw=" + v.__raw; }
@@ -193,7 +142,7 @@ const V3_PLAN = {
 // SEED a plan in the old format additionally verify that this read loses nothing.
 
 // 1. Boot: fresh install (no localStorage) -> no error, one cell, setup overlay opens.
-test("boot_fresh_install", "", `
+await test("boot_fresh_install", "", `
   var P = window.__plan.plan;
   var setup = document.getElementById("setup");
   return {
@@ -216,7 +165,7 @@ test("boot_fresh_install", "", `
 
 // 2. REPLACES `boot_seeded_v4`: a plan in the old format is READ and CONVERTED on load.
 //    The two rooms become two computed cells, the furniture survives, the assistant stays closed.
-test("boot_reads_and_converts_v4", seedV4(TWO_ROOMS), `
+await test("boot_reads_and_converts_v4", seedV4(TWO_ROOMS), `
   var P = window.__plan.plan;
   var setup = document.getElementById("setup");
   return {
@@ -240,7 +189,7 @@ test("boot_reads_and_converts_v4", seedV4(TWO_ROOMS), `
      && expect(v.setupHidden === true || v.setupHidden === null, "setup should stay closed with a seeded plan, hidden=" + v.setupHidden));
 
 // 3. Add piece at a cursor point inside the right-hand cell -> it lands in that cell.
-test("add_at_cursor_lands_in_the_cell", seedV4(TWO_ROOMS), `
+await test("add_at_cursor_lands_in_the_cell", seedV4(TWO_ROOMS), `
   // point (450,150) is inside the right cell (apt x 300..600)
   var p = window.__plan.addAtCursor("arm", 450, 150);
   var at = window.__plan.pieceAt(p.id);
@@ -249,7 +198,7 @@ test("add_at_cursor_lands_in_the_cell", seedV4(TWO_ROOMS), `
      && expect(v.type === "arm", "wrong type: " + v.type));
 
 // 3b. placeAt into the left cell explicitly.
-test("placeAt_lands_in_the_cell", seedV4(TWO_ROOMS), `
+await test("placeAt_lands_in_the_cell", seedV4(TWO_ROOMS), `
   var p = window.__plan.placeAt("chair", { x: 100, y: 100 });
   var at = window.__plan.pieceAt(p.id);
   return { cell: at && at.cell, type: at && at.type };
@@ -257,7 +206,7 @@ test("placeAt_lands_in_the_cell", seedV4(TWO_ROOMS), `
 
 // 4. REPLACES `containerAtApt_resolution`: there is no longer a container to resolve, only
 //    computed CELLS. Same geometric test, on cellAt().
-test("cell_at_point_resolution", seedV4(TWO_ROOMS), `
+await test("cell_at_point_resolution", seedV4(TWO_ROOMS), `
   var a = window.__plan.cellAt(100, 100);   // left cell
   var b = window.__plan.cellAt(450, 150);   // right cell
   var c = window.__plan.cellAt(5000, 5000); // nowhere
@@ -269,7 +218,7 @@ test("cell_at_point_resolution", seedV4(TWO_ROOMS), `
      && expect(v.c === "null", "point outside should be null, got " + v.c));
 
 // 5. Resize handle: east edge +40 -> w+40, opposite (west) edge x fixed.
-test("resize_east_edge_plus40", seedV4(TWO_ROOMS), `
+await test("resize_east_edge_plus40", seedV4(TWO_ROOMS), `
   var p = window.__plan.plan.pieces[0];       // sofa3, west edge fixed
   var before = { x: p.x, w: p.w };
   var after = window.__plan.resizeHandle(p.id, "e", 40, 0);
@@ -278,7 +227,7 @@ test("resize_east_edge_plus40", seedV4(TWO_ROOMS), `
      && expect(v.afterX === v.beforeX, "west (opposite) edge x must stay fixed: " + v.beforeX + " -> " + v.afterX));
 
 // 5b. Resize handle: south edge +40 -> h+40, top (y) fixed.
-test("resize_south_edge_plus40", seedV4(TWO_ROOMS), `
+await test("resize_south_edge_plus40", seedV4(TWO_ROOMS), `
   var p = window.__plan.plan.pieces[0];
   var before = { y: p.y, h: p.h };
   var after = window.__plan.resizeHandle(p.id, "s", 0, 40);
@@ -288,8 +237,7 @@ test("resize_south_edge_plus40", seedV4(TWO_ROOMS), `
 
 // 6. REPLACES `wall_top_drag_bottom_fixed`: the apartment outline replaces the room polygon.
 //    Pulling the TOP edge inward leaves the BOTTOM edge where it is.
-test("outline_top_edge_drag_bottom_fixed", seedV4(TWO_ROOMS), `
-  window.__plan.setWallsMode(true);
+await test("outline_top_edge_drag_bottom_fixed", seedV4(TWO_ROOMS), `
   var b0 = window.__plan.bboxOfPoly(window.__plan.plan.outline);
   // find the top edge (minimal y, horizontal) and pull it 30 cm inward
   var poly = window.__plan.plan.outline, ei = -1;
@@ -309,8 +257,7 @@ test("outline_top_edge_drag_bottom_fixed", seedV4(TWO_ROOMS), `
      && expect(near(v.lAfter, v.lBefore - 30, 1), "the apartment should shrink by 30: " + v.lBefore + " -> " + v.lAfter));
 
 // 7. REPLACES `wall_ortho_snap_axis_aligned`: the same orthogonal snap, on the OUTLINE.
-test("outline_ortho_snap_axis_aligned", seedV4(STAIR), `
-  window.__plan.setWallsMode(true);
+await test("outline_ortho_snap_axis_aligned", seedV4(STAIR), `
   var before = window.__plan.allEdgesAxisAligned(0.5);
   // the offset vertex of the converted outline: we bring it back onto its neighbor's column
   var poly = window.__plan.plan.outline, vi = -1, best = 1e9;
@@ -330,8 +277,7 @@ test("outline_ortho_snap_axis_aligned", seedV4(STAIR), `
 
 // 8. REPLACES `wall_party_coupling_moves_both`: a party wall is a SINGLE shared object, so
 //    moving it adjusts BOTH cells by construction (no more coupling to maintain).
-test("wall_move_resizes_both_cells", seedV4(TWO_ROOMS), `
-  window.__plan.setWallsMode(true);
+await test("wall_move_resizes_both_cells", seedV4(TWO_ROOMS), `
   var P = window.__plan.plan;
   var w = P.walls.filter(function(x){ return !x.isOutline; })[0];
   var area = function(name){ var c = P.cells.filter(function(x){ return x.name === name; })[0];
@@ -354,7 +300,7 @@ test("wall_move_resizes_both_cells", seedV4(TWO_ROOMS), `
         "the total floor area is conserved: " + (v.before.salon + v.before.chambre) + " -> " + (v.salon + v.chambre)));
 
 // 9. Wall-mount: a sconce dropped near a wall becomes an opening ON that wall.
-test("wall_mount_sticks_to_a_wall", seedV4(TWO_ROOMS), `
+await test("wall_mount_sticks_to_a_wall", seedV4(TWO_ROOMS), `
   var p = window.__plan.placeAt("sconce", { x: 450, y: 296 });
   var pose = p ? window.__plan.v5OpeningPose(p.id) : null;
   var P = window.__plan.plan;
@@ -369,7 +315,7 @@ test("wall_mount_sticks_to_a_wall", seedV4(TWO_ROOMS), `
 
 // 11. REPLACES `envelope_hull_matches_union_bbox`: the envelope is no longer an editable entity,
 //     but the rectilinear hull remains the OUTLINE that reading an old plan produces.
-test("outline_from_old_plan_matches_union_bbox", seedV4(TWO_ROOMS), `
+await test("outline_from_old_plan_matches_union_bbox", seedV4(TWO_ROOMS), `
   var st = window.__plan.readLegacy(JSON.parse(localStorage.getItem("room-planner-v4-backup")));
   var u = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
   st.rooms.forEach(function(r){
@@ -385,7 +331,7 @@ test("outline_from_old_plan_matches_union_bbox", seedV4(TWO_ROOMS), `
 
 // 11b. REPLACES `envelope_corridor_piece_homes_env`: the corridor is no longer a pseudo-container,
 //      it's a CELL computed like the others, and furniture dropped inside it belongs to it.
-test("corridor_gap_becomes_a_cell", (function(){
+await test("corridor_gap_becomes_a_cell", (function(){
   var s = JSON.parse(JSON.stringify(TWO_ROOMS));
   s.rooms[0].room.poly = rect(250, 300); s.rooms[0].ax = 0;
   s.rooms[1].room.poly = rect(250, 300); s.rooms[1].ax = 400;
@@ -403,7 +349,7 @@ test("corridor_gap_becomes_a_cell", (function(){
      && expect(v.homeCell === v.cellName, "the piece must belong to the corridor cell, got " + v.homeCell));
 
 // 12. Flow: a room with NO door -> "Room unreachable" finding.
-test("flow_no_door_inaccessible", seedV4(ONE_ROOM_FLOW(false)), `
+await test("flow_no_door_inaccessible", seedV4(ONE_ROOM_FLOW(false)), `
   window.__plan.analyzeNow();
   var findings = window.__plan.findings || [];
   return { titles: findings.map(function(x){return x.title;}) };
@@ -414,7 +360,7 @@ test("flow_no_door_inaccessible", seedV4(ONE_ROOM_FLOW(false)), `
 });
 
 // 12b. Flow: a room WITH a connecting door -> no inaccessible finding.
-test("flow_with_door_reachable", seedV4(ONE_ROOM_FLOW(true)), `
+await test("flow_with_door_reachable", seedV4(ONE_ROOM_FLOW(true)), `
   window.__plan.analyzeNow();
   var findings = window.__plan.findings || [];
   var titles = findings.map(function(x){return x.title;});
@@ -428,7 +374,7 @@ test("flow_with_door_reachable", seedV4(ONE_ROOM_FLOW(true)), `
 });
 
 // 13. Migration: a legacy v3 single-room plan is still READ (and converted) without loss.
-test("migrate_v3_is_read_and_converted", `try{ localStorage.setItem(${JSON.stringify(V3_KEY)}, ${JSON.stringify(JSON.stringify(V3_PLAN))}); }catch(e){}`, `
+await test("migrate_v3_is_read_and_converted", `try{ localStorage.setItem(${JSON.stringify(V3_KEY)}, ${JSON.stringify(JSON.stringify(V3_PLAN))}); }catch(e){}`, `
   var P = window.__plan.plan;
   return {
     cells: P.cells.length,
@@ -445,7 +391,7 @@ test("migrate_v3_is_read_and_converted", `try{ localStorage.setItem(${JSON.strin
         "the v3 room becomes the apartment outline, got " + v.outline.w + "x" + v.outline.l));
 
 // 13b. Roundtrip: serialize -> migrate preserves the whole plan.
-test("serialize_migrate_roundtrip", seedV4(TWO_ROOMS), `
+await test("serialize_migrate_roundtrip", seedV4(TWO_ROOMS), `
   var ser = window.__plan.serialize();
   var again = window.__plan.migrate(JSON.parse(JSON.stringify(ser)));
   var P = window.__plan.plan;
@@ -468,7 +414,7 @@ test("serialize_migrate_roundtrip", seedV4(TWO_ROOMS), `
 //     (the marker MUST stick into the room, on the PLAN). In the palette, the slot is only
 //     44x30 px: this overflow, expressed in cm, was worth ~45 px and covered the neighboring slot.
 //     We verify that NOTHING sticks out of a slot, neither the <svg> box nor the painted INK.
-test("palette_icon_fits_its_slot", seedV4(TWO_ROOMS), `
+await test("palette_icon_fits_its_slot", seedV4(TWO_ROOMS), `
   var rows = window.__plan.paletteIconOverflow();
   var bad = rows.filter(function(o){
     return Math.max(o.l,o.t,o.r,o.b,o.il,o.it,o.ir,o.ib) > 0.5;
@@ -489,7 +435,7 @@ test("palette_icon_fits_its_slot", seedV4(TWO_ROOMS), `
 
 // 14b. The thumbnail's viewBox does contain the marker, and the ratio used by buildPalette
 //      is that of this extended viewBox (otherwise the icon would be squashed).
-test("palette_icon_viewbox_covers_marker", seedV4(TWO_ROOMS), `
+await test("palette_icon_viewbox_covers_marker", seedV4(TWO_ROOMS), `
   var out = {};
   ["sconce","plug","rj45"].forEach(function(t){
     var d = window.__plan.TYPEMAP[t];
@@ -510,7 +456,7 @@ test("palette_icon_viewbox_covers_marker", seedV4(TWO_ROOMS), `
 
 // 15. REPLACES `wallmount_drag_crosses_rooms`: there is no longer a room to cross. Dragging a
 //     sconce onto ANOTHER wall re-parameterizes it there (wallId changes), in apartment space.
-test("wallmount_drag_crosses_walls", seedV4(TWO_ROOMS), `
+await test("wallmount_drag_crosses_walls", seedV4(TWO_ROOMS), `
   var P = window.__plan;
   // place a sconce on the LEFT wall of the apartment (x=0)
   var a = P.placeAt("sconce", {x:4, y:150});
@@ -527,7 +473,7 @@ test("wallmount_drag_crosses_walls", seedV4(TWO_ROOMS), `
 
 // 16. Refusal to place out of reach. A wall-mounted object is NEVER placed floating: with no wall in
 //     reach, nothing is created, no history entry, and a toast spells it out in plain language.
-test("wallmount_refused_out_of_reach", seedV4(TWO_ROOMS), `
+await test("wallmount_refused_out_of_reach", seedV4(TWO_ROOMS), `
   var P = window.__plan;
   var before = P.plan.openings.length;
   P.clearToast();
@@ -550,7 +496,7 @@ test("wallmount_refused_out_of_reach", seedV4(TWO_ROOMS), `
 
 // 17. Reach adapts to zoom: 60 cm hardcoded was a few pixels at low zoom. The reach
 //     equals max(60 cm, 45 px converted to cm), capped at 150 cm.
-test("wallmount_reach_scales_with_zoom", seedV4(TWO_ROOMS), `
+await test("wallmount_reach_scales_with_zoom", seedV4(TWO_ROOMS), `
   var P = window.__plan;
   P.fitView();
   var s = P.vScale, reach = P.wallSnapReach();
@@ -568,7 +514,7 @@ test("wallmount_reach_scales_with_zoom", seedV4(TWO_ROOMS), `
 // side), never deduced from belonging to a room.
 
 // 18. Placement: the face is the cursor's, on both sides of the SAME interior wall.
-test("wallmount_side_is_the_cursor_side", seedV4(TWO_ROOMS), `
+await test("wallmount_side_is_the_cursor_side", seedV4(TWO_ROOMS), `
   var P = window.__plan;
   var a = P.placeAt("sconce", { x: 292, y: 120 });   // cursor in the LEFT cell
   var pa = P.v5OpeningPose(a.id);
@@ -586,7 +532,7 @@ test("wallmount_side_is_the_cursor_side", seedV4(TWO_ROOMS), `
 
 // 19. The reported case: a CORRIDOR wall. The corridor is now a cell like any other,
 //     and a sconce placed FROM the corridor faces the corridor.
-test("wallmount_corridor_side_is_reachable", (function () {
+await test("wallmount_corridor_side_is_reachable", (function () {
   var s = JSON.parse(JSON.stringify(TWO_ROOMS));
   s.rooms[0].room.poly = rect(250, 300); s.rooms[0].ax = 0;
   s.rooms[1].room.poly = rect(250, 300); s.rooms[1].ax = 400;
@@ -604,7 +550,7 @@ test("wallmount_corridor_side_is_reachable", (function () {
      && expect(v.back === "Salon", "its back must be on the room side, got " + v.back));
 
 // 20. Dragging: dragging the object across its wall moves it to the other face, both there AND back.
-test("wallmount_drag_flips_side_through_wall", seedV4(TWO_ROOMS), `
+await test("wallmount_drag_flips_side_through_wall", seedV4(TWO_ROOMS), `
   var P = window.__plan;
   var p = P.placeAt("sconce", { x: 292, y: 150 });
   var f0 = P.v5OpeningPose(p.id);
@@ -622,14 +568,12 @@ test("wallmount_drag_flips_side_through_wall", seedV4(TWO_ROOMS), `
 
 // 21. REPLACES `wallmount_side_survives_restick`: moving the LOAD-BEARING wall re-projects the
 //     object's position but KEEPS the chosen side (this used to overwrite any user choice).
-test("wallmount_side_survives_a_wall_move", seedV4(TWO_ROOMS), `
+await test("wallmount_side_survives_a_wall_move", seedV4(TWO_ROOMS), `
   var P = window.__plan;
   var p = P.placeAt("sconce", { x: 308, y: 150 });    // right cell side
   var before = P.v5OpeningPose(p.id);
   var w = P.plan.walls.filter(function(x){ return !x.isOutline; })[0];
-  P.setWallsMode(true);
   P.moveWall(w.id, 40);                               // pull the load-bearing wall by 40 cm
-  P.setWallsMode(false);
   var after = P.v5OpeningPose(p.id);
   return { r0: before.rot, s0: before.side, f0: before.facesName, cx0: before.cx,
            r1: after.rot, s1: after.side, f1: after.facesName, cx1: after.cx, wall: w.id };
@@ -640,7 +584,7 @@ test("wallmount_side_survives_a_wall_move", seedV4(TWO_ROOMS), `
 
 // 22. Explicit control: the sheet's "Flip side" button + the R key. Reserved for
 //     non-opening wall-mounted objects (a door keeps its hinge + swing direction).
-test("wallmount_flip_side_control", seedV4(TWO_ROOMS), `
+await test("wallmount_flip_side_control", seedV4(TWO_ROOMS), `
   var P = window.__plan;
   var p = P.placeAt("sconce", { x: 292, y: 150 });
   var f0 = P.v5OpeningPose(p.id);
@@ -662,7 +606,7 @@ test("wallmount_flip_side_control", seedV4(TWO_ROOMS), `
      && expect(v.doorClicked === false && v.doorHidden === true, "a door must NOT get the flip button"));
 
 // 23. Preview (palette ghost): it announces the SAME face as the real placement.
-test("wallmount_preview_matches_the_pose", seedV4(TWO_ROOMS), `
+await test("wallmount_preview_matches_the_pose", seedV4(TWO_ROOMS), `
   var P = window.__plan;
   var reach = P.wallSnapReach();
   var prevA = P.wallMountPreviewApt("sconce", 292, 150, reach);
@@ -696,7 +640,7 @@ const HOSTILE_NAMES = {
   setupDone: true,
   envelope: null as DonneeDynamique,
 };
-test("hostile_names_never_inject_html", seedV4(HOSTILE_NAMES), `
+await test("hostile_names_never_inject_html", seedV4(HOSTILE_NAMES), `
   var P = window.__plan;
   document.getElementById("flowpanel").hidden = false;   // otherwise renderFlow bails out right away
   P.render();
@@ -725,7 +669,7 @@ test("hostile_names_never_inject_html", seedV4(HOSTILE_NAMES), `
      && expect(v.svg, "le SVG maître (export PNG/PDF) ne doit pas contenir de balise venue d'un nom"));
 
 // ---- report -----------------------------------------------------------------
-try { fs.rmSync(RUN_DIR, { recursive: true, force: true }); } catch (e) {}
+sonde.fermer();
 
 const passed = results.filter(r => r.pass).length;
 const total = results.length;

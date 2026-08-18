@@ -21,7 +21,6 @@ import { clearSel } from "../rendu/selection.ts";
 import {
   TOUCH_DRAG_THRESH, isTouchEvt, measureMode, setMeasureModeFlag, touchPts,
 } from "../gestes/etat-pointeur.ts";
-import { setWallsMode } from "../gestes/murs.ts";
 import { armGesture } from "../gestes/sortie.ts";
 import { clearCursorGuides, drawCursorGuides, scheduleCursorGuides } from "./guides-curseur.ts";
 
@@ -184,10 +183,8 @@ export function brancherMesure(ctx: Contexte): void {
     if (!measureMode()) clearCursorGuides();   // stale hovers; they come back on the next move
   };
 
-  // Tool toggle. Exclusive with Walls mode: measuring is a READ-ONLY overlay of the
-  // Furniture context.
+  // Measuring is a read-only overlay and owns the pointer while it is armed.
   $("btnMeasure")?.addEventListener("click", () => {
-    if (!measureMode() && ctx.wallsMode) setWallsMode(ctx, false);
     setMeasureMode(ctx, !measureMode());
   });
 

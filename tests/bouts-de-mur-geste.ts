@@ -1,24 +1,27 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "A JUNCTION MUST HOLD WHEN A WALL IS MOVED" SUITE — REAL MOUSE (CDP), end to end
+//  "WALL ENDPOINT HANDLES" SUITE — REAL MOUSE (CDP), end to end
 // =============================================================================
-// Owner's exact case: draw wall segments separately, connect them end to end into two rooms
-// (the segment tool stays armed across walls, snapping onto the previous wall's own endpoint),
-// turn the tool off, then drag the shared wall. Before the two fixes in this batch:
-//   1. the render cache never rebuilt the walls' clickable hit band when the draw tool was
-//      turned off (`rendu/calque.ts`'s `sig` did not include `ctx.ihm.draw`): the drag never
-//      even STARTED, because there was nothing to click on. `armed_desarme_par_bouton_...`
-//      below asserts the walls actually MOVED, not just "nothing tore because nothing moved".
-//   2. once the drag could start, a follower COLLINEAR with the dragged wall (exactly what two
-//      strokes forming a straight run produce) fell off: the line-intersection formula that used
-//      to compute its new position degenerates on parallel lines (see
-//      `tests/jonction-glisser-mur.ts` for the pure repro of that one).
-//
-//   node tests/jonction-glisser-mur-geste.ts [path/to/app.html]
+// Owner's report, verbatim: "j'aimerais aussi pouvoir choper les extrémités des murs et pouvoir
+// étendre et relier à d'autres murs. parfois je fais un mur mais je me rate, je voulais le faire
+// plus long, et là je dois le delete et recommencer." `tests/bouts-de-mur.ts` proves the PURE
+// snap/direction/grid cascade and the mutation itself; this suite proves the two things only a
+// real browser can prove:
+//   1. the new handle is actually HITTABLE at working zoom (a headless test can call the
+//      exported function directly and prove nothing about whether a real finger can land on it);
+//   2. clicking the wall's own BODY still drags the WHOLE wall, not an endpoint — the two hit
+//      targets sit right next to each other and must not steal each other's clicks, the exact
+//      shape of the "+".18px-outward and "delete cross" bugs this codebase has already been bitten
+//      by (AGENTS.md, "G-15" and "G-15-BIS").
+// It ALSO covers "a press-release without movement writes nothing" end to end: that invariant is
+// enforced inside the real gesture (`armGesture`/`pushHistory`), which this repository never
+// drives outside a real browser (every other `*-geste.ts` suite does the same for its own tool).
 //
 // Real mouse (`Input.dispatchMouseEvent`), never a synthetic PointerEvent: AGENTS.md, "A click
 // lands on what is visible" — a synthetic event bypasses hit-testing and the capture-phase wiring
-// this fix lives in.
+// this feature lives in.
+//
+//   node tests/bouts-de-mur-geste.ts [path/to/app.html]
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -39,10 +42,10 @@ const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const APP = process.argv[2] || path.join(__dirname, "..", "index.html");
 
 // A SEEDED plan (not a blank profile): a blank profile opens the "configure your apartment"
-// wizard instead of the ordinary canvas, and this suite overrides the geometry anyway through
-// `__plan.setModel(...)` once the app has booted (`dessinerTroisMurs`, below).
+// wizard instead of the ordinary canvas, and every test here overrides the geometry anyway
+// through `__plan.setModel(...)` once the app has booted.
 const SEED = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "plan-rev177.json"), "utf8"));
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-jonction-"));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-boutsdemur-"));
 const htmlPath = path.join(dir, "case.html");
 fs.writeFileSync(htmlPath,
   `<!doctype html><html><head><meta charset="utf-8"><script>
@@ -152,98 +155,96 @@ const centerOf = (sel: VerdictSonde) => J(`(function(){var e=document.querySelec
 const aptPoint = (x: VerdictSonde, y: VerdictSonde) => J(`(function(){var s=__plan.aptToScreen(${x},${y});
   var r=document.getElementById("viewport").getBoundingClientRect();
   return {x:r.left+s.x, y:r.top+s.y};})()`);
-const armed = () => evaluate(`String(__plan.v5ui.draw)`);
-const interiorWalls = () => J(`__plan.plan.walls.filter(function(w){return !w.isOutline;})
-  .map(function(w){return {id:String(w.id), a:w.a, b:w.b};})`);
-const cellCount = () => evaluate(`String(__plan.plan.cells.length)`);
+const mur = (id: string) => J(`(function(){var w=__plan.v5WallById(${JSON.stringify(id)}); return w?{a:w.a,b:w.b,free:w.free||0}:null;})()`);
 const undoCount = () => evaluate(`String(__plan.histInfo().undo)`);
+const selWall = () => evaluate(`String(__plan.v5ui.selWall)`);
 
-/**
- * Draws the owner's exact shape: three hand-drawn walls, corner to corner, carving the 420x360
- * default apartment into two rooms. Returns the three walls in drawing order.
- */
-async function dessinerTroisMurs(): Promise<VerdictSonde[]> {
+/** A single interior wall, isolated, far from the outline: (100,50)->(100,250). `free` matters:
+ * a NON-free wall is deliberately used by test 1 (it proves the endpoint drag ITSELF sets the
+ * flag), while test 2 needs a `free` wall so its own perpendicular translation is not ALSO
+ * re-extended to the facades by the ordinary through-going pipeline — that pre-existing
+ * behavior is real and correct, but it is orthogonal to what test 2 measures. */
+async function seedUnMur(free?: boolean) {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
-    walls:[], openings:[], pieces:[], cells:[]}); true`);
+    walls:[{id:"w1", a:[100,50], b:[100,250], t:12${free ? ", free:1" : ""}}], openings:[], pieces:[], cells:[]}); true`);
   await pause(150);
-  if (await armed() !== "true") await click(await centerOf("#btnDrawWall"));
-  // wA: (200,0) -> (200,150)
-  await drag(await aptPoint(200, 0), await aptPoint(200, 150));
-  // wB: starts EXACTLY at wA's end -> (300,150)
-  await drag(await aptPoint(200, 150), await aptPoint(300, 150));
-  // wC: starts EXACTLY at wB's end -> (300,360), reaching the bottom facade (apartment is 420x360)
-  await drag(await aptPoint(300, 150), await aptPoint(300, 360));
-  return interiorWalls();
+  const p = await aptPoint(100, 150); await moveTo(p, 1, p); await pause(100);
 }
-const near = (p: VerdictSonde, q: VerdictSonde) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1;
-const murTouchant = (murs: VerdictSonde[], pt: VerdictSonde, exclu: VerdictSonde) =>
-  murs.find((w: VerdictSonde) => w.id !== exclu && (near(w.a, pt) || near(w.b, pt)));
 
 // =============================================================================
-//  1. THE OWNER'S CASE: drag the shared wall, junctions hold, the room survives
+//  1. the handle is HITTABLE, and dragging it lengthens the wall
 // =============================================================================
-await test("trois_murs_relies_bout_a_bout_le_glissement_garde_les_jonctions", async () => {
-  const avant = await dessinerTroisMurs();
-  ok(avant.length === 3, `précondition : trois murs tracés, vu ${avant.length}`);
-  ok(await cellCount() === "2", `précondition : deux pièces avant tout glissement, vu ${await cellCount()}`);
-  const wB = avant.find((w: VerdictSonde) => near(w.a, [200, 150]) && near(w.b, [300, 150]));
-  ok(!!wB, `le mur partagé (wB) doit exister tel que dessiné, vu ${JSON.stringify(avant)}`);
-  const wA = murTouchant(avant, [200, 150], wB.id);
-  const wC = murTouchant(avant, [300, 150], wB.id);
-  ok(!!wA && !!wC, "les deux voisins de wB doivent exister");
+await test("poignee_bout_atteignable_glisser_allonge_le_mur", async () => {
+  await seedUnMur();
+  ok(await centerOf('.v5wmove[data-w="w1"]'), "le survol doit révéler les poignées du mur w1");
 
-  // Turn the drawing tool OFF via the BUTTON (bug #1's exact path), then drag wB's midpoint.
-  await click(await centerOf("#btnDrawWall"));
-  ok(await armed() === "false", "l'outil doit être désarmé avant le glissement");
+  const avant = await mur("w1");
+  if (!ok(avant, "mur w1 introuvable")) return;
+  const Lavant = Math.hypot(avant.b[0] - avant.a[0], avant.b[1] - avant.a[1]);
 
-  const mi = await aptPoint(250, 150), mf = await aptPoint(250, 190);
-  await M("mouseMoved", mi.x, mi.y, { button: "none", buttons: 0 }); await pause(80);
-  const poignee = await centerOf(`.v5wmove[data-w="${wB.id}"]`);
-  ok(!!poignee, "la poignée move du mur doit être atteignable une fois l'outil éteint");
-  if (!poignee) return;
-  await drag(poignee, mf);
+  const hb = await centerOf('.v5wend[data-w="w1"][data-bout="b"]');
+  ok(!!hb, "la poignée d'extrémité (bout b) doit exister et être rendue au clic");
+  if (!hb) return;
+  // Real screen position of `b` itself: the handle must sit ON it, not merely "near" it.
+  const bScreen = await aptPoint(avant.b[0], avant.b[1]);
+  ok(Math.hypot(hb.x - bScreen.x, hb.y - bScreen.y) < 3,
+    `la poignée doit être centrée EXACTEMENT sur l'extrémité, vu poignée=${JSON.stringify(hb)} b=${JSON.stringify(bScreen)}`);
+
+  // Drag it straight down, well past its current position: extending the wall, in open space.
+  await drag(hb, await aptPoint(100, 340));
   await pause(150);
 
-  const apres = await interiorWalls();
-  const parId = (id: VerdictSonde) => apres.find((w: VerdictSonde) => w.id === id);
-  const wBApres = parId(wB.id), wAApres = parId(wA.id), wCApres = parId(wC.id);
-  ok(!near(wBApres.a, wB.a) || !near(wBApres.b, wB.b),
-    `le mur glissé doit réellement avoir bougé, vu avant=${JSON.stringify(wB)} après=${JSON.stringify(wBApres)}`);
-  ok(near(wAApres.b, wBApres.a) || near(wAApres.a, wBApres.a),
-    `wA doit rester soudé au nouveau coin de wB, vu wA=${JSON.stringify(wAApres)} wB=${JSON.stringify(wBApres)}`);
-  ok(near(wCApres.a, wBApres.b) || near(wCApres.b, wBApres.b),
-    `wC doit rester soudé à l'autre coin de wB, vu wC=${JSON.stringify(wCApres)} wB=${JSON.stringify(wBApres)}`);
-  ok(await cellCount() === "2", `la pièce ne doit pas avoir disparu après le glissement, vu ${await cellCount()} cellule(s)`);
+  const apres = await mur("w1");
+  if (!ok(apres, "le mur a disparu après le geste")) return;
+  const Lapres = Math.hypot(apres.b[0] - apres.a[0], apres.b[1] - apres.a[1]);
+  ok(Lapres > Lavant + 50, `le mur doit s'être ALLONGÉ nettement, vu ${Lavant.toFixed(1)} -> ${Lapres.toFixed(1)} cm`);
+  ok(apres.a[0] === avant.a[0] && apres.a[1] === avant.a[1],
+    `l'autre extrémité (a) ne doit pas avoir bougé, vu ${JSON.stringify(apres.a)} attendu ${JSON.stringify(avant.a)}`);
+  ok(apres.free === 1, `l'extrémité tirée doit rendre le mur \`free\`, vu ${apres.free}`);
 });
 
 // =============================================================================
-//  2. ONE Ctrl+Z RESTORES EVERYTHING THE DRAG MOVED, IN ONE STEP
+//  2. the dedicated MOVE handle drags the WHOLE wall, not one endpoint
 // =============================================================================
-await test("un_seul_ctrl_z_restaure_les_trois_murs", async () => {
-  const avant = await dessinerTroisMurs();
-  const wB = avant.find((w: VerdictSonde) => near(w.a, [200, 150]) && near(w.b, [300, 150]));
-  await click(await centerOf("#btnDrawWall"));
-  const undoAvant = await undoCount();
+await test("poignee_move_deplace_tout_le_mur_pas_une_extremite", async () => {
+  await seedUnMur(true);
+  ok(await centerOf('.v5wmove[data-w="w1"]'), "le survol doit révéler la poignée move");
+  const avant = await mur("w1");
+  if (!ok(avant, "mur w1 introuvable")) return;
 
-  const mi = await aptPoint(250, 150), mf = await aptPoint(250, 190);
-  await M("mouseMoved", mi.x, mi.y, { button: "none", buttons: 0 }); await pause(80);
-  const poignee = await centerOf(`.v5wmove[data-w="${wB.id}"]`);
-  if (!ok(poignee, "poignée move introuvable")) return;
-  await drag(poignee, mf);
+  const p0 = await centerOf('.v5wmove[data-w="w1"]');
+  if (!ok(p0, "poignée move introuvable")) return;
+  await drag(p0, { x: p0.x + 60, y: p0.y });
   await pause(150);
-  const pendant = await interiorWalls();
-  ok(JSON.stringify(pendant) !== JSON.stringify(avant), "précondition : le glissement a bien changé la géométrie");
-  const undoApresGlissement = await undoCount();
-  ok(Number(undoApresGlissement) === Number(undoAvant) + 1,
-    `un geste de glissement, même avec des voisins qui bougent, doit pousser UNE seule entrée d'historique, vu ${undoAvant} -> ${undoApresGlissement}`);
 
-  await evaluate(`__plan.undo(); true`);
-  await pause(150);
-  const apresUndo = await interiorWalls();
-  const tri = (l: VerdictSonde[]) => [...l].sort((x: VerdictSonde, y: VerdictSonde) => String(x.id).localeCompare(String(y.id)));
-  ok(JSON.stringify(tri(apresUndo)) === JSON.stringify(tri(avant)),
-    `un seul Ctrl+Z doit restaurer les TROIS murs à l'identique, vu\n  avant=${JSON.stringify(tri(avant))}\n  après=${JSON.stringify(tri(apresUndo))}`);
-  ok(await cellCount() === "2", `deux pièces après restauration, vu ${await cellCount()}`);
+  const apres = await mur("w1");
+  if (!ok(apres, "le mur a disparu")) return;
+  const da = Math.hypot(apres.a[0] - avant.a[0], apres.a[1] - avant.a[1]);
+  const db = Math.hypot(apres.b[0] - avant.b[0], apres.b[1] - avant.b[1]);
+  ok(da > 10 && db > 10,
+    `la poignée move doit déplacer les DEUX extrémités (glissement perpendiculaire), vu Δa=${da.toFixed(1)} Δb=${db.toFixed(1)}`);
+  // A whole-wall drag is a perpendicular OFFSET: both ends move by (about) the same amount.
+  ok(Math.abs(da - db) < 5, `les deux extrémités doivent se déplacer du MÊME décalage (glissement, pas étirement), vu Δa=${da.toFixed(1)} Δb=${db.toFixed(1)}`);
+});
+
+// =============================================================================
+//  3. a press-release without movement on the handle writes NOTHING
+// =============================================================================
+await test("clic_sans_glissement_sur_la_poignee_n_ecrit_rien", async () => {
+  await seedUnMur();
+  ok(await centerOf('.v5wmove[data-w="w1"]'), "le survol doit révéler les poignées");
+
+  const hb = await centerOf('.v5wend[data-w="w1"][data-bout="b"]');
+  if (!ok(hb, "poignée introuvable")) return;
+  const avantPlan = await evaluate(`JSON.stringify(__plan.serialize())`);
+  const avantUndo = await undoCount();
+
+  await click(hb);
+  await pause(120);
+
+  ok(await undoCount() === avantUndo, "un clic sans glissement sur la poignée ne doit pousser AUCUNE entrée d'historique");
+  const apresPlan = await evaluate(`JSON.stringify(__plan.serialize())`);
+  ok(apresPlan === avantPlan, "le plan doit rester OCTET POUR OCTET identique après un clic sans glissement sur la poignée");
 });
 
 // ---- verdict -----------------------------------------------------------------------------------

@@ -11,7 +11,7 @@ import { test, near, expect, seedV4, REAL_PLAN, SEED_PLAN, report } from "./_har
 
 
 // 6a. TOOL 1 — dragging a wall moves the SHARED boundary: both cells adjust at once.
-test("v5_wall_drag_moves_shared_boundary", "", `
+await test("v5_wall_drag_moves_shared_boundary", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -36,7 +36,7 @@ test("v5_wall_drag_moves_shared_boundary", "", `
 
 // 6b. TOOL 2 — tracing a wall: a segment that reaches no geometry is EXTENDED (through wall)
 // and does split the cell in two.
-test("v5_wall_draw_splits_cell", "", `
+await test("v5_wall_draw_splits_cell", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
     walls:[], openings:[], pieces:[], cells:[] });
   var P = window.__plan.plan;
@@ -53,7 +53,7 @@ test("v5_wall_draw_splits_cell", "", `
 
 // 6c. TOOL 3 — deleting a wall merges the two cells; the name of the BIGGER one wins
 // (matched by area overlap), and the wall's openings cascade away.
-test("v5_wall_delete_merges_bigger_name_wins", "", `
+await test("v5_wall_delete_merges_bigger_name_wins", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
     walls:[{id:"w1", a:[200,0], b:[200,400], t:12}],
     openings:[{id:"o1", wallId:"w1", t0:160, w:80, h:12, type:"door", side:0, hinge:0, swing:1}],
@@ -77,7 +77,7 @@ test("v5_wall_delete_merges_bigger_name_wins", "", `
      && expect(v.walls === 0, "the wall itself must be gone, got " + v.walls));
 
 // 6d. TOOL 4 — moving a facade: interior walls that were leaning on it FOLLOW (re-traversal).
-test("v5_outline_drag_pulls_wall_followers", "", `
+await test("v5_outline_drag_pulls_wall_followers", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
     walls:[{id:"w1", a:[0,200], b:[600,200], t:12}], openings:[], pieces:[], cells:[] });
   var P = window.__plan.plan;
@@ -97,7 +97,7 @@ test("v5_outline_drag_pulls_wall_followers", "", `
 
 // 6e. TOOL 6 — an opening slides along its wall (t0 only) and reparameterizes onto ANOTHER
 // wall when dropped near it (<=60 cm), with no notion of membership whatsoever.
-test("v5_opening_slides_and_rewalls", "", `
+await test("v5_opening_slides_and_rewalls", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -114,7 +114,7 @@ test("v5_opening_slides_and_rewalls", "", `
 
 // 6f. TOOL 7 — a piece of furniture is bounded by ITS cell (polygon inset by half a wall's
 // thickness), no longer by the v4 room: it cannot overflow through the partition.
-test("v5_furniture_clamped_to_its_cell", "", `
+await test("v5_furniture_clamped_to_its_cell", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -130,44 +130,55 @@ test("v5_furniture_clamped_to_its_cell", "", `
      && expect(v.cell !== null, "the clamped piece must resolve to a cell"));
 
 
-// 6i. HIT-TESTING does go through the v5 geometry (the layer's hit shapes), not through an
-// .aptroom: a real pointerdown on a wall's band, in Walls mode, drags it.
-test("v5_pointer_hit_test_drags_the_wall", "", `
+// 6i. Hover geometry reveals a visible move handle without adding a transparent wall band.
+await test("v5_pointer_hit_test_drags_the_wall", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
-  window.__plan.wallsMode(true);
   var layer = document.querySelector(".v5layer");
   var hit = layer && layer.querySelector('.v5hit-wall[data-w="w1"]');
   var aptrooms = document.querySelectorAll("#canvas .aptroom").length;
-  if(!hit) return { err:"no wall hit shape in the v5 layer", aptrooms: aptrooms };
-  var r = hit.getBoundingClientRect();
-  var cx = r.left + r.width/2, cy = r.top + r.height/2;
-  function pe(t,x,y){ return new PointerEvent(t,{bubbles:true, clientX:x, clientY:y, button:0, pointerId:1}); }
-  hit.dispatchEvent(pe("pointerdown", cx, cy));
+  if(hit) return { err:"a transparent wall hit shape still covers the drawing surface", aptrooms: aptrooms };
+  var w0 = P.walls.filter(function(x){ return x.id==="w1"; })[0];
+  var s0 = window.__plan.aptToScreen((w0.a[0]+w0.b[0])/2,(w0.a[1]+w0.b[1])/2);
+  var vr = document.getElementById("viewport").getBoundingClientRect();
+  var cx = vr.left+s0.x, cy = vr.top+s0.y;
+  function pe(t,x,y){ return new PointerEvent(t,{bubbles:true, clientX:x, clientY:y, button:0, pointerId:1, pointerType:"mouse"}); }
+  // THE WALL'S BODY NO LONGER CAPTURES THE PRESS, and that is the point of the hover-handles
+  // batch: a press on a wall falls through to DRAWING, so a new partition can start on top of an
+  // existing one. Selecting and moving a wall is the job of its midpoint handle, which appears
+  // when the wall is hovered. This case therefore states both halves of the rule instead of the
+  // old single one: the body selects nothing, the handle selects and drags.
+  document.getElementById("viewport").dispatchEvent(pe("pointermove", cx, cy));
+  var corps = window.__plan.v5ui.selWall;
+  var move = layer.querySelector('.v5wmove[data-w="w1"]');
+  if(!move) return { err:"no move handle after hovering the wall", aptrooms: aptrooms };
+  var rm = move.getBoundingClientRect();
+  var mx = rm.left + rm.width/2, my = rm.top + rm.height/2;
+  move.dispatchEvent(pe("pointerdown", mx, my));
   var sel = window.__plan.v5ui.selWall;
-  window.dispatchEvent(pe("pointermove", cx+40, cy));
-  window.dispatchEvent(pe("pointerup",   cx+40, cy));
+  window.dispatchEvent(pe("pointermove", mx+40, my));
+  window.dispatchEvent(pe("pointerup",   mx+40, my));
   var w = P.walls.filter(function(x){ return x.id==="w1"; })[0];
   var ext = P.cells.map(function(c){
     var mn=1e9,mx=-1e9; c.poly.forEach(function(p){ if(p[0]<mn)mn=p[0]; if(p[0]>mx)mx=p[0]; });
     return {mn:mn,mx:mx};
   }).sort(function(a,b){ return a.mn-b.mn; });
-  return { aptrooms: aptrooms, sel: sel, x: w.a[0], cells: P.cells.length, ext: ext };
+  return { aptrooms: aptrooms, sel: sel, corps: corps, x: w.a[0], cells: P.cells.length, ext: ext };
 `, v => expect(!v.err, v.err + " (aptrooms=" + v.aptrooms + ")")
      && expect(v.aptrooms === 0, "v5 must not build any .aptroom container, got " + v.aptrooms)
-     && expect(v.sel === "w1", "the pointerdown must select the wall, got " + v.sel)
+     && expect(!v.corps, "hovering the wall's BODY must select nothing, got " + v.corps)
+     && expect(v.sel === "w1", "the pointerdown on the move handle must select the wall, got " + v.sel)
      && expect(v.x > 300 && v.x < 600, "the wall should have moved right, got x=" + v.x)
      && expect(v.cells === 2 && near(v.ext[0].mx, v.x, 0.5) && near(v.ext[1].mn, v.x, 0.5),
         "the two cells must follow the dragged boundary, got " + JSON.stringify(v.ext)));
 
 // 6j. Furniture drags with the UNCHANGED v4 MECHANICS (startPieceDrag), on the v5 layer:
 // apartment coordinates, no rehousing, cell clamp on release.
-test("v5_pointer_drag_furniture_on_layer", "", `
+await test("v5_pointer_drag_furniture_on_layer", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
-  window.__plan.wallsMode(false);
   var p = window.__plan.addV5Piece("arm", 60, 60);
   var layer = document.querySelector(".v5layer");
   var el = layer && layer.querySelector('.piece[data-id="'+p.id+'"]');
@@ -193,7 +204,7 @@ test("v5_pointer_drag_furniture_on_layer", "", `
 // =============================================================================
 //  14. INSPECTOR: NO BUTTON THAT DOES NOTHING ON AN OPENING
 // =============================================================================
-test("inspecteur_dup_et_devant_absents_sur_une_ouverture", seedV4(REAL_PLAN), `
+await test("inspecteur_dup_et_devant_absents_sur_une_ouverture", seedV4(REAL_PLAN), `
   var op = window.__plan.plan.openings.filter(function(o){ return o.type==="window"; })[0]
         || window.__plan.plan.openings[0];
   var furn = window.__plan.plan.pieces[0];

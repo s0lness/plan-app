@@ -4,7 +4,7 @@
 // It is in ITS OWN FILE because `src/js/57-sondes-test.js` was "the repo's most likely git
 // conflict point" (src/README.md, coupling #3, 616 lines touched by almost every batch). A file
 // per batch removes the conflict, and typing removes the original hook's other measured defect:
-// TWO GENUINELY DUPLICATE KEYS (`wallsMode`, `pieceTol`), the last of which silently won.
+// Genuinely duplicate keys existed in the old object, and the last one silently won.
 //
 // A MISSING ENTRY IS AN ENTRY NOT YET PORTED, never an abandoned entry. What is missing here
 // belongs to the inspector, to export, to sync, or to the Circulation engine.
@@ -45,7 +45,7 @@ import { planClipInfo, planClipReset, planCopy, planPaste, planPasteFromText } f
 
 import { oublierAvantDernier } from "./gestes/meuble.ts";
 import {
-  setWallsMode, v5AfterGeometry, v5DeleteSelectedWall, v5SelectCell, v5SelectWall, v5SetModel,
+  v5AfterGeometry, v5DeleteSelectedWall, v5SelectCell, v5SelectWall, v5SetModel,
   v5WallDragApply, v5WallDragCtx,
 } from "./gestes/murs.ts";
 import { v5DrawOpeningResize } from "./gestes/ouverture.ts";
@@ -96,10 +96,6 @@ export interface SondeGestes {
   clampToInset(cx: number, cy: number, w: number, h: number, rot: number, poly: Pt[]): { cx: number; cy: number; fits: boolean };
   clampCenterToApt(ax: number, ay: number, hors?: number): { x: number; y: number };
 
-  // ---- walls mode ----
-  /** The FULL TOGGLE (palette, handles, card, banner): it overwrites the render batch's own. */
-  wallsMode(on?: boolean): boolean;
-  setWallsMode(on: boolean): boolean;
   readonly v5ui: { selWall: string | null; selCell: string | null; draw: boolean; drawFree: boolean };
   canDeleteWall(id: unknown): boolean;
   wallDeleteVerdict(id: unknown, plan?: unknown): string;
@@ -238,8 +234,6 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     clampToInset: (cx, cy, w, h, rot, poly) => clampCenterToInset(cx, cy, w, h, rot, poly),
     clampCenterToApt: (ax, ay, hors) => clampCenterToApt(ctx.etat.plan, ax, ay, hors),
 
-    wallsMode(on?: boolean) { if (on !== undefined) setWallsMode(ctx, !!on); return ctx.wallsMode; },
-    setWallsMode(on: boolean) { setWallsMode(ctx, !!on); return ctx.wallsMode; },
     get v5ui() {
       return { selWall: ctx.ihm.selWall, selCell: ctx.ihm.selCell, draw: ctx.ihm.draw, drawFree: ctx.ihm.drawFree };
     },
@@ -330,7 +324,7 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     // its own suite (`ouverture-redim`, `gestes-precision`).
     resizeHandle(pieceId: unknown, hkey: string, dx: number, dy: number) {
       const p = pieceById(ctx, pieceId); if (!p) return null;
-      if (p.locked || isWallMount(p.type) || ctx.editRoom) return null;
+      if (p.locked || isWallMount(p.type)) return null;
       const h = RSZ_BYKEY[hkey]; if (!h) return null;
       selReplace(ctx, p.id);
       pushHistory(ctx);

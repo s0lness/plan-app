@@ -1,7 +1,7 @@
 // src/ts/app/contexte.ts — THE SMALL BIT OF MUTABLE STATE THAT RENDERING SHARES, in one place.
 //
 // The old client was a single closure: `state`, `vScale`, `vOx`, `vOy`, `selIds`, `selId`,
-// `wallsMode`, `v5Rev` were module variables visible from everywhere, and "everything is visible
+// selection and revision counters were module variables visible from everywhere, and "everything is visible
 // everywhere" was the first coupling listed by `src/README.md`. With real ES modules, an
 // exported `let` cannot be reassigned from the outside: so we gather these variables into ONE
 // object, passed explicitly. The gain isn't cosmetic, it's mechanical:
@@ -35,6 +35,8 @@ export interface Vue {
 /** The UI state of the walls-only model (`v5UI()` in the old client). */
 export interface EtatIHM {
   selWall: string | null;
+  /** Wall whose band or handle is under a mouse, or the last wall tapped by a finger. */
+  hoverWall: string | null;
   selCell: string | null;
   draw: boolean;
   /** Which draw tool is armed while `draw` is true: the single-segment tool (false) or the
@@ -82,6 +84,13 @@ export interface Gestes {
   contourSommetPointerDown?: (e: PointerEvent, i: number) => void;
   contourSommetSupprimer?: (e: PointerEvent, i: number) => void;
   supprimerMurSelectionne?: (e: PointerEvent) => void;
+  /** A selected interior wall's own ENDPOINT handle (owner's report: "choper les extrémités des
+   * murs et pouvoir étendre et relier à d'autres murs"), `gestes/murs.ts`'s `v5StartWallEndDrag`. */
+  boutMurPointerDown?: (e: PointerEvent, wallId: string, bout: "a" | "b") => void;
+  /** A selected interior wall's offset midpoint handle, which splits it and drags the new joint. */
+  coudeMurPointerDown?: (e: PointerEvent, wallId: string) => void;
+  /** A wall's central move handle. Facades use the same visible target for selection only. */
+  deplacerMurPointerDown?: (e: PointerEvent, wallId: string) => void;
   /** Placing an object turns its layer back on (G-22, gestes/pose.ts): the toggles follow (js/28). */
   syncLayerToggles?: () => void;
   /** The rail drawer (js/09): an armed placement closes it, otherwise it covers what you're aiming at. */
@@ -93,10 +102,6 @@ export interface Contexte {
   vue: Vue;
   ihm: EtatIHM;
   selection: Selection;
-  /** Global Furniture <-> Walls toggle. Never persisted. */
-  wallsMode: boolean;
-  /** Outline handles visible (driven by `wallsMode`). */
-  editRoom: boolean;
   /** Selected outline vertex during editing, -1 = none. */
   selVtx: number;
   /** Incremented on every plan replacement: invalidates the layer's background cache. */
@@ -259,10 +264,8 @@ export function creerContexte(etat: Etat, canvas: HTMLElement, viewport: HTMLEle
   return {
     etat,
     vue: { scale: 1, ox: 0, oy: 0 },
-    ihm: { selWall: null, selCell: null, draw: false, drawFree: false },
+    ihm: { selWall: null, hoverWall: null, selCell: null, draw: false, drawFree: false },
     selection: { ids: new Set<string>(), primaire: null },
-    wallsMode: false,
-    editRoom: false,
     selVtx: -1,
     rev: 0,
     viewOnly: 0,

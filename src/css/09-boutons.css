@@ -18,8 +18,6 @@
   .seg .btn:first-child{border-radius:var(--radius-chip) 0 0 var(--radius-chip);margin-left:0}
   .seg .btn:last-child{border-radius:0 var(--radius-chip) var(--radius-chip) 0}
   .seg .btn[aria-pressed="true"]{z-index:1}
-  /* palette disabled while editing walls (mirrors the old overview) */
-  .palette.disabled{opacity:.45;pointer-events:none}
 
   /* never text-selection on the plan (drag was triggering it on labels) */
   #canvas,#canvas *,.toolbar,.rooms,.peer-cursors{user-select:none;-webkit-user-select:none}

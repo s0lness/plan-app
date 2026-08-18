@@ -13,7 +13,7 @@ const REAL_FURNITURE = REAL_PLAN.rooms.reduce((n: number, r: DonneeDynamique) =>
 const REAL_WALLMOUNTS = REAL_PLAN.rooms.reduce((n: number, r: DonneeDynamique) => n + r.pieces.filter((p: DonneeDynamique) =>
   ["door", "sdoor", "window", "sconce", "plug", "rj45"].includes(p.type)).length, 0);
 
-test("v5_convert_real_plan", seedV4(REAL_PLAN), `
+await test("v5_convert_real_plan", seedV4(REAL_PLAN), `
   // The plan was READ and CONVERTED on load; we replay the same read from the backup taken
   // before conversion (the only place where the old format survives).
   var st = window.__plan.readLegacy(JSON.parse(localStorage.getItem("room-planner-v4-backup")));
@@ -84,7 +84,7 @@ test("v5_convert_real_plan", seedV4(REAL_PLAN), `
      && expect(v.offWall === 0, v.offWall + " opening(s) do not sit on their wall"));
 
 // 4b. every old room name lands in the cell that CONTAINS that room's centroid.
-test("v5_convert_names_land_on_right_cell", seedV4(REAL_PLAN), `
+await test("v5_convert_names_land_on_right_cell", seedV4(REAL_PLAN), `
   // We reread the old rooms from the backup taken before conversion, then check that each name
   // landed on the right cell.
   var st = window.__plan.readLegacy(JSON.parse(localStorage.getItem("room-planner-v4-backup")));
@@ -106,7 +106,7 @@ test("v5_convert_names_land_on_right_cell", seedV4(REAL_PLAN), `
 // =============================================================================
 //  5. RENDER (read-only)
 // =============================================================================
-test("v5_render_single_band_per_wall", "", `
+await test("v5_render_single_band_per_wall", "", `
   var plan = { outline:[[0,0],[600,0],[600,400],[0,400]],
                walls:[{id:"w1", a:[300,0], b:[300,400], t:12}],
                openings:[{id:"o1", wallId:"w1", t0:150, w:80, h:12, type:"door", side:0, hinge:0, swing:1}],
@@ -132,7 +132,7 @@ test("v5_render_single_band_per_wall", "", `
      && expect(v.hiddenV4 === true, "the v4 containers must be hidden while v5 is on"));
 
 // 5b. zoom/pan correctness: the layer is anchored at the outline origin, and its size tracks the scale.
-test("v5_render_zoom_pan_anchored", "", `
+await test("v5_render_zoom_pan_anchored", "", `
   var plan = { outline:[[100,50],[700,50],[700,450],[100,450]],
                walls:[{id:"w1", a:[400,50], b:[400,450], t:12}], openings:[], pieces:[], cells:[] };
   window.__plan.setModel(plan);
@@ -148,7 +148,7 @@ test("v5_render_zoom_pan_anchored", "", `
 
 // 5c. REPLACES the old "v5_off_by_default" (there's no more model to switch off): what matters
 // is that the SAVED state is walls-only and no longer carries the slightest room.
-test("v5_saved_payload_is_walls_only", seedV4(REAL_PLAN), `
+await test("v5_saved_payload_is_walls_only", seedV4(REAL_PLAN), `
   var ser = window.__plan.serialize();
   return { model: window.__plan.model, layer: document.querySelectorAll(".v5layer").length,
            canvasV5: document.getElementById("canvas").classList.contains("v5"),
@@ -170,7 +170,7 @@ test("v5_saved_payload_is_walls_only", seedV4(REAL_PLAN), `
      && expect(v.stored === v.serialized, "localStorage must hold the same payload, got " + v.stored));
 
 // 5d. once a v5 plan exists it round-trips through serialize()/migrate() intact.
-test("v5_plan_roundtrips_serialize", seedV4(REAL_PLAN), `
+await test("v5_plan_roundtrips_serialize", seedV4(REAL_PLAN), `
   var res = { plan: window.__plan.plan };
   var ser = JSON.parse(JSON.stringify(window.__plan.serialize()));
   var again = window.__plan.migrate(ser);

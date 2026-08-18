@@ -1,5 +1,5 @@
 // src/ts/panneaux/fiche-cellule-edition.ts — THE CELL SHEET, EDITABLE PART (name, floor, close).
-// Ported from src/js/29-configuration.js (the "CELL sheet (Walls mode): name + floor" block) and
+// Ported from src/js/29-configuration.js (the cell sheet's name and floor block) and
 // from src/js/03-vue-selection.js (`activeFloor` / `setActiveFloor`).
 //
 // The READ part (area, active floor, the "Delete wall" button's verdict) is in
@@ -8,7 +8,7 @@
 // WHAT IS NOT HERE, AND IT'S DELIBERATE:
 //   . `#rcDel` triggers a geometry GESTURE (`v5DeleteSelectedWall`): it is wired with the other
 //     wall tools, in `gestes/murs.ts`;
-//   . the sheet's OPENING belongs to whoever triggers it (`setWallsMode`, `v5SelectCell`),
+//   . the sheet's OPENING belongs to whoever selects the cell (`v5SelectCell`),
 //     already ported in `gestes/murs.ts`. This module only knows how to CLOSE it.
 
 import type { Contexte } from "../app/contexte.ts";

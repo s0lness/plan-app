@@ -59,6 +59,7 @@ import {
   type SegmentMur,
 } from "./murs.ts";
 import type { Cellule, Id, Meuble, Mur, Ouverture, PlanV5, Pt } from "../partage/plan.ts";
+import { v5NewId } from "../fil/identite.ts";
 
 /**
  * Is the plan usable? (valid outline). `v5On()` from js/51, without the global: false only on a
@@ -105,16 +106,23 @@ export interface Barriere {
 // `outline:true` marks the OUTLINE: only it TRIMS a wall (a wall never leaves the apartment).
 // Interior walls, on the other hand, STOP an endpoint that runs into them, and nothing more: a
 // wall they cross through its middle is not cut.
-export function v5Barriers(P: PlanV5 | null | undefined, excludeId: Id | null | undefined): Barriere[] {
+type ExclusionMurs = Id | readonly Id[] | null | undefined;
+
+const idsMursExclus = (excludeId: ExclusionMurs): Set<string> => new Set(
+  Array.isArray(excludeId) ? excludeId.map(String) : (excludeId == null ? [] : [String(excludeId)]),
+);
+
+export function v5Barriers(P: PlanV5 | null | undefined, excludeId: ExclusionMurs): Barriere[] {
   const out: Barriere[] = [];
   if (!P) return out;
+  const exclus = idsMursExclus(excludeId);
   const O = P.outline || [];
   for (let i = 0; i < O.length; i++) {
     const a = O[i]!, b = O[(i + 1) % O.length]!;
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1) out.push({ a, b, outline: true });
   }
   (P.walls || []).forEach((w) => {
-    if (w.isOutline || String(w.id) === String(excludeId)) return;
+    if (w.isOutline || exclus.has(String(w.id))) return;
     out.push({ a: w.a, b: w.b, outline: false });
   });
   return out;
@@ -822,6 +830,130 @@ export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, sn
   if (best) return [v5R2((best as Pt)[0]), v5R2((best as Pt)[1])];
   const st = snap ? 5 : 1;
   return [Math.round(x / st) * st, Math.round(y / st) * st];
+}
+
+// ---- SNAP FOR A DRAGGED WALL ENDPOINT (owner's report: "choper les extrémités des murs et
+// pouvoir étendre et relier à d'autres murs") -------------------------------------------------
+// Same two-stage precedence as `v5SnapPoint` (a junction first, a segment next), reused rather
+// than re-invented, but with THREE differences that `v5SnapPoint` cannot serve as-is:
+//   1. THE WALL'S OWN TWO ENDPOINTS ARE EXCLUDED. `v5SnapPoint`/`v5SnapVertex` snap onto ANY
+//      wall endpoint, including the dragged wall's own FIXED end: dragging the free end back
+//      toward it would then "snap" the wall down to zero length the moment the pointer got
+//      close, instead of letting the person actually place it there by hand.
+//   2. THE TWO TOLERANCES ARE WIDER (15px / 10px vs 14px for both stages of `v5SnapPoint`): a
+//      junction that must physically CONNECT two walls needs a more forgiving target than a
+//      point merely snapping to an existing line while drawing.
+//   3. `snap` (the personal "snapping enabled" setting) plays NO PART here, matching how
+//      `v5SnapPoint` itself never gates its own vertex/edge stages on it either (only the
+//      GRID fallback, computed by the caller, is gated by that setting): a junction connection
+//      is not an optional convenience to turn off, only the grid-rounding fallback is.
+
+/** cm: tolerance for stage 1 (another wall's endpoint, or an outline corner). Mirrors
+ * `v5SnapTol`'s shape (a floor, a ceiling at one wall thickness) with the wider px budget the
+ * owner's report calls for: a junction has to hold, so it gets a more forgiving target than the
+ * drawing tool's own vertex snap. */
+function v5SnapTolBout(echelle: number): number {
+  return Math.min(WALL, Math.max(8, 15 / (echelle || 1)));
+}
+
+/** cm: tolerance for stage 2 (a point ON another wall's segment, or on the outline's own body). */
+function v5SnapTolSegment(echelle: number): number {
+  return Math.min(WALL, Math.max(6, 10 / (echelle || 1)));
+}
+
+/**
+ * Where a dragged wall ENDPOINT lands when released near another wall's own endpoint / an
+ * outline corner (stage 1, exact), or near another wall's segment / the outline's own body
+ * (stage 2, exact). `excludeWallId` is the wall being dragged: its own two endpoints never
+ * compete as targets (see file note above). Returns null when nothing is in reach: the caller
+ * (`gestes/murs.ts`, `v5WallEndDrop`) then falls back to 45-degree direction quantisation and
+ * the grid.
+ */
+export function v5SnapWallEnd(
+  P: PlanV5 | null | undefined,
+  excludeWallId: Id | readonly Id[],
+  x: number,
+  y: number,
+  echelle: number,
+): Pt | null {
+  if (!P) return null;
+  const exclus = idsMursExclus(excludeWallId);
+  let bestV: Pt | null = null, bdV = v5SnapTolBout(echelle);
+  const tryPt = (q: Pt): void => {
+    const d = Math.hypot(q[0] - x, q[1] - y);
+    if (d <= bdV) { bdV = d; bestV = [q[0], q[1]]; }
+  };
+  (P.outline || []).forEach((q) => tryPt(q));
+  (P.walls || []).forEach((w) => {
+    if (w.isOutline || exclus.has(String(w.id))) return;
+    tryPt(w.a); tryPt(w.b);
+  });
+  if (bestV) return [v5R2((bestV as Pt)[0]), v5R2((bestV as Pt)[1])];
+  let bestE: Pt | null = null, bdE = v5SnapTolSegment(echelle);
+  v5Barriers(P, excludeWallId).forEach((s) => {
+    const c = closestOnSeg(x, y, s.a[0], s.a[1], s.b[0], s.b[1]);
+    if (c.dist <= bdE) { bdE = c.dist; bestE = [c.x, c.y]; }
+  });
+  if (bestE) return [v5R2((bestE as Pt)[0]), v5R2((bestE as Pt)[1])];
+  return null;
+}
+
+// ---- SPLITTING A WALL AT ITS MIDPOINT ----------------------------------------------------------
+// An elbow begins with a split that changes no visible geometry. The original entity remains the
+// first half so every opening before the midpoint keeps both its wall identifier and its distance.
+// Only openings wholly after the midpoint move to the new half, by subtracting the first half's
+// length. No ratio enters this operation because `t0` is a distance in centimetres.
+
+export type ResultatDivisionMur = { id: Id } | { refus: string };
+
+// THE MIDPOINT IS ROUNDED LIKE EVERY OTHER STORED COORDINATE, and the first half's length is then
+// derived FROM THAT ROUNDED POINT rather than from `L / 2`. Two coordinates rounded to the
+// centimetre's hundredth can have a midpoint that is not, and storing an unrounded point here
+// would be the only place in the model that does. Deriving the length from the point we actually
+// store is what keeps an opening's absolute position on the floor exactly where it was: subtract
+// a half-length the split did not really use, and every object on the second half slides by the
+// difference.
+function v5WallSplitPoint(w: Mur): { milieu: Pt; premiereMoitie: number } {
+  const milieu: Pt = [v5R2((w.a[0] + w.b[0]) / 2), v5R2((w.a[1] + w.b[1]) / 2)];
+  return { milieu, premiereMoitie: Math.hypot(milieu[0] - w.a[0], milieu[1] - w.a[1]) };
+}
+
+/** A non-mutating preflight, also used by the gesture so a refusal creates no history entry. */
+export function v5WallSplitRefusal(P: PlanV5 | null | undefined, wallId: Id): string | null {
+  const w = v5WallById(P, wallId);
+  if (!P || !w) return "This wall no longer exists.";
+  // `isOutline` is only a cache. The shared deletion verdict verifies it against the current
+  // outline geometry, which prevents a stale cache from deciding what may be edited.
+  if (v5WallDeleteVerdict(P, wallId) === "facade") return "A facade wall cannot be split.";
+  const milieu = v5WallSplitPoint(w).premiereMoitie;
+  if (!(milieu > 0)) return "This wall is too short to split.";
+  const obstacle = (P.openings || []).find((o) =>
+    String(o.wallId) === String(wallId) && o.t0 < milieu && milieu < o.t0 + o.w,
+  );
+  if (obstacle) return `“${obstacle.name || "This object"}” crosses the wall midpoint and prevents the elbow.`;
+  return null;
+}
+
+/** Splits an interior wall at its exact geometric midpoint, without moving anything on the floor. */
+export function v5WallSplitAt(P: PlanV5 | null | undefined, wallId: Id): ResultatDivisionMur {
+  const refus = v5WallSplitRefusal(P, wallId);
+  if (refus) return { refus };
+  const plan = P!;
+  const w = v5WallById(plan, wallId)!;
+  const ancienB: Pt = [w.b[0], w.b[1]];
+  const { milieu, premiereMoitie: demiLongueur } = v5WallSplitPoint(w);
+  const id = v5NewId("w", plan);
+  const nouveau: Mur = { id, a: [milieu[0], milieu[1]], b: ancienB, t: w.t, isOutline: false };
+  if (w.free !== undefined) nouveau.free = w.free;
+
+  w.b = [milieu[0], milieu[1]];
+  for (const o of plan.openings || []) {
+    if (String(o.wallId) !== String(wallId) || o.t0 < demiLongueur) continue;
+    o.wallId = id;
+    o.t0 -= demiLongueur;
+  }
+  plan.walls.push(nouveau);
+  return { id };
 }
 
 // ---- WHO IS ALLOWED TO DISAPPEAR (C-13) --------------------------------------------------------

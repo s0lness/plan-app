@@ -179,11 +179,11 @@ await test("deux_poignees_sur_l_ouverture_selectionnee", async () => {
   await evaluate(`__plan.clearSel(); __plan.render(); true`); await pause(150);
   ok((await J(`(function(){return document.querySelectorAll('.piece[data-op="1"] .rsz-handle').length;})()`)) === 0,
     "rien de sélectionné : aucune poignée dans le DOM");
-  // Walls mode: openings are frozen, no handle either
-  await evaluate(`__plan.selReplace(${JSON.stringify(String(o.id))}); __plan.wallsMode(true); __plan.render(); true`);
+  // Re-selecting always restores the handles. Structural controls never freeze openings.
+  await evaluate(`__plan.selReplace(${JSON.stringify(String(o.id))}); __plan.render(); true`);
   await pause(180);
-  ok((await J(`(function(){return document.querySelectorAll('.piece[data-op="1"] .rsz-handle').length;})()`)) === 0,
-    "en mode Murs, aucune poignée d'ouverture");
+  ok((await J(`(function(){return document.querySelectorAll('.piece[data-op="1"] .rsz-handle').length;})()`)) === 2,
+    "une ouverture sélectionnée garde toujours ses deux poignées");
 });
 
 // =============================================================================
