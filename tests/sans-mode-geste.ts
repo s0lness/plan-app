@@ -54,16 +54,42 @@ async function recharger() {
   }
   throw new Error("application non prête");
 }
-const souris = (type: string, p: Point, extra: Record<string, unknown> = {}) => send("Input.dispatchMouseEvent", {
-  type, x: p.x, y: p.y, button: type === "mouseMoved" ? "none" : "left",
-  buttons: type === "mousePressed" ? 1 : 0, clickCount: 1, pointerType: "mouse", ...extra,
-});
+// A MOVE WITH A BUTTON DOWN IS NOT A HOVER. `button:"none"` on every `mouseMoved` made Chrome
+// deliver plain hovers, so a press landed on the furniture and selected it while the drag never
+// engaged: `meuble_sur_mur_toujours_deplacable` reported a frozen piece on a build where the same
+// piece moves fine under `tests/poignees-survol-geste.ts`, which sends `button:"left"`. The bug
+// was in the harness, and it accused the product.
+const souris = (type: string, p: Point, extra: Record<string, unknown> = {}) => {
+  const boutonsTenu = (extra["buttons"] as number | undefined) === 1 || type === "mousePressed";
+  return send("Input.dispatchMouseEvent", {
+    type, x: p.x, y: p.y, button: (type === "mouseMoved" && !boutonsTenu) ? "none" : "left",
+    buttons: type === "mousePressed" ? 1 : 0, clickCount: 1, pointerType: "mouse", ...extra,
+  });
+};
 async function pointer(p: Point) { await souris("mouseMoved", p); await pause(100); }
 async function cliquer(p: Point) { await pointer(p); await souris("mousePressed", p); await souris("mouseReleased", p); await pause(120); }
+/** Waits for a CONDITION, never for a duration. Returns false if the bound is reached. */
+async function attendre(expression: string, limite = 5000): Promise<boolean> {
+  const fin = Date.now() + limite;
+  while (Date.now() < fin) {
+    let v: unknown = false;
+    try { v = await evaluer(expression); } catch (_) { v = false; }
+    if (v === true) return true;
+    await pause(25);
+  }
+  return false;
+}
 async function glisser(a: Point, b: Point, modifiers = 0) {
   await pointer(a); await souris("mousePressed", a, { modifiers });
   for (let i = 1; i <= 14; i++) { await souris("mouseMoved", { x: a.x + (b.x - a.x) * i / 14, y: a.y + (b.y - a.y) * i / 14 }, { buttons: 1, modifiers }); await pause(8); }
-  await souris("mouseReleased", b, { modifiers }); await pause(160);
+  await souris("mouseReleased", b, { modifiers });
+  // THE END OF A GESTURE IS A CONDITION, NOT A DELAY. A fixed pause here passed alone and failed
+  // inside the barrier, where eight suites share the machine: the model was read before the
+  // release had committed, and `meuble_sur_mur_toujours_deplacable` reported furniture that had
+  // not moved. That is the exact defect commit c1b7fe1 fixed four times over, and the reason
+  // AGENTS.md says to wait for a condition everywhere. A longer sleep only moves the load
+  // threshold at which it breaks again.
+  await attendre("window.__plan.gestureActive === false");
 }
 const centre = (selecteur: string) => lire(`(function(){var e=document.querySelector(${JSON.stringify(selecteur)});if(!e)return null;var r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);
 const apt = (x: number, y: number) => lire(`(function(){var p=__plan.aptToScreen(${x},${y}),r=document.getElementById("viewport").getBoundingClientRect();return{x:r.left+p.x,y:r.top+p.y}})()`);
@@ -117,8 +143,19 @@ await test("meuble_sur_mur_toujours_deplacable", async () => {
   const p = await centre(`.piece[data-id="${id}"]`); if (!ok(p, "meuble absent")) return;
   const avant = await lire(`(function(){var p=__plan.state.plan.pieces.find(function(x){return String(x.id)===${JSON.stringify(id)}});return{x:p.x,y:p.y}})()`);
   const cible = await evaluer(`document.elementFromPoint(${p.x},${p.y})?.closest(".piece")?.dataset.id||""`);
-  await glisser(p, { x: p.x + 120, y: p.y }); const apres = await lire(`(function(){var p=__plan.state.plan.pieces.find(function(x){return String(x.id)===${JSON.stringify(id)}});return{x:p.x,y:p.y}})()`);
-  ok(apres.x !== avant.x || apres.y !== avant.y, `le meuble superposé au mur doit bouger, cible=${cible}, sélection=${await evaluer("String(__plan.selId)")}, avant=${JSON.stringify(avant)}, après=${JSON.stringify(apres)}`);
+  // WHAT THIS CASE PROVES IS THAT NOTHING FREEZES THE FURNITURE, so it measures the piece WHILE
+  // the hand holds it, not after the release. Reading the committed position made the case depend
+  // on the destination being legal: end-of-gesture bounds legitimately return a piece that was
+  // dropped outside any cell, and the test then reported a frozen piece that had in fact moved.
+  // Measured on 2026-08-18: red inside the barrier and red alone, for a reason that was never
+  // about the mode.
+  await pointer(p); await souris("mousePressed", p);
+  for (let i = 1; i <= 14; i++) { await souris("mouseMoved", { x: p.x + 120 * i / 14, y: p.y }, { buttons: 1 }); await pause(8); }
+  const pendant = await lire(`(function(){var q=__plan.state.plan.pieces.find(function(x){return String(x.id)===${JSON.stringify(id)}});return{x:q.x,y:q.y}})()`);
+  await souris("mouseReleased", { x: p.x + 120, y: p.y });
+  await attendre("window.__plan.gestureActive === false");
+  ok(pendant.x !== avant.x || pendant.y !== avant.y,
+    `le meuble superposé au mur doit suivre la main, cible=${cible}, sélection=${await evaluer("String(__plan.selId)")}, avant=${JSON.stringify(avant)}, pendant=${JSON.stringify(pendant)}`);
 });
 
 await test("nom_selectionne_piece_et_ouvre_fiche", async () => {
