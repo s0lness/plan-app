@@ -83,6 +83,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
   { f: "tests/mur-outil-geste.ts",         chrome: 1 },   // single-segment wall tool, real mouse+keyboard: stays armed across walls, endpoint snap shares the exact point, a drawn wall keeps its length, D-held guides on a wall write nothing
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
+  { f: "tests/poignees-survol-geste.ts",    chrome: 1 }, // real mouse: wall handles on hover, dedicated move target, body draws, facade selects, short-wall crowding
   { f: "tests/bouts-de-mur-geste.ts",      chrome: 1 },   // real mouse: a wall's own endpoint handle is hittable and extends it, the wall body still drags the whole wall, a clean click writes nothing
   { f: "tests/coude-mur-geste.ts",         chrome: 1 },   // real mouse: midpoint elbow handle, wall body remains reachable, clean click writes nothing
   { f: "tests/selection-visible.ts",       chrome: 1 },

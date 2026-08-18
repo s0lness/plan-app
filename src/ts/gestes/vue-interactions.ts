@@ -384,10 +384,12 @@ export function brancherInteractionsVue(ctx: Contexte): void {
     const t = e.target as HTMLElement | null;
     const pieceEl = t && t.closest && t.closest(".piece");
     const nameEl = t && t.closest && t.closest(".ov-name");
-    const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wx");
+    const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove");
     if (pieceEl || nameEl || handleEl) return;   // pieces and handles have their own gestures
-    // Walls mode: selection is cut off. Walls and the outline are grabbed by the layer.
-    if (ctx.wallsMode) return;
+    // Walls mode keeps cells and the outline on their existing controls. An interior wall BODY is
+    // intentionally ordinary drawing space now: only its visible move handle owns wall movement.
+    const wallBody = t && t.closest && t.closest(".v5hit-wall[data-w]");
+    if (ctx.wallsMode && !wallBody) return;
     // TOUCH: a finger over empty space = PAN (the rubber band and wall drawing are mouse only).
     if (isTouchEvt(e)) { startTouchPanOrTap(ctx, e); return; }
     if (e.shiftKey) { startRubberOrClick(ctx, e); return; }
