@@ -30,7 +30,7 @@
 // returns a TEXT, it no longer talks on its own.
 
 import type { Contexte } from "../app/contexte.ts";
-import type { Id, Mur, PlanV5, Pt } from "../partage/plan.ts";
+import type { Mur, PlanV5, Pt } from "../partage/plan.ts";
 import { v5Touch, v5On, v5WallById } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
@@ -677,106 +677,62 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
 }
 
 // =================================================================================================
-//  TOOL 1-TER: DRAGGING A WALL'S MIDPOINT TO CREATE AN ELBOW
+//  TOOL 1-TER: THE "+" SPLITS THE WALL AT ITS MIDPOINT, ON A CLICK
 // =================================================================================================
-// The split is delayed until the pointer crosses the ordinary 3 px geometry threshold. The
-// motionless press therefore remains selection only, with no wall, history entry, or wire diff.
-// Once split, both halves are free partitions because the shared endpoint is deliberately placed
-// in open space. Their shared point uses the endpoint snap cascade, with both halves excluded so
-// the new joint cannot snap back onto itself.
+// It used to be a DRAG that split the wall and placed the new joint in one gesture. The owner asked
+// for the simpler shape and he is right: press the plus, the wall becomes two, and each half then
+// carries the SAME controls at ITS OWN midpoint. So the "+" acts on a click, exactly like the "x"
+// sitting on the other side of the wall, and the joint the two halves now share is a real ENDPOINT
+// that the end handles can grab and extend.
+//
+// A CLICK THAT ACTS IS NOT A CLICK THAT SLIPS. The repository's rule is that a press-release
+// without movement never writes ON THE GEOMETRY: clicking a wall, a corner or an outline edge must
+// only ever select. This control is not geometry, it is a button, like the delete cross that has
+// always removed a wall on a plain click. What the rule forbids is a gesture whose ordinary
+// meaning is "look at this" quietly rewriting the plan.
+//
+// AND BECAUSE THE SPLIT MOVES NOTHING, IT CHANGES NOTHING ELSE. The drag version had to turn both
+// halves into FREE partitions, since a joint dragged into open space would otherwise be stretched
+// straight back out by the through-running rule, and it had to announce that change. A split that
+// leaves every point exactly where it was needs neither: the halves keep whatever nature the wall
+// had. Moving the joint afterwards goes through the endpoint drag, which sets `free` itself.
 
-export function v5StartWallElbowDrag(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
+export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
   const P = ctx.etat.plan;
-  const w = v5WallById(ctx, wallId);
-  if (!P || !w || w.isOutline) return;
+  if (!P) return;
   if (e.button !== undefined && e.button !== 0) return;
   if (spaceHeld() || measureMode()) return;
   e.preventDefault(); e.stopPropagation();
-  v5SelectWall(ctx, wallId); render(ctx);
-
-  const bAvant: Pt = [w.b[0], w.b[1]];
-  const freeAvant = w.free;
-  const ouverturesAvant = (P.openings || []).map((o) => ({
-    o, wallId: o.wallId, t0: o.t0, w: o.w, h: o.h,
-  }));
-  beginGesture();
-  ctx.crochets.dragStart?.();
-  const px0 = e.clientX, py0 = e.clientY;
-  let moved = false, tentative = false;
-  let nouveauId: Id | null = null;
-
-  const move = (ev: PointerEvent): void => {
-    if (!tentative) {
-      if (Math.hypot(ev.clientX - px0, ev.clientY - py0) < 3) return;
-      tentative = true;
-      const refus = v5WallSplitRefusal(P, w.id);
-      if (refus) { toast(refus, { geste: true }); return; }
-      pushHistory(ctx);
-      const division = v5WallSplitAt(P, w.id);
-      if ("refus" in division) { toast(division.refus, { geste: true }); return; }
-      nouveauId = division.id;
-      moved = true;
-    }
-    if (!moved || !nouveauId) return;
-    const second = P.walls.find((q) => String(q.id) === String(nouveauId)) || null;
-    if (!second) return;
-    const cm = evtApt(ctx, ev);
-    const step = sansGrille(ev) ? 1 : (ctx.etat.opts.snap ? 5 : 1);
-    const snapped = v5SnapWallEnd(P, [w.id, second.id], cm.x, cm.y, ctx.vue.scale);
-    const target: Pt = snapped || [Math.round(cm.x / step) * step, Math.round(cm.y / step) * step];
-    w.b = [target[0], target[1]];
-    second.a = [target[0], target[1]];
-    w.free = 1;
-    second.free = 1;
-    v5ResoudreGeometrie(P, false);
-    v5Touch(ctx);
-    render(ctx);
-    v5DrawWallDims(ctx, [w, second]);
-    ctx.crochets.liveAnalyze?.();
-  };
-  const up = (): void => {
-    window.removeEventListener("pointermove", move);
-    v5ClearDims(ctx);
-    if (moved) {
-      v5ResoudreGeometrie(P, true);
-      const msg = v5FlushOpeningsBorned();
-      if (msg) toast(msg, { geste: true });
-      // THE ELBOW CHANGES THE NATURE OF THE WALL, SO IT SAYS SO. A v5 wall is THROUGH-RUNNING by
-      // default: each end is pushed to the first geometry beyond it. The joint just created sits
-      // in open space and IS an end of both halves, so leaving them through-running would stretch
-      // the elbow straight back out. Both halves therefore become free partitions, and that is not
-      // a detail: their OUTER ends stop following the outline as well. Nothing here changes what a
-      // wall is without a word, and this is the only moment the person who did it can see it.
-      if (freeAvant !== 1) {
-        toast("Elbow created. Both halves are now free partitions: their ends no longer stretch to meet what is around them.", { geste: true });
-      }
-      bornerLesMeubles(ctx);
-      v5Touch(ctx);
-    }
-    render(ctx);
-    endGesture();
-    ctx.crochets.dragEnd?.();
-  };
-  const cancel = (): void => {
-    if (moved && nouveauId) {
-      P.walls = P.walls.filter((q) => String(q.id) !== String(nouveauId));
-      w.b = [bAvant[0], bAvant[1]];
-      w.free = freeAvant;
-      for (const avant of ouverturesAvant) {
-        avant.o.wallId = avant.wallId;
-        avant.o.t0 = avant.t0;
-        avant.o.w = avant.w;
-        avant.o.h = avant.h;
-      }
-      v5ResoudreGeometrie(P, true);
-      bornerLesMeubles(ctx);
-      v5Touch(ctx);
-    }
-    moved = false;
-    render(ctx);
-  };
-  window.addEventListener("pointermove", move);
-  armGesture(up, null, cancel);
+  // The refusals are stated, never swallowed: a facade is derived from the outline and cannot be
+  // split, and an opening straddling the midpoint blocks the cut by naming itself.
+  const refus = v5WallSplitRefusal(P, String(wallId));
+  if (refus) { toast(refus, { geste: true }); return; }
+  const avant = v5WallById(ctx, wallId);
+  const traversantAvant = !!avant && avant.free !== 1;
+  pushHistory(ctx);
+  const division = v5WallSplitAt(P, String(wallId));
+  if ("refus" in division) { toast(division.refus, { geste: true }); return; }
+  // THE TWO HALVES ARE FROZEN, OR THE CUT UNDOES ITSELF ON THE SPOT. A v5 wall is THROUGH-RUNNING
+  // by default: each end is pushed to the first geometry beyond it. The joint the split just
+  // created IS an end of both halves, so `v5ResoudreGeometrie` immediately stretches each of them
+  // straight back through it. Measured on the real flat: cutting a wall running from 277 to 1011
+  // left one half at 277..644 and the other at 353..1011, overlapping, looking exactly like the
+  // single wall it was a moment earlier. The person clicking "+" would see nothing happen and
+  // would be holding two walls on top of each other.
+  const moitieA = v5WallById(ctx, wallId), moitieB = v5WallById(ctx, division.id);
+  if (moitieA) moitieA.free = 1;
+  if (moitieB) moitieB.free = 1;
+  // Freezing them CHANGES WHAT THE WALL IS, so it is said once, and only when it changes something:
+  // their outer ends stop following the outline too. Nothing here rewrites a wall's nature silently.
+  if (traversantAvant) {
+    toast("Wall split in two. Both halves are now free partitions: their ends no longer stretch to meet what is around them.", { geste: true });
+  }
+  v5SelectWall(ctx, wallId);
+  v5ResoudreGeometrie(P, true);
+  bornerLesMeubles(ctx);
+  v5Touch(ctx);
+  render(ctx);
+  save(ctx);
 }
 
 // =================================================================================================
