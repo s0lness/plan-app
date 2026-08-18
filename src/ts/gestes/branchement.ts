@@ -25,7 +25,7 @@ import { rotatePieceWithChairs } from "./guides.ts";
 import { v5StartOpeningDrag } from "./ouverture.ts";
 import {
   v5DeleteSelectedWall, v5DeleteVertex, v5SelectCell, v5StartInsertHandle,
-  v5StartOutlineEdgeDrag, v5StartVertexDrag, v5SelectOutlineEdge, v5LayerDbl, v5LayerDown,
+  v5StartOutlineEdgeDrag, v5StartVertexDrag, v5SelectOutlineEdge, v5LayerDown,
   v5StartWallElbowDrag, v5StartWallEndDrag, v5StartWallMove,
 } from "./murs.ts";
 import { measureMode } from "./etat-pointeur.ts";
@@ -129,13 +129,11 @@ export function brancherGestes(ctx: Contexte): void {
   };
 
   ctx.gestes.calquePointerDown = (e) => v5LayerDown(ctx, e);
-  // Double-click on the layer: switches to Walls mode. EXCEPT on a room's name, which renames
-  // like a furniture label. Same collision test, for the same reason.
+  // A room name keeps the same double-click rename path as a furniture label.
   ctx.gestes.calqueDblClick = (e) => {
     const lab = etiquetteSous(e, ".ov-name[data-c]");
     const cid = lab?.dataset["c"];
     if (cid) { e.preventDefault(); e.stopPropagation(); ctx.gestes.etiquetteDblClick?.(e, cid, "cell"); return; }
-    v5LayerDbl(ctx, e);
   };
   ctx.gestes.choisirCellule = (id, ouvrirFiche) => v5SelectCell(ctx, id, ouvrirFiche);
   ctx.gestes.cadrerCellule = (c) => fitCell(ctx, c);

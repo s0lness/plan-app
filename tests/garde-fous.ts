@@ -424,7 +424,6 @@ await test("panneaux_jamais_superposes", URL_SEEDED, async () => {
 // cells it still showed a room that no longer existed.
 await test("fiche_suit_le_plan", URL_BLANK, async () => {
   await click(await centerOf("#setupStart"));            // 420 x 360
-  await click(await centerOf("#btnModeWalls"));
   await click(await centerOf("#btnFit"));
   await click(await centerOf("#canvas .v5layer .ov-name"));
   const lu = () => J(`({barre:document.getElementById("areaChip").textContent,
@@ -437,8 +436,10 @@ await test("fiche_suit_le_plan", URL_BLANK, async () => {
     "au départ déjà, les trois surfaces doivent coïncider : " + JSON.stringify(avant));
 
   // pull the top facade downward: the area CHANGES
-  const p = await aptPoint(105, 0);
-  await drag(p, { x: p.x, y: p.y + 70 }, 14);
+  const p = await aptPoint(105, 0); await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await pause(120);
+  const f = await centerOf(".v5wmove"); if (f) await click(f); await pause(100);
+  const edge = await centerOf(".edge");
+  if (ok(edge, "la façade sélectionnée doit révéler son arête")) await drag(edge, { x: edge.x, y: edge.y + 70 }, 14);
   const apres = await lu();
   ok(nombre(apres.fiche) !== nombre(avant.fiche),
     "la surface doit avoir changé après le déplacement de la façade : " + JSON.stringify(apres));
@@ -478,7 +479,6 @@ await test("fiche_suit_le_plan", URL_BLANK, async () => {
 // (card) and "total 15.1 m2" (toolbar), and `text-transform:uppercase` displayed "SURFACE 15,12 M2".
 await test("surfaces_au_meme_format", URL_BLANK, async () => {
   await click(await centerOf("#setupStart"));
-  await click(await centerOf("#btnModeWalls"));
   await click(await centerOf("#canvas .v5layer .ov-name"));
   const v = await J(`({barre:document.getElementById("areaChip").textContent,
     puce:document.querySelector("#roomsList .room-chip .rc-area").textContent,

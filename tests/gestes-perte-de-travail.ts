@@ -157,13 +157,24 @@ const aptPoint = (x: VerdictSonde, y: VerdictSonde) => J(`(function(){var s=__pl
 const plan = () => J(`(function(){var P=__plan.plan;
   return {outline:P.outline, cells:P.cells.length,
           walls:P.walls.filter(function(w){return !w.isOutline;}).map(function(w){return {id:w.id,a:w.a,b:w.b};})};})()`);
-// Installs an outline + our own walls, in apartment cm, then switches to Walls mode.
+// Installs an outline and walls in apartment centimeters.
 async function seedModel(walls: VerdictSonde, pieces?: VerdictSonde) {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
-    walls:${JSON.stringify(walls || [])}, openings:[], pieces:${JSON.stringify(pieces || [])}, cells:[]}); true`);
+    walls:${JSON.stringify(walls || [])}.concat([
+      {id:"o0",a:[0,0],b:[420,0],t:12,isOutline:1},{id:"o1",a:[420,0],b:[420,360],t:12,isOutline:1},
+      {id:"o2",a:[420,360],b:[0,360],t:12,isOutline:1},{id:"o3",a:[0,360],b:[0,0],t:12,isOutline:1}
+    ]), openings:[], pieces:${JSON.stringify(pieces || [])}, cells:[]}); true`);
   await pause(150);
 }
-const wallsMode = (on: VerdictSonde) => evaluate(`__plan.wallsMode(${on ? "true" : "false"}); true`).then(() => pause(80));
+const handleMur = async (x: VerdictSonde, y: VerdictSonde, id?: string) => {
+  const p = await aptPoint(x, y); await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await pause(100);
+  return centerOf(id ? `.v5wmove[data-w="${id}"]` : ".v5wmove");
+};
+const revelerContour = async () => {
+  if (await evaluate(`String(__plan.v5ui.draw)`) === "true") await click(await centerOf("#btnDrawWall"));
+  const w = await J(`(function(){var w=__plan.plan.walls.find(function(x){return x.isOutline});return{id:String(w.id),x:(w.a[0]+w.b[0])/2,y:(w.a[1]+w.b[1])/2}})()`);
+  const h = await handleMur(w.x, w.y, w.id); if (h) await click(h); await pause(100);
+};
 const armDraw = async () => {
   if (await evaluate(`String(__plan.v5ui.draw)`) !== "true") await click(await centerOf("#btnDrawWall"));
   return await evaluate(`String(__plan.v5ui.draw)`) === "true";
@@ -177,9 +188,9 @@ const armDraw = async () => {
 // and the user DRAGGED the FACADE instead. Measured: 15.1 m2 reduced to a 20 cm strip, without
 // a word. An ARMED tool must win over every handle.
 await test("tracer_gagne_sur_les_poignees", async () => {
-  await wallsMode(true);
   for (const dy of [0, 3, 6, 20]) {
     await seedModel([]);
+    await revelerContour();
     ok(await armDraw(), `départ à ${dy} cm : l'outil de tracé ne s'arme pas`);
     const cible = await evaluate(`(function(){var p=__plan.aptToScreen(140,${dy});
       var r=document.getElementById("viewport").getBoundingClientRect();
@@ -192,6 +203,7 @@ await test("tracer_gagne_sur_les_poignees", async () => {
   }
   // The "+" at the middle of a facade doesn't steal the trace either.
   await seedModel([]);
+  await revelerContour();
   ok(await armDraw(), "l'outil de tracé ne s'arme pas (départ sur le « + »)");
   const mid = await centerOf(".v5layer .mid");
   if (ok(mid, "poignée « + » absente")) {
@@ -211,9 +223,12 @@ await test("tracer_gagne_sur_les_poignees", async () => {
 // silently. We prove the OFF-CENTER crossing, the MULTIPLE crossing, the centered cross, and
 // we check that a real T-junction still holds.
 await test("mur_traversant_reste_entier", async () => {
-  await wallsMode(true);
   const dragWall = async (atX: VerdictSonde, atY: VerdictSonde, toX: VerdictSonde, toY: VerdictSonde) => {
-    await drag(await aptPoint(atX, atY), await aptPoint(toX, toY), 14);
+    const w = await J(`(function(){var best=null;__plan.plan.walls.forEach(function(q){if(q.isOutline)return;var dx=q.b[0]-q.a[0],dy=q.b[1]-q.a[1],ll=dx*dx+dy*dy||1;
+      var t=Math.max(0,Math.min(1,((${atX}-q.a[0])*dx+(${atY}-q.a[1])*dy)/ll));var d=Math.hypot(${atX}-(q.a[0]+t*dx),${atY}-(q.a[1]+t*dy));if(!best||d<best.d)best={id:String(q.id),d:d};});return best&&best.id})()`);
+    const h = await handleMur(atX, atY, w); if (!h) return;
+    const a = await aptPoint(atX, atY), b = await aptPoint(toX, toY);
+    await drag(h, { x: h.x + b.x - a.x, y: h.y + b.y - a.y }, 14);
   };
   // --- OFF-CENTER crossing (the case from the report) ---
   await seedModel([{ id: "w1", a: [210, 0], b: [210, 360], t: 12 },
@@ -278,7 +293,6 @@ await test("meuble_trop_grand_ne_saute_pas", async () => {
   // 170 cm hallway on the left, 220 cm sofa inside it
   await seedModel([{ id: "w1", a: [170, 0], b: [170, 360], t: 12 }],
                   [{ id: "p1", type: "sofa3", name: "Canapé", x: 105, y: 12, w: 220, h: 95, rot: 0 }]);
-  await wallsMode(false);
   await evaluate(`__plan.clearToast(); true`);
   const posOf = () => J(`(function(){var p=__plan.pieceById("p1");
     return {cx:Math.round(p.x+p.w/2), cy:Math.round(p.y+p.h/2)};})()`);
@@ -304,7 +318,6 @@ await test("meuble_trop_grand_ne_saute_pas", async () => {
   await seedModel([{ id: "w1", a: [180, 0], b: [180, 360], t: 12 },
                    { id: "w2", a: [0, 200], b: [180, 200], t: 12 }],
                   [{ id: "p2", type: "bed", name: "Lit", x: 10, y: 10, w: 160, h: 210, rot: 0 }]);
-  await wallsMode(false);
   const b0 = await J(`(function(){var p=__plan.pieceById("p2"); return {x:p.x,y:p.y};})()`);
   const c0 = await J(`(function(){var p=__plan.pieceById("p2"); return {cx:p.x+p.w/2, cy:p.y+p.h/2};})()`);
   await drag(await aptPoint(c0.cx, c0.cy), await aptPoint(c0.cx + 30, c0.cy + 20), 8);
@@ -321,18 +334,17 @@ await test("meuble_trop_grand_ne_saute_pas", async () => {
 // wrong, and the user concluded the button was broken.
 await test("pas_de_mur_en_double", async () => {
   await seedModel([]);
-  await wallsMode(true);
   const a = await aptPoint(210, 20), b = await aptPoint(210, 340);
   for (let k = 0; k < 2; k++) { ok(await armDraw(), "l'outil de tracé ne s'arme pas"); await drag(a, b, 14); }
   const P = await plan();
   ok(P.walls.length === 1, `deux traits au même endroit = un seul mur, obtenu ${P.walls.length}`);
   ok((await evaluate(`String(__plan.dupWalls())`)) === "0", "aucun mur superposé ne doit subsister");
   ok(/already there/.test(String(await evaluate(`String(__plan.toastText)`))), "le refus doit être DIT à l'écran");
-  // and deletion does make the partition disappear, in a single click
-  await click(await aptPoint(210, 120));
-  const del = await centerOf("#rcDel");
-  if (ok(del, "bouton « Supprimer le mur » absent")) {
-    await click(del); await pause(120);
+  // Deletion follows the wall selection exposed by hover.
+  await click(await centerOf("#btnDrawWall"));
+  const h = await handleMur(210, 120);
+  if (ok(h, "poignée move absente au survol")) {
+    await click(h); await key("Delete", "Delete", 46); await pause(120);
     const Q = await plan();
     ok(Q.walls.length === 0 && Q.cells === 1, `un seul clic doit refusionner (${JSON.stringify(Q.walls)}, ${Q.cells} cellule(s))`);
   }
@@ -351,7 +363,6 @@ await test("pas_de_mur_en_double", async () => {
 await test("echap_annule_le_geste", async () => {
   await seedModel([{ id: "w1", a: [210, 0], b: [210, 360], t: 12 }],
                   [{ id: "p1", type: "coffee", name: "Table basse", x: 40, y: 40, w: 110, h: 60, rot: 0 }]);
-  await wallsMode(false);
   const posOf = () => J(`(function(){var p=__plan.pieceById("p1"); return {x:p.x,y:p.y};})()`);
   const p0 = await posOf();
   const c0 = await J(`(function(){var p=__plan.pieceById("p1"); return {cx:p.x+p.w/2, cy:p.y+p.h/2};})()`);
@@ -374,15 +385,15 @@ await test("echap_annule_le_geste", async () => {
   ok(fin.x === p0.x && fin.y === p0.y, "après Échap, plus rien ne doit bouger " + JSON.stringify(fin));
 
   // --- Escape during a WALL DRAG ---
-  await wallsMode(true);
   const w0 = await plan();
   const wf = await aptPoint(210, 200);
-  await press(wf); await moveTo({ x: wf.x + 80, y: wf.y }, 6, wf);
+  const wh = await handleMur(210, 200, "w1"); if (!ok(wh, "poignée move absente pour le témoin Échap")) return;
+  await press(wh); await moveTo({ x: wh.x + 80, y: wh.y }, 6, wh);
   await key("Escape", "Escape", 27);
   const w1 = await plan();
   ok(JSON.stringify(w1.walls) === JSON.stringify(w0.walls),
     `Échap doit remettre le mur en place ${JSON.stringify(w0.walls)} -> ${JSON.stringify(w1.walls)}`);
-  await release({ x: wf.x + 80, y: wf.y });
+  await release({ x: wh.x + 80, y: wh.y });
 
   // --- Escape during a TRACE: no partition created ---
   ok(await armDraw(), "l'outil de tracé ne s'arme pas");
@@ -405,7 +416,6 @@ await test("echap_annule_le_geste", async () => {
 // objects?
 await test("pose_ne_sempile_pas", async () => {
   await seedModel([]);
-  await wallsMode(false);
   const pal = await J(`(function(){var el;var types=['sofa3','sofa2','arm','ottoman','dining','chair','coffee','side','biblio','shelf','bed','armoire','placard','desk','langer'];for(var i=0;i<types.length;i++){var e=document.querySelector('#palette .pitem[data-type="'+types[i]+'"]');if(e&&!e.classList.contains('phide')){el=e;break;}}if(!el)return null;el.scrollIntoView({block:'center'});var rect=el.getBoundingClientRect();if(!rect.width||!rect.height)return null;return{x:rect.left+rect.width/2,y:rect.top+rect.height/2,w:rect.width,h:rect.height};})()`);
 
   if (!ok(pal, "meuble ordinaire non trouvé")) return;
@@ -452,7 +462,7 @@ await test("pose_ne_sempile_pas", async () => {
 await test("poignee_plus_ne_vole_pas", async () => {
   // 1) On the template's REAL plan (it has its derived facade walls): a clean CLICK at the
   //    center of a facade SELECTS it and changes strictly nothing.
-  await wallsMode(true);
+  await revelerContour();
   const avant = await J(`(function(){var P=__plan.plan; return JSON.stringify({o:P.outline,
     w:P.walls.map(function(w){return [String(w.id),w.a,w.b];}), c:P.cells.length,
     p:P.pieces.map(function(p){return [String(p.id),p.x,p.y];})});})()`);
@@ -471,14 +481,14 @@ await test("poignee_plus_ne_vole_pas", async () => {
   }
   // 2) The "+" no longer covers the center of the facades.
   await seedModel([]);
-  await wallsMode(true);
+  await revelerContour();
   const promesses = await J(`__plan.midHandlePoints()`);
   ok(promesses.length === 4, "quatre façades attendues, " + promesses.length);
   ok(promesses.every((p: VerdictSonde) => !/(^|\s)mid(\s|$)/.test(p.at || "")),
     "le centre d'une façade ne doit plus être recouvert par le « + » : " + JSON.stringify(promesses.map((p: VerdictSonde) => p.at)));
   // DRAGGING from the center of the facade = moving the facade (what the tooltip says).
   await seedModel([]);
-  await wallsMode(true);
+  await revelerContour();
   const b1 = (await plan()).outline;
   const eb2 = await centerOf(".v5layer .edge");
   if (ok(eb2, "bande de façade absente (2)")) {
@@ -491,7 +501,7 @@ await test("poignee_plus_ne_vole_pas", async () => {
   }
   // A clean CLICK on the "+" = inserting a corner (the handle stays reachable, moved outside).
   await seedModel([]);
-  await wallsMode(true);
+  await revelerContour();
   const b2 = (await plan()).outline;
   const mid2 = await centerOf(".v5layer .mid");
   if (ok(mid2, "poignée « + » absente (2)")) {

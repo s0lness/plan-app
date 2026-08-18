@@ -474,8 +474,8 @@ function brancherPoseArmeeSurLePlan(ctx: Contexte): void {
     // surfaces placed WITHIN the viewport keep their own clicks (chat, banners, hints)
     const cible = (e.target instanceof Element) ? e.target : null;
     if (cible && cible.closest(".chat-panel,.chat-btn,.boot-notice,.tip-hint,.app-toast")) return;
-    if (measureMode() || spaceHeld() || ctx.wallsMode) {
-      annulerPoseArmee(ctx, "Drop cancelled: this mode has control of the plan.");
+    if (measureMode() || spaceHeld()) {
+      annulerPoseArmee(ctx, "Drop cancelled: another tool has control of the plan.");
       return;
     }
     e.preventDefault(); e.stopPropagation();

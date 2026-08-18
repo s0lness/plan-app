@@ -173,7 +173,6 @@ async function largestCellBBox() {
 //  1. trace_libre_en_l_fait_deux_murs_partages
 // =============================================================================
 await test("trace_libre_en_l_fait_deux_murs_partages", async () => {
-  await click(await centerOf("#btnModeWalls"));
   const bbox = await largestCellBBox();
   const leg = Math.max(40, Math.min(110, (bbox.maxX - bbox.minX) / 3, (bbox.maxY - bbox.minY) / 3));
   ok(leg >= 30, `précondition : la plus grande pièce doit avoir la place pour un L (leg=${leg})`);
@@ -195,7 +194,7 @@ await test("trace_libre_en_l_fait_deux_murs_partages", async () => {
   // THE DEFAULT CHANGED (2026-08-14, AGENTS.md "the tool disarms after every wall"): the owner's
   // complaint applied equally to the freehand tool. It now STAYS ARMED after a stroke, exactly
   // like the single-segment tool (`tests/mur-outil-geste.ts` covers that one) — disarming is a
-  // deliberate act (the button again, Escape, leaving Walls mode), not automatic on release.
+  // deliberate act (the button again or Escape), not automatic on release.
   ok(await evaluate(`String(__plan.v5ui.drawFree)`) === "true", "l'outil trace libre doit rester armé après le trait");
 
   if (nouveaux.length === 2) {
@@ -235,7 +234,6 @@ await test("trace_libre_en_l_fait_deux_murs_partages", async () => {
 // corner through unstraightened. It must still come out as a TRUE right angle: both walls
 // exactly horizontal/vertical, sharing one exact point.
 await test("trace_libre_equerre_maladroite_devient_un_angle_droit", async () => {
-  await click(await centerOf("#btnModeWalls"));
   const bbox = await largestCellBBox();
   const leg = Math.max(40, Math.min(90, (bbox.maxX - bbox.minX) / 3, (bbox.maxY - bbox.minY) / 3));
   ok(leg >= 30, `précondition : la plus grande pièce doit avoir la place pour un L maladroit (leg=${leg})`);
@@ -276,7 +274,6 @@ await test("trace_libre_equerre_maladroite_devient_un_angle_droit", async () => 
 // tool armed, a plain click must create nothing and push nothing into history, same as the
 // single-segment tool.
 await test("clic_net_outil_libre_arme_ne_cree_rien", async () => {
-  await click(await centerOf("#btnModeWalls"));
   const bbox = await largestCellBBox();
   const P = await aptPoint((bbox.minX + bbox.maxX) / 2, (bbox.minY + bbox.maxY) / 2);
 

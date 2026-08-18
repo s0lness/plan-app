@@ -295,8 +295,9 @@ export function adoptServerState(ctx: Contexte, fil: Fil, ns: ReturnType<typeof 
  *   has been set aside AND announced, waiting for it would leave the screen lying for 4 more seconds.
  */
 export function adoptSafe(ctx: Contexte): boolean {
+  void ctx;
   const setup = $("setup"), xfer = $("xfer");
-  return !ctx.editRoom && !gesteActif()
+  return !gesteActif()
     && !!(setup && setup.hidden) && !!(xfer && xfer.hidden);
 }
 
@@ -617,7 +618,7 @@ export function maybeOpenSetupFromServer(ctx: Contexte): void {
   if (ctx.etat.setupDone) return;                  // already configured here: adoption/bootstrap owns the case
   if (assistant.estOuvert?.()) return;             // already open
   const xfer = $("xfer");
-  if (ctx.editRoom || !(xfer && xfer.hidden)) return;   // do not tear the person away from an edit
+  if (!(xfer && xfer.hidden)) return;
   assistant.ouvrir?.();
 }
 

@@ -1,7 +1,7 @@
-// src/ts/gestes/murs.ts — WALLS MODE: select, drag, draw, edit the outline.
+// src/ts/gestes/murs.ts — select, drag and draw walls, then edit the outline from a facade.
 // Ported from src/js/53-v5-outils.js (everything, EXCEPT the OPENING drag which lives in `ouverture.ts`),
-// from src/js/54-v5-interface.js (`v5SyncTools` and the handle WIRING, whose rendering already lives
-// in `rendu/calque.ts`), from src/js/23-mode-murs.js (`setWallsMode`) and from src/js/52 for the single
+// from src/js/54-v5-interface.js (the handle WIRING, whose rendering already lives
+// in `rendu/calque.ts`) and from src/js/52 for the single
 // `v5AfterGeometry`, which belongs to no other batch: it calls rendering and persistence,
 // so it lives on the gestures side, not the model's.
 //
@@ -14,8 +14,8 @@
 //        pointer has moved by 3 px. Measured: a clean click on an outline wall produced 28 differences
 //        (a 90 cm wall lengthened three meters away from there, the apartment going from 10 to 11 rooms,
 //        16 pieces of furniture moved by up to 114 cm); a click on a vertex cut a room in two.
-//   G-12 ESCAPE cancels the gesture, puts the object back EXACTLY in place (each gesture supplies its own
-//        `onCancel`), and leaving Walls mode gets STATED (the message lives in the keyboard batch).
+//   G-12 ESCAPE cancels the gesture and puts the object back EXACTLY in place. Each gesture supplies
+//        its own `onCancel`.
 //   G-13 a gesture that produces nothing says why, on EVERY attempt (`toast(msg,{geste:true})`).
 //   G-14 AN ARMED TOOL WINS, DURING THE CAPTURE PHASE, OVER ALL HANDLES (`v5CaptureDown`).
 //   G-15 the "+" handle lives 18 px OUTSIDE the outline. The outward normal (`outlineOutward`) is
@@ -64,9 +64,8 @@ import { numField } from "../noyau/champ-numerique.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { armGesture, beginGesture, endGesture } from "./sortie.ts";
 import { measureMode, sansGrille, spaceHeld } from "./etat-pointeur.ts";
-import { clearGuides } from "./guides.ts";
 // SYMBOLS EXPECTED FROM A MODULE THAT HAS NO AUTHOR YET (src/js/15-edition-murs.js):
-// the outline's orthogonal snap, its guides, and the "walls cross" alert. Walls mode
+// the outline's orthogonal snap, its guides, and the "walls cross" alert. Outline editing
 // can't do without them (`v5StartVertexDrag` and `v5AfterGeometry` call them), and js/15
 // belongs to no batch of the project: flagged to the coordinator.
 import { checkShapeWarn, clearStitchGuides, drawOrthoGuides, orthoSnapVertex } from "./edition-murs.ts";
@@ -914,9 +913,8 @@ export function v5StartDraw(ctx: Contexte, e: PointerEvent, onNoDraw?: (() => vo
     v5ClearDraft(ctx); v5ClearDims(ctx);
     // THE TOOL STAYS ARMED (owner's #1 complaint: drawing a room meant re-clicking "Draw a wall"
     // between every single segment). Disarming now happens only where it is a DELIBERATE act: the
-    // button again (toggles off, `brancherOutilsMurs`), Escape while no gesture is running
-    // (`gestes/clavier.ts`, the Walls-mode branch), or leaving Walls mode
-    // (`setWallsMode`/`v5SyncTools` below). The toolbar button's `.pri` class and `aria-pressed`
+    // button again (toggles off, `brancherOutilsMurs`) or Escape while no gesture is running
+    // (`gestes/clavier.ts`). The toolbar button's `.pri` class and `aria-pressed`
     // (`v5SetDraw`) already track the armed state continuously, so staying armed stays VISIBLE.
     const d = draft;
     if (!d || Math.hypot(d[1][0] - d[0][0], d[1][1] - d[0][1]) < 20) {
@@ -1211,66 +1209,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   const t = e.target as Element | null;
   if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove")) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
-  if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], ctx.wallsMode); return; }
-}
-
-export function v5LayerDbl(ctx: Contexte, e: MouseEvent): void {
-  if (!v5On(ctx)) return;
-  const t = e.target as Element | null;
-  if (t && t.closest && t.closest(".piece")) return;
-  if (!ctx.wallsMode) { e.preventDefault(); setWallsMode(ctx, true); }
-}
-
-// =================================================================================================
-//  v5 TOOLBAR (js/54)
-// =================================================================================================
-
-export function v5SyncTools(ctx: Contexte): void {
-  const on = v5On(ctx) && ctx.wallsMode;
-  const bSeg = $("btnDrawWall");
-  if (bSeg) bSeg.hidden = !on;
-  const bLibre = $("btnDrawWallFree");
-  if (bLibre) bLibre.hidden = !on;
-  if (!on && ctx.ihm.draw) v5SetDraw(ctx, false);
-}
-
-// =================================================================================================
-//  GLOBAL FURNITURE <-> WALLS TOGGLE (js/23)
-// =================================================================================================
-// Walls mode shows the OUTLINE's handles and makes walls grabbable; furniture is frozen
-// and the room card (cell) replaces the inspector.
-// G-12: leaving this mode in silence is indistinguishable from a glitch (measured: 16 walls clicked in
-// a row with no effect, incident filed as "not reproducible"). The Escape message lives in the
-// keyboard batch, which calls this function.
-
-export function setWallsMode(ctx: Contexte, on: boolean): void {
-  on = !!on;
-  if (on === ctx.wallsMode) return;
-  ctx.crochets.crumb?.("mode", on ? "murs" : "meubles");
-  ctx.wallsMode = on;
-  // any selection and any guide fall away on a mode change
-  clearSel(ctx); ctx.selVtx = -1; ctx.crochets.hideInspector?.(); clearGuides(ctx);
-  const bf = $("btnModeFurn"), bw = $("btnModeWalls");
-  if (bf) { bf.classList.toggle("pri", !on); bf.setAttribute("aria-pressed", on ? "false" : "true"); }
-  if (bw) { bw.classList.toggle("pri", on); bw.setAttribute("aria-pressed", on ? "true" : "false"); }
-  const pal = $("palette");
-  if (pal) pal.classList.toggle("disabled", on);       // palette inert while editing walls
-  const hint = $("wallsHint");
-  if (hint) hint.hidden = !on;                         // banner: mode visible, furniture locked
-  if (on) ctx.crochets.showHint?.("walls");            // hint on first entry into Walls mode
-  const card = $("roomCard");
-  if (on) {
-    ctx.editRoom = true;                 // outline handles
-    if (card) card.hidden = false;
-    syncCellCard(ctx);
-    render(ctx); checkShapeWarn(ctx);
-  } else {
-    if (card) card.hidden = true;
-    v5SetDraw(ctx, false); ctx.editRoom = false; ctx.selVtx = -1; v5SelectWall(ctx, null);
-    checkShapeWarn(ctx);       // wallsMode dropped back down: the warning turns off
-    render(ctx); ctx.crochets.analyser?.();
-  }
-  v5SyncTools(ctx);
+  if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], true); return; }
 }
 
 // =================================================================================================
@@ -1299,12 +1238,6 @@ export function brancherOutilsMurs(ctx: Contexte): void {
     v5SetDraw(ctx, !(ctx.ihm.draw && ctx.ihm.drawFree), true);
     render(ctx);
   });
-  // The Furniture / Walls segmented control. In the old client it was wired FROM js/29
-  // (the config modal), i.e. three files away from the function it calls:
-  // the application's most visible button lived inside a module with nothing to do with it. It is
-  // now wired right next to `setWallsMode`.
-  $("btnModeFurn")?.addEventListener("click", () => setWallsMode(ctx, false));
-  $("btnModeWalls")?.addEventListener("click", () => setWallsMode(ctx, true));
   // "Delete wall" from the cell card. The REST of the card (name, flooring) belongs to the
   // panels batch; this particular button triggers a geometry GESTURE, so it is wired here.
   $("rcDel")?.addEventListener("click", () => v5DeleteSelectedWall(ctx));

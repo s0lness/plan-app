@@ -15,15 +15,13 @@ import { syncCellCard } from "./fiche-cellule.ts";
 
 export function render(ctx: Contexte): void {
   updateReadout(ctx);
-  const app = document.querySelector(".app");
-  if (app) app.classList.toggle("walls", ctx.wallsMode);
   renderV5(ctx);
   // R-13: the sheet follows ALL editing paths, like the rail, not just a selection.
   const card = $("roomCard");
   if (card && !(card as HTMLElement).hidden) syncCellCard(ctx);
   const vide = $("emptyMsg");
   if (vide) {
-    vide.style.display = ((ctx.etat.plan && ctx.etat.plan.pieces.length) || ctx.wallsMode) ? "none" : "";
+    vide.style.display = (ctx.etat.plan && ctx.etat.plan.pieces.length) ? "none" : "";
   }
   renderRoomChips(ctx);
   ctx.crochets.persister?.();

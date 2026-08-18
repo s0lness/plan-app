@@ -1,19 +1,14 @@
   /* ---- WALLS-ONLY MODEL: an outline + walls, rooms are the cells ----
      The layer is the SINGLE editing CONTAINER: origin at the outline's bbox corner, vScale scale.
-     Hit shapes (walls/cells) live in the SVG, inert by default, activated to the
-     pointer depending on the mode. */
+     The visible target under the pointer decides which gesture starts. */
   .v5layer{position:absolute;left:0;top:0;pointer-events:none;z-index:1;touch-action:none}
   .v5layer svg.v5svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
   .v5layer .piece{cursor:grab;pointer-events:auto}
-  .v5layer.editing .piece{pointer-events:none;opacity:.5}
   .v5layer .rot-handle,.v5layer .rsz-handle,.v5layer .vtx,.v5layer .mid,.v5layer .edge{pointer-events:auto}
-  .v5layer .ov-name{pointer-events:none;cursor:default}
-  .v5layer.cellpick .ov-name{pointer-events:auto;cursor:pointer}
+  .v5layer .ov-name{pointer-events:auto;cursor:pointer}
   /* The beam is not clickable: it's a reading aid, not an object. */
   .v5beams{position:absolute;left:0;top:0;pointer-events:none;z-index:1}
   .v5layer.drawing{pointer-events:auto;cursor:crosshair}
-  .v5hit-wall{pointer-events:stroke;cursor:move;stroke:transparent;fill:none}
-  .v5hit-cell{pointer-events:fill;fill:transparent;cursor:pointer}
   .v5band.sel{stroke:var(--accent)!important}
   .v5wx{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;z-index:60;
         background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 13px/16px var(--mono);
@@ -25,10 +20,8 @@
   .v5wmid{width:20px;height:20px;margin:-10px 0 0 -10px;text-align:center;
         color:var(--accent-ink);font:700 13px/16px var(--mono)}
   .v5wmove{width:20px;height:20px;margin:-10px 0 0 -10px;background:var(--accent);border-color:var(--room-bg)}
-  /* Furniture is visibly above a wall in the default mode, so it also owns the press. The wall
-     handles rise again in Walls mode, where furniture is deliberately frozen. */
-  .v5layer:not(.editing) .v5wend,.v5layer:not(.editing) .v5wmid,
-  .v5layer:not(.editing) .v5wmove,.v5layer:not(.editing) .v5wx{z-index:9}
+  /* Furniture remains above wall controls, so a piece visibly covering a wall owns the press. */
+  .v5wend,.v5wmid,.v5wmove,.v5wx{z-index:9}
   .v5wend:hover,.v5wmid:hover,.v5wmove:hover{background:var(--accent-soft)}
   .v5wend:active,.v5wmid:active,.v5wmove:active{cursor:grabbing}
   .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;

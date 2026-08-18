@@ -184,8 +184,12 @@ const centerOf = (sel: VerdictSonde) => J(`(function(){var e=document.querySelec
 const aptPoint = (x: VerdictSonde, y: VerdictSonde) => J(`(function(){var s=__plan.aptToScreen(${x},${y});
   var r=document.getElementById("viewport").getBoundingClientRect();
   return {x:r.left+s.x, y:r.top+s.y};})()`);
-const wallsMode = (on: VerdictSonde) => evaluate(`__plan.wallsMode(${on ? "true" : "false"}); true`).then(() => pause(140));
 const toastNow = () => evaluate(`String(__plan.toastText||"")`);
+const selectFacade = async () => {
+  const m = await J(`(function(){var w=__plan.plan.walls.find(function(x){return x.isOutline});return{x:(w.a[0]+w.b[0])/2,y:(w.a[1]+w.b[1])/2,id:String(w.id)}})()`);
+  const p = await aptPoint(m.x, m.y); await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await pause(120);
+  const h = await centerOf(`.v5wmove[data-w="${m.id}"]`); if (h) await click(h); await pause(120);
+};
 const poses = () => J(`(function(){var o={};__plan.plan.pieces.forEach(function(p){
   o[String(p.id)]=[p.x,p.y,p.w,p.h,p.rot||0];}); return o;})()`);
 const parNom = (nom: VerdictSonde) => J(`(function(){var p=__plan.plan.pieces.filter(function(q){return q.name===${JSON.stringify(nom)};})[0];
@@ -318,7 +322,7 @@ await test("aller_retour_idempotent", async () => {
 // in two (9.6 m2 -> 7.7 + 1.9), made a radiator jump 114 cm, and saved all of it. We check EVERY
 // vertex here, plus every endpoint of interior walls.
 await test("clic_sur_sommet_n_ecrit_rien", async () => {
-  await wallsMode(true);
+  await selectFacade();
   const avant = await empreinte();
   const lsAvant = await evaluate(`String((localStorage.getItem("room-planner-v4")||"").length)`);
   const sommets = await J(`[].slice.call(document.querySelectorAll(".v5layer .vtx")).map(function(e){
@@ -431,30 +435,18 @@ await test("gros_meuble_sous_petit_atteint", async () => {
 });
 
 // =============================================================================
-//  7. echap_qui_quitte_les_murs_le_dit
+//  7. echap_deselectionne_un_mur_sans_changer_d_outil
 // =============================================================================
-// Real session: after deleting a wall followed by Ctrl+Z, NO wall would select for 16
-// consecutive clicks. The incident had been filed as "not reproducible". Cause: in Walls mode,
-// Escape with no selection QUITS the mode, silently. The consequence is indistinguishable from
-// a failure.
-await test("echap_qui_quitte_les_murs_le_dit", async () => {
-  await wallsMode(true);
-  const murs = await J(`__plan.plan.walls.map(function(w){return {id:String(w.id),
-    cx:(w.a[0]+w.b[0])/2, cy:(w.a[1]+w.b[1])/2};})`);
-  const clicMur = async (m: VerdictSonde) => { await click(await aptPoint(m.cx, m.cy)); return evaluate(`String(__plan.v5ui.selWall)`); };
-  ok(await clicMur(murs[1]) === murs[1].id, "témoin : un mur se sélectionne en mode Murs");
-  await key("Escape");                       // 1st Escape: deselects
-  ok(await evaluate(`String(__plan.v5ui.selWall)`) === "null", "le premier Échap désélectionne");
-  ok(await evaluate(`String(!!document.querySelector("#btnModeWalls.pri"))`) === "true",
-    "le premier Échap ne doit pas quitter le mode Murs");
-  await key("Escape");                       // 2nd Escape: quits the mode, and SAYS so
-  ok(await evaluate(`String(!!document.querySelector("#btnModeWalls.pri"))`) === "false",
-    "le second Échap quitte bien le mode Murs");
-  ok(/Furniture mode/.test(await toastNow()),
-    "quitter le mode Murs doit se dire : " + JSON.stringify(await toastNow()));
-  // and the "Walls" button really brings it back
-  await click(await centerOf("#btnModeWalls")); await pause(200);
-  ok(await clicMur(murs[2]) === murs[2].id, "le bouton « Murs » doit rendre les murs sélectionnables");
+await test("echap_deselectionne_un_mur_sans_changer_d_outil", async () => {
+  ok(await evaluate(`!document.getElementById("btnModeWalls")&&!document.getElementById("btnModeFurn")`),
+    "aucun sélecteur de mode ne doit subsister");
+  const m = await J(`(function(){var w=__plan.plan.walls.find(function(x){return !x.isOutline});return{x:(w.a[0]+w.b[0])/2,y:(w.a[1]+w.b[1])/2,id:String(w.id)}})()`);
+  const p = await aptPoint(m.x, m.y); await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await pause(120);
+  const h = await centerOf(`.v5wmove[data-w="${m.id}"]`); if (!ok(h, "poignée move absente")) return;
+  await click(h); ok(await evaluate(`String(__plan.v5ui.selWall)`) === m.id, "le clic doit sélectionner le mur");
+  await key("Escape");
+  ok(await evaluate(`String(__plan.v5ui.selWall)`) === "null", "Échap doit désélectionner le mur");
+  ok(!/Furniture mode/.test(await toastNow()), "Échap ne doit annoncer aucun changement de mode");
 });
 
 // =============================================================================

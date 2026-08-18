@@ -238,7 +238,6 @@ await test("resize_south_edge_plus40", seedV4(TWO_ROOMS), `
 // 6. REPLACES `wall_top_drag_bottom_fixed`: the apartment outline replaces the room polygon.
 //    Pulling the TOP edge inward leaves the BOTTOM edge where it is.
 await test("outline_top_edge_drag_bottom_fixed", seedV4(TWO_ROOMS), `
-  window.__plan.setWallsMode(true);
   var b0 = window.__plan.bboxOfPoly(window.__plan.plan.outline);
   // find the top edge (minimal y, horizontal) and pull it 30 cm inward
   var poly = window.__plan.plan.outline, ei = -1;
@@ -259,7 +258,6 @@ await test("outline_top_edge_drag_bottom_fixed", seedV4(TWO_ROOMS), `
 
 // 7. REPLACES `wall_ortho_snap_axis_aligned`: the same orthogonal snap, on the OUTLINE.
 await test("outline_ortho_snap_axis_aligned", seedV4(STAIR), `
-  window.__plan.setWallsMode(true);
   var before = window.__plan.allEdgesAxisAligned(0.5);
   // the offset vertex of the converted outline: we bring it back onto its neighbor's column
   var poly = window.__plan.plan.outline, vi = -1, best = 1e9;
@@ -280,7 +278,6 @@ await test("outline_ortho_snap_axis_aligned", seedV4(STAIR), `
 // 8. REPLACES `wall_party_coupling_moves_both`: a party wall is a SINGLE shared object, so
 //    moving it adjusts BOTH cells by construction (no more coupling to maintain).
 await test("wall_move_resizes_both_cells", seedV4(TWO_ROOMS), `
-  window.__plan.setWallsMode(true);
   var P = window.__plan.plan;
   var w = P.walls.filter(function(x){ return !x.isOutline; })[0];
   var area = function(name){ var c = P.cells.filter(function(x){ return x.name === name; })[0];
@@ -576,9 +573,7 @@ await test("wallmount_side_survives_a_wall_move", seedV4(TWO_ROOMS), `
   var p = P.placeAt("sconce", { x: 308, y: 150 });    // right cell side
   var before = P.v5OpeningPose(p.id);
   var w = P.plan.walls.filter(function(x){ return !x.isOutline; })[0];
-  P.setWallsMode(true);
   P.moveWall(w.id, 40);                               // pull the load-bearing wall by 40 cm
-  P.setWallsMode(false);
   var after = P.v5OpeningPose(p.id);
   return { r0: before.rot, s0: before.side, f0: before.facesName, cx0: before.cx,
            r1: after.rot, s1: after.side, f1: after.facesName, cx1: after.cx, wall: w.id };

@@ -74,7 +74,7 @@ function murGeometrique(ctx: Contexte, e: PointerEvent): string | null {
 function brancherSurvolMurs(ctx: Contexte): void {
   if (survolBranche.has(ctx)) return;
   survolBranche.add(ctx);
-  // Route (b), geometric detection, deliberately leaves `v5hit-wall` out of Furniture mode.
+  // Geometric detection deliberately leaves transparent wall bands out of the hit-test stack.
   // A transparent DOM band would join the hit-test stack and could cover the furniture that is
   // visibly painted above it. Geometry only decides whether handles should be shown; the real DOM
   // target still decides what receives the press.
@@ -125,8 +125,6 @@ export function renderV5(ctx: Contexte): void {
   layer.style.top = sp.y + "px";
   layer.style.width = safeDim(bb.w * S) + "px";
   layer.style.height = safeDim(bb.l * S) + "px";
-  layer.classList.toggle("editing", ctx.wallsMode);
-  layer.classList.toggle("cellpick", !ctx.wallsMode);
   layer.classList.toggle("drawing", !!ctx.ihm.draw);
   const o = ctx.etat.opts;
   // `ctx.ihm.draw` gates the HIT shapes below (walls/cells only get their clickable band while
@@ -136,7 +134,7 @@ export function renderV5(ctx: Contexte): void {
   // side effect of clearing the selection, not because it releases anything the button doesn't.
   const sig = S.toFixed(4) + "|" + ctx.rev + "|" + (o.labels ? 1 : 0) + "|" + (o.layFurn !== false ? 1 : 0)
     + (o.layLight !== false ? 1 : 0) + (o.layPlug !== false ? 1 : 0)
-    + "|" + (ctx.wallsMode ? 1 : 0) + "|" + (ctx.ihm.selWall || "") + "|" + (ctx.ihm.draw ? 1 : 0);
+    + "|" + (ctx.ihm.selWall || "") + "|" + (ctx.ihm.draw ? 1 : 0);
   if (layer.dataset["sig"] !== sig) { layer.dataset["sig"] = sig; renderFond(ctx, layer, P, bb, S); }
   renderPieces(ctx, layer, bb);
   renderOuvertures(ctx, layer, bb, S);
@@ -188,19 +186,6 @@ export function renderFond(ctx: Contexte, layer: HTMLElement, P: PlanV5, bb: BBo
     body += `<line class="${cls}" data-wid="${escapeHtml(w.id)}" x1="${X(w.a[0])}" y1="${Y(w.a[1])}" x2="${X(w.b[0])}" y2="${Y(w.b[1])}"
         stroke="#3b3f3d" stroke-width="${band}" stroke-linecap="square"/>`;
   });
-  // HIT shapes (transparent): cells first (surface), walls next (on top, a wall always wins over
-  // the cell). In Furniture mode the floor stays TRANSPARENT to the pointer: the rubber-band
-  // selection and the viewport's click-to-deselect must keep working.
-  if (!ctx.ihm.draw && ctx.wallsMode) {
-    (P.cells || []).forEach((c) => {
-      body += `<polygon class="v5hit-cell" data-c="${escapeHtml(c.id)}" points="${pts(c.poly)}"/>`;
-    });
-    (P.walls || []).forEach((w) => {
-      if (w.isOutline) return;
-      const hit = Math.max(14, (w.t || WALL) * gs);
-      body += `<line class="v5hit-wall" data-w="${escapeHtml(w.id)}" x1="${X(w.a[0])}" y1="${Y(w.a[1])}" x2="${X(w.b[0])}" y2="${Y(w.b[1])}" stroke-width="${hit}"/>`;
-    });
-  }
   const svg = document.createElementNS(SVGNS, "svg");
   svg.setAttribute("class", "v5svg");
   svg.setAttribute("width", String(W));
@@ -402,7 +387,8 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
 
 /**
  * OUTLINE handles (edges, corner insertions, vertices) and the delete cross of the selected wall.
- * They only exist in Walls mode, and are recreated on every render.
+ * The outline controls exist only while a facade or one of its corners is selected. They cover
+ * the whole perimeter, so mere hover would make them intrude on ordinary work near a wall.
  *
  * G-15: the corner-insertion "+" is OFFSET 18 px OUTSIDE the outline. Placed on the facade, it
  * stole the selection click, and its global recomputation would cut the wall in two and move
@@ -413,15 +399,11 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   if (ctx.ihm.hoverWall && !(ctx.etat.plan.walls || []).some((w) => String(w.id) === String(ctx.ihm.hoverWall))) {
     ctx.ihm.hoverWall = null;
   }
-  // A WALL'S OWN HANDLES ARE NOT GATED ON WALLS MODE, and that is the whole point of this batch:
-  // the owner asked to reach a wall by HOVERING it, not by first arming a mode one can be
-  // stranded in. The OUTLINE's handles (its edges and its corners) stay behind the mode, because
-  // reshaping the apartment's envelope is a deliberate act and its controls cover the whole
-  // perimeter. So the two loops below opt out, and the wall loop at the end of this function runs
-  // in every mode.
   const poly = ctx.etat.plan.outline, np = poly.length;
   const toC = (x: number, y: number): { x: number; y: number } => ({ x: (x - bb.minX) * S, y: (y - bb.minY) * S });
-  for (let i = 0; i < np && ctx.wallsMode; i++) {
+  const selectionMur = (ctx.etat.plan.walls || []).find((w) => String(w.id) === String(ctx.ihm.selWall));
+  const contourVisible = !!selectionMur?.isOutline || ctx.selVtx >= 0;
+  for (let i = 0; i < np && contourVisible; i++) {
     const a = poly[i]!, b = poly[(i + 1) % np]!;
     const sa = toC(a[0], a[1]), sb = toC(b[0], b[1]);
     const s = { x: (sa.x + sb.x) / 2, y: (sa.y + sb.y) / 2 };
@@ -454,7 +436,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     layer.appendChild(md);
   }
   poly.forEach((v, i) => {
-    if (!ctx.wallsMode) return;
+    if (!contourVisible) return;
     const s = toC(v[0], v[1]);
     const h = document.createElement("div");
     h.className = "vtx" + ((i === ctx.selVtx) ? " sel" : "");

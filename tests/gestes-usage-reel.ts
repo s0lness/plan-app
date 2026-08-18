@@ -151,8 +151,12 @@ const centerOf = (sel: VerdictSonde) => J(`(function(){var e=document.querySelec
 const aptPoint = (x: VerdictSonde, y: VerdictSonde) => J(`(function(){var s=__plan.aptToScreen(${x},${y});
   var r=document.getElementById("viewport").getBoundingClientRect();
   return {x:r.left+s.x, y:r.top+s.y};})()`);
-const wallsMode = (on: VerdictSonde) => evaluate(`__plan.wallsMode(${on ? "true" : "false"}); true`).then(() => pause(120));
 const toastNow = () => evaluate(`String(__plan.toastText||"")`);
+const selectFacade = async () => {
+  const m = await J(`(function(){var w=__plan.plan.walls.find(function(x){return x.isOutline});return{x:(w.a[0]+w.b[0])/2,y:(w.a[1]+w.b[1])/2,id:String(w.id)}})()`);
+  const p = await aptPoint(m.x, m.y); await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await pause(120);
+  const h = await centerOf(`.v5wmove[data-w="${m.id}"]`); if (h) await click(h); await pause(120);
+};
 // Canonical fingerprint of the plan: everything that must stay identical when we only LOOK.
 const empreinte = () => evaluate(`(function(){var P=__plan.plan; return JSON.stringify({
   o:P.outline, w:P.walls.map(function(w){return [String(w.id),w.a,w.b];}),
@@ -171,7 +175,7 @@ const pieceRect = (id: string) => J(`(function(){var e=document.querySelector('#
 // pieces of furniture and 3 openings, without a word. The corner-insertion "+" covered the exact
 // center of every facade, and the insertion triggered a global recalculation.
 await test("selection_facade_ne_modifie_rien", async () => {
-  await wallsMode(true);
+  await selectFacade();
   const avant = await empreinte();
   const bandes = await J(`[].slice.call(document.querySelectorAll(".v5layer .edge")).map(function(e){
     var r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2};})`);
@@ -196,7 +200,7 @@ await test("selection_facade_ne_modifie_rien", async () => {
 // intercepted the "+", not the facade strip, and a click on the strip triggered a
 // v5AfterGeometry(true), hence a re-traversal of every wall.
 await test("outil_arme_ne_deforme_aucun_mur", async () => {
-  await wallsMode(true);
+  await selectFacade();
   const avant = await empreinte();
   if (!ok(await evaluate(`String(!document.getElementById("btnDrawWall").hidden)`) === "true",
     "le bouton de tracé est masqué")) return;
@@ -226,7 +230,6 @@ await test("outil_arme_ne_deforme_aucun_mur", async () => {
 // and retracing it became impossible: the stroke stuck to the other one and the duplicate
 // refusal said "this partition is already there".
 await test("mur_supprime_se_retrace", async () => {
-  await wallsMode(true);
   const w = await J(`(function(){var x=__plan.plan.walls.filter(function(w){return !w.isOutline;})[0];
     return {id:String(x.id), a:x.a, b:x.b};})()`);
   if (!ok(w, "aucune cloison intérieure dans le gabarit")) return;
@@ -384,7 +387,6 @@ await test("meme_message_pas_huit_fois", async () => {
 // the wall standing. The interface already refused, but silently, and the room card still
 // offered a red "Delete wall" button.
 await test("facade_refuse_sa_suppression", async () => {
-  await wallsMode(true);
   const f = await J(`(function(){var w=__plan.plan.walls.filter(function(w){return w.isOutline;})[0];
     return w?String(w.id):null;})()`);
   if (!ok(f, "aucun mur de façade")) return;
@@ -399,8 +401,8 @@ await test("facade_refuse_sa_suppression", async () => {
   ok(/facade/i.test(await toastNow()), "le refus doit être DIT, message vu : « " + (await toastNow()) + " »");
   // and the room card doesn't offer an impossible action
   const del = await J(`(function(){var b=document.getElementById("rcDel");
-    return {hidden:!!b.hidden, disabled:!!b.disabled, txt:String(b.textContent||"")};})()`);
-  ok(del.hidden || del.disabled, "le bouton « Supprimer le mur » ne doit pas être actionnable sur une façade");
+    return {cardHidden:document.getElementById("roomCard").hidden,hidden:!!b.hidden, disabled:!!b.disabled, txt:String(b.textContent||"")};})()`);
+  ok(del.cardHidden || del.hidden || del.disabled, "le bouton « Supprimer le mur » ne doit pas être actionnable sur une façade");
 });
 
 // =============================================================================
@@ -411,7 +413,6 @@ await test("facade_refuse_sa_suppression", async () => {
 // four drags in a row, in total silence. Nothing said the space was missing, so the user kept
 // trying. And since the gesture is deliberate, the message comes back on EVERY attempt.
 await test("geste_sans_effet_dit_pourquoi", async () => {
-  await wallsMode(false);
   await evaluate(`__plan.fitView(); true`); await pause(150);
   const p = await J(`__plan.addRoomPiece("chair", 200, 200)`);
   if (!ok(p, "impossible de poser une chaise")) return;

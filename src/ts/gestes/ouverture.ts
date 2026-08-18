@@ -125,7 +125,7 @@ export function v5DrawOpeningGuides(ctx: Contexte, op: Ouverture): void {
 // the already-resolved opening: a gesture doesn't go looking for its own node in the DOM.
 
 export function v5StartOpeningDrag(ctx: Contexte, e: PointerEvent, op: Ouverture): void {
-  if (measureMode() || spaceHeld() || ctx.wallsMode) return;
+  if (measureMode() || spaceHeld()) return;
   if (e.button !== undefined && e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
   if (e.ctrlKey || e.metaKey) {
@@ -349,7 +349,7 @@ export function v5DrawOpeningResize(ctx: Contexte): void {
     const parent = h.parentNode as HTMLElement | null;
     if (!seul || !parent || parent.dataset["id"] !== String(seul.id)) h.remove();
   });
-  if (!seul || ctx.wallsMode || measureMode()) return;
+  if (!seul || measureMode()) return;
   const el = layer.querySelector<HTMLElement>(`.piece[data-op="1"][data-id="${cssId(seul.id)}"]`);
   if (!el) return;
   const w = v5WallById(ctx.etat.plan, seul.wallId);
@@ -416,7 +416,7 @@ export function v5StartOpeningResize(
   op: Ouverture,
   end: BordOuverture,
 ): void {
-  if (measureMode() || spaceHeld() || ctx.wallsMode) return;
+  if (measureMode() || spaceHeld()) return;
   if (e.button !== undefined && e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
   const w = v5WallById(ctx.etat.plan, op.wallId);

@@ -2,8 +2,8 @@
 // Replaces, for this batch alone, the corresponding entries of src/js/57-sondes-test.js.
 //
 // WHY ONE FILE PER BATCH: `js/57` was "the repo's most likely git conflict point", and
-// `esbuild` measured TWO GENUINELY DUPLICATE KEYS in it (`wallsMode`, `pieceTol`), the last of
-// which silently won. A typed object per batch closes both problems.
+// `esbuild` measured genuinely duplicate keys in it, and the last one silently won. A typed
+// object per batch closes that problem.
 //
 // EVERY ACCESSOR IN THIS FILE IS A `get`, AND THIS IS MANDATORY. `installerSonde` carries the
 // slices via `Object.defineProperties(…, getOwnPropertyDescriptors(…))` and not via

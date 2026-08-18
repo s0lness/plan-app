@@ -165,7 +165,7 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     const isSelPiece = (String(p.id) === ctx.selection.primaire);
     const rh = el.querySelector<HTMLElement>(".rot-handle");
     if (rh) rh.style.display = (wallMount || !isSelPiece) ? "none" : "";
-    const showRsz = isSelPiece && ctx.selection.ids.size === 1 && !wallMount && !p.locked && !ctx.editRoom;
+    const showRsz = isSelPiece && ctx.selection.ids.size === 1 && !wallMount && !p.locked;
     const hasRsz = el.dataset["rszon"] === "1";
     if (showRsz && !hasRsz) {
       el.dataset["rszon"] = "1";

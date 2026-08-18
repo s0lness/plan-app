@@ -43,7 +43,7 @@ export function brancherMenuPied(_ctx: Contexte): void {
     setMenuOpen(false);
   });
   // IN CAPTURE PHASE: Escape closes ONLY the menu, and does not reach the application's
-  // other Escape handlers (exiting Walls mode, cancelling a gesture).
+  // other Escape handlers (closing a sheet, cancelling a gesture).
   window.addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key === "Escape" && !footMenu.hidden) {
       setMenuOpen(false);
