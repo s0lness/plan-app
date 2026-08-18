@@ -8,12 +8,12 @@
 // tests: we rebuild the surface, then rewire the scenarios.
 //
 // WHAT THE TYPING CLOSES OFF HERE, and this is not theoretical: `esbuild` measured TWO REAL
-// DUPLICATE KEYS in the old hook (`wallsMode` l. 58 and 294, `pieceTol` l. 465 and 505). The
-// last one won, so an accessor form was dead code and `pieceTol` had no taker. A typed object
+// DUPLICATE KEYS existed in the old hook. The last one won, so an accessor form was dead code
+// and another probe had no taker. A typed object
 // literal makes this impossible to compile.
 //
 // WHAT IS NOT EXPOSED, AND WHY: everything this batch did not port. Gestures (drag, placement,
-// lasso, resize, full walls mode), persistence and history, sync and collaboration, PNG
+// lasso, resize and wall gestures), persistence and history, sync and collaboration, PNG
 // export / printing, the Circulation engine, the measuring tape. Each will come with its own
 // batch, and its slice of the probe with it. A missing entry is an entry NOT YET PORTED, never
 // an abandoned entry.
@@ -161,11 +161,6 @@ export interface SondePlan {
   textesDuPlan(): TexteDuPlan[];
   empreinteRendu(): unknown;
 
-  // ---- mode ----
-  // `wallsMode` is a FUNCTION, not an accessor: this is the form the suites call
-  // (`__plan.wallsMode(true)`), and the old hook carried both (`wallsMode(on)` and
-  // `setWallsMode(on)`). Confusing the two made Walls mode unreachable from a test.
-  wallsMode(on?: boolean): boolean;
   v5Touch(): void;
 }
 
@@ -403,10 +398,6 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
       };
     },
 
-    // The real `setWallsMode` (full toggle: palette, handles, card, banner) comes from the
-    // GESTES batch and overwrites this one via `Object.assign` below. Here, the RENDER batch's
-    // minimal version: it only knows how to repaint.
-    wallsMode(on?: boolean) { if (on !== undefined) { ctx.wallsMode = !!on; ctx.editRoom = !!on; render(ctx); } return ctx.wallsMode; },
     v5Touch: () => v5Touch(ctx),
   };
   // The GESTES batch brings ITS slice of the hook, in its own file: `js/57-sondes-test.js`

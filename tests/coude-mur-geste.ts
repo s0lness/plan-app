@@ -141,9 +141,7 @@ async function seedUnMur() {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
     walls:[{id:"w1",a:[100,50],b:[100,250],t:12,free:1}],openings:[],pieces:[],cells:[]}); true`);
   await pause(100);
-  await evaluate(`__plan.wallsMode(true); true`);
-  await pause(60);
-  await click(await aptPoint(100, 150));
+  const p = await aptPoint(100, 150); await M("mouseMoved", p.x, p.y); await pause(100);
 }
 
 await test("poignee_milieu_atteignable_et_glisser_cree_le_coude", async () => {
@@ -203,9 +201,7 @@ await test("passer_un_mur_traversant_en_libre_se_dit", async () => {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
     walls:[{id:"w1",a:[100,50],b:[100,250],t:12}],openings:[],pieces:[],cells:[]}); true`);
   await pause(100);
-  await evaluate(`__plan.wallsMode(true); true`);
-  await pause(60);
-  await click(await aptPoint(100, 150));
+  const p = await aptPoint(100, 150); await M("mouseMoved", p.x, p.y); await pause(100);
   const h = await centerOf('.v5wmid[data-w="w1"]');
   if (!ok(h, "poignée de coude introuvable sur un mur traversant")) return;
   await evaluate(`(function(){var e=document.querySelector(".app-toast"); if(e) e.remove();})(); true`);

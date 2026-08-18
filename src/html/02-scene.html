@@ -3,12 +3,8 @@
       <button class="btn sm hbtn railtoggle" id="btnRail" title="Menu" aria-label="Open the menu" aria-expanded="false">☰</button>
       <button class="btn sm hbtn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">↩</button>
       <button class="btn sm hbtn" id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo">↪</button>
-      <span class="seg" role="group" aria-label="Edit mode">
-        <button class="btn sm pri" id="btnModeFurn" aria-pressed="true" title="Arrange: place and move furniture">Furniture</button>
-        <button class="btn sm" id="btnModeWalls" aria-pressed="false" title="Change the shape, size and flooring of rooms">Walls</button>
-      </span>
-      <button class="btn sm tb-collapsible" id="btnDrawWall" aria-pressed="false" hidden title="Draw a partition: drag from one wall to another"><span class="tb-ico" aria-hidden="true">▤</span><span class="tb-label">Draw a wall</span></button>
-      <button class="btn sm tb-collapsible" id="btnDrawWallFree" aria-pressed="false" hidden title="Freehand: draw a path, it becomes a chain of walls, corners included"><span class="tb-ico" aria-hidden="true">✎</span><span class="tb-label">Freehand</span></button>
+      <button class="btn sm tb-collapsible" id="btnDrawWall" aria-pressed="false" title="Draw a partition: drag from one wall to another"><span class="tb-ico" aria-hidden="true">▤</span><span class="tb-label">Draw a wall</span></button>
+      <button class="btn sm tb-collapsible" id="btnDrawWallFree" aria-pressed="false" title="Freehand: draw a path, it becomes a chain of walls, corners included"><span class="tb-ico" aria-hidden="true">✎</span><span class="tb-label">Freehand</span></button>
       <button class="btn sm tb-collapsible" id="btnFit" title="Fit the whole flat in view"><span class="tb-ico" aria-hidden="true">▣</span><span class="tb-label">Fit</span></button>
       <button class="btn sm tb-collapsible" id="btnMeasure" aria-pressed="false" title="Measure a distance between two points (walls, furniture, corners)"><span class="tb-ico" aria-hidden="true">📏</span><span class="tb-label">Measure</span></button>
       <span class="scale" id="scaleReadout">–</span>
@@ -46,7 +42,6 @@
       <div class="ov-cursor-guides" id="cursorGuides"></div>
       <div class="rsz-readout" id="rszReadout" hidden></div>
       <div class="empty" id="emptyMsg"><span>Drag an object in from the left and drop it in place. Clicking a thumbnail arms it instead: the next click on the plan drops it.</span></div>
-      <div class="walls-hint" id="wallsHint" hidden>Walls mode: furniture is locked · Esc to go back to furniture</div>
       <!-- PERSISTENT boot banner: local saving used to be unreadable. It duplicates the
            assistant's banner, which is only visible if the assistant opens (online, the
            decision belongs to the server, and in the meantime the screen said nothing at all). -->

@@ -130,19 +130,19 @@ await test("v5_furniture_clamped_to_its_cell", "", `
      && expect(v.cell !== null, "the clamped piece must resolve to a cell"));
 
 
-// 6i. HIT-TESTING does go through the v5 geometry (the layer's hit shapes), not through an
-// .aptroom: a real pointerdown on a wall's band, in Walls mode, drags it.
+// 6i. Hover geometry reveals a visible move handle without adding a transparent wall band.
 await test("v5_pointer_hit_test_drags_the_wall", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
-  window.__plan.wallsMode(true);
   var layer = document.querySelector(".v5layer");
   var hit = layer && layer.querySelector('.v5hit-wall[data-w="w1"]');
   var aptrooms = document.querySelectorAll("#canvas .aptroom").length;
-  if(!hit) return { err:"no wall hit shape in the v5 layer", aptrooms: aptrooms };
-  var r = hit.getBoundingClientRect();
-  var cx = r.left + r.width/2, cy = r.top + r.height/2;
+  if(hit) return { err:"a transparent wall hit shape still covers the drawing surface", aptrooms: aptrooms };
+  var w0 = P.walls.filter(function(x){ return x.id==="w1"; })[0];
+  var s0 = window.__plan.aptToScreen((w0.a[0]+w0.b[0])/2,(w0.a[1]+w0.b[1])/2);
+  var vr = document.getElementById("viewport").getBoundingClientRect();
+  var cx = vr.left+s0.x, cy = vr.top+s0.y;
   function pe(t,x,y){ return new PointerEvent(t,{bubbles:true, clientX:x, clientY:y, button:0, pointerId:1, pointerType:"mouse"}); }
   // THE WALL'S BODY NO LONGER CAPTURES THE PRESS, and that is the point of the hover-handles
   // batch: a press on a wall falls through to DRAWING, so a new partition can start on top of an
@@ -179,7 +179,6 @@ await test("v5_pointer_drag_furniture_on_layer", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
-  window.__plan.wallsMode(false);
   var p = window.__plan.addV5Piece("arm", 60, 60);
   var layer = document.querySelector(".v5layer");
   var el = layer && layer.querySelector('.piece[data-id="'+p.id+'"]');

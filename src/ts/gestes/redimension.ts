@@ -35,7 +35,7 @@ export function startPieceResize(ctx: Contexte, e: PointerEvent, p: Meuble, hkey
   if (e.button !== undefined && e.button !== 0) return;
   if (spaceHeld()) return;
   e.stopPropagation(); e.preventDefault();
-  if (p.locked || isWallMount(p.type) || ctx.editRoom) return;
+  if (p.locked || isWallMount(p.type)) return;
   const h = RSZ_BYKEY[hkey]; if (!h) return;
   selReplace(ctx, p.id); render(ctx); ctx.crochets.openInspector?.();
   ctx.crochets.dragStart?.();

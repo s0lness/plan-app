@@ -357,7 +357,7 @@ export function brancherCirculation(ctx: Contexte): void {
   // THE TWO HOOKS ALREADY PROVIDED FOR (app/contexte.ts).
   // `analyser` has THREE callers, and the old client knew TWO FORMS: `endGesture()`
   // (js/03) called `scheduleAnalysis()`, while replacing the plan (js/27) and exiting
-  // Walls mode (js/23) called `analyzeNow()`. A single hook can't carry both;
+// The retired structural toggle called `analyzeNow()`. A single hook could not carry both;
   // we keep `scheduleAnalysis`, that is to say the EXACT behavior of the HOT path (a gesture
   // exit, hundreds of times per session, and the one js/38 explicitly wanted debounced).
   // The two cold paths get the same state 180 ms later: same computation, same result,

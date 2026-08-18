@@ -149,7 +149,6 @@ export function applyReplacedState(
   ctx.canvas.classList.add("v5");
   { const l = ctx.canvas.querySelector<HTMLElement>(".v5layer"); if (l) delete l.dataset["sig"]; }
   if (!ctx.ihm.selCell && ns.plan.cells.length) ctx.ihm.selCell = String(ns.plan.cells[0]!.id);
-  if (ctx.editRoom && !ctx.wallsMode) { ctx.editRoom = false; ctx.selVtx = -1; }
   ctx.selection.ids.clear(); ctx.selection.primaire = null; ctx.selVtx = -1;
   ctx.crochets.hideInspector?.();
   clearGuides(ctx);

@@ -91,18 +91,18 @@ async function test(name: string, fn: () => Promise<void>) {
   results.push(cur); console.log(`  ${cur.fails.length ? "FAIL " : "ok   "} ${name}`);
   cur.fails.forEach((f) => console.log("        - " + f));
 }
-async function seed(length = 200, wallsMode = true, withPiece = false, wallDoesNotCutCells = false) {
+async function seed(length = 200, withPiece = false, wallDoesNotCutCells = false) {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],walls:[
     {id:"w1",a:[100,80],b:[100,${80 + length}],t:12,free:1${wallDoesNotCutCells ? ",isOutline:1" : ""}},
     {id:"o0",a:[0,0],b:[420,0],t:12,isOutline:1},{id:"o1",a:[420,0],b:[420,360],t:12,isOutline:1},
     {id:"o2",a:[420,360],b:[0,360],t:12,isOutline:1},{id:"o3",a:[0,360],b:[0,0],t:12,isOutline:1}
   ],openings:[],pieces:${withPiece ? `[{id:"p1",type:"chair",name:"Chair",x:70,y:150,w:60,h:60,rot:0,locked:false}]` : "[]"},
-    cells:[{id:"c1",name:"Room",floor:"plain",poly:[[0,0],[420,0],[420,360],[0,360]]}]});__plan.wallsMode(${wallsMode ? "true" : "false"});true`);
+    cells:[{id:"c1",name:"Room",floor:"plain",poly:[[0,0],[420,0],[420,360],[0,360]]}]});true`);
   await pause(120);
 }
 
 await test("survol_par_defaut_et_trajet_vers_poignee_conservent_les_poignees", async () => {
-  await seed(200, false); await move(await apt(100, 120));
+  await seed(200); await move(await apt(100, 120));
   ok((await handles("w1")).some((h: any) => h.c.includes("v5wmove")), "le mode par défaut doit révéler move au survol du mur");
   const h = await center('.v5wmove[data-w="w1"]'); if (!h) return;
   await move(h);
@@ -110,7 +110,7 @@ await test("survol_par_defaut_et_trajet_vers_poignee_conservent_les_poignees", a
 });
 
 await test("meuble_sur_mur_reste_la_cible_visible", async () => {
-  await seed(200, false, false, true);
+  await seed(200, false, true);
   const setup = await J(`(function(){var p=__plan.addV5Piece("chair",70,150),vr=document.getElementById('viewport').getBoundingClientRect(),s=__plan.aptToScreen(p.x+p.w/2,p.y+p.h/2);
     return{pid:String(p.id),wid:"w1",px:vr.left+s.x,py:vr.top+s.y,locked:p.locked,mount:__plan.isWallMount(p.type)}})()`);
   await pause(100); await move(await apt(100, 100));
@@ -131,7 +131,7 @@ await test("meuble_sur_mur_reste_la_cible_visible", async () => {
 });
 
 await test("corps_en_mode_par_defaut_dessine_un_nouveau_mur", async () => {
-  await seed(200, false); await move(await apt(100, 120));
+  await seed(200); await move(await apt(100, 120));
   ok((await handles("w1")).length > 0, "précondition: le survol par défaut doit révéler les poignées");
   const before = await wall("w1"), a = await apt(100, 130), b = await apt(260, 130);
   await drag(a, b);
@@ -140,7 +140,7 @@ await test("corps_en_mode_par_defaut_dessine_un_nouveau_mur", async () => {
 });
 
 await test("clic_propre_sur_corps_par_defaut_n_ecrit_rien", async () => {
-  await seed(200, false); const p = await apt(100, 130); await move(p);
+  await seed(200); const p = await apt(100, 130); await move(p);
   ok((await handles("w1")).length > 0, "précondition: le survol par défaut doit révéler les poignées");
   const before = await evaluate(`JSON.stringify(__plan.serialize())`), undo = await evaluate(`String(__plan.histInfo().undo)`);
   await click(p);
@@ -150,7 +150,7 @@ await test("clic_propre_sur_corps_par_defaut_n_ecrit_rien", async () => {
 });
 
 await test("supprimer_le_mur_survole_efface_ses_poignees", async () => {
-  await seed(200, false); await move(await apt(100, 120));
+  await seed(200); await move(await apt(100, 120));
   ok((await handles("w1")).length > 0, "précondition: les poignées du mur survolé doivent être peintes");
   await evaluate(`__plan.delWall("w1");true`); await pause(120);
   ok(await wall("w1") === null, "le mur survolé doit être supprimé");
@@ -192,12 +192,12 @@ await test("glisser_corps_dessine_un_nouveau_mur", async () => {
   ok(JSON.stringify(after) === JSON.stringify(before), "le corps ne doit plus déplacer le mur existant");
 });
 
-await test("facade_reste_selectionnable_sans_commandes_de_geometrie", async () => {
+await test("facade_selectionnee_revele_le_contour_sans_commandes_interieures", async () => {
   await seed(); const id = await evaluate(`String(__plan.state.plan.walls.find(function(w){return w.isOutline}).id)`);
-  const edge = await center(`.edge[data-w="${id}"]`); if (!ok(edge, "bande de façade absente")) return;
-  await move(edge); const h = await center(`.v5wmove[data-w="${id}"]`); if (!ok(h, "poignée de sélection de façade absente")) return;
+  await move(await apt(200, 0)); const h = await center(`.v5wmove[data-w="${id}"]`); if (!ok(h, "poignée de sélection de façade absente")) return;
   await click(h);
   ok(await evaluate(`String(__plan.v5ui.selWall)`) === id, "la poignée doit sélectionner la façade");
+  ok(await center(`.edge[data-w="${id}"]`), "sélectionner la façade doit révéler sa bande de contour");
   ok(await evaluate(`document.querySelector('.v5wx[data-w="${id}"],.v5wmid[data-w="${id}"]')===null`) === true, "une façade ne doit offrir ni suppression ni coude");
 });
 

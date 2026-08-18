@@ -166,8 +166,6 @@ async function dessinerTroisMurs(): Promise<VerdictSonde[]> {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
     walls:[], openings:[], pieces:[], cells:[]}); true`);
   await pause(150);
-  await evaluate(`__plan.wallsMode(true); true`);
-  await pause(80);
   if (await armed() !== "true") await click(await centerOf("#btnDrawWall"));
   // wA: (200,0) -> (200,150)
   await drag(await aptPoint(200, 0), await aptPoint(200, 150));

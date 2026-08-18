@@ -170,18 +170,11 @@ const interiorWalls = () => J(`__plan.plan.walls.filter(function(w){return !w.is
   .map(function(w){return {id:String(w.id), a:w.a, b:w.b, free:w.free||0};})`);
 const undoCount = () => evaluate(`String(__plan.histInfo().undo)`);
 const armed = () => evaluate(`String(__plan.v5ui.draw)`);
-// Installs the default blank apartment (no interior walls) and switches to Walls mode.
+// Installs the default blank apartment with no interior walls.
 async function seedBlank() {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
     walls:[], openings:[], pieces:[], cells:[]}); true`);
   await pause(150);
-  await evaluate(`__plan.wallsMode(true); true`);
-  await pause(80);
-}
-async function seedBlankOutsideWallsMode() {
-  await seedBlank();
-  await evaluate(`__plan.wallsMode(false); true`);
-  await pause(80);
 }
 const armDraw = async () => {
   if (await armed() !== "true") await click(await centerOf("#btnDrawWall"));
@@ -278,11 +271,10 @@ await test("d_tenu_sur_un_mur_affiche_des_guides_et_n_ecrit_rien", async () => {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
     walls:[{id:"w1", a:[100,50], b:[100,300], t:12}], openings:[], pieces:[], cells:[]}); true`);
   await pause(150);
-  await evaluate(`__plan.wallsMode(true); true`);
-  await pause(80);
-
-  // Select the wall with a clean click (G-3: selecting never writes).
-  await click(await aptPoint(100, 175));
+  const p = await aptPoint(100, 175);
+  await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await pause(100);
+  const h = await centerOf('.v5wmove[data-w="w1"]'); if (!ok(h, "poignée move absente au survol")) return;
+  await click(h);
   ok(await evaluate(`String(__plan.v5ui.selWall)`) === "w1", "le mur w1 doit être sélectionné");
 
   const avant = await evaluate(`JSON.stringify(__plan.serialize())`);
@@ -311,7 +303,7 @@ await test("d_tenu_sur_un_mur_affiche_des_guides_et_n_ecrit_rien", async () => {
 //  4. clic_vide_n_ecrit_rien_puis_glisser_trace_un_mur
 // =============================================================================
 await test("clic_vide_n_ecrit_rien_puis_glisser_trace_un_mur", async () => {
-  await seedBlankOutsideWallsMode();
+  await seedBlank();
   const A = await aptPoint(100, 100), B = await aptPoint(100, 220);
   const mursAvant = await interiorWalls();
   const historiqueAvant = await undoCount();
@@ -333,7 +325,7 @@ await test("clic_vide_n_ecrit_rien_puis_glisser_trace_un_mur", async () => {
 //  5. au_doigt_le_vide_pan_sans_creer_de_mur
 // =============================================================================
 await test("au_doigt_le_vide_pan_sans_creer_de_mur", async () => {
-  await seedBlankOutsideWallsMode();
+  await seedBlank();
   await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
   const A = await aptPoint(150, 140), B = { x: A.x + 100, y: A.y + 70 };
   const vueAvant = await J(`__plan.viewTransform()`);

@@ -38,7 +38,7 @@ import { render } from "../rendu/rendu.ts";
 import { renderRoomChips } from "../rendu/puces-rail.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { save } from "../app/persistance.ts";
-import { setWallsMode, v5AfterGeometry } from "../gestes/murs.ts";
+import { v5AfterGeometry } from "../gestes/murs.ts";
 import { activeFloor, setActiveFloor } from "./fiche-cellule-edition.ts";
 import { SYNC_ON } from "../fil/drapeaux.ts";
 
@@ -312,12 +312,11 @@ export function brancherConfiguration(ctx: Contexte): void {
     applySetup();
     closeSetup();
   });
-  // Secondary: apply, close, then enter Walls mode to adjust an atypical room.
+  // Secondary: apply and close after defining an atypical outline.
   $("setupFine")?.addEventListener("click", () => {
     readSetupInputs();
     applySetup();
     closeSetup();
-    setWallsMode(ctx, true);
   });
   // Escape only closes IF the wizard has already been completed once; a first launch
   // must start (or accept the default rectangle), never leave a screen with no outline.

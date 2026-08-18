@@ -17,10 +17,6 @@
 // following the mouse, the move was recorded on release, and the only thing Escape
 // did was clear the selection out from under the finger.
 //
-// G-12bis. ESCAPE LEAVES WALLS MODE, AND THAT GETS SAID. Without a word, the consequence is indistinguishable
-// from a glitch: NO wall selects on click anymore. Measured in a real session: 16 walls
-// clicked in a row with no effect, and the incident filed as "not reproducible."
-
 import type { Contexte } from "../app/contexte.ts";
 import type { Meuble, Mur, Ouverture } from "../partage/plan.ts";
 import { pieceById, v5OpeningById, v5Touch, v5WallById } from "../app/contexte.ts";
@@ -46,7 +42,7 @@ import { clearGuides, drawGuides, drawWallGuides, rotatePieceWithChairs } from "
 import { cur, delSel, flipWallMountSide } from "./selection-actions.ts";
 import { unstackGroup } from "./pose.ts";
 import { annulerPoseArmee, poseArme, poserAuCentre } from "./pose.ts";
-import { v5DeleteSelectedWall, v5DeleteVertex, v5SelectWall, v5SetDraw, setWallsMode } from "./murs.ts";
+import { v5DeleteSelectedWall, v5DeleteVertex, v5SelectWall, v5SetDraw } from "./murs.ts";
 import { v5DrawOpeningGuides } from "./ouverture.ts";
 
 // Identifier written into the clipboard to recognize a copy/paste coming from THIS app
@@ -108,14 +104,12 @@ function pieceSousD(ctx: Contexte): Meuble | null {
 }
 
 /**
- * D key (held), WALLS MODE: same idea as `pieceSousD`, for a wall instead of a piece of
- * furniture. The selection wins; with nothing selected, we hit-test the pointer's last known spot
- * against `[data-w]` (the wall's own wide invisible hit band, `rendu/calque.ts`), topmost first.
- * Walls do not stack the way furniture does (no `stackedAt`-style paint-rank cycling): the
- * topmost element under the pointer is enough for a LOOK.
+ * D key (held): same idea as `pieceSousD`, for a selected or hovered wall. Hover is geometric,
+ * so wall bodies stay ordinary drawing space and no transparent hit band can cover furniture.
  */
 function murSousD(ctx: Contexte): Mur | null {
   if (ctx.ihm.selWall) return v5WallById(ctx, ctx.ihm.selWall);
+  if (ctx.ihm.hoverWall) return v5WallById(ctx, ctx.ihm.hoverWall);
   const c = lastCursorApt();
   if (!c || !document.elementsFromPoint) return null;
   const s = aptToScreen(ctx, c.x, c.y);
@@ -336,16 +330,15 @@ export function brancherClavier(ctx: Contexte): void {
     }
     // D (held): show the selected piece's dimensions, or the pointer's if nothing is selected.
     // `!dTenue` makes the OS key-repeat a no-op (the guides are already up); `!gesteActif()` keeps
-    // this from starting while a real drag owns the guides. WALLS MODE (2026-08-14): the same
-    // look, for the wall under the pointer (or selected) instead of a piece of furniture
+    // this from starting while a real drag owns the guides. A selected or hovered wall gets the
+    // wall look; otherwise the piece under the pointer gets the furniture look
     // (`murSousD`/`drawWallGuides`); `finirDTenue` below clears either kind through the SAME
     // `clearGuides`, so nothing here needs to remember which one it drew.
     if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !measureMode() && !poseArme()
       && !dTenue && !gesteActif() && (e.key === "d" || e.key === "D")) {
-      if (ctx.wallsMode) {
-        const w = murSousD(ctx);
-        if (w) { dTenue = true; drawWallGuides(ctx, w); }
-      } else {
+      const w = murSousD(ctx);
+      if (w) { dTenue = true; drawWallGuides(ctx, w); }
+      else {
         const p = pieceSousD(ctx);
         if (p) { dTenue = true; drawGuides(ctx, p, null); }
       }
@@ -381,29 +374,24 @@ export function brancherClavier(ctx: Contexte): void {
     }
     const p = cur(ctx);
     if (typing) return;
-    if (ctx.wallsMode) {
+    // Structural commands follow the structural selection. A selected piece remains the target
+    // when both selections briefly coexist, because the visible furniture owns the press.
+    if (!p && (ctx.ihm.selWall || ctx.selVtx >= 0)) {
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         if (ctx.ihm.selWall) v5DeleteSelectedWall(ctx);
         else if (ctx.selVtx >= 0) v5DeleteVertex(ctx, ctx.selVtx);
       } else if (e.key === "Escape") {
-        // Turning the tool off must repaint: the hit bands that make a wall clickable are gated
-        // on `ctx.ihm.draw` (`rendu/calque.ts`), and without a render here the canvas kept
-        // showing the stale, hit-band-less layer from while the tool was still armed. The
-        // button already called `render(ctx)` right after `v5SetDraw`; Escape now does the same.
         if (ctx.ihm.draw) { v5SetDraw(ctx, false); render(ctx); }
         else if (ctx.ihm.selWall) { v5SelectWall(ctx, null); render(ctx); }
-        else {
-          // G-12bis, see the header: leaving Walls mode in silence is indistinguishable from a glitch.
-          setWallsMode(ctx, false);
-          toast("Furniture mode: walls can no longer be selected. The “Walls” button goes back to them.", { geste: true });
-        }
+        else { ctx.selVtx = -1; render(ctx); }
       }
       return;
     }
-    // Furniture mode: the cell card closes on Escape.
+    // The cell card closes on Escape when no selected object owns the key.
     if (!p) {
       if (e.key === "Escape") {
+        if (ctx.ihm.draw) { v5SetDraw(ctx, false); render(ctx); return; }
         ctx.crochets.hideInspector?.();
         const rc = $("roomCard"); if (rc) rc.hidden = true;
       }

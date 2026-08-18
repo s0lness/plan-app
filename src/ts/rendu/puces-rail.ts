@@ -49,7 +49,7 @@ export function renderRoomChips(ctx: Contexte, force?: boolean): void {
     chip.appendChild(nm);
     chip.appendChild(ar);
     const pick = (): void => {
-      ctx.gestes.choisirCellule?.(String(c.id), ctx.wallsMode);
+      ctx.gestes.choisirCellule?.(String(c.id), true);
       ctx.gestes.cadrerCellule?.(c);
     };
     chip.addEventListener("click", pick);

@@ -229,7 +229,7 @@ export function startTouchPanOrTap(ctx: Contexte, e: PointerEvent): void {
     window.removeEventListener("pointermove", move);
     ctx.viewport.classList.remove("panning");
     if (panning) return;      // it was a pan, not a tap
-    if (ctx.wallsMode) return;
+    ctx.ihm.selWall = null; ctx.selVtx = -1;
     clearSel(ctx); ctx.crochets.hideInspector?.(); render(ctx);
   };
   window.addEventListener("pointermove", move);
@@ -386,10 +386,11 @@ export function brancherInteractionsVue(ctx: Contexte): void {
     const nameEl = t && t.closest && t.closest(".ov-name");
     const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove");
     if (pieceEl || nameEl || handleEl) return;   // pieces and handles have their own gestures
-    // Walls mode keeps cells and the outline on their existing controls. An interior wall BODY is
-    // intentionally ordinary drawing space now: only its visible move handle owns wall movement.
-    const wallBody = t && t.closest && t.closest(".v5hit-wall[data-w]");
-    if (ctx.wallsMode && !wallBody) return;
+    // Empty space and a wall body are ordinary drawing space. A selected facade only keeps its
+    // perimeter controls until the next press elsewhere, so those large controls do not linger.
+    if (ctx.ihm.selWall || ctx.selVtx >= 0) {
+      ctx.ihm.selWall = null; ctx.selVtx = -1; render(ctx);
+    }
     // TOUCH: a finger over empty space = PAN (the rubber band and wall drawing are mouse only).
     if (isTouchEvt(e)) { startTouchPanOrTap(ctx, e); return; }
     if (e.shiftKey) { startRubberOrClick(ctx, e); return; }

@@ -168,8 +168,7 @@ async function seedUnMur(free?: boolean) {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
     walls:[{id:"w1", a:[100,50], b:[100,250], t:12${free ? ", free:1" : ""}}], openings:[], pieces:[], cells:[]}); true`);
   await pause(150);
-  await evaluate(`__plan.wallsMode(true); true`);
-  await pause(80);
+  const p = await aptPoint(100, 150); await moveTo(p, 1, p); await pause(100);
 }
 
 // =============================================================================
@@ -177,10 +176,7 @@ async function seedUnMur(free?: boolean) {
 // =============================================================================
 await test("poignee_bout_atteignable_glisser_allonge_le_mur", async () => {
   await seedUnMur();
-  // Select the wall first (a clean click on its body): the endpoint handles only exist for the
-  // SELECTED wall (`rendu/calque.ts`'s `drawHandles`).
-  await click(await aptPoint(100, 150));
-  ok(await selWall() === "w1", "le mur w1 doit être sélectionné avant que ses poignées existent");
+  ok(await centerOf('.v5wmove[data-w="w1"]'), "le survol doit révéler les poignées du mur w1");
 
   const avant = await mur("w1");
   if (!ok(avant, "mur w1 introuvable")) return;
@@ -212,8 +208,7 @@ await test("poignee_bout_atteignable_glisser_allonge_le_mur", async () => {
 // =============================================================================
 await test("poignee_move_deplace_tout_le_mur_pas_une_extremite", async () => {
   await seedUnMur(true);
-  await click(await aptPoint(100, 150));
-  ok(await selWall() === "w1", "le mur w1 doit être sélectionné");
+  ok(await centerOf('.v5wmove[data-w="w1"]'), "le survol doit révéler la poignée move");
   const avant = await mur("w1");
   if (!ok(avant, "mur w1 introuvable")) return;
 
@@ -237,8 +232,7 @@ await test("poignee_move_deplace_tout_le_mur_pas_une_extremite", async () => {
 // =============================================================================
 await test("clic_sans_glissement_sur_la_poignee_n_ecrit_rien", async () => {
   await seedUnMur();
-  await click(await aptPoint(100, 150));
-  ok(await selWall() === "w1", "le mur w1 doit être sélectionné");
+  ok(await centerOf('.v5wmove[data-w="w1"]'), "le survol doit révéler les poignées");
 
   const hb = await centerOf('.v5wend[data-w="w1"][data-bout="b"]');
   if (!ok(hb, "poignée introuvable")) return;

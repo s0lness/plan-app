@@ -34,6 +34,3 @@
   .rsz-readout[hidden]{display:none}
   .rsz-readout .axon{color:var(--accent);text-decoration:underline}
   .rsz-readout .cap{color:var(--accent)}
-  .walls-hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:var(--ink);color:#fff;
-    font-size:12px;padding:6px 12px;border-radius:16px;z-index:210;opacity:.92;pointer-events:none;white-space:nowrap}
-  .walls-hint[hidden]{display:none}

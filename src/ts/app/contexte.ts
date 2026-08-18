@@ -1,7 +1,7 @@
 // src/ts/app/contexte.ts — THE SMALL BIT OF MUTABLE STATE THAT RENDERING SHARES, in one place.
 //
 // The old client was a single closure: `state`, `vScale`, `vOx`, `vOy`, `selIds`, `selId`,
-// `wallsMode`, `v5Rev` were module variables visible from everywhere, and "everything is visible
+// selection and revision counters were module variables visible from everywhere, and "everything is visible
 // everywhere" was the first coupling listed by `src/README.md`. With real ES modules, an
 // exported `let` cannot be reassigned from the outside: so we gather these variables into ONE
 // object, passed explicitly. The gain isn't cosmetic, it's mechanical:
@@ -102,10 +102,6 @@ export interface Contexte {
   vue: Vue;
   ihm: EtatIHM;
   selection: Selection;
-  /** Global Furniture <-> Walls toggle. Never persisted. */
-  wallsMode: boolean;
-  /** Outline handles visible (driven by `wallsMode`). */
-  editRoom: boolean;
   /** Selected outline vertex during editing, -1 = none. */
   selVtx: number;
   /** Incremented on every plan replacement: invalidates the layer's background cache. */
@@ -270,8 +266,6 @@ export function creerContexte(etat: Etat, canvas: HTMLElement, viewport: HTMLEle
     vue: { scale: 1, ox: 0, oy: 0 },
     ihm: { selWall: null, hoverWall: null, selCell: null, draw: false, drawFree: false },
     selection: { ids: new Set<string>(), primaire: null },
-    wallsMode: false,
-    editRoom: false,
     selVtx: -1,
     rev: 0,
     viewOnly: 0,

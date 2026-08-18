@@ -47,7 +47,6 @@
     "src/ts/gestes/murs.ts → v5OutlineIndexOf",
     "src/ts/gestes/murs.ts → v5OutlineWallAt",
     "src/ts/gestes/murs.ts → v5StartWallDrag",
-    "src/ts/gestes/murs.ts → v5SyncTools",
     "src/ts/gestes/ouverture.ts → OP_RSZ_MAX",
     "src/ts/gestes/ouverture.ts → OP_RSZ_MIN",
     "src/ts/gestes/ouverture.ts → v5FlushOpeningRszBute",

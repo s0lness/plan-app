@@ -203,15 +203,19 @@ await test("gesture_always_ends", async () => {
     ok(await evaluate(`window.__saveWorks("groupe")`), "glisser de groupe : enregistrement mort");
   }
 
-  // --- Walls mode: wall, outline vertex and outline edge (real click on the segmented control) ---
-  await click(await centerOf("#btnModeWalls"));
-  const wallPt = await centerOf(".v5hit-wall");
-  if (ok(wallPt, "glisser un mur : aucune forme de touche de mur")) {
+  // --- Wall hover, then a selected facade's vertex and edge ---
+  const wm = await J(`(function(){var w=__plan.state.plan.walls.find(function(x){return !x.isOutline});return{id:String(w.id),x:(w.a[0]+w.b[0])/2,y:(w.a[1]+w.b[1])/2}})()`);
+  const wb = await aptPoint(wm.x, wm.y); await M("mouseMoved", wb.x, wb.y, { button: "none", buttons: 0 }); await pause(120);
+  const wallPt = await centerOf(`.v5wmove[data-w="${wm.id}"]`);
+  if (ok(wallPt, "glisser un mur : poignée move absente au survol")) {
     await drag(wallPt, { x: wallPt.x + 20, y: wallPt.y + 20 });
     const g = await gestureState();
     ok(!g.active && !g.armed, "glisser un mur : geste encore ouvert " + JSON.stringify(g));
     ok(await evaluate(`window.__saveWorks("mur")`), "glisser un mur : enregistrement mort");
   }
+  const fm = await J(`(function(){var w=__plan.state.plan.walls.find(function(x){return x.isOutline});return{id:String(w.id),x:(w.a[0]+w.b[0])/2,y:(w.a[1]+w.b[1])/2}})()`);
+  const fb = await aptPoint(fm.x, fm.y); await M("mouseMoved", fb.x, fb.y, { button: "none", buttons: 0 }); await pause(120);
+  const facade = await centerOf(`.v5wmove[data-w="${fm.id}"]`); if (facade) await click(facade); await pause(120);
   const vtxPt = await centerOf(".vtx");
   if (ok(vtxPt, "sommet du contour : poignée absente")) {
     await drag(vtxPt, { x: vtxPt.x + 15, y: vtxPt.y + 15 });
@@ -237,7 +241,7 @@ await test("gesture_always_ends", async () => {
     const g = await gestureState();
     ok(!g.active && !g.armed, "tracer un mur : geste encore ouvert " + JSON.stringify(g));
   }
-  await click(await centerOf("#btnModeFurn"));
+  await click(await centerOf("#btnDrawWall"));
 
   // --- pointercancel (a 2nd finger, a stylus lifting off, the compositor taking over) ---
   {
@@ -411,7 +415,6 @@ await test("rail_chips_follow_cells", async () => {
   const start = await railMatchesModel("au chargement");
 
   // trace a partition with the mouse, across a cell
-  await click(await centerOf("#btnModeWalls"));
   await click(await centerOf("#btnDrawWall"));
   const seg = await J(`(function(){var c=__plan.state.plan.cells.slice().sort(function(a,b){
       return Math.abs(__plan.v5SignedArea(b.poly))-Math.abs(__plan.v5SignedArea(a.poly));})[0];
@@ -423,14 +426,14 @@ await test("rail_chips_follow_cells", async () => {
   const grown = await railMatchesModel("après avoir tracé une cloison");
   ok(grown.cells === start.cells + 1, `la cloison doit créer une cellule (${start.cells} -> ${grown.cells})`);
 
-  // delete the wall via the card (the traced wall stays selected)
-  await click(await centerOf("#rcDel"));
+  // Delete follows the selected wall left by the trace.
+  await key("Delete", "Delete");
   await pause(80);
   const shrunk = await railMatchesModel("après suppression du mur");
   ok(shrunk.cells === start.cells, `la suppression doit refusionner (${grown.cells} -> ${shrunk.cells})`);
 
   // the ACTIVE chip follows a click on a room label on the plan
-  await click(await centerOf("#btnModeFurn"));
+  await click(await centerOf("#btnDrawWall"));
   const label = await J(`(function(){var els=[].slice.call(document.querySelectorAll(".ov-name"));
     if(!els.length) return null; var e=els[els.length-1]; var r=e.getBoundingClientRect();
     return {x:r.left+r.width/2, y:r.top+r.height/2, name:e.textContent};})()`);
