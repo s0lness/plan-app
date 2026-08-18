@@ -155,8 +155,6 @@ const centerOf = (sel: VerdictSonde) => J(`(function(){var e=document.querySelec
 const aptPoint = (x: VerdictSonde, y: VerdictSonde) => J(`(function(){var s=__plan.aptToScreen(${x},${y});
   var r=document.getElementById("viewport").getBoundingClientRect();
   return {x:r.left+s.x, y:r.top+s.y};})()`);
-const wallRect = (id: string) => J(`(function(){var e=document.querySelector('[data-w="'+${JSON.stringify(id)}+'"]');
-  if(!e) return null; var r=e.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2};})()`);
 const mur = (id: string) => J(`(function(){var w=__plan.v5WallById(${JSON.stringify(id)}); return w?{a:w.a,b:w.b,free:w.free||0}:null;})()`);
 const undoCount = () => evaluate(`String(__plan.histInfo().undo)`);
 const selWall = () => evaluate(`String(__plan.v5ui.selWall)`);
@@ -210,19 +208,17 @@ await test("poignee_bout_atteignable_glisser_allonge_le_mur", async () => {
 });
 
 // =============================================================================
-//  2. clicking the wall's own BODY still drags the WHOLE wall, not one endpoint
+//  2. the dedicated MOVE handle drags the WHOLE wall, not one endpoint
 // =============================================================================
-await test("clic_sur_le_corps_du_mur_deplace_tout_le_mur_pas_une_extremite", async () => {
+await test("poignee_move_deplace_tout_le_mur_pas_une_extremite", async () => {
   await seedUnMur(true);
   await click(await aptPoint(100, 150));
   ok(await selWall() === "w1", "le mur w1 doit être sélectionné");
   const avant = await mur("w1");
   if (!ok(avant, "mur w1 introuvable")) return;
 
-  // The wall's own drag band (`[data-w]`), at its MIDPOINT — well clear of either endpoint
-  // handle, which sit 100 cm away at either end.
-  const p0 = await wallRect("w1");
-  if (!ok(p0, "bande de mur introuvable (data-w)")) return;
+  const p0 = await centerOf('.v5wmove[data-w="w1"]');
+  if (!ok(p0, "poignée move introuvable")) return;
   await drag(p0, { x: p0.x + 60, y: p0.y });
   await pause(150);
 
@@ -231,7 +227,7 @@ await test("clic_sur_le_corps_du_mur_deplace_tout_le_mur_pas_une_extremite", asy
   const da = Math.hypot(apres.a[0] - avant.a[0], apres.a[1] - avant.a[1]);
   const db = Math.hypot(apres.b[0] - avant.b[0], apres.b[1] - avant.b[1]);
   ok(da > 10 && db > 10,
-    `un clic sur le CORPS du mur doit déplacer les DEUX extrémités (glissement perpendiculaire), vu Δa=${da.toFixed(1)} Δb=${db.toFixed(1)}`);
+    `la poignée move doit déplacer les DEUX extrémités (glissement perpendiculaire), vu Δa=${da.toFixed(1)} Δb=${db.toFixed(1)}`);
   // A whole-wall drag is a perpendicular OFFSET: both ends move by (about) the same amount.
   ok(Math.abs(da - db) < 5, `les deux extrémités doivent se déplacer du MÊME décalage (glissement, pas étirement), vu Δa=${da.toFixed(1)} Δb=${db.toFixed(1)}`);
 });

@@ -133,8 +133,6 @@ const centerOf = (sel: string) => J(`(function(){var e=document.querySelector(${
   return {x:r.left+r.width/2,y:r.top+r.height/2};})()`);
 const aptPoint = (x: number, y: number) => J(`(function(){var s=__plan.aptToScreen(${x},${y});
   var r=document.getElementById("viewport").getBoundingClientRect(); return {x:r.left+s.x,y:r.top+s.y};})()`);
-const wallRect = (id: string) => J(`(function(){var e=document.querySelector('[data-w="'+${JSON.stringify(id)}+'"]');
-  if(!e) return null; var r=e.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2};})()`);
 const mur = (id: string) => J(`(function(){var w=__plan.v5WallById(${JSON.stringify(id)}); return w?{a:w.a,b:w.b,free:w.free||0}:null;})()`);
 const mursInterieurs = () => J(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).map(function(w){return {id:String(w.id),a:w.a,b:w.b}})`);
 const undoCount = () => evaluate(`String(__plan.histInfo().undo)`);
@@ -166,14 +164,14 @@ await test("poignee_milieu_atteignable_et_glisser_cree_le_coude", async () => {
   ok(premier.b[0] > 140, `la jonction doit suivre la main vers la droite, vu ${JSON.stringify(premier.b)}`);
 });
 
-await test("centre_visible_du_mur_deplace_encore_le_mur_entier", async () => {
+await test("poignee_move_deplace_le_mur_entier_sans_creer_de_coude", async () => {
   await seedUnMur();
   const avant = await mur("w1");
-  const centre = await wallRect("w1");
-  if (!ok(avant && centre, "mur ou bande de glissement introuvable")) return;
+  const centre = await centerOf('.v5wmove[data-w="w1"]');
+  if (!ok(avant && centre, "mur ou poignée move introuvable")) return;
   const h = await centerOf('.v5wmid[data-w="w1"]');
   if (!ok(h, "poignée de coude introuvable")) return;
-  ok(Math.hypot(h.x - centre.x, h.y - centre.y) > 15, `la poignée doit être décalée du centre visible, vu ${JSON.stringify({ h, centre })}`);
+  ok(Math.hypot(h.x - centre.x, h.y - centre.y) > 15, `la poignée de coude doit être décalée de move, vu ${JSON.stringify({ h, centre })}`);
   await drag(centre, { x: centre.x + 60, y: centre.y });
   const apres = await mur("w1");
   if (!ok(apres, "le mur a disparu")) return;
@@ -181,7 +179,7 @@ await test("centre_visible_du_mur_deplace_encore_le_mur_entier", async () => {
   const db = Math.hypot(apres.b[0] - avant.b[0], apres.b[1] - avant.b[1]);
   ok(da > 10 && db > 10, `les deux extrémités doivent bouger, vu da=${da} db=${db}`);
   ok(Math.abs(da - db) < 5, `le mur entier doit garder le même décalage aux deux bouts, vu da=${da} db=${db}`);
-  ok((await mursInterieurs()).length === 1, "attraper le centre du mur ne doit pas le diviser");
+  ok((await mursInterieurs()).length === 1, "attraper move ne doit pas diviser le mur");
 });
 
 await test("clic_propre_sur_la_poignee_ne_change_rien", async () => {

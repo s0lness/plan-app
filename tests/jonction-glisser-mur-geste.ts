@@ -199,10 +199,11 @@ await test("trois_murs_relies_bout_a_bout_le_glissement_garde_les_jonctions", as
   ok(await armed() === "false", "l'outil doit être désarmé avant le glissement");
 
   const mi = await aptPoint(250, 150), mf = await aptPoint(250, 190);
-  ok(!!(await evaluate(`(function(){var e=document.elementFromPoint(${mi.x},${mi.y});
-    return e && e.closest && !!e.closest("[data-w]");})()`)),
-    "le mur doit être ATTEIGNABLE au clic une fois l'outil éteint (sinon rien de ce qui suit ne teste quoi que ce soit)");
-  await drag(mi, mf);
+  await M("mouseMoved", mi.x, mi.y, { button: "none", buttons: 0 }); await pause(80);
+  const poignee = await centerOf(`.v5wmove[data-w="${wB.id}"]`);
+  ok(!!poignee, "la poignée move du mur doit être atteignable une fois l'outil éteint");
+  if (!poignee) return;
+  await drag(poignee, mf);
   await pause(150);
 
   const apres = await interiorWalls();
@@ -227,7 +228,10 @@ await test("un_seul_ctrl_z_restaure_les_trois_murs", async () => {
   const undoAvant = await undoCount();
 
   const mi = await aptPoint(250, 150), mf = await aptPoint(250, 190);
-  await drag(mi, mf);
+  await M("mouseMoved", mi.x, mi.y, { button: "none", buttons: 0 }); await pause(80);
+  const poignee = await centerOf(`.v5wmove[data-w="${wB.id}"]`);
+  if (!ok(poignee, "poignée move introuvable")) return;
+  await drag(poignee, mf);
   await pause(150);
   const pendant = await interiorWalls();
   ok(JSON.stringify(pendant) !== JSON.stringify(avant), "précondition : le glissement a bien changé la géométrie");

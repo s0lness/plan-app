@@ -143,20 +143,32 @@ await test("v5_pointer_hit_test_drags_the_wall", "", `
   if(!hit) return { err:"no wall hit shape in the v5 layer", aptrooms: aptrooms };
   var r = hit.getBoundingClientRect();
   var cx = r.left + r.width/2, cy = r.top + r.height/2;
-  function pe(t,x,y){ return new PointerEvent(t,{bubbles:true, clientX:x, clientY:y, button:0, pointerId:1}); }
-  hit.dispatchEvent(pe("pointerdown", cx, cy));
+  function pe(t,x,y){ return new PointerEvent(t,{bubbles:true, clientX:x, clientY:y, button:0, pointerId:1, pointerType:"mouse"}); }
+  // THE WALL'S BODY NO LONGER CAPTURES THE PRESS, and that is the point of the hover-handles
+  // batch: a press on a wall falls through to DRAWING, so a new partition can start on top of an
+  // existing one. Selecting and moving a wall is the job of its midpoint handle, which appears
+  // when the wall is hovered. This case therefore states both halves of the rule instead of the
+  // old single one: the body selects nothing, the handle selects and drags.
+  document.getElementById("viewport").dispatchEvent(pe("pointermove", cx, cy));
+  var corps = window.__plan.v5ui.selWall;
+  var move = layer.querySelector('.v5wmove[data-w="w1"]');
+  if(!move) return { err:"no move handle after hovering the wall", aptrooms: aptrooms };
+  var rm = move.getBoundingClientRect();
+  var mx = rm.left + rm.width/2, my = rm.top + rm.height/2;
+  move.dispatchEvent(pe("pointerdown", mx, my));
   var sel = window.__plan.v5ui.selWall;
-  window.dispatchEvent(pe("pointermove", cx+40, cy));
-  window.dispatchEvent(pe("pointerup",   cx+40, cy));
+  window.dispatchEvent(pe("pointermove", mx+40, my));
+  window.dispatchEvent(pe("pointerup",   mx+40, my));
   var w = P.walls.filter(function(x){ return x.id==="w1"; })[0];
   var ext = P.cells.map(function(c){
     var mn=1e9,mx=-1e9; c.poly.forEach(function(p){ if(p[0]<mn)mn=p[0]; if(p[0]>mx)mx=p[0]; });
     return {mn:mn,mx:mx};
   }).sort(function(a,b){ return a.mn-b.mn; });
-  return { aptrooms: aptrooms, sel: sel, x: w.a[0], cells: P.cells.length, ext: ext };
+  return { aptrooms: aptrooms, sel: sel, corps: corps, x: w.a[0], cells: P.cells.length, ext: ext };
 `, v => expect(!v.err, v.err + " (aptrooms=" + v.aptrooms + ")")
      && expect(v.aptrooms === 0, "v5 must not build any .aptroom container, got " + v.aptrooms)
-     && expect(v.sel === "w1", "the pointerdown must select the wall, got " + v.sel)
+     && expect(!v.corps, "hovering the wall's BODY must select nothing, got " + v.corps)
+     && expect(v.sel === "w1", "the pointerdown on the move handle must select the wall, got " + v.sel)
      && expect(v.x > 300 && v.x < 600, "the wall should have moved right, got x=" + v.x)
      && expect(v.cells === 2 && near(v.ext[0].mx, v.x, 0.5) && near(v.ext[1].mn, v.x, 0.5),
         "the two cells must follow the dragged boundary, got " + JSON.stringify(v.ext)));

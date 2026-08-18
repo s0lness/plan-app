@@ -522,6 +522,17 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   armGesture(up, null, cancel);   // guaranteed end (G-1)
 }
 
+/** The midpoint handle moves a partition, but only selects a derived facade. */
+export function v5StartWallMove(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
+  const w = v5WallById(ctx, wallId);
+  if (!w) return;
+  if (!w.isOutline) { v5StartWallDrag(ctx, e, wallId); return; }
+  if (e.button !== undefined && e.button !== 0) return;
+  if (spaceHeld() || measureMode()) return;
+  e.preventDefault(); e.stopPropagation();
+  v5SelectWall(ctx, wallId); render(ctx);
+}
+
 // =================================================================================================
 //  TOOL 1-BIS: DRAGGING A WALL'S OWN ENDPOINT, TO EXTEND OR CONNECT IT
 // =================================================================================================
@@ -1198,15 +1209,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
     return;
   }
   const t = e.target as Element | null;
-  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid")) return;
-  const wallEl = (t && t.closest) ? t.closest<HTMLElement>("[data-w]") : null;
-  if (wallEl && ctx.wallsMode) {
-    // An outline wall does not drag by its band (it follows the outline): it gets SELECTED.
-    // Before, this click did nothing at all, not even a selection.
-    const w = v5WallById(ctx, wallEl.dataset["w"]);
-    if (w && w.isOutline) { e.stopPropagation(); v5SelectWall(ctx, wallEl.dataset["w"]); render(ctx); return; }
-    v5StartWallDrag(ctx, e, wallEl.dataset["w"]); return;
-  }
+  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove")) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
   if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], ctx.wallsMode); return; }
 }
