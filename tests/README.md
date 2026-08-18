@@ -82,11 +82,19 @@ in `AGENTS.md`, section "The barrier runs at LOW PRIORITY".
 
 Zero dependencies. Two families:
 
-- **DOM** (`run.ts`, `model-v5-*.ts`, `boot-vierge.ts`...): for each case, a temporary HTML =
-  `<seed>` (`window.__PLAN_TEST__=1` + a plan fabricated in `localStorage`) + the application
-  verbatim + `<probe>` (drives `window.__plan`, writes a JSON verdict on `<html data-plan-test>`),
-  then `chrome.exe --headless=new --dump-dom`. The probe also rereads the `localStorage['plan-errors']`
-  ring: any logged JS error fails the case.
+- **DOM** (`run.ts`, `model-v5-*.ts`, `collab-*.ts`, `deux-appareils.ts`...): for each case, a
+  temporary HTML = `<seed>` (`window.__PLAN_TEST__=1` + a plan fabricated in `localStorage`) + the
+  application verbatim + `<probe>` (drives `window.__plan`, writes a JSON verdict on
+  `<html data-plan-test>`). The probe also rereads the `localStorage['plan-errors']` ring: any
+  logged JS error fails the case.
+  **All of these share ONE browser per suite**, opened by `tests/_navigateur.ts`: a case is a
+  `Page.navigate`, not a process. Six suites used to spawn a whole Chrome per case, which came to
+  159 cold starts per barrier run and collapsed into phantom `0/11` results as soon as the machine
+  was busy. Isolation is unchanged and never came from the fresh profile: the seed's own
+  `localStorage.clear()` / `sessionStorage.clear()` is what empties the state. The verdict is
+  awaited as a CONDITION carrying the case's nonce, under a bound that calibrates itself on the
+  suite's median. A probe body may be `async` (only `collab-accuses.ts` needs it, to await the real
+  server). See `docs/decisions/0006-un-navigateur-par-suite.md`.
 - **REAL MOUSE** (`interactions.ts`, `gestes-*.ts`, `apercu-pose.ts`, `ouverture-redim.ts`,
   `selection-visible.ts`, `garde-fous.ts`): built-in CDP driver
   (`Input.dispatchMouseEvent` / `dispatchKeyEvent` / `insertText`) on a Chrome at

@@ -11,7 +11,7 @@ import { test, near, expect, seedV4, REAL_PLAN, SEED_PLAN, report } from "./_har
 
 
 // 6a. TOOL 1 — dragging a wall moves the SHARED boundary: both cells adjust at once.
-test("v5_wall_drag_moves_shared_boundary", "", `
+await test("v5_wall_drag_moves_shared_boundary", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -36,7 +36,7 @@ test("v5_wall_drag_moves_shared_boundary", "", `
 
 // 6b. TOOL 2 — tracing a wall: a segment that reaches no geometry is EXTENDED (through wall)
 // and does split the cell in two.
-test("v5_wall_draw_splits_cell", "", `
+await test("v5_wall_draw_splits_cell", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
     walls:[], openings:[], pieces:[], cells:[] });
   var P = window.__plan.plan;
@@ -53,7 +53,7 @@ test("v5_wall_draw_splits_cell", "", `
 
 // 6c. TOOL 3 — deleting a wall merges the two cells; the name of the BIGGER one wins
 // (matched by area overlap), and the wall's openings cascade away.
-test("v5_wall_delete_merges_bigger_name_wins", "", `
+await test("v5_wall_delete_merges_bigger_name_wins", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
     walls:[{id:"w1", a:[200,0], b:[200,400], t:12}],
     openings:[{id:"o1", wallId:"w1", t0:160, w:80, h:12, type:"door", side:0, hinge:0, swing:1}],
@@ -77,7 +77,7 @@ test("v5_wall_delete_merges_bigger_name_wins", "", `
      && expect(v.walls === 0, "the wall itself must be gone, got " + v.walls));
 
 // 6d. TOOL 4 — moving a facade: interior walls that were leaning on it FOLLOW (re-traversal).
-test("v5_outline_drag_pulls_wall_followers", "", `
+await test("v5_outline_drag_pulls_wall_followers", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
     walls:[{id:"w1", a:[0,200], b:[600,200], t:12}], openings:[], pieces:[], cells:[] });
   var P = window.__plan.plan;
@@ -97,7 +97,7 @@ test("v5_outline_drag_pulls_wall_followers", "", `
 
 // 6e. TOOL 6 — an opening slides along its wall (t0 only) and reparameterizes onto ANOTHER
 // wall when dropped near it (<=60 cm), with no notion of membership whatsoever.
-test("v5_opening_slides_and_rewalls", "", `
+await test("v5_opening_slides_and_rewalls", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -114,7 +114,7 @@ test("v5_opening_slides_and_rewalls", "", `
 
 // 6f. TOOL 7 — a piece of furniture is bounded by ITS cell (polygon inset by half a wall's
 // thickness), no longer by the v4 room: it cannot overflow through the partition.
-test("v5_furniture_clamped_to_its_cell", "", `
+await test("v5_furniture_clamped_to_its_cell", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -132,7 +132,7 @@ test("v5_furniture_clamped_to_its_cell", "", `
 
 // 6i. HIT-TESTING does go through the v5 geometry (the layer's hit shapes), not through an
 // .aptroom: a real pointerdown on a wall's band, in Walls mode, drags it.
-test("v5_pointer_hit_test_drags_the_wall", "", `
+await test("v5_pointer_hit_test_drags_the_wall", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -163,7 +163,7 @@ test("v5_pointer_hit_test_drags_the_wall", "", `
 
 // 6j. Furniture drags with the UNCHANGED v4 MECHANICS (startPieceDrag), on the v5 layer:
 // apartment coordinates, no rehousing, cell clamp on release.
-test("v5_pointer_drag_furniture_on_layer", "", `
+await test("v5_pointer_drag_furniture_on_layer", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -193,7 +193,7 @@ test("v5_pointer_drag_furniture_on_layer", "", `
 // =============================================================================
 //  14. INSPECTOR: NO BUTTON THAT DOES NOTHING ON AN OPENING
 // =============================================================================
-test("inspecteur_dup_et_devant_absents_sur_une_ouverture", seedV4(REAL_PLAN), `
+await test("inspecteur_dup_et_devant_absents_sur_une_ouverture", seedV4(REAL_PLAN), `
   var op = window.__plan.plan.openings.filter(function(o){ return o.type==="window"; })[0]
         || window.__plan.plan.openings[0];
   var furn = window.__plan.plan.pieces[0];

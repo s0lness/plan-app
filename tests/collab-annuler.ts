@@ -21,14 +21,12 @@
 
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { applyOp, sanitizeState, planFp } from "../live-worker/ops.ts";
+import { ouvrirSonde, CHROME } from "./_navigateur.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const APP_PATH = process.argv[2] || path.join(__dirname, "..", "index.html");
 const V4_KEY = "room-planner-v4";
 
@@ -38,44 +36,17 @@ const APP_SRC = fs.readFileSync(APP_PATH, "utf8");
 const REAL_PLAN = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "plan-rev177.json"), "utf8"));
 
 // ---- harness -----------------------------------------------------------------------------------
-const RUN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "plan-collab-"));
-function runProbe(seedJs: string, probeBody: string) {
-  const caseDir = fs.mkdtempSync(path.join(RUN_DIR, "c-"));
-  const htmlPath = path.join(caseDir, "case.html");
-  const seed = `<!doctype html><html><head><meta charset="utf-8"><script>
-    window.__PLAN_TEST__ = 1;
-    try { localStorage.clear(); sessionStorage.clear(); } catch(e){}
-    ${seedJs || ""}
-  </script></head><body>`;
-  const probe = `<script>(function(){
-    function emit(o){ try{ document.documentElement.dataset.planTest = JSON.stringify(o); }catch(e){} }
-    function run(){
-      try {
-        var errs = [];
-        try { errs = JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]; } catch(e){}
-        var __out = (function(){ ${probeBody} })() || {};
-        __out.jsErrors = errs.map(function(e){ return e && e.msg; });
-        emit(__out);
-      } catch(e) { emit({ __probeError: String(e && e.stack || e) }); }
-    }
-    setTimeout(run, 0);
-  })();</script></body></html>`;
-  fs.writeFileSync(htmlPath, seed + APP_SRC + probe, "utf8");
-  const res = spawnSync(CHROME, [
-    "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
-    "--user-data-dir=" + path.join(caseDir, "profile"),
-    "--virtual-time-budget=8000", "--run-all-compositor-stages-before-draw", "--dump-dom",
-    "file:///" + htmlPath.replace(/\\/g, "/"),
-  ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 90000 });
-  const m = (res.stdout || "").match(/<html[^>]*\bdata-plan-test="([^"]*)"/i);
-  if (!m) return { __noVerdict: true, __stdoutHead: (res.stdout || "").slice(0, 500), __stderr: (res.stderr || "").slice(0, 500) };
-  const raw = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'");
-  try { return JSON.parse(raw); } catch (e) { return { __parseError: String(e), __raw: raw.slice(0, 400) }; }
+// THE BROWSER ITSELF LIVES IN `_navigateur.ts`, shared with the five other suites that had each
+// copied this same page-per-case harness: ONE Chrome for the whole suite instead of one cold start
+// per case. See that file for the measurements and the why.
+const sonde = ouvrirSonde(APP_SRC);
+async function runProbe(seedJs: string, probeBody: string): Promise<VerdictSonde> {
+  return sonde.sonder(seedJs, probeBody);
 }
 const results: VerdictSonde[] = [];
-function test(name: string, seedJs: string, probeBody: string, check: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>) {
+async function test(name: string, seedJs: string, probeBody: string, check: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>): Promise<void> {
   let pass = false, detail = "";
-  const v = runProbe(seedJs, probeBody);
+  const v = await runProbe(seedJs, probeBody);
   if (v.__noVerdict) detail = "aucun verdict (l'application n'a pas démarré ?)\n  " + v.__stdoutHead + "\n  " + v.__stderr;
   else if (v.__probeError) detail = "la sonde a levé : " + v.__probeError;
   else if (v.__parseError) detail = "verdict illisible : " + v.__parseError + " raw=" + v.__raw;
@@ -97,7 +68,7 @@ const OUVRIR = `window.__plan.wsForceOpen(true); window.__plan.shadowSync();`;
 // =============================================================================
 //  1. ADOPTION BASED ON THE CONTENT FINGERPRINT, NOT A COUNTER
 // =============================================================================
-test("adoption_sur_empreinte_et_pas_sur_compteur", seedV4(REAL_PLAN), `
+await test("adoption_sur_empreinte_et_pas_sur_compteur", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var w = window.__plan.wire();
   var a = JSON.parse(JSON.stringify(w)); a.cells[0].name = "Venu du serveur";
@@ -116,7 +87,7 @@ test("adoption_sur_empreinte_et_pas_sur_compteur", seedV4(REAL_PLAN), `
      && expect(v.apres3 === "JAMAIS adopté", "empreinte neuve : adoption attendue, vu " + v.apres3)
      && expect(v.fp === "FP-2", "l'empreinte retenue doit être la dernière annoncée : " + v.fp));
 
-test("le_compteur_du_repli_d1_reste_intact", seedV4(REAL_PLAN), `
+await test("le_compteur_du_repli_d1_reste_intact", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var avant = window.__plan.serverRev;
   var w = window.__plan.wire();
@@ -132,7 +103,7 @@ test("le_compteur_du_repli_d1_reste_intact", seedV4(REAL_PLAN), `
 // =============================================================================
 //  2. state / conflict / pong
 // =============================================================================
-test("state_d1_adopt_est_adopte_et_annonce", seedV4(REAL_PLAN), `
+await test("state_d1_adopt_est_adopte_et_annonce", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var w = window.__plan.wire(); w.cells[0].name = "Repris de la coupure";
   window.__plan.clearToast();
@@ -147,7 +118,7 @@ test("state_d1_adopt_est_adopte_et_annonce", seedV4(REAL_PLAN), `
      && expect(!!v.shadow && v.shadow.indexOf("Repris de la coupure") >= 0,
         "le miroir doit suivre l'état adopté : " + v.shadow));
 
-test("state_sync_est_adopte_sans_bandeau", seedV4(REAL_PLAN), `
+await test("state_sync_est_adopte_sans_bandeau", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var w = window.__plan.wire(); w.cells[0].name = "Resynchronisé";
   window.__plan.clearToast();
@@ -156,7 +127,7 @@ test("state_sync_est_adopte_sans_bandeau", seedV4(REAL_PLAN), `
 `, (v: VerdictSonde) => expect(v.nom === "Resynchronisé", "un `sync` doit bien reposer l'état serveur : " + v.nom)
      && expect(v.toast === null, "une resynchro demandée par nous n'a rien à annoncer : " + v.toast));
 
-test("conflit_est_dit_en_francais", seedV4(REAL_PLAN), `
+await test("conflit_est_dit_en_francais", seedV4(REAL_PLAN), `
   ${OUVRIR}
   window.__plan.clearToast();
   window.__plan.wsFeed({t:"conflict", by:"b@example.com", at:"2026-08-04T10:00:00Z", bytes:9123, kept:"server"});
@@ -168,7 +139,7 @@ test("conflit_est_dit_en_francais", seedV4(REAL_PLAN), `
      && expect(!/—/.test(v.toast), "aucun tiret cadratin dans un texte visible")
      && expect(v.plan > 0, "un conflit ne touche pas au plan"));
 
-test("pong_desaccorde_demande_un_sync_une_fois", seedV4(REAL_PLAN), `
+await test("pong_desaccorde_demande_un_sync_une_fois", seedV4(REAL_PLAN), `
   ${OUVRIR}
   window.__plan.wsFeed({t:"hello", you:{email:"x@y"}, peers:[], rev:1, fp:"FP-1",
                         state:window.__plan.wire(), chat:[]});
@@ -191,7 +162,7 @@ test("pong_desaccorde_demande_un_sync_une_fois", seedV4(REAL_PLAN), `
 // =============================================================================
 //  3. IDS THAT CANNOT COLLIDE
 // =============================================================================
-test("identifiant_porte_l_etiquette_du_serveur", seedV4(REAL_PLAN), `
+await test("identifiant_porte_l_etiquette_du_serveur", seedV4(REAL_PLAN), `
   window.__plan.wsFeed({t:"hello", you:{email:"x@y", tag:"a3f9c1"}, peers:[], rev:1, fp:"FP-1",
                         state:window.__plan.wire(), chat:[]});
   var w1 = window.__plan.newId("w"), w2 = window.__plan.newId("w"), o1 = window.__plan.newId("o");
@@ -205,7 +176,7 @@ test("identifiant_porte_l_etiquette_du_serveur", seedV4(REAL_PLAN), `
      && expect(v.murs.indexOf(v.w1) < 0, "l'id neuf ne doit percuter aucun mur existant")
      && expect(/^w\d+$/.test(v.derive), "un id DÉRIVÉ (mur de façade) reste sans étiquette : " + v.derive));
 
-test("sans_serveur_l_etiquette_est_tiree_au_sort_et_figee", seedV4(REAL_PLAN), `
+await test("sans_serveur_l_etiquette_est_tiree_au_sort_et_figee", seedV4(REAL_PLAN), `
   var a = window.__plan.deviceTag();
   var b = window.__plan.deviceTag();
   var id = window.__plan.newId("w");
@@ -220,7 +191,7 @@ test("sans_serveur_l_etiquette_est_tiree_au_sort_et_figee", seedV4(REAL_PLAN), `
      && expect(v.id.indexOf("-" + v.a) === v.id.length - v.a.length - 1, "l'id doit la porter : " + v.id));
 
 // The server, for its part, validates: the manufactured id must pass ID_RE and be accepted by applyOp.
-test("l_identifiant_etiquete_est_accepte_par_le_serveur", seedV4(REAL_PLAN), `
+await test("l_identifiant_etiquete_est_accepte_par_le_serveur", seedV4(REAL_PLAN), `
   window.__plan.wsFeed({t:"hello", you:{email:"x@y", tag:"a3f9c1"}, peers:[], rev:1, fp:"FP-1",
                         state:window.__plan.wire(), chat:[]});
   return { id: window.__plan.newId("w"), etat: window.__plan.wire() };
@@ -235,7 +206,7 @@ test("l_identifiant_etiquete_est_accepte_par_le_serveur", seedV4(REAL_PLAN), `
 // =============================================================================
 //  4. EMISSION BY FIELD-BY-FIELD DIFF
 // =============================================================================
-test("emission_champ_a_champ_sur_un_meuble", seedV4(REAL_PLAN), `
+await test("emission_champ_a_champ_sur_un_meuble", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var p = window.__plan.plan.pieces[0];
   window.__plan.opLog(true);
@@ -259,7 +230,7 @@ test("emission_champ_a_champ_sur_un_meuble", seedV4(REAL_PLAN), `
     "les deux champs doivent survivre : " + JSON.stringify(p));
 });
 
-test("une_creation_envoie_l_entite_entiere", seedV4(REAL_PLAN), `
+await test("une_creation_envoie_l_entite_entiere", seedV4(REAL_PLAN), `
   ${OUVRIR}
   window.__plan.opLog(true);
   var p = window.__plan.addV5Piece("sofa3", 900, 400);
@@ -269,7 +240,7 @@ test("une_creation_envoie_l_entite_entiere", seedV4(REAL_PLAN), `
      && expect(["id","locked","name","rot","type","w","h","x","y"].every(k => v.cles.indexOf(k) >= 0),
         "une CRÉATION porte l'entité entière, vu " + JSON.stringify(v.cles)));
 
-test("une_op_partielle_recue_fusionne", seedV4(REAL_PLAN), `
+await test("une_op_partielle_recue_fusionne", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var p = window.__plan.plan.pieces[0];
   var avant = {id:String(p.id), type:p.type, name:p.name, w:p.w, h:p.h, x:p.x, y:p.y};
@@ -286,7 +257,7 @@ test("une_op_partielle_recue_fusionne", seedV4(REAL_PLAN), `
 // =============================================================================
 //  5. THE OUTGOING MIRROR DESCRIBES THE SERVER
 // =============================================================================
-test("miroir_construit_sur_l_etat_du_serveur", seedV4(REAL_PLAN), `
+await test("miroir_construit_sur_l_etat_du_serveur", seedV4(REAL_PLAN), `
   ${OUVRIR}
   // 1st hello: the server agrees with us, the fingerprint is retained.
   window.__plan.wsFeed({t:"hello", you:{email:"x@y"}, peers:[], rev:1, fp:"FP-1",
@@ -315,7 +286,7 @@ test("miroir_construit_sur_l_etat_du_serveur", seedV4(REAL_PLAN), `
 // =============================================================================
 //  6. FRESH HOUSEHOLD
 // =============================================================================
-test("foyer_neuf_recoit_le_premier_plan", seedV4(REAL_PLAN), `
+await test("foyer_neuf_recoit_le_premier_plan", seedV4(REAL_PLAN), `
   ${OUVRIR}
   window.__plan.state.setupDone = true;
   window.__plan.outLog(true);
@@ -333,7 +304,7 @@ test("foyer_neuf_recoit_le_premier_plan", seedV4(REAL_PLAN), `
      && expect(v.murs > 0 && v.cells > 0, "le plan publié doit être complet")
      && expect(!!sanitizeState(v.plan), "et accepté par le validateur du serveur"));
 
-test("foyer_neuf_appareil_non_configure_ne_publie_rien", seedV4(REAL_PLAN), `
+await test("foyer_neuf_appareil_non_configure_ne_publie_rien", seedV4(REAL_PLAN), `
   ${OUVRIR}
   window.__plan.state.setupDone = false;
   window.__plan.outLog(true);
@@ -365,7 +336,7 @@ const SCENARIO_S3 = `
     op:{kind:"piece.set", piece:{id:String(pE.id), x:depart.xE+70, y:depart.yE+40}}});
 `;
 
-test("annuler_ne_detruit_pas_le_travail_de_l_autre", seedV4(REAL_PLAN), `
+await test("annuler_ne_detruit_pas_le_travail_de_l_autre", seedV4(REAL_PLAN), `
   ${SCENARIO_S3}
   var P0 = window.__plan.plan;
   var idS = String(P0.cells[0].id), idE = String(P0.cells[1].id), idP = String(P0.pieces[0].id);
@@ -402,7 +373,7 @@ test("annuler_ne_detruit_pas_le_travail_de_l_autre", seedV4(REAL_PLAN), `
      && expect(v.cellsTouchees.indexOf(v.idS) >= 0,
         "mais l'annulation DOIT être publiée pour ce qui est à son auteur : " + JSON.stringify(v.cellsTouchees)));
 
-test("retablir_suit_la_meme_regle", seedV4(REAL_PLAN), `
+await test("retablir_suit_la_meme_regle", seedV4(REAL_PLAN), `
   ${SCENARIO_S3}
   var P0 = window.__plan.plan;
   var idS = String(P0.cells[0].id), idE = String(P0.cells[1].id), idP = String(P0.pieces[0].id);
@@ -422,7 +393,7 @@ test("retablir_suit_la_meme_regle", seedV4(REAL_PLAN), `
         "et son meuble ne recule pas : " + JSON.stringify(v.pos))
      && expect(v.kinds.indexOf("plan5.replace") < 0, "toujours par diff : " + JSON.stringify(v.kinds)));
 
-test("annuler_hors_ligne_reste_une_annulation_complete", seedV4(REAL_PLAN), `
+await test("annuler_hors_ligne_reste_une_annulation_complete", seedV4(REAL_PLAN), `
   // No wire open: no remote op, undo must behave like before.
   var P = window.__plan.plan;
   var c = P.cells[0], nom0 = c.name;
@@ -436,7 +407,7 @@ test("annuler_hors_ligne_reste_une_annulation_complete", seedV4(REAL_PLAN), `
      && expect(v.apres === v.nom0, "l'annulation hors ligne doit tout rendre : " + v.apres)
      && expect(v.hist.log === 0, "aucun op distant journalisé hors ligne : " + JSON.stringify(v.hist)));
 
-test("un_remplacement_global_distant_vide_l_historique", seedV4(REAL_PLAN), `
+await test("un_remplacement_global_distant_vide_l_historique", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var c = window.__plan.plan.cells[0];
   window.__plan.pushHistory();
@@ -459,7 +430,7 @@ test("un_remplacement_global_distant_vide_l_historique", seedV4(REAL_PLAN), `
 // pieces of furniture end up at different coordinates on the two screens, permanently (27cm of
 // drift for a wall pushed 180cm). Cause: the author clamps ONCE on the final geometry, the
 // receiver used to re-clamp on EVERY `wall.set` received, so across every intermediate geometry.
-test("recevoir_un_mur_ne_deplace_aucun_meuble", seedV4(REAL_PLAN), `
+await test("recevoir_un_mur_ne_deplace_aucun_meuble", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var P = window.__plan.plan;
   var mur = P.walls.filter(function(w){ return !w.isOutline; })[0];
@@ -479,7 +450,7 @@ test("recevoir_un_mur_ne_deplace_aucun_meuble", seedV4(REAL_PLAN), `
 `, (v: VerdictSonde) => expect(v.murBouge === true, "le mur reçu doit bien avoir bougé")
      && expect(v.n === 0, "aucun meuble ne doit bouger sur le chemin de RÉCEPTION : " + JSON.stringify(v.bouges)));
 
-test("un_meuble_deplace_par_l_auteur_suit_quand_meme", seedV4(REAL_PLAN), `
+await test("un_meuble_deplace_par_l_auteur_suit_quand_meme", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var p = window.__plan.plan.pieces[0];
   var cible = {x:p.x-33, y:p.y-21};
@@ -494,7 +465,7 @@ test("un_meuble_deplace_par_l_auteur_suit_quand_meme", seedV4(REAL_PLAN), `
 // =============================================================================
 //  9. NOTHING VANISHES FROM UNDER YOUR HAND WITHOUT A WORD
 // =============================================================================
-test("un_meuble_selectionne_supprime_par_l_autre_le_dit", seedV4(REAL_PLAN), `
+await test("un_meuble_selectionne_supprime_par_l_autre_le_dit", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var p = window.__plan.plan.pieces[0];
   window.__plan.selReplace(String(p.id));
@@ -508,7 +479,7 @@ test("un_meuble_selectionne_supprime_par_l_autre_le_dit", seedV4(REAL_PLAN), `
      && expect(!!v.toast && /deleted/i.test(v.toast), "et un bandeau doit le dire : " + v.toast)
      && expect(!/—/.test(v.toast || ""), "aucun tiret cadratin dans un texte visible"));
 
-test("un_meuble_non_selectionne_supprime_ne_dit_rien", seedV4(REAL_PLAN), `
+await test("un_meuble_non_selectionne_supprime_ne_dit_rien", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var p = window.__plan.plan.pieces[1];
   window.__plan.clearSel();
@@ -521,7 +492,7 @@ test("un_meuble_non_selectionne_supprime_ne_dit_rien", seedV4(REAL_PLAN), `
 // =============================================================================
 //  10. BANNERS DO NOT SHOUT THE SAME THING TWICE
 // =============================================================================
-test("un_message_identique_est_etrangle", seedV4(REAL_PLAN), `
+await test("un_message_identique_est_etrangle", seedV4(REAL_PLAN), `
   var vus = [];
   for (var i=0;i<6;i++) vus.push(window.__plan.showToast("Tapis 17 est plus grand que la pièce."));
   var autre = window.__plan.showToast("Un contour a besoin d'au moins 3 angles.");
@@ -558,7 +529,7 @@ const FACADE_GARNIE = `
 const compteOuv = `function(id){ return (window.__plan.plan.openings||[])
     .filter(function(o){ return String(o.wallId)===String(id); }).length; }`;
 
-test("les_trois_verdicts_de_suppression_de_mur", seedV4(REAL_PLAN), `
+await test("les_trois_verdicts_de_suppression_de_mur", seedV4(REAL_PLAN), `
   var P = window.__plan.plan;
   var fac = P.walls.filter(function(w){ return w.isOutline; })[0];
   var int = P.walls.filter(function(w){ return !w.isOutline; })[0];
@@ -572,7 +543,7 @@ test("les_trois_verdicts_de_suppression_de_mur", seedV4(REAL_PLAN), `
      && expect(v.absent === "absent", "un mur inconnu n'est pas un refus, il n'est plus là : " + v.absent)
      && expect(v.canFacade === false && v.canCloison === true, "et l'interface locale lit le même verdict"));
 
-test("facade_supprimee_a_distance_garde_ses_ouvertures", seedV4(REAL_PLAN), `
+await test("facade_supprimee_a_distance_garde_ses_ouvertures", seedV4(REAL_PLAN), `
   ${OUVRIR}
   ${FACADE_GARNIE}
   var n = (${compteOuv});
@@ -597,7 +568,7 @@ test("facade_supprimee_a_distance_garde_ses_ouvertures", seedV4(REAL_PLAN), `
 // republishing, the preservation would only hold until the first F5 (the hello would adopt the
 // amputated plan) and the other person would never see their windows again. The divergence gets
 // resolved FROM THE TOP, in a single batch.
-test("la_facade_conservee_est_republiee_vers_le_pair", seedV4(REAL_PLAN), `
+await test("la_facade_conservee_est_republiee_vers_le_pair", seedV4(REAL_PLAN), `
   ${OUVRIR}
   ${FACADE_GARNIE}
   var etat = window.__plan.wire();
@@ -633,7 +604,7 @@ test("la_facade_conservee_est_republiee_vers_le_pair", seedV4(REAL_PLAN), `
          "et chacune de ses ouvertures : " + JSON.stringify(srv.openings.filter(x => x.wallId === v.id).map(x => x.id)));
 });
 
-test("une_cloison_interieure_supprimee_a_distance_part_bien", seedV4(REAL_PLAN), `
+await test("une_cloison_interieure_supprimee_a_distance_part_bien", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var P = window.__plan.plan;
   var w = P.walls.filter(function(x){ return !x.isOutline
@@ -654,7 +625,7 @@ test("une_cloison_interieure_supprimee_a_distance_part_bien", seedV4(REAL_PLAN),
 // The ORDINARY case of a shrunk outline: `outline.set` goes out BEFORE `wall.del` (js/42), so by
 // the time the wall.del arrives our v5SyncOutlineWalls has already removed the extra facade.
 // "Absent" is not "refused": conflating the two would cry refusal over a deletion already done.
-test("un_mur_deja_parti_ne_declenche_aucun_bandeau", seedV4(REAL_PLAN), `
+await test("un_mur_deja_parti_ne_declenche_aucun_bandeau", seedV4(REAL_PLAN), `
   ${OUVRIR}
   window.__plan.clearToast();
   window.__plan.opLog(true);
@@ -669,7 +640,7 @@ test("un_mur_deja_parti_ne_declenche_aucun_bandeau", seedV4(REAL_PLAN), `
 // the two-browser bench (duo/s2c): one deletes a wall while the other places a window on it. The
 // server discards the window; if the client only cascades when the wall is still there, the
 // placer keeps a window hanging off a wall that no longer exists anywhere.
-test("un_wall_del_cascade_meme_quand_le_mur_manque_deja", seedV4(REAL_PLAN), `
+await test("un_wall_del_cascade_meme_quand_le_mur_manque_deja", seedV4(REAL_PLAN), `
   ${OUVRIR}
   var mur = window.__plan.plan.walls.filter(function(w){ return !w.isOutline; })[0];
   var id = String(mur.id);
@@ -693,7 +664,7 @@ test("un_wall_del_cascade_meme_quand_le_mur_manque_deja", seedV4(REAL_PLAN), `
 // when the facade disappears from ITS plan along with its openings, it sends `wall.del` THEN one
 // `opening.del` per opening (measured: 1 + 6). Refusing the wall without refusing the rest would
 // save nothing at all.
-test("la_cascade_des_ouvertures_est_refusee_aussi", seedV4(REAL_PLAN), `
+await test("la_cascade_des_ouvertures_est_refusee_aussi", seedV4(REAL_PLAN), `
   ${OUVRIR}
   ${FACADE_GARNIE}
   var n = (${compteOuv});
@@ -730,7 +701,7 @@ test("la_cascade_des_ouvertures_est_refusee_aussi", seedV4(REAL_PLAN), `
 
 // The protection is SURGICAL: it targets the consequence of a refusal, not facade openings in
 // general. Deleting a single window remains an ordinary gesture, in both directions.
-test("supprimer_une_seule_fenetre_de_facade_reste_possible", seedV4(REAL_PLAN), `
+await test("supprimer_une_seule_fenetre_de_facade_reste_possible", seedV4(REAL_PLAN), `
   ${OUVRIR}
   ${FACADE_GARNIE}
   var n = (${compteOuv});
@@ -755,7 +726,7 @@ test("supprimer_une_seule_fenetre_de_facade_reste_possible", seedV4(REAL_PLAN), 
 // would preserve the facade fine, then the first Ctrl+Z would replay the peer's op onto
 // the snapshot and make the same openings disappear again, this time for good
 // (the restored snapshot is then published by diff).
-test("annuler_ne_refait_pas_disparaitre_les_ouvertures_d_une_facade", seedV4(REAL_PLAN), `
+await test("annuler_ne_refait_pas_disparaitre_les_ouvertures_d_une_facade", seedV4(REAL_PLAN), `
   ${OUVRIR}
   ${FACADE_GARNIE}
   var n = (${compteOuv});
@@ -786,7 +757,7 @@ test("annuler_ne_refait_pas_disparaitre_les_ouvertures_d_une_facade", seedV4(REA
 // the verdict on THAT plan, and a snapshot's `isOutline` flag can describe a stale outline: it's
 // GEOMETRY that decides. An `outline.set` replayed just before may have removed the edge that
 // carried this wall, and it then has to be deleted for good.
-test("le_rejeu_d_annulation_tranche_sur_le_contour_du_moment", seedV4(REAL_PLAN), `
+await test("le_rejeu_d_annulation_tranche_sur_le_contour_du_moment", seedV4(REAL_PLAN), `
   var mk = function(){ return { outline:[[0,0],[400,0],[400,300],[0,300]],
     walls:[{id:"wf", a:[0,0], b:[400,0], t:10, isOutline:true},
            {id:"wi", a:[100,0], b:[100,300], t:7, isOutline:false}],
@@ -811,7 +782,7 @@ test("le_rejeu_d_annulation_tranche_sur_le_contour_du_moment", seedV4(REAL_PLAN)
         + JSON.stringify(v.retreciMur) + JSON.stringify(v.retreciOuv)));
 
 // ---- report -----------------------------------------------------------------------------------
-try { fs.rmSync(RUN_DIR, { recursive: true, force: true }); } catch (e) {}
+sonde.fermer();
 const passed = results.filter(r => r.pass).length;
 process.stdout.write("\n");
 if (passed === results.length) { process.stdout.write("OK " + passed + "/" + results.length + "\n"); process.exit(0); }
