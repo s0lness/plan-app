@@ -452,10 +452,64 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
     if (Math.hypot(qx - p0x, qy - p0y) > 1000) return;
     f.x[f.k] = [v5R2(qx), v5R2(qy)];
   });
+  // RULE 3: A JUNCTION THAT WOULD BREAK IS BRIDGED, NOT TORN. Rules 1 and 2 say when a follower
+  // may move and when it must not; neither of them can save the junction when the follower is held
+  // elsewhere, or when it is collinear with the wall being pushed (two parallel lines never meet).
+  // Until now that case simply detached, and `docs/decisions/0005` called the visible gap an
+  // accepted loss. The owner asked for the third answer, twice and with pictures: push a wall that
+  // continues into another one, and a SEGMENT SHOULD APPEAR to keep them joined, turning the tear
+  // into a step. It is better than both of the answers we had, because nothing is lost and nothing
+  // silently tilts.
+  //
+  // Only on the FINAL apply. Bridging on every pointer move would spawn a wall per frame; the
+  // gesture shows the gap opening, which is honest, and closes it on release.
+  // The bridging is called by the GESTURE on release, deliberately not from here: this function's
+  // `final` is ALSO what CANCEL uses to put everything back, and building walls while someone
+  // abandons a gesture is the last thing anyone wants.
   v5ClampOpenings(P);
   if (final) { v5RebuildCells(P); bornerLesMeubles(ctx); }
   v5Touch(ctx);
   return w;
+}
+
+/** The bridging half of rule 3: one segment per junction that the gesture has pulled apart. */
+function v5PontsDeJonction(ctx: Contexte, g: ContexteGlisserMur): void {
+  const P = ctx.etat.plan;
+  const { w, followers } = g;
+  if (!P) return;
+  for (const f of followers) {
+    // Where the contact point WOULD be if it had ridden along with the wall: the same fraction of
+    // the wall it was touching. For a perpendicular push this is the old point plus the offset, so
+    // the bridge comes out perpendicular too, which is the step the owner drew.
+    const cible: Pt = [
+      v5R2(w.a[0] + f.t * (w.b[0] - w.a[0])),
+      v5R2(w.a[1] + f.t * (w.b[1] - w.a[1])),
+    ];
+    const p = f.x[f.k];
+    const ecart = Math.hypot(p[0] - cible[0], p[1] - cible[1]);
+    // Still touching: rule 1 moved it, or the push was too small to separate anything. A junction
+    // that did not break needs no bridge.
+    if (ecart <= 2) continue;
+    // And it may still be touching the wall SOMEWHERE ELSE along its length, which is a perfectly
+    // good junction: a wall sliding along its own line keeps meeting the same flank.
+    if (closestOnSeg(p[0], p[1], w.a[0], w.a[1], w.b[0], w.b[1]).dist <= 2) continue;
+    // Built here rather than through `v5TryCreateWall`, which pushes its own history entry,
+    // reselects and saves: all three are wrong in the middle of another gesture's final apply,
+    // which has already pushed one history entry for the whole move.
+    //
+    // A bridge is FREE, always. It is a wall we placed ourselves, exactly where we want it;
+    // leaving it through-running would have the through rule stretch it away from the very joint
+    // it exists to hold. Same thickness as the wall being moved, so the step reads as one piece
+    // of masonry rather than two.
+    P.walls.push({
+      id: v5NewId("w"),
+      a: [p[0], p[1]],
+      b: cible,
+      t: w.t || WALL,
+      isOutline: false,
+      free: 1,
+    });
+  }
 }
 
 export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
@@ -510,7 +564,7 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const up = (): void => {
     window.removeEventListener("pointermove", move);
     v5ClearDims(ctx);
-    if (moved) { v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx); }
+    if (moved) { v5PontsDeJonction(ctx, g); v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx); }
     render(ctx);
     endGesture();
     ctx.crochets.dragEnd?.();
