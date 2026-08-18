@@ -22,7 +22,7 @@
 
 import type { Contexte } from "../app/contexte.ts";
 import type { BBox } from "../geometrie/polygones.ts";
-import { TYPEMAP, isWallMount, pieceVisible } from "../catalogue/catalogue.ts";
+import { TYPEMAP, estAuSol, isWallMount, pieceVisible } from "../catalogue/catalogue.ts";
 import { cssId, setLabelSpin } from "../noyau/dom.ts";
 import { safeDim } from "../noyau/nombres.ts";
 import { resolveColor, withAlpha } from "./couleurs.ts";
@@ -148,7 +148,11 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     }
     seen[String(p.id)] = 1;
     const lx = (p.x - bb.minX) * S, ly = (p.y - bb.minY) * S;
-    el.style.zIndex = String(10 + (rang[i] ?? 0));
+    // A FLOOR COVERING IS PAINTED UNDER THE WALLS. `renderFond` draws the floors and the wall bands
+    // in two separate svg layers precisely so that a rug can sit between them: a rug lies on the
+    // floor, and a wall rises from the floor it covers. Everything else keeps its ordinary rank
+    // above both. Reported from real use: a rug spread across a partition covered it.
+    el.style.zIndex = estAuSol(p.type) ? String(Math.min(5, 2 + (rang[i] ?? 0))) : String(10 + (rang[i] ?? 0));
     el.dataset["paint"] = String(rang[i] ?? 0);   // STABLE rank: selection does not change it
     const pw = p.w * S, ph = p.h * S;
     el.style.width = safeDim(pw) + "px";

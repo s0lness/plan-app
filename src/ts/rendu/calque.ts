@@ -20,6 +20,7 @@ import { v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
+import { gesteActif } from "../gestes/sortie.ts";
 import { floorPatternDefs } from "./sol.ts";
 import { resolveColor, withAlpha } from "./couleurs.ts";
 import { pieceIconSVG } from "./icones.ts";
@@ -155,8 +156,13 @@ export function renderV5(ctx: Contexte): void {
 
 /** Floors per cell, grid, wall bands (ONE per wall only), and hit shapes. */
 export function renderFond(ctx: Contexte, layer: HTMLElement, P: PlanV5, bb: BBox, S: number): void {
-  const old = layer.querySelector("svg.v5svg");
-  if (old) old.remove();
+  // TWO BACKGROUND LAYERS, AND THAT IS THE WHOLE POINT OF THIS FUNCTION'S SHAPE. A rug lies ON THE
+  // FLOOR and a wall rises from it, so a rug spread under a partition must pass UNDER it. With a
+  // single svg holding both the floors and the wall bands there was nowhere to put it: above that
+  // svg it covered the walls (which is what the owner saw), below it the opaque floor fill hid it
+  // completely. So the floors go in one svg, the wall bands in another, and floor coverings are
+  // painted between the two (`estAuSol`, `rendu/meubles.ts`).
+  layer.querySelectorAll("svg.v5svg").forEach((n) => n.remove());
   const X = (x: number): number => v5R2((x - bb.minX) * S);
   const Y = (y: number): number => v5R2((y - bb.minY) * S);
   const pts = (poly: readonly Pt[]): string => poly.map((p) => X(p[0]) + "," + Y(p[1])).join(" ");
@@ -184,25 +190,32 @@ export function renderFond(ctx: Contexte, layer: HTMLElement, P: PlanV5, bb: BBo
           <rect x="0" y="0" width="${W}" height="${H}" fill="url(#v5gf)"/>
           <rect x="0" y="0" width="${W}" height="${H}" fill="url(#v5gm)"/></g>`;
   });
+  // From here on, everything belongs to the WALLS layer, which is painted above the floor coverings.
+  let murs = "";
   // outline band (closed) then one segment per interior wall: never two bands at the same spot
   const outBand = Math.max(2, WALL * gs);
-  body += `<polygon points="${pts(P.outline)}" fill="none" stroke="#3b3f3d" stroke-width="${outBand}" stroke-linejoin="miter"/>
+  murs += `<polygon points="${pts(P.outline)}" fill="none" stroke="#3b3f3d" stroke-width="${outBand}" stroke-linejoin="miter"/>
       <polygon points="${pts(P.outline)}" fill="none" stroke="${cWall}" stroke-width="1" stroke-linejoin="miter" opacity="0.6"/>`;
   const selW = ctx.ihm.selWall;
   (P.walls || []).forEach((w) => {
     if (w.isOutline) return;
     const band = Math.max(2, (w.t || WALL) * gs);
     const cls = "v5band" + (String(selW) === String(w.id) ? " sel" : "");
-    body += `<line class="${cls}" data-wid="${escapeHtml(w.id)}" x1="${X(w.a[0])}" y1="${Y(w.a[1])}" x2="${X(w.b[0])}" y2="${Y(w.b[1])}"
+    murs += `<line class="${cls}" data-wid="${escapeHtml(w.id)}" x1="${X(w.a[0])}" y1="${Y(w.a[1])}" x2="${X(w.b[0])}" y2="${Y(w.b[1])}"
         stroke="#3b3f3d" stroke-width="${band}" stroke-linecap="square"/>`;
   });
-  const svg = document.createElementNS(SVGNS, "svg");
-  svg.setAttribute("class", "v5svg");
-  svg.setAttribute("width", String(W));
-  svg.setAttribute("height", String(H));
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  svg.innerHTML = `<defs>${defs}</defs>${body}`;
-  layer.insertBefore(svg, layer.firstChild);
+  const faire = (classe: string, dedans: string): SVGSVGElement => {
+    const svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("class", classe);
+    svg.setAttribute("width", String(W));
+    svg.setAttribute("height", String(H));
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.innerHTML = dedans;
+    return svg;
+  };
+  // The patterns live with the floors; the walls layer needs none.
+  layer.insertBefore(faire("v5svg v5svg-murs", murs), layer.firstChild);
+  layer.insertBefore(faire("v5svg v5svg-sol", `<defs>${defs}</defs>${body}`), layer.firstChild);
 }
 
 /**
@@ -462,7 +475,15 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     h.addEventListener("pointerdown", (ev) => ctx.gestes.contourSommetPointerDown?.(ev as PointerEvent, i));
     layer.appendChild(h);
   });
-  const ids = [ctx.ihm.selWall, ctx.ihm.hoverWall].filter((id, i, a): id is string => !!id && a.indexOf(id) === i);
+  // THE HANDLES BELONG TO THE WALL UNDER THE POINTER, not to the selected one. Keeping them on a
+  // SELECTED wall meant that after drawing a partition, its five discs stayed floating on screen
+  // for as long as it remained selected, and they stole the clicks meant for the wall next to it:
+  // the owner reported having to click away or press Escape before he could split or delete
+  // anything else. Selection still highlights the wall and drives its sheet; it just does not own
+  // the controls. The selected wall is kept in the list only WHILE A GESTURE IS RUNNING on it, so
+  // dragging a handle past the wall it belongs to does not make it vanish under the hand.
+  const ids = [gesteActif() ? ctx.ihm.selWall : null, ctx.ihm.hoverWall]
+    .filter((id, i, a): id is string => !!id && a.indexOf(id) === i);
   const murs = ids.map((id) => (ctx.etat.plan.walls || []).find((q) => String(q.id) === String(id))).filter((w) => w !== undefined);
   for (const w of murs) {
     const mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;

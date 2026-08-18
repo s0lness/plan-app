@@ -201,10 +201,17 @@ await test("facade_selectionnee_revele_le_contour_sans_commandes_interieures", a
   ok(await evaluate(`document.querySelector('.v5wx[data-w="${id}"],.v5wmid[data-w="${id}"]')===null`) === true, "une façade ne doit offrir ni suppression ni coude");
 });
 
-await test("mur_court_respecte_priorite_et_aucune_poignee_ne_se_recouvre", async () => {
+// UN MUR COURT RÉTRÉCIT SES POIGNÉES, IL N'EN SUPPRIME PLUS. La priorité d'avant les faisait
+// tomber sous 48 px, et c'est le défaut que le propriétaire a signalé: sur une cloison de 47 cm il
+// ne restait qu'une poignée sur cinq, et l'élément sous la pointe du mur appartenait au mur VOISIN,
+// donc viser un bout attrapait celui d'à côté. Les bouts sont ce que ce mur a de plus utile: ils ne
+// disparaissent jamais, ils réduisent, et la position reste vraie.
+await test("mur_court_garde_ses_bouts_et_aucune_poignee_ne_se_recouvre", async () => {
   await seed(60); await move(await apt(100, 110)); const hs = await handles("w1");
   ok(hs.some((h: any) => h.c.includes("v5wmove")), "la poignée move doit toujours rester visible");
-  ok(!hs.some((h: any) => h.c.includes("v5wmid") || h.c.includes("v5wx")), "coude et suppression doivent disparaître avant les extrémités");
+  ok(hs.filter((h: any) => h.c.includes("v5wend")).length === 2,
+    `les DEUX bouts doivent rester, vu ${JSON.stringify(hs.map((h: any) => h.c))}`);
+  ok(hs.every((h: any) => h.w <= 20 && h.h <= 20), "sur un mur court les poignées doivent avoir rétréci");
   for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) {
     const a = hs[i], b = hs[j], overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     ok(!overlap, `deux poignées visibles se recouvrent: ${a.c} et ${b.c}`);

@@ -474,7 +474,7 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
 }
 
 /** The bridging half of rule 3: one segment per junction that the gesture has pulled apart. */
-function v5PontsDeJonction(ctx: Contexte, g: ContexteGlisserMur): void {
+function v5PontsDeJonction(ctx: Contexte, g: ContexteGlisserMur, ponts: Map<Suiveur, Mur>): void {
   const P = ctx.etat.plan;
   const { w, followers } = g;
   if (!P) return;
@@ -489,11 +489,21 @@ function v5PontsDeJonction(ctx: Contexte, g: ContexteGlisserMur): void {
     const p = f.x[f.k];
     const ecart = Math.hypot(p[0] - cible[0], p[1] - cible[1]);
     // Still touching: rule 1 moved it, or the push was too small to separate anything. A junction
-    // that did not break needs no bridge.
-    if (ecart <= 2) continue;
-    // And it may still be touching the wall SOMEWHERE ELSE along its length, which is a perfectly
-    // good junction: a wall sliding along its own line keeps meeting the same flank.
-    if (closestOnSeg(p[0], p[1], w.a[0], w.a[1], w.b[0], w.b[1]).dist <= 2) continue;
+    // that did not break needs no bridge. And it may still be touching the wall SOMEWHERE ELSE
+    // along its length, which is a perfectly good junction: a wall sliding along its own line
+    // keeps meeting the same flank.
+    const inutile = ecart <= 2
+      || closestOnSeg(p[0], p[1], w.a[0], w.a[1], w.b[0], w.b[1]).dist <= 2;
+    const dejaLa = ponts.get(f);
+    if (inutile) {
+      // The push came back: the bridge that was following the hand goes away with it.
+      if (dejaLa) { P.walls = (P.walls || []).filter((q) => q !== dejaLa); ponts.delete(f); }
+      continue;
+    }
+    // ONE bridge per junction, MOVED, not one per frame. The owner asked to see it while dragging
+    // rather than at the release, and the naive way to do that would push a new wall on every
+    // pointer move. The wall is created once and its two ends follow the hand.
+    if (dejaLa) { dejaLa.a = [p[0], p[1]]; dejaLa.b = cible; dejaLa.t = w.t || WALL; continue; }
     // Built here rather than through `v5TryCreateWall`, which pushes its own history entry,
     // reselects and saves: all three are wrong in the middle of another gesture's final apply,
     // which has already pushed one history entry for the whole move.
@@ -502,14 +512,16 @@ function v5PontsDeJonction(ctx: Contexte, g: ContexteGlisserMur): void {
     // leaving it through-running would have the through rule stretch it away from the very joint
     // it exists to hold. Same thickness as the wall being moved, so the step reads as one piece
     // of masonry rather than two.
-    P.walls.push({
+    const pont: Mur = {
       id: v5NewId("w"),
       a: [p[0], p[1]],
       b: cible,
       t: w.t || WALL,
       isOutline: false,
       free: 1,
-    });
+    };
+    P.walls.push(pont);
+    ponts.set(f, pont);
   }
 }
 
@@ -524,6 +536,9 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const g = v5WallDragCtx(ctx, wallId);
   if (!g) return;
   const { a0, s, followers } = g;
+  // The bridges of rule 3, kept BY FOLLOWER across the whole gesture so each junction owns one wall
+  // that follows the hand, instead of one wall per pointer move.
+  const ponts = new Map<Suiveur, Mur>();
   beginGesture();
   ctx.crochets.dragStart?.();
   // Pure APARTMENT space (evtApt): the pointer is read in the viewport and converted to cm.
@@ -550,6 +565,7 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
       else d = Math.round(d / 5) * 5;
     }
     v5WallDragApply(ctx, g, d, false);
+    v5PontsDeJonction(ctx, g, ponts);
     render(ctx);
     // The dragged wall, the ones following it, AND THE ONES TOUCHING IT: their length is what we're
     // trying to adjust by pushing this one. `Map` keyed by identifier so as not to dimension twice a
@@ -565,13 +581,17 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const up = (): void => {
     window.removeEventListener("pointermove", move);
     v5ClearDims(ctx);
-    if (moved) { v5PontsDeJonction(ctx, g); v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx); }
+    if (moved) { v5PontsDeJonction(ctx, g, ponts); v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx); }
     render(ctx);
     endGesture();
     ctx.crochets.dragEnd?.();
   };
   // G-12. Escape: the wall (and its T junctions) return to their position from before the gesture.
-  const cancel = (): void => { v5WallDragApply(ctx, g, 0, true); moved = false; render(ctx); };
+  const cancel = (): void => {
+    // An abandoned gesture leaves NOTHING behind, bridges included.
+    if (ponts.size) { P.walls = (P.walls || []).filter((q) => ![...ponts.values()].includes(q)); ponts.clear(); }
+    v5WallDragApply(ctx, g, 0, true); moved = false; render(ctx);
+  };
   window.addEventListener("pointermove", move);
   armGesture(up, null, cancel);   // guaranteed end (G-1)
 }

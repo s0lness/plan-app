@@ -3,6 +3,12 @@
      The visible target under the pointer decides which gesture starts. */
   .v5layer{position:absolute;left:0;top:0;pointer-events:none;z-index:1;touch-action:none}
   .v5layer svg.v5svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+  /* The background is TWO layers so a floor covering can be painted between them: the floors and
+     their grid below, the wall bands above. A rug lies on the floor and a wall rises from it, so a
+     rug spread under a partition has to pass under it (`estAuSol`, `rendu/meubles.ts`, z-index 2 to
+     5, against 10 and up for every other piece). */
+  .v5layer svg.v5svg-sol{z-index:1}
+  .v5layer svg.v5svg-murs{z-index:6}
   .v5layer .piece{cursor:grab;pointer-events:auto}
   .v5layer .rot-handle,.v5layer .rsz-handle,.v5layer .vtx,.v5layer .mid,.v5layer .edge{pointer-events:auto}
   .v5layer .ov-name{pointer-events:auto;cursor:pointer}
