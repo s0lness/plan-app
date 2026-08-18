@@ -33,7 +33,10 @@
      and tinted by it. A control a piece of furniture can cover is not a control. They are small
      discs that only exist while their wall is hovered, so the surface they take from the furniture
      underneath is a few pixels, for the few seconds the pointer is on that wall. */
-  .v5wend,.v5wmid,.v5wmove,.v5wx{z-index:70}
+  .v5wjoin{position:absolute;border-radius:50%;text-align:center;cursor:pointer;pointer-events:auto;
+        background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 15px/16px var(--mono);
+        box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .v5wend,.v5wmid,.v5wmove,.v5wx,.v5wjoin{z-index:70}
   .v5wend:hover,.v5wmid:hover,.v5wmove:hover{background:var(--accent-soft)}
   .v5wend:active,.v5wmid:active,.v5wmove:active{cursor:grabbing}
   .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;

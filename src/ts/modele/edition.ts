@@ -956,6 +956,100 @@ export function v5WallSplitAt(P: PlanV5 | null | undefined, wallId: Id): Resulta
   return { id };
 }
 
+// ---- MERGING TWO WALLS BACK INTO ONE -----------------------------------------------------------
+// The exact inverse of the split, and the owner asked for it in those words: having partitioned a
+// wall, he wants to put it back together when the two pieces still continue one another. A "+"
+// that cuts and a "-" that welds are the same pair of scissors.
+//
+// THE GUARD IS WHAT MAKES IT SAFE, and it is not "are they roughly aligned". Three walls meeting at
+// a point is a T, and welding two of them would silently swallow the third's junction; so the
+// junction must belong to EXACTLY these two. And a facade is derived from the outline, so it can
+// take part in nothing.
+
+/** How close two endpoints must be to count as the same joint. Same 2 cm as junction detection. */
+const JOINT_TOL = 2;
+/** How straight the two walls must be to be weldable: about 2 degrees of slack. */
+const COLIN_TOL = 0.035;
+
+export interface FusionMur { autre: Id; bout: "a" | "b"; autreBout: "a" | "b"; }
+
+const unitaire = (w: Mur, de: "a" | "b"): Pt => {
+  const vers = de === "a" ? w.b : w.a;
+  const dx = vers[0] - w[de][0], dy = vers[1] - w[de][1];
+  const L = Math.hypot(dx, dy) || 1e-9;
+  return [dx / L, dy / L];
+};
+
+/** Is this wall's `bout` end weldable to exactly one collinear neighbour? */
+export function v5WallMergeCandidate(P: PlanV5 | null | undefined, wallId: Id, bout: "a" | "b"): FusionMur | null {
+  const w = v5WallById(P, wallId);
+  if (!P || !w || w.isOutline) return null;
+  const pt = w[bout];
+  let trouve: FusionMur | null = null;
+  for (const x of (P.walls || [])) {
+    if (x === w) continue;
+    for (const k of ["a", "b"] as const) {
+      if (Math.hypot(x[k][0] - pt[0], x[k][1] - pt[1]) > JOINT_TOL) continue;
+      // A THIRD wall at the same joint means this is a T, and welding would swallow its junction.
+      if (trouve || x.isOutline) return null;
+      trouve = { autre: x.id, bout, autreBout: k };
+    }
+    // A wall whose FLANK passes through the joint is a third party too, even without an endpoint
+    // there: welding across it would bury a junction inside the new wall.
+    if (!x.isOutline && closestOnSeg(pt[0], pt[1], x.a[0], x.a[1], x.b[0], x.b[1]).dist <= JOINT_TOL
+      && Math.hypot(x.a[0] - pt[0], x.a[1] - pt[1]) > JOINT_TOL
+      && Math.hypot(x.b[0] - pt[0], x.b[1] - pt[1]) > JOINT_TOL) return null;
+  }
+  if (!trouve) return null;
+  const x = v5WallById(P, trouve.autre)!;
+  // Collinear means the two walls CONTINUE one another: leaving the joint, they point in opposite
+  // directions. The cross product alone would also accept a wall folded back onto itself.
+  const u = unitaire(w, bout), v = unitaire(x, trouve.autreBout);
+  const croix = Math.abs(u[0] * v[1] - u[1] * v[0]);
+  const scal = u[0] * v[0] + u[1] * v[1];
+  if (croix > COLIN_TOL || scal > -0.9) return null;
+  return trouve;
+}
+
+/** Welds `wallId` to the neighbour meeting its `bout` end. The merged wall keeps `wallId`. */
+export function v5WallMergeAt(P: PlanV5 | null | undefined, wallId: Id, bout: "a" | "b"): { refus: string } | { id: Id } {
+  const f = v5WallMergeCandidate(P, wallId, bout);
+  if (!f) return { refus: "These two walls do not continue one another, or something else meets them here." };
+  const plan = P!;
+  const w = v5WallById(plan, wallId)!, x = v5WallById(plan, f.autre)!;
+  const A: Pt = bout === "a" ? [w.b[0], w.b[1]] : [w.a[0], w.a[1]];
+  const B: Pt = f.autreBout === "a" ? [x.b[0], x.b[1]] : [x.a[0], x.a[1]];
+  const L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+  if (!(L > 0)) return { refus: "These two walls would weld into nothing." };
+  const ux = (B[0] - A[0]) / L, uy = (B[1] - A[1]) / L;
+
+  // EVERY OPENING IS RE-MEASURED FROM THE NEW `a`, BY PROJECTION, and not by adding lengths. Adding
+  // works only when both walls happen to be stored in the same direction, and the direction of a
+  // wall is arbitrary: a merge that assumed it would slide half the doors and windows to the wrong
+  // end. Projecting both ends of the opening and keeping the smaller one is direction-agnostic.
+  for (const o of plan.openings || []) {
+    const surW = String(o.wallId) === String(wallId), surX = String(o.wallId) === String(f.autre);
+    if (!surW && !surX) continue;
+    const q = surW ? w : x;
+    const ql = Math.hypot(q.b[0] - q.a[0], q.b[1] - q.a[1]) || 1e-9;
+    const qux = (q.b[0] - q.a[0]) / ql, quy = (q.b[1] - q.a[1]) / ql;
+    const p0: Pt = [q.a[0] + qux * o.t0, q.a[1] + quy * o.t0];
+    const p1: Pt = [q.a[0] + qux * (o.t0 + o.w), q.a[1] + quy * (o.t0 + o.w)];
+    const d0 = (p0[0] - A[0]) * ux + (p0[1] - A[1]) * uy;
+    const d1 = (p1[0] - A[0]) * ux + (p1[1] - A[1]) * uy;
+    o.wallId = wallId;
+    o.t0 = v5R2(clamp(Math.min(d0, d1), 0, Math.max(0, L - o.w)));
+  }
+
+  w.a = [v5R2(A[0]), v5R2(A[1])];
+  w.b = [v5R2(B[0]), v5R2(B[1])];
+  // A welded wall stays put. If either piece was a free partition, the result must be one too:
+  // letting the through rule loose on it would stretch the weld somewhere nobody asked for.
+  if (w.free === 1 || x.free === 1) w.free = 1;
+  plan.walls = (plan.walls || []).filter((q) => String(q.id) !== String(f.autre));
+  return { id: w.id };
+}
+
 // ---- WHO IS ALLOWED TO DISAPPEAR (C-13) --------------------------------------------------------
 // An OUTLINE WALL is an entity DERIVED from the outline: `v5SyncOutlineWalls` recreates it on the
 // next update. Deleting it therefore does not remove the wall, but permanently takes its openings

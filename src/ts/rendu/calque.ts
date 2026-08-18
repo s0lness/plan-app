@@ -16,6 +16,7 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
+import { v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
@@ -557,6 +558,27 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     x.style.top = s.y + "px";
     x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent, String(w.id)));
     layer.appendChild(x);
+
+    // THE "-" ONLY EXISTS WHERE WELDING IS LEGITIMATE. The model decides (`v5WallMergeCandidate`):
+    // exactly two walls at this joint, neither of them a facade, and the two continuing one
+    // another. A control that appears and then refuses teaches nothing; one that is simply absent
+    // says "not here" without a word. It sits on the same side as the "+", so the pair that cuts
+    // and welds reads together, and the delete cross keeps the other side to itself.
+    (["a", "b"] as const).forEach((bout) => {
+      if (!v5WallMergeCandidate(ctx.etat.plan, w.id, bout)) return;
+      const p = toC(w[bout][0], w[bout][1]);
+      const m = document.createElement("div");
+      m.className = "v5wjoin";
+      m.dataset["w"] = String(w.id);
+      m.dataset["bout"] = bout;
+      m.textContent = "−";
+      m.title = "Weld this wall to the one it continues";
+      m.style.cssText = taille(20);
+      m.style.left = (p.x - nx * off) + "px";
+      m.style.top = (p.y - ny * off) + "px";
+      m.addEventListener("pointerdown", (ev) => ctx.gestes.fusionnerMurPointerDown?.(ev as PointerEvent, String(w.id), bout));
+      layer.appendChild(m);
+    });
   }
 }
 

@@ -47,6 +47,7 @@ import {
   v5SnapWallEnd,
   v5SyncOutlineWalls,
   v5ThroughWall,
+  v5WallMergeAt,
   v5WallSplitAt,
   v5WallSplitRefusal,
   v5WallCovering,
@@ -750,6 +751,30 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
 // straight back out by the through-running rule, and it had to announce that change. A split that
 // leaves every point exactly where it was needs neither: the halves keep whatever nature the wall
 // had. Moving the joint afterwards goes through the endpoint drag, which sets `free` itself.
+
+/**
+ * THE "-" WELDS THIS WALL TO THE NEIGHBOUR MEETING THAT END. The owner's words: having partitioned
+ * a wall, he wants to be able to put it back together when the pieces still continue one another.
+ * A click, like the "+" that cut it and the "x" that removes it; the guard that decides whether the
+ * control exists at all lives in the model (`v5WallMergeCandidate`), so the button is only ever
+ * drawn where welding is legitimate.
+ */
+export function v5MergeWallAt(ctx: Contexte, e: PointerEvent, wallId: unknown, bout: "a" | "b"): void {
+  const P = ctx.etat.plan;
+  if (!P) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  if (spaceHeld() || measureMode()) return;
+  e.preventDefault(); e.stopPropagation();
+  pushHistory(ctx);
+  const r = v5WallMergeAt(P, String(wallId), bout);
+  if ("refus" in r) { toast(r.refus, { geste: true }); return; }
+  v5SelectWall(ctx, r.id);
+  v5ResoudreGeometrie(P, true);
+  bornerLesMeubles(ctx);
+  v5Touch(ctx);
+  render(ctx);
+  save(ctx);
+}
 
 export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
   const P = ctx.etat.plan;
