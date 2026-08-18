@@ -501,6 +501,13 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
       const d = base * facteur;
       return `width:${d.toFixed(1)}px;height:${d.toFixed(1)}px;margin:${(-d / 2).toFixed(1)}px 0 0 ${(-d / 2).toFixed(1)}px;`;
     };
+    // UNE FAÇADE N'A PAS DEUX COMMANDES AU MÊME ENDROIT. Sa poignée de déplacement ne sait que
+    // SÉLECTIONNER (le contour se remodèle par ses arêtes et ses coins), et elle se pose au milieu
+    // du segment, exactement là où la bande `.edge` du contour se saisit. Depuis que les poignées
+    // passent au-dessus des meubles, elle passait aussi au-dessus de `.edge` et volait le
+    // glissement: tirer une façade ne la déplaçait plus. Une fois le contour révélé, `.edge`
+    // sélectionne ET déplace, donc la poignée n'a plus de raison d'être là.
+    if (w.isOutline && contourVisible) continue;
     const move = document.createElement("div");
     move.className = "v5wmove";
     move.dataset["w"] = String(w.id);
