@@ -277,19 +277,52 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 // CURRENT a/b: its OTHER end (`k`'s opposite) is left untouched, so the follower stretches or
 // pivots around it, exactly like pushing one panel of a room and watching its neighbors flex.
 //
-// WHY A FRACTION, NOT A LINE INTERSECTION (what this replaced, and why it tore): the previous
-// version intersected the follower's OWN line (fixed direction, anchored at its far end) with the
-// dragged wall's NEW line. That degenerates the moment a follower is PARALLEL to the dragged
-// wall — collinear segments, exactly what "draw a partition as two strokes" produces — because two
-// parallel lines have no intersection, so the follower's near end silently stayed at its OLD
-// position while everything around it moved: a real gap opened, a room did too. Measured: dragging
-// the middle segment of a 5-wall run left a collinear neighbor exactly where it started, a visible
-// tear, while the two PERPENDICULAR neighbors of that same drag followed correctly (see
-// `tests/jonction-glisser-mur.ts`, `star_avec_voisin_colineaire_reste_soude`). A fraction along
-// the segment has no such degenerate case: parallel, perpendicular, or oblique, it is always
-// well-defined, and for a follower that touched EXACTLY at an endpoint (t=0 or t=1, the ordinary
-// case of two hand-drawn walls meeting corner to corner) it lands on that exact new endpoint,
-// byte-identical to what the old formula gave for a perpendicular junction.
+// WHY NOT A FRACTION ANYMORE (what PR #17 shipped, and why it was itself wrong): PR #17's fix
+// carried the touching point along a FRACTION of the dragged wall's length, which happens to move
+// by the SAME VECTOR as the wall itself (the wall only ever TRANSLATES while being pushed
+// sideways, never rotates). That vector is along a perpendicular follower's own axis for free (a T
+// at a dragged wall's foot just gets longer or shorter), but along NO OTHER angle: an oblique
+// follower's far end is fixed, its near end gets dragged sideways by a vector that isn't its own
+// line, and it PIVOTS — measured, a follower at 45° opened to 63° after a 50 cm push. Worse, for a
+// follower COLLINEAR with the dragged wall (PR #17's own target case) the fraction produced the
+// SAME tilt, just disguised as "still attached": the owner's second report is a straight vertical
+// wall that continued the dragged one downward to the facade, and PR #17's fraction bent it into a
+// visible diagonal, exactly the defect it claimed to fix, because a fraction has no notion of
+// "this neighbor's own direction," only of "where along the wall I'm pushing."
+//
+// TWO RULES, in this order, decided ONCE at `pointerdown` (`v5WallDragCtx`) and never
+// re-evaluated mid-drag:
+//   1. A follower NEVER tilts. It keeps its own direction (`Suiveur.dir`), fixed at its far end
+//      (`Suiveur.fixe`): either its touching point SLIDES ALONG THAT DIRECTION until it meets the
+//      dragged wall's new line (ordinary line intersection), or it does not move at all. There is
+//      no third option, no fallback that carries it some other way — a wall in an apartment plan
+//      is never diagonal by accident.
+//   2. A follower moves ONLY IF it would otherwise be left touching NOTHING: if its touching point
+//      is still within 2 cm of some OTHER wall's endpoint or flank, or of the facade (the SAME
+//      tolerance junction detection itself uses), after the dragged wall leaves, it is already
+//      held there and STAYS EXACTLY WHERE IT IS — sliding it to chase the dragged wall would tear
+//      open whatever it is still attached to. This is checked FIRST, from the geometry at
+//      `pointerdown` (only the dragged wall moves, and it is excluded from the check, so "held
+//      after it leaves" and "held right now, ignoring it" are the same question); intersection is
+//      attempted only for a follower that clears it.
+// Rule 1 is why intersection is used AT ALL (a fraction cannot keep a direction); rule 2 is why it
+// is not used UNCONDITIONALLY (an already-held neighbor sliding to "correctly" meet the dragged
+// wall would rip the room it is still forming with its OTHER neighbor). Combined, three walls
+// meeting at one point — a dragged wall, a perpendicular neighbor, and a third wall continuing
+// that neighbor in a straight line to the facade — all stay exactly as drawn except the one being
+// dragged: the other two hold each other, so neither one is in the void, so neither one moves,
+// and the dragged wall simply comes to rest against the flank of whichever of them it now
+// overlaps. Nothing tears, nothing tilts. See `docs/decisions/` for the two contradictory owner
+// reports this reconciles.
+//
+// A follower whose own line is near-parallel to the dragged wall's new line (`sin < 0.09`, ~5°,
+// covers the exact-collinear case) has no USABLE intersection either way (two near-parallel lines
+// meet arbitrarily far away): rule 1 then gives "does not move" directly, without consulting rule
+// 2 — sliding along a direction the dragged wall's line barely deviates from is not meaningfully
+// different from not sliding, and forcing a numerically unstable solve is worse than staying put.
+// A collinear follower that ALSO turns out to be in the void (nothing else holds it) therefore
+// DETACHES rather than stretch into a diagonal: an accepted loss, spelled out in
+// `docs/decisions/`, because a visible gap is honest and reversible while a diagonal is neither.
 //
 // AN OUTLINE WALL NEITHER FOLLOWS NOR IS FOLLOWED: it is DERIVED from the outline
 // (`v5SyncOutlineWalls` owns its geometry), never from an interior wall's drag. Making it "slide
@@ -308,12 +341,40 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 // "NO MASS RENORMALIZATION"). A person pushing one wall of a room expects that wall's own corners
 // to react, not the far side of the apartment.
 
-/** A junction that follows the dragged wall: its end `k`, and WHERE along the dragged wall (`t`,
- * 0..1) it was touching when the gesture started. */
+/** A junction that follows the dragged wall: its end `k`, WHERE along the dragged wall (`t`, 0..1)
+ * it was touching when the gesture started (kept only as the reference point for the intersection's
+ * own sanity check, see `v5WallDragApply`), its OWN geometry at that same moment (`dir`, `fixe`: the
+ * UNIT direction from its fixed far end to the touching end, and that far end itself, copied by
+ * value so it never moves with the live wall object), and `tenu` (rule 2, held elsewhere): true if
+ * something OTHER than the dragged wall already touches this same point, in which case this
+ * follower never moves at all, no matter its angle. */
 interface Suiveur {
   x: Mur;
   k: "a" | "b";
   t: number;
+  dir: Pt;
+  fixe: Pt;
+  tenu: boolean;
+}
+
+/** UNIT vector from `fixe` to `p` ("this follower's own axis, at gesture start"). */
+function v5FollowerDir(fixe: Pt, p: Pt): Pt {
+  const dx = p[0] - fixe[0], dy = p[1] - fixe[1];
+  const L = Math.hypot(dx, dy) || 1e-9;
+  return [dx / L, dy / L];
+}
+
+/** RULE 2: is `pt` (a follower's touching point) still within 2 cm of some wall OTHER than the
+ * dragged wall `w` and the follower `x` itself — another wall's endpoint or flank, or a facade
+ * wall (outline walls are ordinary entries of `P.walls`, so they fall out of this same scan for
+ * free)? Only `w` moves during this gesture, and it is excluded here, so "held once w has left"
+ * and "held right now, ignoring w" are the same question — this can be decided ONCE, from the
+ * geometry at `pointerdown`, exactly like the rest of the follower list. */
+function v5EstTenuAilleurs(P: PlanV5, w: Mur, x: Mur, pt: Pt): boolean {
+  return (P.walls || []).some((v) => {
+    if (v === w || v === x) return false;
+    return closestOnSeg(pt[0], pt[1], v.a[0], v.a[1], v.b[0], v.b[1]).dist <= 2;
+  });
 }
 
 /** Context for a wall drag, fixed at `pointerdown`: original segment + junctions to follow. */
@@ -344,7 +405,12 @@ export function v5WallDragCtx(ctx: Contexte, wallId: unknown): ContexteGlisserMu
     if (x === w || x.isOutline) return;
     (["a", "b"] as const).forEach((k) => {
       const c = closestOnSeg(x[k][0], x[k][1], a0[0], a0[1], b0[0], b0[1]);
-      if (c.dist <= 2) followers.push({ x, k, t: v5Fraction(x[k], a0, b0) });
+      if (c.dist <= 2) {
+        const autre = x[k === "a" ? "b" : "a"];
+        const fixe: Pt = [autre[0], autre[1]];
+        const tenu = v5EstTenuAilleurs(P, w, x, x[k]);
+        followers.push({ x, k, t: v5Fraction(x[k], a0, b0), dir: v5FollowerDir(fixe, x[k]), fixe, tenu });
+      }
     });
   });
   return { w, a0, b0, s: v5Seg({ a: a0, b: b0 }), followers };
@@ -360,9 +426,30 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
   w.a = [v5R2(a0[0] + s.nx * d), v5R2(a0[1] + s.ny * d)];
   w.b = [v5R2(b0[0] + s.nx * d), v5R2(b0[1] + s.ny * d)];
   v5ThroughWall(P, w);
+  const wl = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) || 1e-9;
+  const wux = (w.b[0] - w.a[0]) / wl, wuy = (w.b[1] - w.a[1]) / wl;
   followers.forEach((f) => {
-    const px = w.a[0] + f.t * (w.b[0] - w.a[0]), py = w.a[1] + f.t * (w.b[1] - w.a[1]);
-    f.x[f.k] = [v5R2(px), v5R2(py)];
+    // RULE 2 first: already held by someone other than the dragged wall — stays exactly in place,
+    // no matter its angle. Sliding it to "correctly" meet the dragged wall would tear open
+    // whatever it is still attached to (see the header for the three-wall reproduction).
+    if (f.tenu) return;
+    // RULE 1: an unheld follower keeps its OWN direction — it slides ALONG THAT DIRECTION to meet
+    // the dragged wall's new line (ordinary intersection), or it does not move. Never a fraction,
+    // never any other vector: that is what used to tilt it. Near-parallel (`sin < 0.09`, ~5°) has
+    // no usable intersection (two near-parallel lines meet arbitrarily far away) and is exactly the
+    // collinear case: it does not move either, and — being unheld — DETACHES. An accepted loss
+    // (`docs/decisions/`): a visible gap is honest and reversible, a diagonal is neither.
+    const cross = f.dir[0] * wuy - f.dir[1] * wux;
+    if (Math.abs(cross) < 0.09) return;
+    const u = ((w.a[0] - f.fixe[0]) * wuy - (w.a[1] - f.fixe[1]) * wux) / cross;
+    if (u < 1) return;                                    // would collapse to under 1 cm: refuse
+    const qx = f.fixe[0] + u * f.dir[0], qy = f.fixe[1] + u * f.dir[1];
+    // Sanity floor on the solve itself (extreme geometry, not the near-parallel case above, which
+    // is already excluded): a follower's new point must stay within a plausible distance of where
+    // it was touching before this gesture.
+    const p0x = a0[0] + f.t * (b0[0] - a0[0]), p0y = a0[1] + f.t * (b0[1] - a0[1]);
+    if (Math.hypot(qx - p0x, qy - p0y) > 1000) return;
+    f.x[f.k] = [v5R2(qx), v5R2(qy)];
   });
   v5ClampOpenings(P);
   if (final) { v5RebuildCells(P); bornerLesMeubles(ctx); }
