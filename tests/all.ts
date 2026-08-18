@@ -83,6 +83,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
   { f: "tests/mur-outil-geste.ts",         chrome: 1 },   // single-segment wall tool, real mouse+keyboard: stays armed across walls, endpoint snap shares the exact point, a drawn wall keeps its length, D-held guides on a wall write nothing
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
+  { f: "tests/bouts-de-mur-geste.ts",      chrome: 1 },   // real mouse: a wall's own endpoint handle is hittable and extends it, the wall body still drags the whole wall, a clean click writes nothing
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
   { f: "tests/etiquettes-recouvrement.ts", chrome: 1 },   // room labels vs furniture labels vs each other, real DOM, the owner's real apartment
@@ -102,6 +103,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/fenetre-battement.ts",       chrome: 0 },   // PURE tracing: no browser
   { f: "tests/mur-libre.ts",               chrome: 0 },   // PURE geometry: no browser
   { f: "tests/jonction-glisser-mur.ts",    chrome: 0 },   // PURE geometry: junctions carried by a wall drag, outline left alone, one-hop chains, exact round trip, the wire diff
+  { f: "tests/bouts-de-mur.ts",            chrome: 0 },   // PURE geometry: a wall endpoint's snap cascade (junction, segment, outline, then 45°, then the grid) and the `free` rule
   { f: "tests/sans-grille.ts",             chrome: 0 },   // PURE: the Ctrl/Cmd modifier and the relative grid math, no browser
   { f: "tests/trace-libre.ts",             chrome: 0 },   // PURE geometry, freehand wall trace: no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser

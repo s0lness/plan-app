@@ -824,6 +824,71 @@ export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, sn
   return [Math.round(x / st) * st, Math.round(y / st) * st];
 }
 
+// ---- SNAP FOR A DRAGGED WALL ENDPOINT (owner's report: "choper les extrémités des murs et
+// pouvoir étendre et relier à d'autres murs") -------------------------------------------------
+// Same two-stage precedence as `v5SnapPoint` (a junction first, a segment next), reused rather
+// than re-invented, but with THREE differences that `v5SnapPoint` cannot serve as-is:
+//   1. THE WALL'S OWN TWO ENDPOINTS ARE EXCLUDED. `v5SnapPoint`/`v5SnapVertex` snap onto ANY
+//      wall endpoint, including the dragged wall's own FIXED end: dragging the free end back
+//      toward it would then "snap" the wall down to zero length the moment the pointer got
+//      close, instead of letting the person actually place it there by hand.
+//   2. THE TWO TOLERANCES ARE WIDER (15px / 10px vs 14px for both stages of `v5SnapPoint`): a
+//      junction that must physically CONNECT two walls needs a more forgiving target than a
+//      point merely snapping to an existing line while drawing.
+//   3. `snap` (the personal "snapping enabled" setting) plays NO PART here, matching how
+//      `v5SnapPoint` itself never gates its own vertex/edge stages on it either (only the
+//      GRID fallback, computed by the caller, is gated by that setting): a junction connection
+//      is not an optional convenience to turn off, only the grid-rounding fallback is.
+
+/** cm: tolerance for stage 1 (another wall's endpoint, or an outline corner). Mirrors
+ * `v5SnapTol`'s shape (a floor, a ceiling at one wall thickness) with the wider px budget the
+ * owner's report calls for: a junction has to hold, so it gets a more forgiving target than the
+ * drawing tool's own vertex snap. */
+function v5SnapTolBout(echelle: number): number {
+  return Math.min(WALL, Math.max(8, 15 / (echelle || 1)));
+}
+
+/** cm: tolerance for stage 2 (a point ON another wall's segment, or on the outline's own body). */
+function v5SnapTolSegment(echelle: number): number {
+  return Math.min(WALL, Math.max(6, 10 / (echelle || 1)));
+}
+
+/**
+ * Where a dragged wall ENDPOINT lands when released near another wall's own endpoint / an
+ * outline corner (stage 1, exact), or near another wall's segment / the outline's own body
+ * (stage 2, exact). `excludeWallId` is the wall being dragged: its own two endpoints never
+ * compete as targets (see file note above). Returns null when nothing is in reach: the caller
+ * (`gestes/murs.ts`, `v5WallEndDrop`) then falls back to 45-degree direction quantisation and
+ * the grid.
+ */
+export function v5SnapWallEnd(
+  P: PlanV5 | null | undefined,
+  excludeWallId: Id,
+  x: number,
+  y: number,
+  echelle: number,
+): Pt | null {
+  if (!P) return null;
+  let bestV: Pt | null = null, bdV = v5SnapTolBout(echelle);
+  const tryPt = (q: Pt): void => {
+    const d = Math.hypot(q[0] - x, q[1] - y);
+    if (d <= bdV) { bdV = d; bestV = [q[0], q[1]]; }
+  };
+  (P.outline || []).forEach((q) => tryPt(q));
+  (P.walls || []).forEach((w) => {
+    if (w.isOutline || String(w.id) === String(excludeWallId)) return;
+    tryPt(w.a); tryPt(w.b);
+  });
+  if (bestV) return [v5R2((bestV as Pt)[0]), v5R2((bestV as Pt)[1])];
+  let bestE: Pt | null = null, bdE = v5SnapTolSegment(echelle);
+  v5Barriers(P, excludeWallId).forEach((s) => {
+    const c = closestOnSeg(x, y, s.a[0], s.a[1], s.b[0], s.b[1]);
+    if (c.dist <= bdE) { bdE = c.dist; bestE = [c.x, c.y]; }
+  });
+  if (bestE) return [v5R2((bestE as Pt)[0]), v5R2((bestE as Pt)[1])];
+  return null;
+}
+
 // ---- WHO IS ALLOWED TO DISAPPEAR (C-13) --------------------------------------------------------
 // An OUTLINE WALL is an entity DERIVED from the outline: `v5SyncOutlineWalls` recreates it on the
 // next update. Deleting it therefore does not remove the wall, but permanently takes its openings

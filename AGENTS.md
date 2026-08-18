@@ -697,6 +697,21 @@ Four rules born from a real-use session where a simple click rewrote the floor p
   step in the stack (`pickStacked`, js/12, shared with openings from js/54), and says so.
 Covered by `tests/gestes-usage-reel.ts` (9 tests, real mouse).
 
+## Pushing a wall: A FOLLOWER NEVER TILTS
+Two rules, decided ONCE at `pointerdown` (`v5WallDragCtx`) and never re-evaluated during the
+gesture. **A follower never tilts**: it keeps its own direction, so its touching point either slides
+ALONG that direction to the intersection with the dragged wall's new line, or it does not move at
+all. And **a follower moves only if it would be left dangling**: if that point still touches another
+wall (its end or its flank) or the outline once the dragged wall has left, it is already held and
+stays EXACTLY where it is. Rule 2 is evaluated first, and decides whether rule 1 applies at all.
+
+Accepted loss: a COLLINEAR follower with nothing else holding it DETACHES instead of following. A
+visible gap is honest and undoable; a diagonal wall looks like a normal room until someone measures
+it. Both owner reports that led here, the reasoning, and what was rejected (the parametric carry of
+PR #17, and intersection alone) are in `docs/decisions/0005-un-suiveur-ne-bascule-jamais.md`.
+Covered by `tests/jonction-glisser-mur.ts`, whose `aucun_mur_ne_bascule_jamais` sweeps EVERY wall of
+EVERY case in the suite for a direction change: that is the invariant, not one example of it.
+
 ## A click lands on what is visible, and repeating gives EXACTLY the same number
 Four rules born from a second real-use session (1 500 gestures, real floor plan then 300 objects).
 Covered by `tests/gestes-precision.ts` (7 tests, real mouse).

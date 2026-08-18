@@ -26,6 +26,7 @@ import { v5StartOpeningDrag } from "./ouverture.ts";
 import {
   v5DeleteSelectedWall, v5DeleteVertex, v5SelectCell, v5StartInsertHandle,
   v5StartOutlineEdgeDrag, v5StartVertexDrag, v5SelectOutlineEdge, v5LayerDbl, v5LayerDown,
+  v5StartWallEndDrag,
 } from "./murs.ts";
 import { measureMode } from "./etat-pointeur.ts";
 import { fitCell } from "../rendu/vue.ts";
@@ -149,4 +150,5 @@ export function brancherGestes(ctx: Contexte): void {
   ctx.gestes.supprimerMurSelectionne = (e) => {
     e.preventDefault(); e.stopPropagation(); v5DeleteSelectedWall(ctx);
   };
+  ctx.gestes.boutMurPointerDown = (e, id, bout) => v5StartWallEndDrag(ctx, e, id, bout);
 }

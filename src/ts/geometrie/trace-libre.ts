@@ -59,14 +59,19 @@ import { TRACE_LIBRE_45_MIN_RUN_CM, TRACE_LIBRE_RDP_TOL_CM, v5R2 } from "../noya
 /** The 8 unit directions a run can quantise to, indexed by `quantizeAngleDeg(deg) / 45`. Table
  * lookup instead of calling `cos`/`sin` on a rounded degree value: axis directions come out
  * EXACTLY `0`/`±1`, never `1.2246e-16`, which matters because `dir` feeds a line-intersection
- * divide-by-`denom` below. */
-const DIR8: readonly Pt[] = [
+ * divide-by-`denom` below.
+ *
+ * EXPORTED: `gestes/murs.ts`'s wall-ENDPOINT drag (`v5WallEndDrop`) reuses this exact table to
+ * quantise a dragged end's direction from its wall's own FIXED end, "same convention as the
+ * freehand trace" (AGENTS.md) — a second hand-rolled `cos`/`sin` there would reintroduce the
+ * `1.2246e-16` trap this table exists to avoid. */
+export const DIR8: readonly Pt[] = [
   [1, 0], [Math.SQRT1_2, Math.SQRT1_2], [0, 1], [-Math.SQRT1_2, Math.SQRT1_2],
   [-1, 0], [-Math.SQRT1_2, -Math.SQRT1_2], [0, -1], [Math.SQRT1_2, -Math.SQRT1_2],
 ];
 
-/** Nearest multiple of 45, wrapped into [0, 360). */
-function quantizeAngleDeg(rawDeg: number): number {
+/** Nearest multiple of 45, wrapped into [0, 360). Exported for the same reason as `DIR8`. */
+export function quantizeAngleDeg(rawDeg: number): number {
   const a = ((rawDeg % 360) + 360) % 360;
   const q = Math.round(a / 45) * 45;
   return q >= 360 ? 0 : q;
