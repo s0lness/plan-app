@@ -335,7 +335,7 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
  * 16 pieces of furniture.
  */
 export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
-  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend").forEach((n) => n.remove());
+  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid").forEach((n) => n.remove());
   if (!ctx.wallsMode) return;
   const poly = ctx.etat.plan.outline, np = poly.length;
   const toC = (x: number, y: number): { x: number; y: number } => ({ x: (x - bb.minX) * S, y: (y - bb.minY) * S });
@@ -418,6 +418,18 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     const nx = -dy / L, ny = dx / L;
     const off = ((w.t || 0) * S) / 2 + 16;
     const sMid = toC(mx, my);
+    // The elbow handle uses the same clearance as the delete cross, on the opposite normal. If it
+    // sat on the segment itself it would steal the wall band's midpoint, the ordinary place used
+    // to grab the selected wall again and nudge the whole partition.
+    const coude = document.createElement("div");
+    coude.className = "v5wmid";
+    coude.dataset["w"] = String(w.id);
+    coude.textContent = "⌜";
+    coude.title = "Drag to split this wall and move the new joint";
+    coude.style.left = (sMid.x - nx * off) + "px";
+    coude.style.top = (sMid.y - ny * off) + "px";
+    coude.addEventListener("pointerdown", (ev) => ctx.gestes.coudeMurPointerDown?.(ev as PointerEvent, String(w.id)));
+    layer.appendChild(coude);
     const s = { x: sMid.x + nx * off, y: sMid.y + ny * off };
     const x = document.createElement("div");
     x.className = "v5wx";

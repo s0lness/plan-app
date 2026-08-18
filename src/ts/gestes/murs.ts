@@ -30,7 +30,7 @@
 // returns a TEXT, it no longer talks on its own.
 
 import type { Contexte } from "../app/contexte.ts";
-import type { Mur, PlanV5, Pt } from "../partage/plan.ts";
+import type { Id, Mur, PlanV5, Pt } from "../partage/plan.ts";
 import { v5Touch, v5On, v5WallById } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
@@ -47,6 +47,8 @@ import {
   v5SnapWallEnd,
   v5SyncOutlineWalls,
   v5ThroughWall,
+  v5WallSplitAt,
+  v5WallSplitRefusal,
   v5WallCovering,
 } from "../modele/edition.ts";
 import { render } from "../rendu/rendu.ts";
@@ -665,6 +667,109 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
 }
 
 // =================================================================================================
+//  TOOL 1-TER: DRAGGING A WALL'S MIDPOINT TO CREATE AN ELBOW
+// =================================================================================================
+// The split is delayed until the pointer crosses the ordinary 3 px geometry threshold. The
+// motionless press therefore remains selection only, with no wall, history entry, or wire diff.
+// Once split, both halves are free partitions because the shared endpoint is deliberately placed
+// in open space. Their shared point uses the endpoint snap cascade, with both halves excluded so
+// the new joint cannot snap back onto itself.
+
+export function v5StartWallElbowDrag(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
+  const P = ctx.etat.plan;
+  const w = v5WallById(ctx, wallId);
+  if (!P || !w || w.isOutline) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  if (spaceHeld() || measureMode()) return;
+  e.preventDefault(); e.stopPropagation();
+  v5SelectWall(ctx, wallId); render(ctx);
+
+  const bAvant: Pt = [w.b[0], w.b[1]];
+  const freeAvant = w.free;
+  const ouverturesAvant = (P.openings || []).map((o) => ({
+    o, wallId: o.wallId, t0: o.t0, w: o.w, h: o.h,
+  }));
+  beginGesture();
+  ctx.crochets.dragStart?.();
+  const px0 = e.clientX, py0 = e.clientY;
+  let moved = false, tentative = false;
+  let nouveauId: Id | null = null;
+
+  const move = (ev: PointerEvent): void => {
+    if (!tentative) {
+      if (Math.hypot(ev.clientX - px0, ev.clientY - py0) < 3) return;
+      tentative = true;
+      const refus = v5WallSplitRefusal(P, w.id);
+      if (refus) { toast(refus, { geste: true }); return; }
+      pushHistory(ctx);
+      const division = v5WallSplitAt(P, w.id);
+      if ("refus" in division) { toast(division.refus, { geste: true }); return; }
+      nouveauId = division.id;
+      moved = true;
+    }
+    if (!moved || !nouveauId) return;
+    const second = P.walls.find((q) => String(q.id) === String(nouveauId)) || null;
+    if (!second) return;
+    const cm = evtApt(ctx, ev);
+    const step = sansGrille(ev) ? 1 : (ctx.etat.opts.snap ? 5 : 1);
+    const snapped = v5SnapWallEnd(P, [w.id, second.id], cm.x, cm.y, ctx.vue.scale);
+    const target: Pt = snapped || [Math.round(cm.x / step) * step, Math.round(cm.y / step) * step];
+    w.b = [target[0], target[1]];
+    second.a = [target[0], target[1]];
+    w.free = 1;
+    second.free = 1;
+    v5ResoudreGeometrie(P, false);
+    v5Touch(ctx);
+    render(ctx);
+    v5DrawWallDims(ctx, [w, second]);
+    ctx.crochets.liveAnalyze?.();
+  };
+  const up = (): void => {
+    window.removeEventListener("pointermove", move);
+    v5ClearDims(ctx);
+    if (moved) {
+      v5ResoudreGeometrie(P, true);
+      const msg = v5FlushOpeningsBorned();
+      if (msg) toast(msg, { geste: true });
+      // THE ELBOW CHANGES THE NATURE OF THE WALL, SO IT SAYS SO. A v5 wall is THROUGH-RUNNING by
+      // default: each end is pushed to the first geometry beyond it. The joint just created sits
+      // in open space and IS an end of both halves, so leaving them through-running would stretch
+      // the elbow straight back out. Both halves therefore become free partitions, and that is not
+      // a detail: their OUTER ends stop following the outline as well. Nothing here changes what a
+      // wall is without a word, and this is the only moment the person who did it can see it.
+      if (freeAvant !== 1) {
+        toast("Elbow created. Both halves are now free partitions: their ends no longer stretch to meet what is around them.", { geste: true });
+      }
+      bornerLesMeubles(ctx);
+      v5Touch(ctx);
+    }
+    render(ctx);
+    endGesture();
+    ctx.crochets.dragEnd?.();
+  };
+  const cancel = (): void => {
+    if (moved && nouveauId) {
+      P.walls = P.walls.filter((q) => String(q.id) !== String(nouveauId));
+      w.b = [bAvant[0], bAvant[1]];
+      w.free = freeAvant;
+      for (const avant of ouverturesAvant) {
+        avant.o.wallId = avant.wallId;
+        avant.o.t0 = avant.t0;
+        avant.o.w = avant.w;
+        avant.o.h = avant.h;
+      }
+      v5ResoudreGeometrie(P, true);
+      bornerLesMeubles(ctx);
+      v5Touch(ctx);
+    }
+    moved = false;
+    render(ctx);
+  };
+  window.addEventListener("pointermove", move);
+  armGesture(up, null, cancel);
+}
+
+// =================================================================================================
 //  TOOL 2: DRAWING A WALL
 // =================================================================================================
 
@@ -1089,7 +1194,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
     return;
   }
   const t = e.target as Element | null;
-  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend")) return;
+  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid")) return;
   const wallEl = (t && t.closest) ? t.closest<HTMLElement>("[data-w]") : null;
   if (wallEl && ctx.wallsMode) {
     // An outline wall does not drag by its band (it follows the outline): it gets SELECTED.
