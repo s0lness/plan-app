@@ -82,6 +82,12 @@ const apt = (x: number, y: number) => J(`(function(){var p=__plan.aptToScreen(${
 const wall = (id: string) => J(`(function(){var w=__plan.v5WallById(${JSON.stringify(id)});return w?{a:w.a,b:w.b,isOutline:!!w.isOutline}:null})()`);
 const handles = (id: string) => J(`Array.from(document.querySelectorAll('[data-w="'+${JSON.stringify(id)}+'"]')).filter(function(e){return /v5w(move|end|mid)|v5wx/.test(e.className)}).map(function(e){var r=e.getBoundingClientRect();return{c:e.className,x:r.left,y:r.top,w:r.width,h:r.height}})`);
 
+/** TOUTES les poignees presentes, quelle que soit leur classe: c'est ce qui rend le garde
+ *  ci-dessous insensible au nom qu'on donnera a la prochaine. */
+const toutesPoignees = () => J(`Array.from(document.querySelectorAll(".vtx,.mid,.edge,[class^=v5w]"))
+  .filter(function(e){ return !/v5wall|v5wband/.test(e.className); })
+  .map(function(e){ return e.className + ":" + (e.dataset.w || ""); })`);
+
 const results: VerdictSonde[] = [];
 let cur: VerdictSonde;
 function ok(cond: unknown, msg: string) { if (!cond) cur.fails.push(msg); return !!cond; }
@@ -216,6 +222,38 @@ await test("mur_court_garde_ses_bouts_et_aucune_poignee_ne_se_recouvre", async (
     const a = hs[i], b = hs[j], overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     ok(!overlap, `deux poignées visibles se recouvrent: ${a.c} et ${b.c}`);
   }
+});
+
+// UNE LISTE DE NETTOYAGE TENUE A LA MAIN SE FAIT OUBLIER, et c'est arrive: `.v5wjoin` manquait
+// dans le selecteur qui retire les poignees avant de les redessiner, donc les "-" de fusion ne
+// partaient jamais et survivaient meme a la suppression de leur mur. Le proprietaire a vu deux "-"
+// flotter en plein vide. Ce cas ne teste pas une classe, il teste le MODE DE PANNE: apres avoir
+// supprime le mur survole, il ne doit rester aucune poignee, quel que soit son nom.
+await test("supprimer_un_mur_ne_laisse_aucune_poignee_fantome", async () => {
+  await seed(200);
+  await move(await apt(100, 150));
+  // ON COUPE D'ABORD, sinon aucun "-" n'existe et le garde ne prouverait rien: c'est la coupe qui
+  // cree une jonction fusionnable, donc le controle de fusion qui a fui.
+  const plus = await center('.v5wmid[data-w="w1"]');
+  if (!ok(plus, "poignee de coupe introuvable")) return;
+  await move(plus); await pause(120);
+  await mouse("mousePressed", plus); await mouse("mouseReleased", plus);
+  await pause(300);
+  await move(await apt(100, 120)); await pause(250);
+  ok((await toutesPoignees()).some((c: string) => c.startsWith("v5wjoin")),
+    `precondition: la coupe doit faire apparaitre un "-", vu ${JSON.stringify(await toutesPoignees())}`);
+  // Supprime par le VRAI geste, la croix du mur survole, pas par une API de sonde.
+  const croix = await center('.v5wx[data-w="w1"]');
+  if (!ok(croix, "croix de suppression introuvable")) return;
+  await move(croix); await pause(120);
+  await mouse("mousePressed", croix); await mouse("mouseReleased", croix);
+  await pause(300);
+  ok(await evaluate(`String(__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length)`) === "1",
+    "precondition: la croix doit avoir supprime une des deux moities");
+  await move(await apt(360, 40));
+  await pause(250);
+  const restantes = await toutesPoignees();
+  ok(restantes.length === 0, `aucune poignee ne doit survivre au mur supprime, vu ${JSON.stringify(restantes)}`);
 });
 
 const bad = results.filter((r) => r.fails.length);

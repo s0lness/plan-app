@@ -418,7 +418,10 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
  * 16 pieces of furniture.
  */
 export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
-  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove").forEach((n) => n.remove());
+  // EVERY handle class belongs in this list, and forgetting one leaves ghosts on screen. `.v5wjoin`
+  // was missing: the merge controls were never removed, so they piled up and survived the deletion
+  // of the very wall they belonged to. Reported from real use as two "-" floating in mid-air.
+  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove,.v5wjoin").forEach((n) => n.remove());
   if (ctx.ihm.hoverWall && !(ctx.etat.plan.walls || []).some((w) => String(w.id) === String(ctx.ihm.hoverWall))) {
     ctx.ihm.hoverWall = null;
   }
