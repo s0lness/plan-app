@@ -7,8 +7,8 @@
 //
 // HINTS ARE NEVER A GUIDED TOUR: one discreet bubble, ONE at a time, ONE
 // time in the browser's whole lifetime (personal flags in `plan-hints`, never shared). Four
-// callers already exist and call `ctx.crochets.showHint?.(key)`: Walls mode, the
-// multi-selection, the measuring tape, and armed placement. AS LONG AS THIS HOOK IS NOT WIRED, these four
+// callers already exist and call `ctx.crochets.showHint?.(key)`: wall drawing, Walls mode,
+// the multi-selection, the measuring tape, and armed placement. AS LONG AS THIS HOOK IS NOT WIRED, these five
 // calls do NOTHING, silently: it's the same class of defect as `ctx.gestes.railOpen`, which
 // left the drawer open over the plan under a finger.
 
@@ -16,6 +16,7 @@ import type { Contexte } from "./contexte.ts";
 import { $ } from "../noyau/dom.ts";
 
 const HINTS: Record<string, string> = {
+  draw: "Drag empty space to draw a wall; hold <b>Shift</b> while dragging for lasso selection.",
   walls: "Grab <b>any wall</b>, or one of its <b>ends</b> to extend it; <b>Alt</b> frees the angle, <b>Ctrl</b> the centimetre.",
   multi: "Drag to move the group; <b>Del</b> deletes them all, <b>Ctrl+C</b> copies it.",
   measure: "Click two points; the cursor shows the distances around it.",

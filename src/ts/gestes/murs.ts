@@ -855,7 +855,7 @@ export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | 
   return w;
 }
 
-export function v5StartDraw(ctx: Contexte, e: PointerEvent): void {
+export function v5StartDraw(ctx: Contexte, e: PointerEvent, onNoDraw?: (() => void) | null): void {
   const P = ctx.etat.plan;
   if (!P) return;
   if (e.button !== undefined && e.button !== 0) return;
@@ -908,7 +908,11 @@ export function v5StartDraw(ctx: Contexte, e: PointerEvent): void {
     // (`setWallsMode`/`v5SyncTools` below). The toolbar button's `.pri` class and `aria-pressed`
     // (`v5SetDraw`) already track the armed state continuously, so staying armed stays VISIBLE.
     const d = draft;
-    if (!d || Math.hypot(d[1][0] - d[0][0], d[1][1] - d[0][1]) < 20) { render(ctx); return; }
+    if (!d || Math.hypot(d[1][0] - d[0][0], d[1][1] - d[0][1]) < 20) {
+      onNoDraw?.();
+      render(ctx);
+      return;
+    }
     v5TryCreateWall(ctx, d[0], d[1], { libre, brut });
   };
   // G-12. Escape: the drawing in progress is abandoned, no wall is created.

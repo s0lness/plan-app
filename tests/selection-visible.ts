@@ -19,7 +19,8 @@
 //   une_ouverture_selectionnee_se_voit   the marker exists and overflows the box, even at 10 cm
 //   marquage_vif_pendant_le_geste        what is under the rectangle is marked before release
 //   rien_ne_s_ecrit_pendant_le_geste     neither selection nor saved plan, until release
-//   ctrl_lasso_montre_le_cumul           adding to an existing selection is visible during the gesture
+//   glisser_et_shift_glisser_sont_distincts  ordinary drag draws; Shift+drag selects
+//   shift_ctrl_lasso_montre_le_cumul     adding to an existing selection is visible during the gesture
 //   echap_rend_tout_a_l_etat_d_avant     Escape cancels instead of committing, no orphan marks
 //   la_selection_ne_reordonne_pas_la_pile  the paint rank does not move (recent fix)
 import type { VerdictSonde } from "./_types.ts";
@@ -159,19 +160,56 @@ const departVide = () => J(`(function(){
   return null;})()`);
 const coinBas = () => J(`(function(){var r=document.getElementById("viewport").getBoundingClientRect();
   return {x:Math.round(r.left+r.width-20), y:Math.round(r.top+r.height*0.7)};})()`);
+const aptPoint = (x: VerdictSonde, y: VerdictSonde) => J(`(function(){var s=__plan.aptToScreen(${x},${y});
+  var r=document.getElementById("viewport").getBoundingClientRect(); return {x:r.left+s.x, y:r.top+s.y};})()`);
 
 // =============================================================================
-//  1. lasso_attrape_aussi_les_ouvertures
+//  1. glisser_et_shift_glisser_sont_distincts
+// =============================================================================
+await test("glisser_et_shift_glisser_sont_distincts", async () => {
+  const preparer = async () => {
+    await evaluate(`(function(){var type=__plan.plan.pieces[0].type;
+      __plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],walls:[],openings:[],pieces:[],cells:[]});
+      __plan.addV5Piece(type,180,150); __plan.clearSel(); __plan.fitView(); return true;})()`);
+    await pause(180);
+  };
+  await preparer();
+  let A = await aptPoint(60, 60), B = await aptPoint(340, 280);
+  const mursAvant = await J(`__plan.plan.walls.filter(function(w){return !w.isOutline;}).length`);
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
+  await M("mousePressed", A.x, A.y);
+  await M("mouseMoved", B.x, B.y); await pause(200);
+  await M("mouseReleased", B.x, B.y, { buttons: 0 }); await pause(220);
+  const sansShift = await dump();
+  const mursApres = await J(`__plan.plan.walls.filter(function(w){return !w.isOutline;}).length`);
+  ok(mursApres === mursAvant + 1, `un glisser sans Shift doit créer un mur, vu ${mursAvant} puis ${mursApres}`);
+  ok(sansShift.modele.length === 0, `un glisser sans Shift ne doit rien sélectionner, vu ${sansShift.modele.length} objet(s)`);
+
+  await reload(); await preparer();
+  A = await aptPoint(60, 60); B = await aptPoint(340, 280);
+  const mursAvantShift = await J(`__plan.plan.walls.filter(function(w){return !w.isOutline;}).length`);
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 8 });
+  await M("mousePressed", A.x, A.y, { modifiers: 8 });
+  await M("mouseMoved", B.x, B.y, { modifiers: 8 }); await pause(200);
+  await M("mouseReleased", B.x, B.y, { buttons: 0, modifiers: 8 }); await pause(220);
+  const avecShift = await dump();
+  const mursApresShift = await J(`__plan.plan.walls.filter(function(w){return !w.isOutline;}).length`);
+  ok(avecShift.modele.length > 0, "Shift+glisser doit sélectionner au moins un objet");
+  ok(mursApresShift === mursAvantShift, `Shift+glisser ne doit créer aucun mur, vu ${mursAvantShift} puis ${mursApresShift}`);
+});
+
+// =============================================================================
+//  2. lasso_attrape_aussi_les_ouvertures
 // =============================================================================
 await test("lasso_attrape_aussi_les_ouvertures", async () => {
   await repos();
   const A = await departVide(), B = await coinBas();
   ok(A, "il faut un point de départ vide pour tracer un rectangle");
   if (!A) return;
-  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
-  await M("mousePressed", A.x, A.y);
-  await M("mouseMoved", B.x, B.y); await pause(200);
-  await M("mouseReleased", B.x, B.y, { buttons: 0 }); await pause(220);
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 8 });
+  await M("mousePressed", A.x, A.y, { modifiers: 8 });
+  await M("mouseMoved", B.x, B.y, { modifiers: 8 }); await pause(200);
+  await M("mouseReleased", B.x, B.y, { buttons: 0, modifiers: 8 }); await pause(220);
   const d = await dump();
   const ouv = d.familles.filter((f: VerdictSonde) => f === "ouverture").length;
   const meu = d.familles.filter((f: VerdictSonde) => f === "meuble").length;
@@ -188,7 +226,7 @@ await test("lasso_attrape_aussi_les_ouvertures", async () => {
 });
 
 // =============================================================================
-//  2. une_ouverture_selectionnee_se_voit
+//  3. une_ouverture_selectionnee_se_voit
 // =============================================================================
 // An opening is drawn INSIDE the wall, often thin and dark: the marker must overflow its
 // box, otherwise it disappears under the wall band. We verify it on the smallest one in the catalog
@@ -228,17 +266,17 @@ await test("une_ouverture_selectionnee_se_voit", async () => {
 });
 
 // =============================================================================
-//  3. marquage_vif_pendant_le_geste
+//  4. marquage_vif_pendant_le_geste
 // =============================================================================
 await test("marquage_vif_pendant_le_geste", async () => {
   await repos();
   const A = await departVide(), B = await coinBas();
   if (!ok(A, "point de départ vide introuvable")) return;
-  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
-  await M("mousePressed", A.x, A.y);
-  await M("mouseMoved", A.x + (B.x - A.x) * 0.5, A.y + (B.y - A.y) * 0.5); await pause(180);
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 8 });
+  await M("mousePressed", A.x, A.y, { modifiers: 8 });
+  await M("mouseMoved", A.x + (B.x - A.x) * 0.5, A.y + (B.y - A.y) * 0.5, { modifiers: 8 }); await pause(180);
   const mi = await dump();
-  await M("mouseMoved", B.x, B.y); await pause(180);
+  await M("mouseMoved", B.x, B.y, { modifiers: 8 }); await pause(180);
   const plein = await dump();
   ok(mi.bandeVive === true, "la sonde doit voir un lasso en cours");
   ok(mi.ecran.length > 0, "à mi-geste, rien n'est marqué : on tire encore à l'aveugle");
@@ -247,14 +285,14 @@ await test("marquage_vif_pendant_le_geste", async () => {
   ok(plein.modele.length === 0, "la SÉLECTION ne doit pas bouger tant qu'on n'a pas relâché");
   ok(plein.famillesEcran.indexOf("ouverture") >= 0, "les ouvertures doivent se marquer elles aussi pendant le geste");
   // shrinking unmarks
-  await M("mouseMoved", A.x + 90, A.y + 70); await pause(180);
+  await M("mouseMoved", A.x + 90, A.y + 70, { modifiers: 8 }); await pause(180);
   const petit = await dump();
   ok(petit.ecran.length < plein.ecran.length,
     `rétrécir le rectangle doit démarquer (${plein.ecran.length} puis ${petit.ecran.length})`);
   // and release gives EXACTLY what was marked
-  await M("mouseMoved", B.x, B.y); await pause(180);
+  await M("mouseMoved", B.x, B.y, { modifiers: 8 }); await pause(180);
   const avantLache = await dump();
-  await M("mouseReleased", B.x, B.y, { buttons: 0 }); await pause(220);
+  await M("mouseReleased", B.x, B.y, { buttons: 0, modifiers: 8 }); await pause(220);
   const apres = await dump();
   ok(JSON.stringify(avantLache.ecran) === JSON.stringify(apres.modele),
     "ce qui était marqué au dernier instant du geste doit être exactement la sélection obtenue");
@@ -263,7 +301,7 @@ await test("marquage_vif_pendant_le_geste", async () => {
 });
 
 // =============================================================================
-//  4. rien_ne_s_ecrit_pendant_le_geste
+//  5. rien_ne_s_ecrit_pendant_le_geste
 // =============================================================================
 // Rendering is the code's crossroads, and a pan has already cost 40 serializations and 854 KB
 // of writes. Live marking is a CLASS write on the nodes concerned: neither `selIds`, nor
@@ -275,10 +313,10 @@ await test("rien_ne_s_ecrit_pendant_le_geste", async () => {
   const empreinte = () => evaluate(`(function(){var s=localStorage.getItem("room-planner-v4")||"";
     var h=0; for(var i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))>>>0; } return s.length+":"+h;})()`);
   const avant = await empreinte();
-  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
-  await M("mousePressed", A.x, A.y);
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 8 });
+  await M("mousePressed", A.x, A.y, { modifiers: 8 });
   for (let i = 1; i <= 8; i++) {
-    await M("mouseMoved", A.x + (B.x - A.x) * i / 8, A.y + (B.y - A.y) * i / 8);
+    await M("mouseMoved", A.x + (B.x - A.x) * i / 8, A.y + (B.y - A.y) * i / 8, { modifiers: 8 });
     await pause(30);
   }
   await pause(150);
@@ -287,13 +325,13 @@ await test("rien_ne_s_ecrit_pendant_le_geste", async () => {
   ok(pendant === avant, `le plan enregistré a changé PENDANT le geste (${avant} -> ${pendant})`);
   ok(d.modele.length === 0, "la sélection ne doit rien enregistrer avant le relâchement");
   ok(d.ecran.length > 0, "…mais le marquage vif, lui, doit bien être là");
-  await M("mouseReleased", B.x, B.y, { buttons: 0 }); await pause(200);
+  await M("mouseReleased", B.x, B.y, { buttons: 0, modifiers: 8 }); await pause(200);
 });
 
 // =============================================================================
-//  5. ctrl_lasso_montre_le_cumul
+//  6. shift_ctrl_lasso_montre_le_cumul
 // =============================================================================
-await test("ctrl_lasso_montre_le_cumul", async () => {
+await test("shift_ctrl_lasso_montre_le_cumul", async () => {
   await repos();
   const A = await departVide(), B = await coinBas();
   if (!ok(A, "point de départ vide introuvable")) return;
@@ -301,29 +339,34 @@ await test("ctrl_lasso_montre_le_cumul", async () => {
     ids.forEach(function(i){ __plan.selAdd(i); }); __plan.render();
     document.activeElement&&document.activeElement.blur(); return ids;})()`);
   await pause(150);
-  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 2 });
-  await M("mousePressed", A.x, A.y, { modifiers: 2 });
-  await M("mouseMoved", (A.x + B.x) / 2, (A.y + B.y) / 2, { modifiers: 2 }); await pause(200);
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 10 });
+  await M("mousePressed", A.x, A.y, { modifiers: 10 });
+  await M("mouseMoved", (A.x + B.x) / 2, (A.y + B.y) / 2, { modifiers: 10 }); await pause(200);
   const pendant = await dump();
   ok(deja.every((id: string) => pendant.ecran.indexOf(id) >= 0),
     "Ctrl+lasso : les objets DÉJÀ sélectionnés doivent rester marqués pendant le geste");
   ok(pendant.ecran.length > deja.length, "Ctrl+lasso : le cumul doit se voir grandir");
-  await M("mouseReleased", (A.x + B.x) / 2, (A.y + B.y) / 2, { buttons: 0, modifiers: 2 }); await pause(220);
+  await M("mouseReleased", (A.x + B.x) / 2, (A.y + B.y) / 2, { buttons: 0, modifiers: 10 }); await pause(220);
   const apres = await dump();
   ok(deja.every((id: string) => apres.modele.indexOf(id) >= 0), "Ctrl+lasso : la sélection d'avant doit être CONSERVÉE");
   ok(apres.manquants.length === 0 && apres.enTrop.length === 0, "écran et modèle doivent coïncider après un Ctrl+lasso");
-  // without a modifier, the lasso REPLACES
-  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
-  await M("mousePressed", A.x, A.y);
-  await M("mouseMoved", A.x + 60, A.y + 50); await pause(180);
-  await M("mouseReleased", A.x + 60, A.y + 50, { buttons: 0 }); await pause(200);
+
+  // AND THE OTHER HALF OF THE RULE, which is what makes the first half mean anything: a lasso
+  // WITHOUT the cumulative modifier REPLACES the selection. This assertion used to be written on a
+  // lasso with no modifier at all; that gesture now draws a wall, so the rule is restated on its
+  // new base, Shift alone. Deleting it rather than restating it would have quietly dropped the
+  // guard that says the two modifiers do different things.
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 8 });
+  await M("mousePressed", A.x, A.y, { modifiers: 8 });
+  await M("mouseMoved", A.x + 60, A.y + 50, { modifiers: 8 }); await pause(180);
+  await M("mouseReleased", A.x + 60, A.y + 50, { buttons: 0, modifiers: 8 }); await pause(200);
   const remplace = await dump();
   ok(!deja.every((id: string) => remplace.modele.indexOf(id) >= 0),
-    "sans modificateur, un lasso REMPLACE la sélection, il ne l'ajoute pas");
+    "Maj seul : un lasso REMPLACE la sélection, il ne l'ajoute pas");
 });
 
 // =============================================================================
-//  6. echap_rend_tout_a_l_etat_d_avant
+//  7. echap_rend_tout_a_l_etat_d_avant
 // =============================================================================
 // Before: Escape canceled nothing. `escapeActiveGesture` (js/03) still called the gesture's
 // exit, which COMMITTED the rectangle's selection: Escape selected instead of canceling.
@@ -335,9 +378,9 @@ await test("echap_rend_tout_a_l_etat_d_avant", async () => {
     __plan.selAdd(id); __plan.render(); document.activeElement&&document.activeElement.blur(); return id;})()`);
   await pause(150);
   const avant = await dump();
-  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
-  await M("mousePressed", A.x, A.y);
-  await M("mouseMoved", B.x, B.y); await pause(200);
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 8 });
+  await M("mousePressed", A.x, A.y, { modifiers: 8 });
+  await M("mouseMoved", B.x, B.y, { modifiers: 8 }); await pause(200);
   const pendant = await dump();
   ok(pendant.ecran.length > 1, "le marquage vif doit être là avant qu'on appuie sur Échap");
   await echap();
@@ -349,7 +392,7 @@ await test("echap_rend_tout_a_l_etat_d_avant", async () => {
   ok(apresEchap.bandeVive === false, "après Échap, plus aucun lasso ne doit être en cours");
   ok(await evaluate(`String(document.getElementById("rubber").hidden)`) === "true", "le rectangle doit être refermé");
   // the release that follows must commit NOTHING
-  await M("mouseReleased", B.x, B.y, { buttons: 0 }); await pause(200);
+  await M("mouseReleased", B.x, B.y, { buttons: 0, modifiers: 8 }); await pause(200);
   const fin = await dump();
   ok(JSON.stringify(fin.modele) === JSON.stringify(avant.modele),
     `le relâchement après Échap ne doit rien valider, obtenu : ${fin.modele.length} objet(s)`);
@@ -357,7 +400,7 @@ await test("echap_rend_tout_a_l_etat_d_avant", async () => {
 });
 
 // =============================================================================
-//  7. la_selection_ne_reordonne_pas_la_pile
+//  8. la_selection_ne_reordonne_pas_la_pile
 // =============================================================================
 // Recent fix not to break: painting goes from the LARGEST to the smallest and `stackedAt` sorts
 // on `data-paint`, precisely because `.piece.sel` bumps to `z-index:50`. Live marking sets the
@@ -369,12 +412,12 @@ await test("la_selection_ne_reordonne_pas_la_pile", async () => {
   const avant = await rangs();
   const A = await departVide(), B = await coinBas();
   if (!ok(A, "point de départ vide introuvable")) return;
-  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
-  await M("mousePressed", A.x, A.y);
-  await M("mouseMoved", B.x, B.y); await pause(200);
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 8 });
+  await M("mousePressed", A.x, A.y, { modifiers: 8 });
+  await M("mouseMoved", B.x, B.y, { modifiers: 8 }); await pause(200);
   const pendant = await rangs();
   ok(JSON.stringify(pendant) === JSON.stringify(avant), "le rang de peinture a changé PENDANT le marquage vif");
-  await M("mouseReleased", B.x, B.y, { buttons: 0 }); await pause(220);
+  await M("mouseReleased", B.x, B.y, { buttons: 0, modifiers: 8 }); await pause(220);
   const apres = await rangs();
   ok(JSON.stringify(apres) === JSON.stringify(avant), "le rang de peinture a changé après la sélection");
   // decreasing by area, and openings stay below
