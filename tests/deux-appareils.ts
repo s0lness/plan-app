@@ -25,63 +25,27 @@
 
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { ouvrirSonde } from "./_navigateur.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const APP_PATH = process.argv[2] || path.join(__dirname, "..", "index.html");
 const V4_KEY = "room-planner-v4";
 
 if (!fs.existsSync(APP_PATH)) { console.error("App file not found:", APP_PATH); process.exit(1); }
-if (!fs.existsSync(CHROME)) { console.error("Chrome not found:", CHROME); process.exit(1); }
 const APP_SRC = fs.readFileSync(APP_PATH, "utf8");
 const REAL_PLAN = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "plan-rev177.json"), "utf8"));
 
-// ---- harness (same shape as tests/model-v5.ts) --------------------------------------------
-const RUN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "plan-2app-"));
-function runProbe(seedJs: string, probeBody: string) {
-  const caseDir = fs.mkdtempSync(path.join(RUN_DIR, "c-"));
-  const htmlPath = path.join(caseDir, "case.html");
-  const profileDir = path.join(caseDir, "profile");
-  const seed = `<!doctype html><html><head><meta charset="utf-8"><script>
-    window.__PLAN_TEST__ = 1;
-    try { localStorage.clear(); } catch(e){}
-    ${seedJs || ""}
-  </script></head><body>`;
-  const probe = `<script>(function(){
-    function emit(o){ try{ document.documentElement.dataset.planTest = JSON.stringify(o); }catch(e){} }
-    function run(){
-      try {
-        var errs = [];
-        try { errs = JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]; } catch(e){}
-        var __out = (function(){ ${probeBody} })();
-        __out = __out || {};
-        __out.jsErrors = errs.map(function(e){ return e && e.msg; });
-        emit(__out);
-      } catch(e) { emit({ __probeError: String(e && e.stack || e) }); }
-    }
-    setTimeout(run, 0);
-  })();</script></body></html>`;
-  fs.writeFileSync(htmlPath, seed + APP_SRC + probe, "utf8");
-  const res = spawnSync(CHROME, [
-    "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run",
-    "--no-default-browser-check", "--user-data-dir=" + profileDir,
-    "--virtual-time-budget=8000", "--run-all-compositor-stages-before-draw", "--dump-dom",
-    "file:///" + htmlPath.replace(/\\/g, "/"),
-  ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 90000 });
-  const stdout = res.stdout || "";
-  const m = stdout.match(/<html[^>]*\bdata-plan-test="([^"]*)"/i);
-  if (!m) return { __noVerdict: true, __stdoutHead: stdout.slice(0, 600), __stderr: (res.stderr || "").slice(0, 600) };
-  const raw = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'");
-  try { return JSON.parse(raw); } catch (e) { return { __parseError: String(e), __raw: raw.slice(0, 400) }; }
+// ---- harness: ONE shared Chrome for the whole suite (tests/_navigateur.ts) ----------------
+const sonde = ouvrirSonde(APP_SRC);
+async function runProbe(seedJs: string, probeBody: string) {
+  return sonde.sonder(seedJs, probeBody);
 }
 const results: VerdictSonde[] = [];
-function test(name: string, seedJs: string, probeBody: string, check: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>) {
+async function test(name: string, seedJs: string, probeBody: string, check: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>) {
   let pass = false, detail = "";
-  const v = runProbe(seedJs, probeBody);
+  const v = await runProbe(seedJs, probeBody);
   if (v.__noVerdict) detail = "aucun verdict (l'app n'a pas démarré ?)\n  stdout: " + (v.__stdoutHead || "") + "\n  stderr: " + (v.__stderr || "");
   else if (v.__probeError) detail = "la sonde a levé : " + v.__probeError;
   else if (v.__parseError) detail = "verdict illisible : " + v.__parseError + " raw=" + v.__raw;
@@ -115,7 +79,7 @@ const HELLO = `window.__plan.wsForceOpen(true);
 
 // 1a. The op from MY OTHER DEVICE enters the journal: without it, a Ctrl+Z would restore a
 // snapshot that doesn't contain it, and the work done on the phone would vanish from both screens.
-test("op_du_second_appareil_du_meme_compte_entre_au_journal", SEED, `
+await test("op_du_second_appareil_du_meme_compte_entre_au_journal", SEED, `
   ${HELLO}
   var p = window.__plan.plan.pieces[0];
   window.__plan.pushHistory();          // a snapshot is REQUIRED, otherwise the journal stays empty (js/27)
@@ -127,7 +91,7 @@ test("op_du_second_appareil_du_meme_compte_entre_au_journal", SEED, `
      && expect(v.apres === v.avant + 1, "l'op de l'autre appareil doit entrer au journal, " + v.avant + " -> " + v.apres));
 
 // 1b. MY OWN echo (same tag) does not enter: replaying it would undo the undo.
-test("mon_propre_echo_n_entre_pas_au_journal", SEED, `
+await test("mon_propre_echo_n_entre_pas_au_journal", SEED, `
   ${HELLO}
   var p = window.__plan.plan.pieces[0];
   window.__plan.pushHistory();
@@ -139,7 +103,7 @@ test("mon_propre_echo_n_entre_pas_au_journal", SEED, `
 
 // 1c. BACKWARD COMPATIBILITY: a server from BEFORE this fix does not broadcast a tag. We then
 // fall back to email, exactly as before: nothing breaks, nothing is invented.
-test("serveur_sans_etiquette_retombe_sur_l_email", SEED, `
+await test("serveur_sans_etiquette_retombe_sur_l_email", SEED, `
   window.__plan.wsForceOpen(true);
   window.__plan.wsFeed({ t:"hello", you:{ email:"a@example.com", color:"#1f6f78" },
     peers:[{email:"a@example.com", color:"#1f6f78"}], state:null, rev:1, fp:"x", chat:[] });
@@ -161,7 +125,7 @@ test("serveur_sans_etiquette_retombe_sur_l_email", SEED, `
 // =============================================================================
 
 // 2a. Two dots (my other device + the other household member), and mine stands out.
-test("deux_pastilles_dont_mon_autre_appareil", SEED, `
+await test("deux_pastilles_dont_mon_autre_appareil", SEED, `
   ${HELLO}
   return { dots: window.__plan.peerDots(), cles: window.__plan.wsPeerKeys() };
 `, (v: VerdictSonde) => expect(v.cles.length === 3, "les trois appareils doivent tenir dans la Map, vu " + JSON.stringify(v.cles))
@@ -172,7 +136,7 @@ test("deux_pastilles_dont_mon_autre_appareil", SEED, `
 
 // 2b. Two distinct cursors for two devices on the SAME account: the Map used to be indexed by
 // email, so the second one erased the first and only one was left.
-test("deux_curseurs_pour_deux_appareils_du_meme_compte", SEED, `
+await test("deux_curseurs_pour_deux_appareils_du_meme_compte", SEED, `
   ${HELLO}
   window.__plan.wsFeed({ t:"cursor", by:"a@example.com", tag:"bbbbbb", room:"__apt__", x:100, y:100 });
   window.__plan.wsFeed({ t:"cursor", by:"device.b@example.com",   tag:"cccccc", room:"__apt__", x:300, y:200 });
@@ -186,7 +150,7 @@ test("deux_curseurs_pour_deux_appareils_du_meme_compte", SEED, `
 
 // 2c. The drag ghost of another device on the same account is applied (it used not to be:
 // nothing warned that another device was dragging a piece of furniture).
-test("fantome_de_glissement_du_meme_compte_est_applique", SEED, `
+await test("fantome_de_glissement_du_meme_compte_est_applique", SEED, `
   ${HELLO}
   var p = window.__plan.plan.pieces[0];
   window.__plan.wsFeed({ t:"drag", by:"a@example.com", tag:"bbbbbb", room:"__apt__",
@@ -203,7 +167,7 @@ test("fantome_de_glissement_du_meme_compte_est_applique", SEED, `
 
 // 3a. The server rejects the op: the local change is UNDONE, and the outgoing mirror
 // (what this client believes the server holds) becomes consistent with the local plan again.
-test("un_refus_serveur_annule_la_modification_locale", SEED, `
+await test("un_refus_serveur_annule_la_modification_locale", SEED, `
   ${HELLO}
   window.__plan.shadowSync();                     // the mirror describes the starting state
   var w = window.__plan.plan.walls.filter(function(x){ return !x.isOutline; })[0];
@@ -230,7 +194,7 @@ test("un_refus_serveur_annule_la_modification_locale", SEED, `
      && expect(!!v.txt && /undone/i.test(v.txt), "le bandeau doit dire que la modification a été annulée, vu " + JSON.stringify(v.txt)));
 
 // 3b. Server from BEFORE the fix: no number. We don't guess, we re-request the full state.
-test("un_refus_sans_numero_demande_l_etat_complet", SEED, `
+await test("un_refus_sans_numero_demande_l_etat_complet", SEED, `
   ${HELLO}
   window.__plan.shadowSync();
   window.__plan.outLog(true);
@@ -243,7 +207,7 @@ test("un_refus_sans_numero_demande_l_etat_complet", SEED, `
         "le bandeau doit nommer la cause et dire ce qui est fait, vu " + JSON.stringify(v.txt)));
 
 // 3c. A BURST of rejections is entirely undone, even though the banner itself is throttled.
-test("une_rafale_de_refus_est_entierement_defaite", SEED, `
+await test("une_rafale_de_refus_est_entierement_defaite", SEED, `
   ${HELLO}
   window.__plan.shadowSync();
   var murs = window.__plan.plan.walls.filter(function(x){ return !x.isOutline; }).slice(0,3);
@@ -266,7 +230,7 @@ test("une_rafale_de_refus_est_entierement_defaite", SEED, `
 // =============================================================================
 
 // 4a. A repeated message from the SYSTEM stays throttled (22 banners in 371s, 8 of them the same one).
-test("un_message_du_systeme_reste_etrangle", SEED, `
+await test("un_message_du_systeme_reste_etrangle", SEED, `
   var vus = 0;
   for (var i=0;i<8;i++) if (window.__plan.emitToast("Message du système")) vus++;
   return { vus: vus };
@@ -275,7 +239,7 @@ test("un_message_du_systeme_reste_etrangle", SEED, `
 // 4b. The response to a GESTURE comes back on every gesture: someone who didn't understand
 // repeats the gesture, and that is exactly where silence is intolerable. Measured: "This wall is
 // already there." only showed on the first of five attempts.
-test("une_reponse_a_un_geste_revient_a_chaque_geste", SEED, `
+await test("une_reponse_a_un_geste_revient_a_chaque_geste", SEED, `
   var vus = 0;
   for (var i=0;i<5;i++){
     window.__plan.nouveauGeste();
@@ -291,7 +255,7 @@ test("une_reponse_a_un_geste_revient_a_chaque_geste", SEED, `
      && expect(v.rafale === 1, "une rafale d'un même geste ne se répète pas, vu " + v.rafale));
 
 // 4c. The real gesture: tracing a wall twice in the same spot must say so TWICE.
-test("un_trace_en_double_le_dit_a_chaque_essai", SEED, `
+await test("un_trace_en_double_le_dit_a_chaque_essai", SEED, `
   var w = window.__plan.plan.walls.filter(function(x){ return !x.isOutline; })[0];
   var vus = [];
   for (var i=0;i<3;i++){
@@ -308,7 +272,7 @@ test("un_trace_en_double_le_dit_a_chaque_essai", SEED, `
 // =============================================================================
 
 // 5a. A piece of furniture that MY gesture leaves outside any cell: I get told about it.
-test("mon_propre_orphelin_est_annonce", SEED, `
+await test("mon_propre_orphelin_est_annonce", SEED, `
   var p = window.__plan.plan.pieces[0];
   p.x = 50000; p.y = 50000;                        // outside any cell
   window.__plan.clearToast();
@@ -320,7 +284,7 @@ test("mon_propre_orphelin_est_annonce", SEED, `
 // 5b. The same piece of furniture, orphaned by a RECEIVED op: repaired, but WITHOUT a banner. It's
 // the author of the gesture who gets told, on their own screen. Measured across three devices: the
 // message landed on 2 screens out of 3, sometimes on the one that had done nothing.
-test("un_orphelin_venu_du_fil_est_repare_en_silence", SEED, `
+await test("un_orphelin_venu_du_fil_est_repare_en_silence", SEED, `
   ${HELLO}
   var p = window.__plan.plan.pieces[0];
   window.__plan.applyRemote({ kind:"piece.set", piece:{ id:String(p.id), x:50000, y:50000 } });
@@ -339,7 +303,7 @@ test("un_orphelin_venu_du_fil_est_repare_en_silence", SEED, `
 // longer has a wall short enough for a door (catalog: 80cm): its shortest wall (~95cm, "w6") is
 // now longer than one. It remains shorter than a window, however (catalog: 120cm), which
 // exercises exactly the same trim-and-announce.
-test("une_pose_rabotee_par_un_mur_court_est_annoncee", SEED, `
+await test("une_pose_rabotee_par_un_mur_court_est_annoncee", SEED, `
   var court = window.__plan.plan.walls.slice()
     .map(function(w){ var d=Math.hypot(w.b[0]-w.a[0], w.b[1]-w.a[1]); return {w:w, L:d}; })
     .filter(function(e){ return e.L > 20 && e.L < 120; })
@@ -366,7 +330,7 @@ test("une_pose_rabotee_par_un_mur_court_est_annoncee", SEED, `
 
 // 7a. The peer receives a brand-new wall carrying `free:1` (the author's FIRST op for it,
 // C-5: creation sends the whole entity): it must exist, and stay free.
-test("un_mur_libre_recu_du_pair_reste_libre", SEED, `
+await test("un_mur_libre_recu_du_pair_reste_libre", SEED, `
   ${HELLO}
   window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerLibre", a:[60,60], b:[60,120], t:12, free:1 } });
   var w = window.__plan.v5WallById("wPeerLibre");
@@ -376,7 +340,7 @@ test("un_mur_libre_recu_du_pair_reste_libre", SEED, `
 
 // 7b. The reverse, the suite's own negative control: an ORDINARY wall (no `free` key at all)
 // must NOT come out free on the peer's side either.
-test("un_mur_traversant_recu_du_pair_reste_traversant", SEED, `
+await test("un_mur_traversant_recu_du_pair_reste_traversant", SEED, `
   ${HELLO}
   window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerTrav", a:[80,60], b:[80,120], t:12 } });
   var w = window.__plan.v5WallById("wPeerTrav");
@@ -386,7 +350,7 @@ test("un_mur_traversant_recu_du_pair_reste_traversant", SEED, `
 
 // 7c. The OTHER half of the receive path: an UPDATE to a wall the peer ALREADY has (field-by-field
 // merge, C-5) must also carry `free` over, not just a creation.
-test("une_maj_recue_du_pair_rend_un_mur_deja_connu_libre", SEED, `
+await test("une_maj_recue_du_pair_rend_un_mur_deja_connu_libre", SEED, `
   ${HELLO}
   window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerMaj", a:[100,60], b:[100,120], t:12 } });
   // \`v5WallById\` returns a LIVE reference: the flag is read off right away, before the second
@@ -413,7 +377,7 @@ test("une_maj_recue_du_pair_rend_un_mur_deja_connu_libre", SEED, `
 // hand-built op. The captured op is then handed to a peer whose copy of the SAME wall is still
 // `free:1` (representative of someone who has not heard about the clear yet): applying the op
 // must bring them back to Through.
-test("la_levee_d_une_cloison_libre_atteint_le_pair", SEED, `
+await test("la_levee_d_une_cloison_libre_atteint_le_pair", SEED, `
   ${HELLO}
   var w = window.__plan.plan.walls.filter(function(x){ return !x.isOutline; })[0];
   if (!w) return { aucun: true };
@@ -444,7 +408,7 @@ test("la_levee_d_une_cloison_libre_atteint_le_pair", SEED, `
 // 8b. NEGATIVE CONTROL / no wire-shape regression: a wall that NEVER used the Free tool
 // (`free` absent, not just falsy) must keep emitting EXACTLY what it emitted before this fix
 // when an unrelated field changes, otherwise every existing plan would move on its next save.
-test("une_cloison_jamais_libre_n_emet_toujours_pas_free", SEED, `
+await test("une_cloison_jamais_libre_n_emet_toujours_pas_free", SEED, `
   ${HELLO}
   var w = window.__plan.plan.walls.filter(function(x){ return !x.isOutline && x.free === undefined; })[0];
   if (!w) return { aucun: true };
@@ -483,7 +447,7 @@ const helloInviteVide = (tag: string, guestId: string) => `window.__plan.wsForce
 
 // 9a. Device A: the wire hands it back NOTHING, but this browser remembers "Alice" — it must send
 // its own name right away, and its local identity must reflect it immediately (no round trip).
-test("appareil_a_reaffirme_son_propre_nom_quand_le_fil_ne_le_connait_plus", SEED + seedNom("Alice"), `
+await test("appareil_a_reaffirme_son_propre_nom_quand_le_fil_ne_le_connait_plus", SEED + seedNom("Alice"), `
   ${helloInviteVide("aaaaaa", "device-a")}
   var out = window.__plan.outLog(false);
   return { moi: window.__plan.wsMeInfo(), noms: out.filter(function(m){ return m && m.t === "name"; }) };
@@ -493,7 +457,7 @@ test("appareil_a_reaffirme_son_propre_nom_quand_le_fil_ne_le_connait_plus", SEED
 
 // 9b. Device B, SAME token, a DIFFERENT device: it must reassert "Bob", never "Alice" — proves the
 // reassertion is keyed by THIS browser's own storage, not by whatever the last hello happened to say.
-test("appareil_b_reaffirme_bob_jamais_le_nom_d_alice", SEED + seedNom("Bob"), `
+await test("appareil_b_reaffirme_bob_jamais_le_nom_d_alice", SEED + seedNom("Bob"), `
   ${helloInviteVide("bbbbbb", "device-b")}
   var out = window.__plan.outLog(false);
   return { moi: window.__plan.wsMeInfo(), noms: out.filter(function(m){ return m && m.t === "name"; }) };
@@ -504,7 +468,7 @@ test("appareil_b_reaffirme_bob_jamais_le_nom_d_alice", SEED + seedNom("Bob"), `
 // 9c. NEGATIVE CONTROL: when the wire ALREADY hands back a name, the client must not resend one
 // needlessly — a `{t:"name"}` on every `hello` would republish the row's last_name on every
 // reconnect, exactly the "everyone re-pushes and clobbers everyone else" mechanism this batch closes.
-test("aucun_reenvoi_de_nom_quand_le_fil_le_connait_deja", SEED + seedNom("Alice"), `
+await test("aucun_reenvoi_de_nom_quand_le_fil_le_connait_deja", SEED + seedNom("Alice"), `
   window.__plan.wsForceOpen(true);
   window.__plan.outLog(true);
   window.__plan.wsFeed({ t:"hello",
@@ -517,7 +481,7 @@ test("aucun_reenvoi_de_nom_quand_le_fil_le_connait_deja", SEED + seedNom("Alice"
 // 9d. `guest_unnamed` (the server refusing an op from an unnamed socket) opens the SAME name step
 // a fresh guest sees on arrival, instead of relying on a toast throttled to one per 5 s that a
 // whole editing session could lose.
-test("guest_unnamed_ouvre_l_etape_du_nom_pas_seulement_un_bandeau", SEED, `
+await test("guest_unnamed_ouvre_l_etape_du_nom_pas_seulement_un_bandeau", SEED, `
   ${helloInviteVide("cccccc", "device-c")}
   window.__plan.wsFeed({ t:"err", reason:"guest_unnamed", n:1, kind:"piece.set" });
   var dlg = document.getElementById("inviteNameDlg");
@@ -525,8 +489,8 @@ test("guest_unnamed_ouvre_l_etape_du_nom_pas_seulement_un_bandeau", SEED, `
 `, (v: VerdictSonde) => expect(v.hidden === false, "guest_unnamed doit ouvrir l'étape du nom, vu " + JSON.stringify(v)));
 
 // ---- verdict ---------------------------------------------------------------------------------
+sonde.fermer();
 const bad = results.filter(r => !r.pass);
 console.log("");
 if (bad.length) { console.log(`FAILURES ${bad.length}/${results.length}`); process.exitCode = 1; }
 else console.log(`OK ${results.length}/${results.length}`);
-try { fs.rmSync(RUN_DIR, { recursive: true, force: true }); } catch (_) {}

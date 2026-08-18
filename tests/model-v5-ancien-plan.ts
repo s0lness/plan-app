@@ -12,7 +12,7 @@ import { test, near, expect, seedV4, REAL_PLAN, SEED_PLAN, report } from "./_har
 // Piece 4, ~11.64 m2), still reads correctly, with no lost cell and no sliver.
 // (11.64 = value coming from the fixture corpus after a uniform 1.37 similarity-scale
 // transform; it is not the measurement of any real place.)
-test("v5_overlapping_old_rooms_still_convert", seedV4(REAL_PLAN), `
+await test("v5_overlapping_old_rooms_still_convert", seedV4(REAL_PLAN), `
   var st = window.__plan.readLegacy(JSON.parse(localStorage.getItem("room-planner-v4-backup")));
   var overlaps = [];
   for(var i=0;i<st.rooms.length;i++) for(var j=i+1;j<st.rooms.length;j++){
@@ -37,7 +37,7 @@ test("v5_overlapping_old_rooms_still_convert", seedV4(REAL_PLAN), `
 
 // 8b. REPLACES "v5_undo_crosses_the_migration_boundary" (there's no more boundary to cross):
 // undo brings back the PREVIOUS geometry, and the screen stays the single layer.
-test("v5_undo_restores_the_previous_geometry", seedV4(REAL_PLAN), `
+await test("v5_undo_restores_the_previous_geometry", seedV4(REAL_PLAN), `
   var P = window.__plan.plan;
   var wall = P.walls.filter(function(w){ return !w.isOutline; })[0];
   var before = { id: wall.id, a: wall.a.slice(), cells: P.cells.length };
@@ -69,7 +69,7 @@ test("v5_undo_restores_the_previous_geometry", seedV4(REAL_PLAN), `
 // 7a. PLACEMENT: the cursor gives an apartment point, we look for the nearest wall among ALL
 // the walls in state.plan.walls, we create a parametric opening (wallId + t0). Out of reach:
 // explicit refusal, nothing created, nothing to undo.
-test("v5_wallmount_place_is_apartment_space", "", `
+await test("v5_wallmount_place_is_apartment_space", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -94,7 +94,7 @@ test("v5_wallmount_place_is_apartment_space", "", `
 
 // 7b. DRAGGING: along the wall, then JUMPING onto a perpendicular wall, then moving to the OTHER
 // FACE of the same wall (the object flips). No notion of membership: just wallId/t0/side.
-test("v5_wallmount_drag_jumps_walls_and_flips", "", `
+await test("v5_wallmount_drag_jumps_walls_and_flips", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -123,7 +123,7 @@ test("v5_wallmount_drag_jumps_walls_and_flips", "", `
 // 7c. The "blank page" sentinel used to count rooms and look for containers that no longer
 // exist: it screamed on every tick over a perfectly painted plan (and relaunched a full fitView
 // every 3 s). It now checks the single layer and must stay quiet on a healthy plan.
-test("v5_white_page_sentinel_is_quiet", seedV4(REAL_PLAN), `
+await test("v5_white_page_sentinel_is_quiet", seedV4(REAL_PLAN), `
   try{ localStorage.removeItem("plan-errors"); }catch(e){}
   window.__forceSentinel("test");
   window.__forceSentinel("test2");
@@ -139,7 +139,7 @@ test("v5_white_page_sentinel_is_quiet", seedV4(REAL_PLAN), `
 // button/key) give the same result: the side is the one from the GESTURE. In v5 it lives in
 // `side`, in v4 in `rot`, with no duplicated code visible to the user (same button, same key,
 // same label).
-test("v5_wallmount_side_is_the_cursor_side", "", `
+await test("v5_wallmount_side_is_the_cursor_side", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -162,7 +162,7 @@ test("v5_wallmount_side_is_the_cursor_side", "", `
      && expect(v.delta === 180, "the two faces of a wall are 180 degrees apart, got " + v.delta)
      && expect(!!v.cFaces && !v.cBack, "on a facade the habitable face is forced, got faces=" + v.cFaces + " back=" + v.cBack));
 
-test("v5_wallmount_flip_side_control", "", `
+await test("v5_wallmount_flip_side_control", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -198,7 +198,7 @@ test("v5_wallmount_flip_side_control", "", `
 
 // 12a. a plan received from the server (realtime wire, `hello` message) can no longer set a
 // setting.
-test("opts_un_plan_serveur_n_ecrase_aucun_reglage_local", seedV4(REAL_PLAN), `
+await test("opts_un_plan_serveur_n_ecrase_aucun_reglage_local", seedV4(REAL_PLAN), `
   // This household member has THEIR OWN settings: sconces hidden, Circulation panel closed, labels off.
   window.__plan.setLayer("light", false);
   document.getElementById("optLabels").checked = false;
@@ -229,7 +229,7 @@ test("opts_un_plan_serveur_n_ecrase_aucun_reglage_local", seedV4(REAL_PLAN), `
 
 // 12b. reverse direction: nothing personal goes out to the household, neither through the wire,
 // nor through the D1 fallback.
-test("opts_ne_partent_ni_par_le_fil_ni_par_le_repli", seedV4(REAL_PLAN), `
+await test("opts_ne_partent_ni_par_le_fil_ni_par_le_repli", seedV4(REAL_PLAN), `
   window.__plan.setLayer("light", false);
   window.__plan.save();
   var ser = window.__plan.serialize();      // body of the D1 PUT AND the content of an export
@@ -249,7 +249,7 @@ test("opts_ne_partent_ni_par_le_fil_ni_par_le_repli", seedV4(REAL_PLAN), `
 
 // 12c. migration: options that used to live INSIDE the saved plan are recovered on first
 // startup (otherwise the switch would silently erase settings already set).
-test("opts_migration_depuis_l_ancien_blob", seedV4(Object.assign({}, REAL_PLAN,
+await test("opts_migration_depuis_l_ancien_blob", seedV4(Object.assign({}, REAL_PLAN,
   { opts: { layLight: false, labels: false, snap: false, collapsedCats: ["Chambre"], tvIn: 55 } })), `
   var o = window.__plan.opts();
   return { light:o.layLight, labels:o.labels, snap:o.snap, cats:o.collapsedCats, tv:o.tvIn,
@@ -263,7 +263,7 @@ test("opts_migration_depuis_l_ancien_blob", seedV4(Object.assign({}, REAL_PLAN,
      && expect(v.stored && v.stored.layLight === false, "et ils doivent être recopiés dans leur clé à eux"));
 
 // 12d. the personal key ALWAYS wins over what an old saved plan still carries.
-test("opts_la_cle_personnelle_gagne_sur_le_plan", `
+await test("opts_la_cle_personnelle_gagne_sur_le_plan", `
   try{ localStorage.setItem("room-planner-opts", JSON.stringify({layLight:true, labels:true})); }catch(e){}
   ` + seedV4(Object.assign({}, REAL_PLAN, { opts: { layLight: false, labels: false } })), `
   var o = window.__plan.opts();

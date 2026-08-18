@@ -25,14 +25,12 @@
 
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { transformSync } from "esbuild";
+import { ouvrirSonde, CHROME } from "./_navigateur.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const APP_PATH = process.argv[2] || path.join(__dirname, "..", "index.html");
 const V4_KEY = "room-planner-v4";
 
@@ -164,46 +162,32 @@ const BANC = `
   }
 `;
 
-// ---- harness (ASYNCHRONOUS probe: the bench awaits storage on every op) --------------------------
-const RUN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "plan-acc-"));
-function runProbe(seedJs: string, probeBody: string) {
-  const caseDir = fs.mkdtempSync(path.join(RUN_DIR, "c-"));
-  const htmlPath = path.join(caseDir, "case.html");
-  const seed = `<!doctype html><html><head><meta charset="utf-8"><script>
-    window.__PLAN_TEST__ = 1;
-    try { localStorage.clear(); sessionStorage.clear(); } catch(e){}
-    ${seedJs || ""}
-  </script></head><body>`;
-  const probe = `<script>(function(){
-    function emit(o){ try{ document.documentElement.dataset.planTest = JSON.stringify(o); }catch(e){} }
-    async function run(){
-      try {
-        var errs = [];
-        try { errs = JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]; } catch(e){}
-        ${BANC}
-        var __out = (await (async function(){ ${probeBody} })()) || {};
-        __out.jsErrors = errs.map(function(e){ return e && e.msg; });
-        emit(__out);
-      } catch(e) { emit({ __probeError: String(e && e.stack || e) }); }
-    }
-    setTimeout(run, 0);
-  })();</script></body></html>`;
-  fs.writeFileSync(htmlPath, seed + SERVEUR_JS + APP_SRC + probe, "utf8");
-  const res = spawnSync(CHROME, [
-    "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
-    "--user-data-dir=" + path.join(caseDir, "profile"),
-    "--virtual-time-budget=15000", "--run-all-compositor-stages-before-draw", "--dump-dom",
-    "file:///" + htmlPath.replace(/\\/g, "/"),
-  ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
-  const m = (res.stdout || "").match(/<html[^>]*\bdata-plan-test="([^"]*)"/i);
-  if (!m) return { __noVerdict: true, __stdoutHead: (res.stdout || "").slice(0, 700), __stderr: (res.stderr || "").slice(0, 700) };
-  const raw = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'");
-  try { return JSON.parse(raw); } catch (e) { return { __parseError: String(e), __raw: raw.slice(0, 400) }; }
+// ---- harness (ONE shared browser; see tests/_navigateur.ts for the why and the measurements) -----
+// SERVEUR_JS and BANC are identical on every case, exactly like APP_SRC, so they join it as the
+// constant page prefix handed to ouvrirSonde ONCE; only seedJs and probeBody still vary per case.
+// BANC used to be spliced INSIDE run(), where fabriquerBanc/locX/srvX lived as locals of that
+// function. Here it becomes its own <script> tag instead, so those three become page GLOBALS.
+// Harmless: nothing else on the page defines those names (checked against src/ts), and the only
+// reader is the probe body below, which sees globals exactly as it used to see locals.
+const sonde = ouvrirSonde(`${SERVEUR_JS}${APP_SRC}<script>${BANC}</script>`);
+
+// THIS SUITE'S PROBE BODIES ARE ASYNCHRONOUS, and it is the only one: they await the bench's mock
+// storage (`await b.demarrer()`, `await b.pousser()`, ...) because the bench drives the REAL server
+// from live-worker/ over promise-based storage, so its cases cannot be written synchronously.
+// `_navigateur.ts` runs every probe body inside an async function and emits the verdict once that
+// settles, so nothing special is needed here. A synchronous suite is unaffected: it simply settles
+// one microtask later, and the verdict is awaited as a condition either way.
+//
+// This is also why dropping the `--virtual-time-budget=15000` this suite used to pass changes
+// nothing observable: the only `setTimeout` anywhere in this suite or in live-worker/ is
+// `_navigateur.ts`'s own `setTimeout(run, 0)`. There is no timer here for virtual time to advance.
+async function runProbe(seedJs: string, probeBody: string): Promise<VerdictSonde> {
+  return sonde.sonder(seedJs, probeBody);
 }
 const results: VerdictSonde[] = [];
-function test(name: string, seedJs: string, probeBody: string, check: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>) {
+async function test(name: string, seedJs: string, probeBody: string, check: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>) {
   let pass = false, detail = "";
-  const v = runProbe(seedJs, probeBody);
+  const v = await runProbe(seedJs, probeBody);
   if (v.__noVerdict) detail = "aucun verdict (l'application n'a pas démarré ?)\n  " + v.__stdoutHead + "\n  " + v.__stderr;
   else if (v.__probeError) detail = "la sonde a levé : " + v.__probeError;
   else if (v.__parseError) detail = "verdict illisible : " + v.__parseError + " raw=" + v.__raw;
@@ -223,7 +207,7 @@ const SEED = seedV4(REAL_PLAN);
 // =============================================================================
 //  0. THE TEST BENCH ITSELF: the real server runs, and the plan crosses over
 // =============================================================================
-test("le_banc_fait_tourner_le_vrai_serveur", SEED, `
+await test("le_banc_fait_tourner_le_vrai_serveur", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var idPiece = window.__plan.plan.pieces[0].id;
@@ -250,7 +234,7 @@ test("le_banc_fait_tourner_le_vrai_serveur", SEED, `
 // change the server's state, so its fingerprint does not move, so the two numbers agree and no
 // `sync` is sent. That safety net catches a missed INCOMING message, never a lost OUTGOING op:
 // the two plans diverge permanently, both screens showing "live ✓".
-test("avant_une_op_perdue_n_est_rattrapee_par_rien", SEED, `
+await test("avant_une_op_perdue_n_est_rattrapee_par_rien", SEED, `
   var b = fabriquerBanc({vieuxServeur:true});
   await b.demarrer();
   var id = window.__plan.plan.pieces[0].id;
@@ -283,7 +267,7 @@ test("avant_une_op_perdue_n_est_rattrapee_par_rien", SEED, `
 // =============================================================================
 //  2. AFTER: the server flags the gap, the client retransmits, nothing is lost
 // =============================================================================
-test("apres_le_trou_est_signale_et_la_modification_repart", SEED, `
+await test("apres_le_trou_est_signale_et_la_modification_repart", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var id = window.__plan.plan.pieces[0].id;
@@ -316,7 +300,7 @@ test("apres_le_trou_est_signale_et_la_modification_repart", SEED, `
 // FOLLOWING op. When the lost frame is the last one, there is no following op: without a second
 // safety net, the change would stay stranded outside. This is exactly the case the pong used to
 // take 10s to see, and resolved by erasing it.
-test("derniere_op_perdue_le_delai_de_garde_la_ramene", SEED, `
+await test("derniere_op_perdue_le_delai_de_garde_la_ramene", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var id = window.__plan.plan.pieces[0].id;
@@ -347,7 +331,7 @@ test("derniere_op_perdue_le_delai_de_garde_la_ramene", SEED, `
 // The trap: the client emits by DIFF against a mirror. If it advances that mirror on emission
 // and the op gets lost, it believes it was sent forever and never retransmits it. So we keep
 // two mirrors, and it's the ACKNOWLEDGED one that serves as memory.
-test("le_miroir_acquitte_n_avance_que_sur_l_echo", SEED, `
+await test("le_miroir_acquitte_n_avance_que_sur_l_echo", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var id = window.__plan.plan.pieces[0].id;
@@ -378,7 +362,7 @@ test("le_miroir_acquitte_n_avance_que_sur_l_echo", SEED, `
 // ordered BATCH send. On a frame-by-frame wire, replaying a lost op as-is would make it
 // arrive AFTER a more recent op on the same field, and since arrival order is the sole arbiter,
 // the stale value would win. So we don't retransmit an op: we redo a diff.
-test("reemettre_envoie_la_valeur_courante_pas_l_op_morte", SEED, `
+await test("reemettre_envoie_la_valeur_courante_pas_l_op_morte", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var id = window.__plan.plan.pieces[0].id;
@@ -403,7 +387,7 @@ test("reemettre_envoie_la_valeur_courante_pas_l_op_morte", SEED, `
 // On reconnection, the `hello` makes the client ADOPT the server's plan: without a replay,
 // everything that was in flight at the moment of the drop used to vanish from its author's
 // screen, without a word.
-test("reconnexion_le_travail_en_vol_est_repose_sur_l_etat_adopte", SEED, `
+await test("reconnexion_le_travail_en_vol_est_repose_sur_l_etat_adopte", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var id = window.__plan.plan.pieces[0].id;
@@ -425,7 +409,7 @@ test("reconnexion_le_travail_en_vol_est_repose_sur_l_etat_adopte", SEED, `
      && expect(v.memeFp === true, "client et serveur convergent après la reprise"));
 
 // Nothing to replay -> nothing goes out: an ordinary reconnection does not republish the plan.
-test("reconnexion_sans_travail_en_vol_ne_republie_rien", SEED, `
+await test("reconnexion_sans_travail_en_vol_ne_republie_rien", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var id = window.__plan.plan.pieces[0].id;
@@ -444,7 +428,7 @@ test("reconnexion_sans_travail_en_vol_ne_republie_rien", SEED, `
 // =============================================================================
 //  7. REORDERING AND DELAY: nothing gets lost, and nothing travels back in time
 // =============================================================================
-test("retard_et_reordonnancement_ne_perdent_rien", SEED, `
+await test("retard_et_reordonnancement_ne_perdent_rien", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var k = 0;
@@ -469,7 +453,7 @@ test("retard_et_reordonnancement_ne_perdent_rien", SEED, `
 // =============================================================================
 //  8. LOST BURST: half the frames drop during real work
 // =============================================================================
-test("une_trame_sur_deux_perdue_le_plan_converge_quand_meme", SEED, `
+await test("une_trame_sur_deux_perdue_le_plan_converge_quand_meme", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var k = 0;
@@ -494,7 +478,7 @@ test("une_trame_sur_deux_perdue_le_plan_converge_quand_meme", SEED, `
 // =============================================================================
 // An op rejected by the server must not trigger a retransmission: the client got its answer
 // (`err`), it UNDOES the change. Without this, rejection and retransmission would fight forever.
-test("un_refus_ne_declenche_pas_de_reemission", SEED, `
+await test("un_refus_ne_declenche_pas_de_reemission", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var avantFp = b.fpServeur();
@@ -515,7 +499,7 @@ test("un_refus_ne_declenche_pas_de_reemission", SEED, `
 // =============================================================================
 //  10. THE DURABLE OBJECT'S COUNTER IS NO LONGER A HOMONYM
 // =============================================================================
-test("aucun_chemin_ne_compare_plus_deux_compteurs", SEED, `
+await test("aucun_chemin_ne_compare_plus_deux_compteurs", SEED, `
   var b = fabriquerBanc({});
   var revAvant = window.__plan.serverRev;
   await b.demarrer();
@@ -535,7 +519,7 @@ test("aucun_chemin_ne_compare_plus_deux_compteurs", SEED, `
 // in the echo (unknown keys, ignored), and two message kinds it doesn't know (`ack`,
 // `gap`). Its receive dispatcher has no default branch: an unknown kind does
 // NOTHING. We check this here on the plan and on the error log.
-test("les_messages_neufs_ne_derangent_pas_un_onglet_qui_les_ignore", SEED, `
+await test("les_messages_neufs_ne_derangent_pas_un_onglet_qui_les_ignore", SEED, `
   var b = fabriquerBanc({});
   await b.demarrer();
   var id = window.__plan.plan.pieces[0].id;
@@ -552,7 +536,7 @@ test("les_messages_neufs_ne_derangent_pas_un_onglet_qui_les_ignore", SEED, `
      && expect(v.sorti === 0, "aucun message n'est parti en réponse, vu " + v.sorti));
 
 // ---- verdict -----------------------------------------------------------------------------------
+sonde.fermer();
 const failed = results.filter((r) => !r.pass);
 process.stdout.write("\n" + (results.length - failed.length) + "/" + results.length + " vérifications passent\n");
-try { fs.rmSync(RUN_DIR, { recursive: true, force: true }); } catch (_) {}
 process.exit(failed.length ? 1 : 0);

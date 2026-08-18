@@ -34,7 +34,7 @@ const IMPORT_V4 = {
 
 // 9a. the user's REAL plan, in the old format, converts itself on load:
 // 13 interior walls, 6 facades, 10 cells, 21 openings, 21 pieces of furniture, and the 8 original names.
-test("v5_boot_converts_the_old_plan", seedAuto(REAL_PLAN), `
+await test("v5_boot_converts_the_old_plan", seedAuto(REAL_PLAN), `
   var P = window.__plan.plan;
   return { model: window.__plan.model,
            walls: P ? P.walls.filter(function(w){ return !w.isOutline; }).length : -1,
@@ -64,7 +64,7 @@ test("v5_boot_converts_the_old_plan", seedAuto(REAL_PLAN), `
      && expect(v.backup === true, "la sauvegarde d'avant conversion doit exister"));
 
 // 9b. a plan that's ALREADY converted is not reconverted (two clients cannot step on each other).
-test("v5_boot_does_not_reconvert", seedAuto(SEED_V5_STATE), `
+await test("v5_boot_does_not_reconvert", seedAuto(SEED_V5_STATE), `
   var idsBefore = window.__plan.plan.cells.map(function(c){ return c.id; }).join(",");
   var wallsBefore = window.__plan.plan.walls.map(function(w){ return w.id; }).join(",");
   // rereading what was just saved must reconvert NOTHING: same ids, same walls.
@@ -82,7 +82,7 @@ test("v5_boot_does_not_reconvert", seedAuto(SEED_V5_STATE), `
 // 9c. REPLACES "v5_optout_is_respected_at_boot" (staying on the old model no longer exists): the
 // safety net, however, remains. The blob from BEFORE conversion is copied AS IS, once,
 // and the first save of the converted plan does not overwrite it.
-test("v5_backup_is_taken_once_and_kept", seedAuto(REAL_PLAN), `
+await test("v5_backup_is_taken_once_and_kept", seedAuto(REAL_PLAN), `
   var raw = localStorage.getItem("room-planner-v4-backup");
   var at = localStorage.getItem("room-planner-v4-backup-at");
   var src = JSON.parse(raw);
@@ -102,7 +102,7 @@ test("v5_backup_is_taken_once_and_kept", seedAuto(REAL_PLAN), `
 
 // 9d. two clients converting at the same time produce EXACTLY the same plan
 // (same wall ids, same cell ids/names): the last write wins without losing anything.
-test("v5_two_clients_converge_on_the_same_conversion", seedAuto(REAL_PLAN), `
+await test("v5_two_clients_converge_on_the_same_conversion", seedAuto(REAL_PLAN), `
   var mine = window.__plan.plan;
   // 2nd client: starts back from the blob from BEFORE conversion and replays the same conversion
   var raw = localStorage.getItem("room-planner-v4-backup");
@@ -121,7 +121,7 @@ test("v5_two_clients_converge_on_the_same_conversion", seedAuto(REAL_PLAN), `
         "la conversion doit être déterministe :\n  " + v.mineCells + "\n  " + v.otherCells));
 
 // 9e. SAFETY NET: the backup from before conversion gives back the original plan, identically.
-test("v5_restore_returns_the_plan_from_before_the_conversion", seedAuto(REAL_PLAN), `
+await test("v5_restore_returns_the_plan_from_before_the_conversion", seedAuto(REAL_PLAN), `
   var conv = { model: window.__plan.model, cells: window.__plan.plan.cells.length };
   var info = window.__plan.backupInfo();
   // we first damage the live plan: restoring must really reload the other content
@@ -149,7 +149,7 @@ test("v5_restore_returns_the_plan_from_before_the_conversion", seedAuto(REAL_PLA
 
 // 9f. BLANK FIRST LAUNCH: no localStorage, no server plan. The app boots in walls-only,
 // the wizard opens, and what it applies becomes the outline + one cell.
-test("v5_fresh_install_boots_on_walls", AUTO, `
+await test("v5_fresh_install_boots_on_walls", AUTO, `
   var P = window.__plan.plan;
   var before = { model: window.__plan.model, cells: P ? P.cells.length : -1,
                  pieces: P ? P.pieces.length : -1, outline: P ? P.outline.length : -1,
@@ -179,7 +179,7 @@ test("v5_fresh_install_boots_on_walls", AUTO, `
 
 // 9g. FURNITURE LIST: grouped by COMPUTED CELL (geometric test of the center), and nothing
 // disappears, an object outside every cell lands in "Outside any room".
-test("v5_furniture_list_groups_by_cell", seedAuto(REAL_PLAN), `
+await test("v5_furniture_list_groups_by_cell", seedAuto(REAL_PLAN), `
   var P = window.__plan.plan;
   var data = window.__plan.furnitureData();
   var count = function(d){ return d.reduce(function(n,s){
@@ -209,7 +209,7 @@ test("v5_furniture_list_groups_by_cell", seedAuto(REAL_PLAN), `
 
 // 9h. NO ACTIVE PATH ASKS "WHICH ROOM". The live state no longer carries rooms, active, or
 // envelope, and we replay every hot path: nothing throws.
-test("v5_hot_paths_never_ask_which_room", seedAuto(REAL_PLAN), `
+await test("v5_hot_paths_never_ask_which_room", seedAuto(REAL_PLAN), `
   var st = window.__plan.state;
   var out = { hasRooms: ("rooms" in st), hasActive: ("active" in st), hasEnvelope: ("envelope" in st) };
   var threw = null;
@@ -244,7 +244,7 @@ test("v5_hot_paths_never_ask_which_room", seedAuto(REAL_PLAN), `
 
 // 9i. MODEL CONFLICT: a tab that stayed on the old format wakes up, the server refuses its op
 // (ops.ts -> op_shape). The client must NOT fail silently: it announces and reloads.
-test("v5_stale_tab_reacts_to_a_model_conflict", seedAuto(REAL_PLAN), `
+await test("v5_stale_tab_reacts_to_a_model_conflict", seedAuto(REAL_PLAN), `
   window.__plan.wsForceOpen(true);
   window.__plan.wsFeed({ t: "err", reason: "op_shape" });
   var first = { toast: window.__plan.toastText, flag: sessionStorage.getItem("plan-model-reload") };
@@ -259,7 +259,7 @@ test("v5_stale_tab_reacts_to_a_model_conflict", seedAuto(REAL_PLAN), `
 
 // 9j. PEER GHOSTS: in walls-only they paint onto the layer (they weren't painting at all
 // anymore, wsApplyOneGhost was still looking for an .aptroom).
-test("v5_peer_drag_ghost_paints_on_the_layer", seedAuto(REAL_PLAN), `
+await test("v5_peer_drag_ghost_paints_on_the_layer", seedAuto(REAL_PLAN), `
   var P = window.__plan.plan;
   var p = P.pieces[0];
   var bb = window.__plan.bboxOfPoly(P.outline);
@@ -280,7 +280,7 @@ test("v5_peer_drag_ghost_paints_on_the_layer", seedAuto(REAL_PLAN), `
         + " au lieu de " + v.expLeft + "/" + v.expTop));
 
 // 9k. IMPORTING a file in the OLD format: converted on import, never a return to rooms.
-test("v5_importing_an_old_format_file_converts_it", seedAuto(REAL_PLAN), `
+await test("v5_importing_an_old_format_file_converts_it", seedAuto(REAL_PLAN), `
   var payload = JSON.stringify({ app: "room-planner", version: 4, savedAt: "x",
     state: ${JSON.stringify(IMPORT_V4)} });
   var ok = window.__plan.importPlan(payload);
@@ -298,7 +298,7 @@ test("v5_importing_an_old_format_file_converts_it", seedAuto(REAL_PLAN), `
 
 // 9l. PNG / PDF EXPORT: the master SVG is painted from the walls and cells, not from
 // old rooms (one band per interior wall, one name per cell).
-test("v5_master_svg_is_walls_only", seedAuto(REAL_PLAN), `
+await test("v5_master_svg_is_walls_only", seedAuto(REAL_PLAN), `
   var svg = window.__plan.buildMasterSVG({ title: "" });
   var P = window.__plan.plan;
   return { lines: (svg.match(/<line class="v5band"/g) || []).length,
@@ -314,7 +314,7 @@ test("v5_master_svg_is_walls_only", seedAuto(REAL_PLAN), `
 
 // 9m-bis. The OTHER client converted first: its `plan5.replace` switches this tab over without
 // triggering a second local conversion (no concurrent conversion, no overwrite).
-test("v5_remote_conversion_switches_this_tab", seedV4(REAL_PLAN), `
+await test("v5_remote_conversion_switches_this_tab", seedV4(REAL_PLAN), `
   var before = { cells: window.__plan.plan.cells.length, model: window.__plan.model };
   // the plan the other client just sent: the SAME deterministic conversion, one wall fewer
   var res = window.__plan.buildV5FromV4(
@@ -344,7 +344,7 @@ test("v5_remote_conversion_switches_this_tab", seedV4(REAL_PLAN), `
 
 // 9m. COLLABORATION: presence, cursor, chat. A peer's cursor is placed in APARTMENT cm
 // (aptToScreen); nothing depends anymore on a room id relayed on the wire.
-test("v5_collab_surfaces_are_apartment_space", seedAuto(REAL_PLAN), `
+await test("v5_collab_surfaces_are_apartment_space", seedAuto(REAL_PLAN), `
   window.__plan.wsForceOpen(true);
   window.__plan.wsFeed({ t: "peer", peers: [{ email: "device.b@example.com", color: "#b04a3d" },
                                             { email: "a@example.com", color: "#1f6f78" }] });
@@ -370,7 +370,7 @@ test("v5_collab_surfaces_are_apartment_space", seedAuto(REAL_PLAN), `
 
 // 9n. Granular ops emitted in walls-only pass the REAL server validator, on a server state
 // already converted (no v4 op must slip through).
-test("v5_granular_ops_pass_the_server_on_a_converted_state", seedAuto(REAL_PLAN), `
+await test("v5_granular_ops_pass_the_server_on_a_converted_state", seedAuto(REAL_PLAN), `
   var log = window.__plan.opLog(true);
   window.__plan.wsForceOpen(true);
   var P = window.__plan.plan;
@@ -402,7 +402,7 @@ test("v5_granular_ops_pass_the_server_on_a_converted_state", seedAuto(REAL_PLAN)
 // =============================================================================
 // A household member opens the plan on a brand-new device: `init` framed the default apartment (420x360),
 // then the real dwelling (1250x870) arrives. Without recropping it overflows the viewport.
-test("vue_recadree_a_la_premiere_adoption_seulement", "", `
+await test("vue_recadree_a_la_premiere_adoption_seulement", "", `
   var small = window.__plan.viewFits();                   // default apartment, framed by init
   var big = window.__plan.wire();
   // a dwelling much bigger than the local state

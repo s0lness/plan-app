@@ -14,7 +14,7 @@ const seedAuto = (st: DonneeDynamique) => AUTO + seedV4(st);
 // =============================================================================
 //  7. WIRE SHAPE (what the server expects) + COLLABORATION
 // =============================================================================
-test("v5_wire_shape_is_server_shape", seedV4(REAL_PLAN), `
+await test("v5_wire_shape_is_server_shape", seedV4(REAL_PLAN), `
   var wire = window.__plan.wire();
   var ser = window.__plan.serialize();
   return { wire: wire, serKeys: Object.keys(ser).sort().join(","),
@@ -57,7 +57,7 @@ test("v5_wire_shape_is_server_shape", seedV4(REAL_PLAN), `
 });
 
 // 7c. The diff-emitter produces the server's v5 ops, and they really do apply to a server plan.
-test("v5_diff_emits_server_ops", "", `
+await test("v5_diff_emits_server_ops", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -107,7 +107,7 @@ test("v5_diff_emits_server_ops", "", `
 
 // 7d. Remote ops MUTATE objects in place (the v4 "orphan echo" fix: a DOM node holds a closure
 // on the object; replacing it used to kill the next drag). Cells are re-detected.
-test("v5_remote_ops_mutate_in_place", "", `
+await test("v5_remote_ops_mutate_in_place", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
   window.__plan.rebuildCells(P);
@@ -143,7 +143,7 @@ test("v5_remote_ops_mutate_in_place", "", `
 
 // 7e. A 100% SERVER state (flat v5 shape, no v4 room whatsoever, what a late arrival receives)
 // boots directly in v5, with no JS error, with a dummy room for the v4 scaffolding.
-test("v5_boots_from_a_server_shaped_state", `try{ localStorage.setItem("room-planner-v4", JSON.stringify({
+await test("v5_boots_from_a_server_shaped_state", `try{ localStorage.setItem("room-planner-v4", JSON.stringify({
   outline:[[0,0],[600,0],[600,400],[0,400]],
   walls:[{id:"w1", a:[300,0], b:[300,400], t:12}],
   openings:[{id:"o1", wallId:"w1", t0:150, w:80, type:"door", hinge:3, swing:-1}],
@@ -180,7 +180,7 @@ test("v5_boots_from_a_server_shaped_state", `try{ localStorage.setItem("room-pla
 
 // 10a. `too_big`: the shared plan has reached its maximum size. Clear message, and ABOVE ALL no
 // reload (reloading doesn't shrink the plan, and would cost the work in progress).
-test("v5_err_too_big_is_announced_without_a_reload", seedAuto(REAL_PLAN), `
+await test("v5_err_too_big_is_announced_without_a_reload", seedAuto(REAL_PLAN), `
   window.__plan.wsForceOpen(true);
   window.__plan.clearToast();
   window.__plan.wsFeed({ t: "err", reason: "too_big" });
@@ -195,7 +195,7 @@ test("v5_err_too_big_is_announced_without_a_reload", seedAuto(REAL_PLAN), `
 
 // 10b. `persist_fail`: the op was valid, the server write failed and the server rolled back.
 // The change is lost for everyone: we ask them to redo it.
-test("v5_err_persist_fail_is_announced_without_a_reload", seedAuto(REAL_PLAN), `
+await test("v5_err_persist_fail_is_announced_without_a_reload", seedAuto(REAL_PLAN), `
   window.__plan.wsForceOpen(true);
   window.__plan.clearToast();
   window.__plan.wsFeed({ t: "err", reason: "persist_fail" });
@@ -210,7 +210,7 @@ test("v5_err_persist_fail_is_announced_without_a_reload", seedAuto(REAL_PLAN), `
 
 // 10c. Any VALIDATION REFUSAL (here `wall_t`, an out-of-bounds thickness) was the most silent
 // case of all: the op is dropped by ops.ts and nothing appeared on screen.
-test("v5_err_op_refusee_is_announced_with_its_reason", seedAuto(REAL_PLAN), `
+await test("v5_err_op_refusee_is_announced_with_its_reason", seedAuto(REAL_PLAN), `
   window.__plan.wsForceOpen(true);
   window.__plan.clearToast();
   window.__plan.wsFeed({ t: "err", reason: "wall_t" });
@@ -224,7 +224,7 @@ test("v5_err_op_refusee_is_announced_with_its_reason", seedAuto(REAL_PLAN), `
 // 10d. A gesture produces a BURST of ops (one per cell, one per piece of furniture): a toast per
 // refusal would flood the screen. Only one per reason and per window; a DIFFERENT reason gets
 // through right away.
-test("v5_err_toast_is_throttled_per_reason", seedAuto(REAL_PLAN), `
+await test("v5_err_toast_is_throttled_per_reason", seedAuto(REAL_PLAN), `
   window.__plan.wsForceOpen(true);
   window.__plan.clearToast();
   window.__plan.wsFeed({ t: "err", reason: "cell_dup" });
@@ -242,7 +242,7 @@ test("v5_err_toast_is_throttled_per_reason", seedAuto(REAL_PLAN), `
 
 // 10e. `op_shape` stays a MODEL CONFLICT: it alone reloads (the tab is no longer on the shared
 // plan's model). Guardrail: the grouping of error messages must not have drowned it out.
-test("v5_err_op_shape_still_reloads", seedAuto(REAL_PLAN), `
+await test("v5_err_op_shape_still_reloads", seedAuto(REAL_PLAN), `
   window.__plan.wsForceOpen(true);
   window.__plan.clearToast();
   window.__plan.wsFeed({ t: "err", reason: "op_shape" });
@@ -255,7 +255,7 @@ test("v5_err_op_shape_still_reloads", seedAuto(REAL_PLAN), `
 
 // 10f. NAME fields are bounded to what the shared plan retains (ops.ts NAME_MAX = 80).
 // Without this bound, the user would see a name that the server silently truncated.
-test("v5_name_fields_are_capped_at_the_server_limit", seedAuto(REAL_PLAN), `
+await test("v5_name_fields_are_capped_at_the_server_limit", seedAuto(REAL_PLAN), `
   var long = new Array(140).join("a") + "FIN";        // 142 characters
   var iName = document.getElementById("iName"), rcName = document.getElementById("rcName");
   var P = window.__plan.plan;
@@ -273,7 +273,7 @@ test("v5_name_fields_are_capped_at_the_server_limit", seedAuto(REAL_PLAN), `
 // 10g. An identifier coming from the WIRE ends up in a CSS selector. A `"]` used to make
 // querySelector THROW, and that call is made from render(): the whole application would go
 // down, not just the offending ghost. The server now bounds ids, this is the last line of defense.
-test("v5_ghost_selector_resists_a_hostile_id", seedAuto(REAL_PLAN), `
+await test("v5_ghost_selector_resists_a_hostile_id", seedAuto(REAL_PLAN), `
   var P = window.__plan.plan;
   var p = P.pieces[0];
   var bb = window.__plan.bboxOfPoly(P.outline);
@@ -299,7 +299,7 @@ test("v5_ghost_selector_resists_a_hostile_id", seedAuto(REAL_PLAN), `
 // 10h. `piece.front` no longer exists server-side: the reception branch has been removed.
 // An op with this name must be IGNORED without breaking anything (neither furniture order nor
 // a JS error).
-test("v5_piece_front_op_is_dead_and_ignored", seedAuto(REAL_PLAN), `
+await test("v5_piece_front_op_is_dead_and_ignored", seedAuto(REAL_PLAN), `
   var P = window.__plan.plan;
   var before = P.pieces.map(function(p){ return String(p.id); });
   window.__plan.applyRemote({ kind: "piece.front", pieceId: before[0] });
@@ -362,7 +362,7 @@ async function testRaw(name: string, fn: (...args: DonneeDynamique[]) => DonneeD
 // 11a. What the client ACTUALLY SENDS (serialize() of the real converted plan) goes through the
 // PUT, comes back out of the GET, and is readopted by a SECOND, blank browser via migrate().
 // This is the end-to-end proof that the fallback works: a change goes through.
-const fallbackProbe = runProbe("repli-serialize", seedAuto(REAL_PLAN), `
+const fallbackProbe = await runProbe("repli-serialize", seedAuto(REAL_PLAN), `
   var P = window.__plan.plan;
   P.cells[0].name = "Repli D1";                 // THE change that must go through
   window.__plan.render(); window.__plan.save();
@@ -398,9 +398,9 @@ await testRaw("repli_d1_accepte_l_etat_murs_seuls_du_client", async () => {
 });
 
 // 11b. the other browser ADOPTS what the fallback wrote (migrate() on the GET's payload).
-await testRaw("repli_d1_le_pair_adopte_le_changement", () => {
+await testRaw("repli_d1_le_pair_adopte_le_changement", async () => {
   expect(!!fallbackGet, "le GET du cas précédent doit avoir rendu une charge");
-  const v = runProbe("repli-adopt", "", `
+  const v = await runProbe("repli-adopt", "", `
     var payload = ${JSON.stringify(fallbackGet)};
     var ns = window.__plan.migrate(payload);
     return { ok: !!(ns && ns.plan),

@@ -13,13 +13,11 @@
 
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { ouvrirSonde, CHROME } from "./_navigateur.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const APP_PATH = process.argv[2] || path.join(__dirname, "..", "index.html");
 const V4_KEY = "room-planner-v4";
 
@@ -28,48 +26,15 @@ if (!fs.existsSync(CHROME)) { console.error("Chrome not found:", CHROME); proces
 const APP_SRC = fs.readFileSync(APP_PATH, "utf8");
 const REAL_PLAN = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "plan-rev177.json"), "utf8"));
 
-// ---- harness (same shape as tests/deux-appareils.ts) ------------------------------------------
-const RUN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "plan-dire2-"));
-function runProbe(seedJs: string, probeBody: string) {
-  const caseDir = fs.mkdtempSync(path.join(RUN_DIR, "c-"));
-  const htmlPath = path.join(caseDir, "case.html");
-  const profileDir = path.join(caseDir, "profile");
-  const seed = `<!doctype html><html><head><meta charset="utf-8"><script>
-    window.__PLAN_TEST__ = 1;
-    try { localStorage.clear(); } catch(e){}
-    ${seedJs || ""}
-  </script></head><body>`;
-  const probe = `<script>(function(){
-    function emit(o){ try{ document.documentElement.dataset.planTest = JSON.stringify(o); }catch(e){} }
-    function run(){
-      try {
-        var errs = [];
-        try { errs = JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]; } catch(e){}
-        var __out = (function(){ ${probeBody} })();
-        __out = __out || {};
-        __out.jsErrors = errs.map(function(e){ return e && e.msg; });
-        emit(__out);
-      } catch(e) { emit({ __probeError: String(e && e.stack || e) }); }
-    }
-    setTimeout(run, 0);
-  })();</script></body></html>`;
-  fs.writeFileSync(htmlPath, seed + APP_SRC + probe, "utf8");
-  const res = spawnSync(CHROME, [
-    "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run",
-    "--no-default-browser-check", "--user-data-dir=" + profileDir,
-    "--virtual-time-budget=8000", "--run-all-compositor-stages-before-draw", "--dump-dom",
-    "file:///" + htmlPath.replace(/\\/g, "/"),
-  ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 90000 });
-  const stdout = res.stdout || "";
-  const m = stdout.match(/<html[^>]*\bdata-plan-test="([^"]*)"/i);
-  if (!m) return { __noVerdict: true, __stdoutHead: stdout.slice(0, 600), __stderr: (res.stderr || "").slice(0, 600) };
-  const raw = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'");
-  try { return JSON.parse(raw); } catch (e) { return { __parseError: String(e), __raw: raw.slice(0, 400) }; }
+// ---- harness: ONE Chrome for the whole suite, see tests/_navigateur.ts for the why ------------
+const sonde = ouvrirSonde(APP_SRC);
+async function runProbe(seedJs: string, probeBody: string): Promise<VerdictSonde> {
+  return sonde.sonder(seedJs, probeBody);
 }
 const results: VerdictSonde[] = [];
-function test(name: string, seedJs: string, probeBody: string, check: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>) {
+async function test(name: string, seedJs: string, probeBody: string, check: (...args: VerdictSonde[]) => VerdictSonde | Promise<VerdictSonde>): Promise<void> {
   let pass = false, detail = "";
-  const v = runProbe(seedJs, probeBody);
+  const v = await runProbe(seedJs, probeBody);
   if (v.__noVerdict) detail = "aucun verdict (l'app n'a pas démarré ?)\n  stdout: " + (v.__stdoutHead || "") + "\n  stderr: " + (v.__stderr || "");
   else if (v.__probeError) detail = "la sonde a levé : " + v.__probeError;
   else if (v.__parseError) detail = "verdict illisible : " + v.__parseError + " raw=" + v.__raw;
@@ -105,7 +70,7 @@ const commeUnPair = `function commeUnPair(m){
 // =============================================================================
 //  1. A TYPES: the wire carries the text, LETTER BY LETTER, at the cursor's own cadence
 // =============================================================================
-test("a_emet_son_texte_lettre_par_lettre_sur_le_fil_curseur", SEED, `
+await test("a_emet_son_texte_lettre_par_lettre_sur_le_fil_curseur", SEED, `
   ${HELLO}
   window.__plan.setCursorApt(120, 80);
   window.__plan.outLog(true);
@@ -122,7 +87,7 @@ test("a_emet_son_texte_lettre_par_lettre_sur_le_fil_curseur", SEED, `
 // =============================================================================
 //  2. B SEES IT: the SAME messages, fed back as if from the OTHER device, paint the bubble
 // =============================================================================
-test("b_voit_le_texte_de_a_apparaitre_lettre_par_lettre", SEED, `
+await test("b_voit_le_texte_de_a_apparaitre_lettre_par_lettre", SEED, `
   ${HELLO}
   window.__plan.setCursorApt(120, 80);
   window.__plan.outLog(true);
@@ -144,7 +109,7 @@ test("b_voit_le_texte_de_a_apparaitre_lettre_par_lettre", SEED, `
 // =============================================================================
 //  3. B SEES IT DISAPPEAR: A dismisses (Escape/Enter/blur -> `direArreter`), the bubble hides
 // =============================================================================
-test("b_voit_le_texte_disparaitre_quand_a_ferme_sa_boite", SEED, `
+await test("b_voit_le_texte_disparaitre_quand_a_ferme_sa_boite", SEED, `
   ${HELLO}
   window.__plan.setCursorApt(120, 80);
   ${commeUnPair}
@@ -171,7 +136,7 @@ test("b_voit_le_texte_disparaitre_quand_a_ferme_sa_boite", SEED, `
 //  4. NOTHING IS WRITTEN: A whole exchange (A speaks, B receives, A dismisses) leaves the plan
 //     byte-identical — nothing to save, nothing to undo.
 // =============================================================================
-test("un_echange_complet_ne_modifie_pas_le_plan", SEED, `
+await test("un_echange_complet_ne_modifie_pas_le_plan", SEED, `
   ${HELLO}
   window.__plan.setCursorApt(120, 80);
   ${commeUnPair}
@@ -190,7 +155,7 @@ test("un_echange_complet_ne_modifie_pas_le_plan", SEED, `
 //  5. THE XSS AUDIT: a peer's cursor-chat text renders as TEXT, never as markup
 // =============================================================================
 const CHARGE_UTILE = "<img src=x onerror=alert(document.cookie)>";
-test("xss_texte_de_curseur_du_pair_s_affiche_en_texte", SEED, `
+await test("xss_texte_de_curseur_du_pair_s_affiche_en_texte", SEED, `
   ${HELLO}
   window.__plan.wsFeed({ t:"cursor", by:"device.b@example.com", tag:"bbbbbb", room:"__apt__",
     x:100, y:100, say:${JSON.stringify(CHARGE_UTILE)} });
@@ -202,8 +167,8 @@ test("xss_texte_de_curseur_du_pair_s_affiche_en_texte", SEED, `
      && expect(!/<img[\\s>]/i.test(v.html || ""), "aucune balise <img> brute dans le HTML resultant, vu " + JSON.stringify(v.html)));
 
 // ---- verdict ---------------------------------------------------------------------------------
+sonde.fermer();
 const bad = results.filter((r) => !r.pass);
 console.log("");
 if (bad.length) { console.log(`FAILURES ${bad.length}/${results.length}`); process.exitCode = 1; }
 else console.log(`OK ${results.length}/${results.length}`);
-try { fs.rmSync(RUN_DIR, { recursive: true, force: true }); } catch (_) { /* best-effort */ }
