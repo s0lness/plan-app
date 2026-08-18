@@ -128,7 +128,11 @@ await test("sol_corps_shift_et_doigt", async () => {
   await semer(); ok(await sansMode(), "aucun mode ne doit armer le dessin");
   let n = await evaluer(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`);
   await glisser(await apt(70, 80), await apt(160, 80)); ok(await evaluer(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`) === ++n, "le sol doit dessiner");
-  await glisser(await apt(210, 210), await apt(330, 210)); ok(await evaluer(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`) === ++n, "le corps du mur doit dessiner");
+  // DEUX murs de plus, et c'est voulu: le trace part SUR le mur, donc il forme un T, et un T coupe
+  // desormais la barre qu'il touche (demande du proprietaire). Ce que ce cas verifie reste que le
+  // corps DESSINE au lieu d'etre une prise.
+  await glisser(await apt(210, 210), await apt(330, 210)); n += 2;
+  ok(await evaluer(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`) === n, "le corps du mur doit dessiner, et le T couper la barre");
   await glisser(await apt(50, 250), await apt(170, 330), 8); ok(await evaluer(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`) === n, "Shift doit lasser");
   const a = await apt(80, 300), avant = await lire(`__plan.viewTransform()`);
   await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: a.x, y: a.y, id: 1 }] });

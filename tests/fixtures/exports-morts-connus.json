@@ -90,7 +90,6 @@
     "src/ts/partage/plan.ts → estMur",
     "src/ts/partage/plan.ts → estOuverture",
     "src/ts/rendu/calque.ts → renderFaisceaux",
-    "src/ts/rendu/calque.ts → renderFond",
     "src/ts/rendu/icones.ts → wallMountMarker",
     "src/ts/rendu/palette.ts → normStr",
     "src/ts/rendu/puces-rail.ts → oublierSignatureDesPuces",

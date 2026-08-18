@@ -82,6 +82,12 @@ const apt = (x: number, y: number) => J(`(function(){var p=__plan.aptToScreen(${
 const wall = (id: string) => J(`(function(){var w=__plan.v5WallById(${JSON.stringify(id)});return w?{a:w.a,b:w.b,isOutline:!!w.isOutline}:null})()`);
 const handles = (id: string) => J(`Array.from(document.querySelectorAll('[data-w="'+${JSON.stringify(id)}+'"]')).filter(function(e){return /v5w(move|end|mid)|v5wx/.test(e.className)}).map(function(e){var r=e.getBoundingClientRect();return{c:e.className,x:r.left,y:r.top,w:r.width,h:r.height}})`);
 
+/** TOUTES les poignees presentes, quelle que soit leur classe: c'est ce qui rend le garde
+ *  ci-dessous insensible au nom qu'on donnera a la prochaine. */
+const toutesPoignees = () => J(`Array.from(document.querySelectorAll(".vtx,.mid,.edge,[class^=v5w]"))
+  .filter(function(e){ return !/v5wall|v5wband/.test(e.className); })
+  .map(function(e){ return e.className + ":" + (e.dataset.w || ""); })`);
+
 const results: VerdictSonde[] = [];
 let cur: VerdictSonde;
 function ok(cond: unknown, msg: string) { if (!cond) cur.fails.push(msg); return !!cond; }
@@ -130,13 +136,22 @@ await test("meuble_sur_mur_reste_la_cible_visible", async () => {
   ok(await wall(setup.wid) !== null, "le mur sous le meuble ne doit pas être remplacé par le geste");
 });
 
-await test("corps_en_mode_par_defaut_dessine_un_nouveau_mur", async () => {
+// TRACER DEPUIS LE CORPS D'UN MUR FORME UN T, DONC LE COUPE. Ce cas attendait deux murs et un mur
+// d'origine intact: c'etait vrai tant qu'un T ne coupait rien. Depuis la demande du proprietaire
+// (« relier un bout de mur a un autre doit connecter ces murs ET couper le mur qui forme la barre
+// du T »), le mur de depart se scinde au point de contact. Ce qu'on verifie reste le meme: le corps
+// est bien une ORIGINE DE DESSIN et non une prise pour deplacer le mur.
+await test("corps_en_mode_par_defaut_dessine_un_nouveau_mur_et_coupe_le_T", async () => {
   await seed(200); await move(await apt(100, 120));
   ok((await handles("w1")).length > 0, "précondition: le survol par défaut doit révéler les poignées");
   const before = await wall("w1"), a = await apt(100, 130), b = await apt(260, 130);
   await drag(a, b);
-  ok(await evaluate(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`) === 2, "le corps doit rester une origine de dessin en mode par défaut");
-  ok(JSON.stringify(await wall("w1")) === JSON.stringify(before), "dessiner depuis le corps ne doit pas déplacer le mur existant");
+  const murs = await evaluate(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`);
+  ok(murs === 3, `le trace doit creer une cloison ET couper le mur de depart, vu ${murs} murs`);
+  // Le mur d'origine est raccourci au point de contact, pas deplace: son depart n'a pas bouge.
+  const apres = await wall("w1");
+  ok(JSON.stringify(apres.a) === JSON.stringify(before.a),
+    `le depart du mur d'origine ne doit pas bouger, ${JSON.stringify(before.a)} puis ${JSON.stringify(apres.a)}`);
 });
 
 await test("clic_propre_sur_corps_par_defaut_n_ecrit_rien", async () => {
@@ -185,11 +200,13 @@ await test("glisser_move_deplace_les_deux_bouts_du_meme_delta", async () => {
   ok(Math.hypot(da[0] - db[0], da[1] - db[1]) < 1, `les deux bouts doivent avoir le même delta, vu ${JSON.stringify({ da, db })}`);
 });
 
-await test("glisser_corps_dessine_un_nouveau_mur", async () => {
+await test("glisser_corps_dessine_un_nouveau_mur_et_coupe_le_T", async () => {
   await seed(); const before = await wall("w1"), a = await apt(100, 150), b = await apt(260, 150);
   await drag(a, b); const after = await wall("w1");
-  ok(await evaluate(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`) === 2, "glisser depuis le corps doit dessiner une nouvelle cloison");
-  ok(JSON.stringify(after) === JSON.stringify(before), "le corps ne doit plus déplacer le mur existant");
+  const murs = await evaluate(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`);
+  ok(murs === 3, `glisser depuis le corps doit dessiner une cloison ET couper le T, vu ${murs} murs`);
+  ok(JSON.stringify(after.a) === JSON.stringify(before.a),
+    "le corps ne doit pas DEPLACER le mur existant: son depart reste identique");
 });
 
 await test("facade_selectionnee_revele_le_contour_sans_commandes_interieures", async () => {
@@ -201,14 +218,53 @@ await test("facade_selectionnee_revele_le_contour_sans_commandes_interieures", a
   ok(await evaluate(`document.querySelector('.v5wx[data-w="${id}"],.v5wmid[data-w="${id}"]')===null`) === true, "une façade ne doit offrir ni suppression ni coude");
 });
 
-await test("mur_court_respecte_priorite_et_aucune_poignee_ne_se_recouvre", async () => {
+// UN MUR COURT RÉTRÉCIT SES POIGNÉES, IL N'EN SUPPRIME PLUS. La priorité d'avant les faisait
+// tomber sous 48 px, et c'est le défaut que le propriétaire a signalé: sur une cloison de 47 cm il
+// ne restait qu'une poignée sur cinq, et l'élément sous la pointe du mur appartenait au mur VOISIN,
+// donc viser un bout attrapait celui d'à côté. Les bouts sont ce que ce mur a de plus utile: ils ne
+// disparaissent jamais, ils réduisent, et la position reste vraie.
+await test("mur_court_garde_ses_bouts_et_aucune_poignee_ne_se_recouvre", async () => {
   await seed(60); await move(await apt(100, 110)); const hs = await handles("w1");
   ok(hs.some((h: any) => h.c.includes("v5wmove")), "la poignée move doit toujours rester visible");
-  ok(!hs.some((h: any) => h.c.includes("v5wmid") || h.c.includes("v5wx")), "coude et suppression doivent disparaître avant les extrémités");
+  ok(hs.filter((h: any) => h.c.includes("v5wend")).length === 2,
+    `les DEUX bouts doivent rester, vu ${JSON.stringify(hs.map((h: any) => h.c))}`);
+  ok(hs.every((h: any) => h.w <= 20 && h.h <= 20), "sur un mur court les poignées doivent avoir rétréci");
   for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) {
     const a = hs[i], b = hs[j], overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     ok(!overlap, `deux poignées visibles se recouvrent: ${a.c} et ${b.c}`);
   }
+});
+
+// UNE LISTE DE NETTOYAGE TENUE A LA MAIN SE FAIT OUBLIER, et c'est arrive: `.v5wjoin` manquait
+// dans le selecteur qui retire les poignees avant de les redessiner, donc les "-" de fusion ne
+// partaient jamais et survivaient meme a la suppression de leur mur. Le proprietaire a vu deux "-"
+// flotter en plein vide. Ce cas ne teste pas une classe, il teste le MODE DE PANNE: apres avoir
+// supprime le mur survole, il ne doit rester aucune poignee, quel que soit son nom.
+await test("supprimer_un_mur_ne_laisse_aucune_poignee_fantome", async () => {
+  await seed(200);
+  await move(await apt(100, 150));
+  // ON COUPE D'ABORD, sinon aucun "-" n'existe et le garde ne prouverait rien: c'est la coupe qui
+  // cree une jonction fusionnable, donc le controle de fusion qui a fui.
+  const plus = await center('.v5wmid[data-w="w1"]');
+  if (!ok(plus, "poignee de coupe introuvable")) return;
+  await move(plus); await pause(120);
+  await mouse("mousePressed", plus); await mouse("mouseReleased", plus);
+  await pause(300);
+  await move(await apt(100, 120)); await pause(250);
+  ok((await toutesPoignees()).some((c: string) => c.startsWith("v5wjoin")),
+    `precondition: la coupe doit faire apparaitre un "-", vu ${JSON.stringify(await toutesPoignees())}`);
+  // Supprime par le VRAI geste, la croix du mur survole, pas par une API de sonde.
+  const croix = await center('.v5wx[data-w="w1"]');
+  if (!ok(croix, "croix de suppression introuvable")) return;
+  await move(croix); await pause(120);
+  await mouse("mousePressed", croix); await mouse("mouseReleased", croix);
+  await pause(300);
+  ok(await evaluate(`String(__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length)`) === "1",
+    "precondition: la croix doit avoir supprime une des deux moities");
+  await move(await apt(360, 40));
+  await pause(250);
+  const restantes = await toutesPoignees();
+  ok(restantes.length === 0, `aucune poignee ne doit survivre au mur supprime, vu ${JSON.stringify(restantes)}`);
 });
 
 const bad = results.filter((r) => r.fails.length);

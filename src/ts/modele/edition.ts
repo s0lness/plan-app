@@ -100,6 +100,8 @@ export interface Barriere {
   a: Pt;
   b: Pt;
   outline: boolean;
+  /** cm: the barrier's THICKNESS. A wall is a band, not a line, and a hand aims at the band. */
+  t: number;
 }
 
 // "Barrier" segments: outline edges + interior walls (except `excludeId`).
@@ -119,11 +121,11 @@ export function v5Barriers(P: PlanV5 | null | undefined, excludeId: ExclusionMur
   const O = P.outline || [];
   for (let i = 0; i < O.length; i++) {
     const a = O[i]!, b = O[(i + 1) % O.length]!;
-    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1) out.push({ a, b, outline: true });
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1) out.push({ a, b, outline: true, t: WALL });
   }
   (P.walls || []).forEach((w) => {
     if (w.isOutline || exclus.has(String(w.id))) return;
-    out.push({ a: w.a, b: w.b, outline: false });
+    out.push({ a: w.a, b: w.b, outline: false, t: w.t || WALL });
   });
   return out;
 }
@@ -848,17 +850,26 @@ export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, sn
 //      GRID fallback, computed by the caller, is gated by that setting): a junction connection
 //      is not an optional convenience to turn off, only the grid-rounding fallback is.
 
-/** cm: tolerance for stage 1 (another wall's endpoint, or an outline corner). Mirrors
- * `v5SnapTol`'s shape (a floor, a ceiling at one wall thickness) with the wider px budget the
- * owner's report calls for: a junction has to hold, so it gets a more forgiving target than the
- * drawing tool's own vertex snap. */
+// A HAND AIMS IN PIXELS, NOT IN CENTIMETRES, AND THESE TWO SAID THE OPPOSITE. `Math.min(WALL, ...)`
+// capped both at 12 cm, which cancelled outright the `Math.max(8, 15 / echelle)` that was meant to
+// widen them as you zoom out: the cap wins as soon as the scale drops below 1,25 px/cm, so at EVERY
+// working zoom you had to aim within about six pixels. Reported from real use: dragging a wall's
+// end up against a facade would simply not latch onto it.
+//
+// The bound therefore becomes a FLOOR in centimetres, never below half a wall's thickness even
+// zoomed right in, and the term in pixels gets its job back. Covered by
+// `tests/bouts-de-mur.ts` (`la_portee_d_accroche_grandit_quand_on_dezoome`), which checks the SAME
+// point in centimetres latches when zoomed out and does not when zoomed in.
+
+/** cm: tolerance for stage 1 (another wall's endpoint, or an outline corner). A junction has to
+ * hold, so it gets a more forgiving target than the drawing tool's own vertex snap. */
 function v5SnapTolBout(echelle: number): number {
-  return Math.min(WALL, Math.max(8, 15 / (echelle || 1)));
+  return Math.max(WALL, 16 / (echelle || 1));
 }
 
 /** cm: tolerance for stage 2 (a point ON another wall's segment, or on the outline's own body). */
 function v5SnapTolSegment(echelle: number): number {
-  return Math.min(WALL, Math.max(6, 10 / (echelle || 1)));
+  return Math.max(WALL / 2, 18 / (echelle || 1));
 }
 
 /**
@@ -892,7 +903,13 @@ export function v5SnapWallEnd(
   let bestE: Pt | null = null, bdE = v5SnapTolSegment(echelle);
   v5Barriers(P, excludeWallId).forEach((s) => {
     const c = closestOnSeg(x, y, s.a[0], s.a[1], s.b[0], s.b[1]);
-    if (c.dist <= bdE) { bdE = c.dist; bestE = [c.x, c.y]; }
+    // MEASURED FROM THE WALL'S FACE, NOT ITS AXIS. A wall is a 12 cm band and the eye aims at the
+    // band, so "I dropped it against the wall" means the pointer is at the FACE, already half a
+    // thickness away from the centreline the snap compares against. Measured on the real flat: the
+    // latch only fired within 9 cm of the axis, i.e. 3 cm PAST the inner face, so dropping where
+    // the wall visibly ends did nothing. Owner's report, twice.
+    const dFace = Math.max(0, c.dist - (s.t || WALL) / 2);
+    if (dFace <= bdE) { bdE = dFace; bestE = [c.x, c.y]; }
   });
   if (bestE) return [v5R2((bestE as Pt)[0]), v5R2((bestE as Pt)[1])];
   return null;
@@ -918,30 +935,51 @@ function v5WallSplitPoint(w: Mur): { milieu: Pt; premiereMoitie: number } {
   return { milieu, premiereMoitie: Math.hypot(milieu[0] - w.a[0], milieu[1] - w.a[1]) };
 }
 
-/** A non-mutating preflight, also used by the gesture so a refusal creates no history entry. */
-export function v5WallSplitRefusal(P: PlanV5 | null | undefined, wallId: Id): string | null {
+/** A non-mutating preflight, also used by the gesture so a refusal creates no history entry.
+ *  `ou` is the distance IN CENTIMETRES from the wall's `a` end; omitted, it is the midpoint. */
+export function v5WallSplitRefusal(P: PlanV5 | null | undefined, wallId: Id, ou?: number): string | null {
   const w = v5WallById(P, wallId);
   if (!P || !w) return "This wall no longer exists.";
   // `isOutline` is only a cache. The shared deletion verdict verifies it against the current
   // outline geometry, which prevents a stale cache from deciding what may be edited.
   if (v5WallDeleteVerdict(P, wallId) === "facade") return "A facade wall cannot be split.";
-  const milieu = v5WallSplitPoint(w).premiereMoitie;
-  if (!(milieu > 0)) return "This wall is too short to split.";
+  const coupe = ou == null ? v5WallSplitPoint(w).premiereMoitie : ou;
+  const L = v5Seg(w).L;
+  if (!(coupe > 0) || !(coupe < L)) return "This wall is too short to split.";
   const obstacle = (P.openings || []).find((o) =>
-    String(o.wallId) === String(wallId) && o.t0 < milieu && milieu < o.t0 + o.w,
+    String(o.wallId) === String(wallId) && o.t0 < coupe && coupe < o.t0 + o.w,
   );
-  if (obstacle) return `“${obstacle.name || "This object"}” crosses the wall midpoint and prevents the elbow.`;
+  if (obstacle) return `“${obstacle.name || "This object"}” crosses that point, so the wall cannot be cut there.`;
   return null;
 }
 
 /** Splits an interior wall at its exact geometric midpoint, without moving anything on the floor. */
 export function v5WallSplitAt(P: PlanV5 | null | undefined, wallId: Id): ResultatDivisionMur {
-  const refus = v5WallSplitRefusal(P, wallId);
+  const w0 = v5WallById(P, wallId);
+  if (!P || !w0) return { refus: "This wall no longer exists." };
+  return v5WallSplitAtPoint(P, wallId, v5WallSplitPoint(w0).milieu);
+}
+
+/**
+ * SPLITS A WALL AT AN ARBITRARY POINT ON ITS BODY, which is what a T junction needs: bringing a
+ * wall's end onto another wall's flank must not only CONNECT them, it must cut the crossed wall in
+ * two at the contact, so the bar of the T becomes two walls with their own handles. The midpoint
+ * split of the "+" is this same function called at the middle.
+ *
+ * `pt` is projected onto the wall, so the caller may pass the raw contact point.
+ */
+export function v5WallSplitAtPoint(P: PlanV5 | null | undefined, wallId: Id, pt: Pt): ResultatDivisionMur {
+  const w0 = v5WallById(P, wallId);
+  if (!P || !w0) return { refus: "This wall no longer exists." };
+  const proj = closestOnSeg(pt[0], pt[1], w0.a[0], w0.a[1], w0.b[0], w0.b[1]);
+  const coupe: Pt = [v5R2(proj.x), v5R2(proj.y)];
+  const premiere = Math.hypot(coupe[0] - w0.a[0], coupe[1] - w0.a[1]);
+  const refus = v5WallSplitRefusal(P, wallId, premiere);
   if (refus) return { refus };
-  const plan = P!;
-  const w = v5WallById(plan, wallId)!;
+  const plan = P;
+  const w = w0;
   const ancienB: Pt = [w.b[0], w.b[1]];
-  const { milieu, premiereMoitie: demiLongueur } = v5WallSplitPoint(w);
+  const milieu = coupe, demiLongueur = premiere;
   const id = v5NewId("w", plan);
   const nouveau: Mur = { id, a: [milieu[0], milieu[1]], b: ancienB, t: w.t, isOutline: false };
   if (w.free !== undefined) nouveau.free = w.free;
@@ -954,6 +992,127 @@ export function v5WallSplitAt(P: PlanV5 | null | undefined, wallId: Id): Resulta
   }
   plan.walls.push(nouveau);
   return { id };
+}
+
+// ---- A T JUNCTION CUTS THE WALL IT LANDS ON ----------------------------------------------------
+// Owner's request, in his words: bringing a wall's END onto another wall must (a) connect them and
+// (b) cut the wall that forms the bar of the T. Connecting alone was already happening (the snap
+// puts the endpoint exactly on the other wall's axis), but the crossed wall stayed whole, so the
+// two halves of the bar could not be moved, split or deleted independently.
+//
+// THE MARGIN IS WHAT KEEPS THIS SANE. A contact within a few centimetres of the crossed wall's own
+// END is not a T, it is two walls meeting corner to corner: cutting there would produce a stub of
+// nothing. `MARGE_T` is that floor, and it is the same order as the junction tolerance itself.
+const MARGE_T = 5;
+
+/** The wall whose BODY passes through `pt`, if cutting it there would make a real T. */
+export function v5MurTraverse(P: PlanV5 | null | undefined, pt: Pt, exclure: readonly Id[]): Mur | null {
+  if (!P) return null;
+  const exclus = idsMursExclus(exclure);
+  for (const w of (P.walls || [])) {
+    if (w.isOutline || exclus.has(String(w.id))) continue;
+    const c = closestOnSeg(pt[0], pt[1], w.a[0], w.a[1], w.b[0], w.b[1]);
+    if (c.dist > 2) continue;
+    const dA = Math.hypot(c.x - w.a[0], c.y - w.a[1]);
+    const dB = Math.hypot(c.x - w.b[0], c.y - w.b[1]);
+    if (dA < MARGE_T || dB < MARGE_T) continue;      // corner to corner, not a T
+    return w;
+  }
+  return null;
+}
+
+// ---- MERGING TWO WALLS BACK INTO ONE -----------------------------------------------------------
+// The exact inverse of the split, and the owner asked for it in those words: having partitioned a
+// wall, he wants to put it back together when the two pieces still continue one another. A "+"
+// that cuts and a "-" that welds are the same pair of scissors.
+//
+// THE GUARD IS WHAT MAKES IT SAFE, and it is not "are they roughly aligned". Three walls meeting at
+// a point is a T, and welding two of them would silently swallow the third's junction; so the
+// junction must belong to EXACTLY these two. And a facade is derived from the outline, so it can
+// take part in nothing.
+
+/** How close two endpoints must be to count as the same joint. Same 2 cm as junction detection. */
+const JOINT_TOL = 2;
+/** How straight the two walls must be to be weldable: about 2 degrees of slack. */
+const COLIN_TOL = 0.035;
+
+export interface FusionMur { autre: Id; bout: "a" | "b"; autreBout: "a" | "b"; }
+
+const unitaire = (w: Mur, de: "a" | "b"): Pt => {
+  const vers = de === "a" ? w.b : w.a;
+  const dx = vers[0] - w[de][0], dy = vers[1] - w[de][1];
+  const L = Math.hypot(dx, dy) || 1e-9;
+  return [dx / L, dy / L];
+};
+
+/** Is this wall's `bout` end weldable to exactly one collinear neighbour? */
+export function v5WallMergeCandidate(P: PlanV5 | null | undefined, wallId: Id, bout: "a" | "b"): FusionMur | null {
+  const w = v5WallById(P, wallId);
+  if (!P || !w || w.isOutline) return null;
+  const pt = w[bout];
+  let trouve: FusionMur | null = null;
+  for (const x of (P.walls || [])) {
+    if (x === w) continue;
+    for (const k of ["a", "b"] as const) {
+      if (Math.hypot(x[k][0] - pt[0], x[k][1] - pt[1]) > JOINT_TOL) continue;
+      // A THIRD wall at the same joint means this is a T, and welding would swallow its junction.
+      if (trouve || x.isOutline) return null;
+      trouve = { autre: x.id, bout, autreBout: k };
+    }
+    // A wall whose FLANK passes through the joint is a third party too, even without an endpoint
+    // there: welding across it would bury a junction inside the new wall.
+    if (!x.isOutline && closestOnSeg(pt[0], pt[1], x.a[0], x.a[1], x.b[0], x.b[1]).dist <= JOINT_TOL
+      && Math.hypot(x.a[0] - pt[0], x.a[1] - pt[1]) > JOINT_TOL
+      && Math.hypot(x.b[0] - pt[0], x.b[1] - pt[1]) > JOINT_TOL) return null;
+  }
+  if (!trouve) return null;
+  const x = v5WallById(P, trouve.autre)!;
+  // Collinear means the two walls CONTINUE one another: leaving the joint, they point in opposite
+  // directions. The cross product alone would also accept a wall folded back onto itself.
+  const u = unitaire(w, bout), v = unitaire(x, trouve.autreBout);
+  const croix = Math.abs(u[0] * v[1] - u[1] * v[0]);
+  const scal = u[0] * v[0] + u[1] * v[1];
+  if (croix > COLIN_TOL || scal > -0.9) return null;
+  return trouve;
+}
+
+/** Welds `wallId` to the neighbour meeting its `bout` end. The merged wall keeps `wallId`. */
+export function v5WallMergeAt(P: PlanV5 | null | undefined, wallId: Id, bout: "a" | "b"): { refus: string } | { id: Id } {
+  const f = v5WallMergeCandidate(P, wallId, bout);
+  if (!f) return { refus: "These two walls do not continue one another, or something else meets them here." };
+  const plan = P!;
+  const w = v5WallById(plan, wallId)!, x = v5WallById(plan, f.autre)!;
+  const A: Pt = bout === "a" ? [w.b[0], w.b[1]] : [w.a[0], w.a[1]];
+  const B: Pt = f.autreBout === "a" ? [x.b[0], x.b[1]] : [x.a[0], x.a[1]];
+  const L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+  if (!(L > 0)) return { refus: "These two walls would weld into nothing." };
+  const ux = (B[0] - A[0]) / L, uy = (B[1] - A[1]) / L;
+
+  // EVERY OPENING IS RE-MEASURED FROM THE NEW `a`, BY PROJECTION, and not by adding lengths. Adding
+  // works only when both walls happen to be stored in the same direction, and the direction of a
+  // wall is arbitrary: a merge that assumed it would slide half the doors and windows to the wrong
+  // end. Projecting both ends of the opening and keeping the smaller one is direction-agnostic.
+  for (const o of plan.openings || []) {
+    const surW = String(o.wallId) === String(wallId), surX = String(o.wallId) === String(f.autre);
+    if (!surW && !surX) continue;
+    const q = surW ? w : x;
+    const ql = Math.hypot(q.b[0] - q.a[0], q.b[1] - q.a[1]) || 1e-9;
+    const qux = (q.b[0] - q.a[0]) / ql, quy = (q.b[1] - q.a[1]) / ql;
+    const p0: Pt = [q.a[0] + qux * o.t0, q.a[1] + quy * o.t0];
+    const p1: Pt = [q.a[0] + qux * (o.t0 + o.w), q.a[1] + quy * (o.t0 + o.w)];
+    const d0 = (p0[0] - A[0]) * ux + (p0[1] - A[1]) * uy;
+    const d1 = (p1[0] - A[0]) * ux + (p1[1] - A[1]) * uy;
+    o.wallId = wallId;
+    o.t0 = v5R2(clamp(Math.min(d0, d1), 0, Math.max(0, L - o.w)));
+  }
+
+  w.a = [v5R2(A[0]), v5R2(A[1])];
+  w.b = [v5R2(B[0]), v5R2(B[1])];
+  // A welded wall stays put. If either piece was a free partition, the result must be one too:
+  // letting the through rule loose on it would stretch the weld somewhere nobody asked for.
+  if (w.free === 1 || x.free === 1) w.free = 1;
+  plan.walls = (plan.walls || []).filter((q) => String(q.id) !== String(f.autre));
+  return { id: w.id };
 }
 
 // ---- WHO IS ALLOWED TO DISAPPEAR (C-13) --------------------------------------------------------

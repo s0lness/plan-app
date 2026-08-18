@@ -16,9 +16,11 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
+import { v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
+import { gesteActif } from "../gestes/sortie.ts";
 import { floorPatternDefs } from "./sol.ts";
 import { resolveColor, withAlpha } from "./couleurs.ts";
 import { pieceIconSVG } from "./icones.ts";
@@ -61,13 +63,22 @@ function planifierMasquageMur(ctx: Contexte, layer: HTMLElement): void {
 function murGeometrique(ctx: Contexte, e: PointerEvent): string | null {
   const p = evtApt(ctx, e);
   let best: { id: string; d: number } | null = null;
+  let tenu: number | null = null;
   for (const w of (ctx.etat.plan.walls || [])) {
     const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], ll = dx * dx + dy * dy;
     const u = ll ? Math.max(0, Math.min(1, ((p.x - w.a[0]) * dx + (p.y - w.a[1]) * dy) / ll)) : 0;
     const d = Math.hypot(p.x - (w.a[0] + u * dx), p.y - (w.a[1] + u * dy));
     const reach = Math.max((w.t || WALL) / 2, 7 / Math.max(0.01, ctx.vue.scale));
     if (d <= reach && (!best || d < best.d)) best = { id: String(w.id), d };
+    if (d <= reach && String(w.id) === ctx.ihm.hoverWall) tenu = d;
   }
+  // THE WALL YOU ARE ALREADY ON KEEPS THE HOVER unless another one is CLEARLY closer. Without this
+  // hysteresis, walking the pointer toward a wall's own end flips the hover to the neighbour that
+  // meets it there, because at a junction the two are equidistant. The owner then aims at one
+  // wall's end handle and grabs the other one's: measured on the real flat, the element under a
+  // 47 cm partition's tip belonged to the wall next to it. A candidate must beat the incumbent by
+  // a clear margin, not by a rounding error.
+  if (tenu !== null && (!best || best.d > tenu * 0.6)) return ctx.ihm.hoverWall;
   return best?.id || null;
 }
 
@@ -145,8 +156,13 @@ export function renderV5(ctx: Contexte): void {
 
 /** Floors per cell, grid, wall bands (ONE per wall only), and hit shapes. */
 export function renderFond(ctx: Contexte, layer: HTMLElement, P: PlanV5, bb: BBox, S: number): void {
-  const old = layer.querySelector("svg.v5svg");
-  if (old) old.remove();
+  // TWO BACKGROUND LAYERS, AND THAT IS THE WHOLE POINT OF THIS FUNCTION'S SHAPE. A rug lies ON THE
+  // FLOOR and a wall rises from it, so a rug spread under a partition must pass UNDER it. With a
+  // single svg holding both the floors and the wall bands there was nowhere to put it: above that
+  // svg it covered the walls (which is what the owner saw), below it the opaque floor fill hid it
+  // completely. So the floors go in one svg, the wall bands in another, and floor coverings are
+  // painted between the two (`estAuSol`, `rendu/meubles.ts`).
+  layer.querySelectorAll("svg.v5svg").forEach((n) => n.remove());
   const X = (x: number): number => v5R2((x - bb.minX) * S);
   const Y = (y: number): number => v5R2((y - bb.minY) * S);
   const pts = (poly: readonly Pt[]): string => poly.map((p) => X(p[0]) + "," + Y(p[1])).join(" ");
@@ -174,25 +190,32 @@ export function renderFond(ctx: Contexte, layer: HTMLElement, P: PlanV5, bb: BBo
           <rect x="0" y="0" width="${W}" height="${H}" fill="url(#v5gf)"/>
           <rect x="0" y="0" width="${W}" height="${H}" fill="url(#v5gm)"/></g>`;
   });
+  // From here on, everything belongs to the WALLS layer, which is painted above the floor coverings.
+  let murs = "";
   // outline band (closed) then one segment per interior wall: never two bands at the same spot
   const outBand = Math.max(2, WALL * gs);
-  body += `<polygon points="${pts(P.outline)}" fill="none" stroke="#3b3f3d" stroke-width="${outBand}" stroke-linejoin="miter"/>
+  murs += `<polygon points="${pts(P.outline)}" fill="none" stroke="#3b3f3d" stroke-width="${outBand}" stroke-linejoin="miter"/>
       <polygon points="${pts(P.outline)}" fill="none" stroke="${cWall}" stroke-width="1" stroke-linejoin="miter" opacity="0.6"/>`;
   const selW = ctx.ihm.selWall;
   (P.walls || []).forEach((w) => {
     if (w.isOutline) return;
     const band = Math.max(2, (w.t || WALL) * gs);
     const cls = "v5band" + (String(selW) === String(w.id) ? " sel" : "");
-    body += `<line class="${cls}" data-wid="${escapeHtml(w.id)}" x1="${X(w.a[0])}" y1="${Y(w.a[1])}" x2="${X(w.b[0])}" y2="${Y(w.b[1])}"
+    murs += `<line class="${cls}" data-wid="${escapeHtml(w.id)}" x1="${X(w.a[0])}" y1="${Y(w.a[1])}" x2="${X(w.b[0])}" y2="${Y(w.b[1])}"
         stroke="#3b3f3d" stroke-width="${band}" stroke-linecap="square"/>`;
   });
-  const svg = document.createElementNS(SVGNS, "svg");
-  svg.setAttribute("class", "v5svg");
-  svg.setAttribute("width", String(W));
-  svg.setAttribute("height", String(H));
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  svg.innerHTML = `<defs>${defs}</defs>${body}`;
-  layer.insertBefore(svg, layer.firstChild);
+  const faire = (classe: string, dedans: string): SVGSVGElement => {
+    const svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("class", classe);
+    svg.setAttribute("width", String(W));
+    svg.setAttribute("height", String(H));
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.innerHTML = dedans;
+    return svg;
+  };
+  // The patterns live with the floors; the walls layer needs none.
+  layer.insertBefore(faire("v5svg v5svg-murs", murs), layer.firstChild);
+  layer.insertBefore(faire("v5svg v5svg-sol", `<defs>${defs}</defs>${body}`), layer.firstChild);
 }
 
 /**
@@ -395,7 +418,10 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
  * 16 pieces of furniture.
  */
 export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
-  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove").forEach((n) => n.remove());
+  // EVERY handle class belongs in this list, and forgetting one leaves ghosts on screen. `.v5wjoin`
+  // was missing: the merge controls were never removed, so they piled up and survived the deletion
+  // of the very wall they belonged to. Reported from real use as two "-" floating in mid-air.
+  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove,.v5wjoin").forEach((n) => n.remove());
   if (ctx.ihm.hoverWall && !(ctx.etat.plan.walls || []).some((w) => String(w.id) === String(ctx.ihm.hoverWall))) {
     ctx.ihm.hoverWall = null;
   }
@@ -452,16 +478,43 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     h.addEventListener("pointerdown", (ev) => ctx.gestes.contourSommetPointerDown?.(ev as PointerEvent, i));
     layer.appendChild(h);
   });
-  const ids = [ctx.ihm.selWall, ctx.ihm.hoverWall].filter((id, i, a): id is string => !!id && a.indexOf(id) === i);
+  // THE HANDLES BELONG TO THE WALL UNDER THE POINTER, not to the selected one. Keeping them on a
+  // SELECTED wall meant that after drawing a partition, its five discs stayed floating on screen
+  // for as long as it remained selected, and they stole the clicks meant for the wall next to it:
+  // the owner reported having to click away or press Escape before he could split or delete
+  // anything else. Selection still highlights the wall and drives its sheet; it just does not own
+  // the controls. The selected wall is kept in the list only WHILE A GESTURE IS RUNNING on it, so
+  // dragging a handle past the wall it belongs to does not make it vanish under the hand.
+  const ids = [gesteActif() ? ctx.ihm.selWall : null, ctx.ihm.hoverWall]
+    .filter((id, i, a): id is string => !!id && a.indexOf(id) === i);
   const murs = ids.map((id) => (ctx.etat.plan.walls || []).find((q) => String(q.id) === String(id))).filter((w) => w !== undefined);
   for (const w of murs) {
     const mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
     const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], L = Math.hypot(dx, dy) || 1;
     const lenpx = L * S;
     const sMid = toC(mx, my);
+    // A SHORT WALL SHRINKS ITS HANDLES: it never moves them and never hides them. Hiding was the
+    // defect the owner hit, a 47 cm partition offering one handle out of five, with the END HANDLE
+    // OF THE NEIGHBOURING WALL sitting on its tip and taking the gesture. Pushing them outward was
+    // tried the same day and rejected: the disc then no longer sits where the end IS, so pressing
+    // the visible tip of the wall fell through to DRAWING, the same defect in another hat.
+    // Position must stay truthful. Size is what gives, down to 55 %, which keeps a 9 px target.
+    const facteur = Math.max(0.55, Math.min(1, lenpx / 56));
+    const taille = (base: number): string => {
+      const d = base * facteur;
+      return `width:${d.toFixed(1)}px;height:${d.toFixed(1)}px;margin:${(-d / 2).toFixed(1)}px 0 0 ${(-d / 2).toFixed(1)}px;`;
+    };
+    // UNE FAÇADE N'A PAS DEUX COMMANDES AU MÊME ENDROIT. Sa poignée de déplacement ne sait que
+    // SÉLECTIONNER (le contour se remodèle par ses arêtes et ses coins), et elle se pose au milieu
+    // du segment, exactement là où la bande `.edge` du contour se saisit. Depuis que les poignées
+    // passent au-dessus des meubles, elle passait aussi au-dessus de `.edge` et volait le
+    // glissement: tirer une façade ne la déplaçait plus. Une fois le contour révélé, `.edge`
+    // sélectionne ET déplace, donc la poignée n'a plus de raison d'être là.
+    if (w.isOutline && contourVisible) continue;
     const move = document.createElement("div");
     move.className = "v5wmove";
     move.dataset["w"] = String(w.id);
+    move.style.cssText = taille(20);
     move.style.left = sMid.x + "px";
     move.style.top = sMid.y + "px";
     move.title = w.isOutline ? "Click to select this facade" : "Click to select this wall, or drag to move it";
@@ -470,26 +523,23 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // A facade is derived from the outline. Its move handle deliberately SELECTS only: moving the
     // outline remains the job of its existing edge and vertex controls.
     if (w.isOutline) continue;
-    // The rendered diameters are 20 px for move/elbow/delete and 16 px for endpoints. At least
-    // 48 px leaves 4 px between the central move target and each endpoint. The lower-priority
-    // elbow and delete controls appear from 132 px, which adds a 10 px pointer lane around the
-    // three central targets, so a short working-zoom partition remains a
-    // clear three-target row instead of a five-target cluster.
-    const showEnds = lenpx >= 48;
-    const showDetails = lenpx >= 132;
+    // The split and delete controls sit on the PERPENDICULAR, so they never crowd the axis. The
+    // only length they cannot survive is one where they would swallow the segment itself.
+    const showDetails = lenpx >= 28;
     // ENDPOINT HANDLES (owner's report: "choper les extrémités des murs et pouvoir étendre et
     // relier à d'autres murs"). One per end, sitting EXACTLY on the endpoint: unlike the
     // outline's "+" (G-15) there is no selection click to steal here, since the wall's own drag
     // band already covers the whole segment INCLUDING its very tip, and grabbing the small
     // circle right on top of it starts `v5StartWallEndDrag` instead (wired through
     // `ctx.gestes.boutMurPointerDown`, `gestes/branchement.ts`), which moves ONLY that end.
-    if (showEnds) (["a", "b"] as const).forEach((bout) => {
+    (["a", "b"] as const).forEach((bout) => {
       const p = w[bout];
       const s = toC(p[0], p[1]);
       const h = document.createElement("div");
       h.className = "v5wend";
       h.dataset["w"] = String(w.id);
       h.dataset["bout"] = bout;
+      h.style.cssText = taille(16);
       h.style.left = s.x + "px";
       h.style.top = s.y + "px";
       h.title = "Drag to extend this wall, or connect it to another";
@@ -506,16 +556,24 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // half-thickness, exactly the outline fix's shape (`outlineOutward`, an outward normal), so
     // the drag band stays reachable at its own center.
     if (!showDetails) continue;
-    const nx = -dy / L, ny = dx / L;
+    // THE SIDE IS DECIDED ON SCREEN, NOT BY THE WALL'S STORED DIRECTION. The normal of a segment
+    // flips with the order of `a` and `b`, which is arbitrary: two walls drawn the same way but
+    // stored in opposite directions put the delete cross on opposite sides, and the owner has to
+    // look for it every time. We therefore orient the normal so it always points DOWN the screen,
+    // and to the RIGHT for a vertical wall. The delete cross then always sits below (or right of)
+    // the wall, and the split control always above (or left of) it.
+    let nx = -dy / L, ny = dx / L;
+    if (ny < 0 || (Math.abs(ny) < 1e-9 && nx < 0)) { nx = -nx; ny = -ny; }
     const off = Math.max(((w.t || 0) * S) / 2 + 16, 22);
-    // The elbow handle uses the same clearance as the delete cross, on the opposite normal. If it
+    // The split control uses the same clearance as the delete cross, on the opposite normal. If it
     // sat on the segment itself it would steal the wall band's midpoint, the ordinary place used
     // to grab the selected wall again and nudge the whole partition.
     const coude = document.createElement("div");
     coude.className = "v5wmid";
     coude.dataset["w"] = String(w.id);
-    coude.textContent = "⌜";
-    coude.title = "Drag to split this wall and move the new joint";
+    coude.textContent = "+";
+    coude.title = "Split this wall in two here";
+    coude.style.cssText = taille(20);
     coude.style.left = (sMid.x - nx * off) + "px";
     coude.style.top = (sMid.y - ny * off) + "px";
     coude.addEventListener("pointerdown", (ev) => ctx.gestes.coudeMurPointerDown?.(ev as PointerEvent, String(w.id)));
@@ -526,10 +584,32 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     x.dataset["w"] = String(w.id);
     x.textContent = "×";
     x.title = "Delete this wall (the two rooms merge)";
+    x.style.cssText = taille(20);
     x.style.left = s.x + "px";
     x.style.top = s.y + "px";
-    x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent));
+    x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent, String(w.id)));
     layer.appendChild(x);
+
+    // THE "-" ONLY EXISTS WHERE WELDING IS LEGITIMATE. The model decides (`v5WallMergeCandidate`):
+    // exactly two walls at this joint, neither of them a facade, and the two continuing one
+    // another. A control that appears and then refuses teaches nothing; one that is simply absent
+    // says "not here" without a word. It sits on the same side as the "+", so the pair that cuts
+    // and welds reads together, and the delete cross keeps the other side to itself.
+    (["a", "b"] as const).forEach((bout) => {
+      if (!v5WallMergeCandidate(ctx.etat.plan, w.id, bout)) return;
+      const p = toC(w[bout][0], w[bout][1]);
+      const m = document.createElement("div");
+      m.className = "v5wjoin";
+      m.dataset["w"] = String(w.id);
+      m.dataset["bout"] = bout;
+      m.textContent = "−";
+      m.title = "Weld this wall to the one it continues";
+      m.style.cssText = taille(20);
+      m.style.left = (p.x - nx * off) + "px";
+      m.style.top = (p.y - ny * off) + "px";
+      m.addEventListener("pointerdown", (ev) => ctx.gestes.fusionnerMurPointerDown?.(ev as PointerEvent, String(w.id), bout));
+      layer.appendChild(m);
+    });
   }
 }
 

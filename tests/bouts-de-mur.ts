@@ -24,7 +24,7 @@
 //   node tests/bouts-de-mur.ts
 import type { DonneeDynamique } from "./_types.ts";
 import { v5ResoudreGeometrie, v5WallEndDragApply, v5WallEndDrop } from "../src/ts/gestes/murs.ts";
-import { v5SnapWallEnd } from "../src/ts/modele/edition.ts";
+import { v5MurTraverse, v5SnapWallEnd, v5WallSplitAtPoint } from "../src/ts/modele/edition.ts";
 import { v5RebuildCells } from "../src/ts/modele/cellules.ts";
 import { sanitizeV5Plan } from "../src/ts/modele/migrations.ts";
 import type { Contexte } from "../src/ts/app/contexte.ts";
@@ -149,6 +149,77 @@ test("accroche_exacte_sur_le_contour", (a: DonneeDynamique) => {
   const p = v5SnapWallEnd(P, "w1", 200, 3, 1);
   a(!!p, "un point à 3 unités de la façade doit accrocher");
   a(!!p && p[0] === 200 && p[1] === 0, `l'accroche doit tomber EXACTEMENT sur le contour, vu ${JSON.stringify(p)}`);
+});
+
+// LA PORTEE D'ACCROCHE SE MESURE EN PIXELS, DONC ELLE GRANDIT QUAND ON DEZOOME. Elle etait
+// plafonnee a WALL (12 cm) par un `Math.min`, ce qui annulait le terme en pixels cense l'elargir:
+// des que l'echelle passait sous 1,25 px/cm, c'est-a-dire a tout zoom de travail, il fallait viser
+// a six pixels pres. Signale a l'usage: tirer le bout d'un mur contre une facade ne l'y accrochait
+// pas. Le meme point, a la meme distance en centimetres, doit accrocher a echelle 0,4 alors qu'il
+// est trop loin a echelle 3.
+test("la_portee_d_accroche_grandit_quand_on_dezoome", (a: DonneeDynamique) => {
+  const P = plan([{ id: "w1", a: [100, 100], b: [100, 200], t: 12, isOutline: false }]);
+  const loinEnCm = 18;                       // au-dela de l'ancien plafond de 12 cm
+  const dezoome = v5SnapWallEnd(P, "w1", 200, loinEnCm, 0.4);
+  a(!!dezoome && dezoome[1] === 0,
+    `a echelle 0,4 ce point est a 7 px de la facade et doit accrocher, vu ${JSON.stringify(dezoome)}`);
+  const zoome = v5SnapWallEnd(P, "w1", 200, loinEnCm, 3);
+  a(zoome === null,
+    `a echelle 3 le meme point est a 54 px et ne doit rien accrocher, vu ${JSON.stringify(zoome)}`);
+});
+
+// LA CIBLE EST LA BANDE, PAS L'AXE. Un mur est une bande de 12 cm (60 pour un porteur), et l'oeil
+// vise la bande: « je l'ai pose contre le mur » veut dire que le pointeur est a sa FACE, deja a une
+// demi-epaisseur de l'axe auquel l'accroche se comparait. Mesure sur le vrai plan: la prise ne se
+// declenchait qu'a 9 cm de l'axe, soit 3 cm PASSE la face interieure, donc lacher la ou le mur
+// s'arrete visiblement ne faisait rien. Signale deux fois. Consequence directe et testable: a
+// distance d'axe egale, un mur EPAIS accroche la ou un mur FIN n'accroche pas.
+test("un_mur_epais_accroche_de_plus_loin_qu_un_mur_fin", (a: DonneeDynamique) => {
+  const aDistance = 26;                       // cm depuis l'AXE du mur vise
+  const fin = plan([
+    { id: "w1", a: [40, 40], b: [40, 90], t: 12, isOutline: false },
+    { id: "cible", a: [200, 100], b: [200, 200], t: 12, isOutline: false },
+  ]);
+  a(v5SnapWallEnd(fin, "w1", 200 + aDistance, 150, 1) === null,
+    `a ${aDistance} cm de l'axe d'un mur de 12 cm, on est a 20 cm de sa face: pas d'accroche`);
+  const epais = plan([
+    { id: "w1", a: [40, 40], b: [40, 90], t: 12, isOutline: false },
+    { id: "cible", a: [200, 100], b: [200, 200], t: 40, isOutline: false },
+  ]);
+  const p = v5SnapWallEnd(epais, "w1", 200 + aDistance, 150, 1);
+  a(!!p && p[0] === 200,
+    `le MEME point, contre un mur de 40 cm, n'est qu'a 6 cm de sa face et doit accrocher, vu ${JSON.stringify(p)}`);
+});
+
+// UN T COUPE LA BARRE QU'IL TOUCHE. Demande du proprietaire: amener le bout d'un mur sur un autre
+// doit (a) les connecter et (b) couper le mur qui forme la barre du T, pour que ses deux moities
+// deviennent des murs a part entiere avec leurs propres commandes. La connexion marchait deja par
+// l'accroche; la coupe est la partie qui manquait.
+test("un_bout_pose_au_milieu_d_un_mur_le_coupe_en_deux", (a: DonneeDynamique) => {
+  const P = plan([
+    { id: "barre", a: [200, 50], b: [200, 250], t: 12, isOutline: false },
+    { id: "pied", a: [40, 150], b: [190, 150], t: 12, isOutline: false },
+  ]);
+  const cible = v5MurTraverse(P, [200, 150], ["pied"]);
+  if (!a(!!cible && String(cible.id) === "barre", `la barre du T doit etre reconnue, vu ${cible && cible.id}`)) return;
+  const r = v5WallSplitAtPoint(P, "barre", [200, 150]);
+  if (!a("id" in r, `la coupe doit reussir, vu ${JSON.stringify(r)}`) || !("id" in r)) return;
+  const barre = P.walls.find((w) => String(w.id) === "barre")!;
+  const neuf = P.walls.find((w) => String(w.id) === String(r.id))!;
+  a(barre.a[1] === 50 && barre.b[1] === 150, `la moitie haute doit aller de 50 a 150, vu ${JSON.stringify([barre.a, barre.b])}`);
+  a(neuf.a[1] === 150 && neuf.b[1] === 250, `la moitie basse doit aller de 150 a 250, vu ${JSON.stringify([neuf.a, neuf.b])}`);
+  a(barre.a[0] === 200 && neuf.b[0] === 200, "les deux moities doivent rester sur la meme droite");
+});
+
+// ET UN CONTACT PRES DU BOUT N'EST PAS UN T, c'est deux murs qui se rejoignent en coin. Couper la
+// produirait un moignon de quelques centimetres que personne n'a demande.
+test("un_contact_pres_du_bout_de_la_barre_n_est_pas_un_T", (a: DonneeDynamique) => {
+  const P = plan([
+    { id: "barre", a: [200, 50], b: [200, 250], t: 12, isOutline: false },
+    { id: "pied", a: [40, 52], b: [190, 52], t: 12, isOutline: false },
+  ]);
+  a(v5MurTraverse(P, [200, 52], ["pied"]) === null,
+    "un contact a 2 cm du bout de la barre ne doit pas la couper");
 });
 
 test("un_mur_n_accroche_jamais_sur_sa_propre_extremite_fixe", (a: DonneeDynamique) => {

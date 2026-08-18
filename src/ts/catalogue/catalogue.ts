@@ -23,6 +23,8 @@ export interface ItemCatalogue {
   wallMount?: boolean;
   round?: boolean;
   soft?: boolean;
+  /** LIES ON THE FLOOR: painted under the walls, because a wall rises from the floor it covers. */
+  auSol?: boolean;
   /** removed from the palette, but existing plans still carry it */
   legacy?: boolean;
   color: string;
@@ -72,7 +74,7 @@ export const CATALOG: RubriqueCatalogue[] = [
       { type: "tvscreen", name: "TV", w: 120, h: 10, color: "var(--open)" },
       { type: "projector", name: "Projector", w: 35, h: 30, color: "var(--open)" },
       { type: "pscreen", name: "Projection screen", w: 200, h: 10, color: "var(--open)" },
-      { type: "rug", name: "Rug", w: 200, h: 290, soft: true, color: "var(--decor)" },
+      { type: "rug", name: "Rug", w: 200, h: 290, soft: true, auSol: true, color: "var(--decor)" },
       { type: "lamp", name: "Floor lamp", w: 40, h: 40, round: true, color: "var(--open)" },
       { type: "plant", name: "Plant", w: 50, h: 50, round: true, color: "var(--decor)" },
     ],
@@ -284,6 +286,12 @@ function isOpeningType(type: string): boolean {
 }
 
 /** Is this object attached to the wall (opening OR surface-mounted device)? Drives the magnet and rotation. */
+/** Does this type LIE ON THE FLOOR (a rug)? Such a piece is painted under the walls. */
+export function estAuSol(type: string): boolean {
+  const t = TYPEMAP[type];
+  return !!(t && t.auSol);
+}
+
 export function isWallMount(type: string): boolean {
   const t = TYPEMAP[type];
   return !!(t && (t.opening || t.wallMount));

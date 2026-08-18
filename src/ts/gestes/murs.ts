@@ -30,7 +30,7 @@
 // returns a TEXT, it no longer talks on its own.
 
 import type { Contexte } from "../app/contexte.ts";
-import type { Id, Mur, PlanV5, Pt } from "../partage/plan.ts";
+import type { Mur, PlanV5, Pt } from "../partage/plan.ts";
 import { v5Touch, v5On, v5WallById } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
@@ -47,7 +47,10 @@ import {
   v5SnapWallEnd,
   v5SyncOutlineWalls,
   v5ThroughWall,
+  v5WallMergeAt,
+  v5MurTraverse,
   v5WallSplitAt,
+  v5WallSplitAtPoint,
   v5WallSplitRefusal,
   v5WallCovering,
 } from "../modele/edition.ts";
@@ -452,10 +455,76 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
     if (Math.hypot(qx - p0x, qy - p0y) > 1000) return;
     f.x[f.k] = [v5R2(qx), v5R2(qy)];
   });
+  // RULE 3: A JUNCTION THAT WOULD BREAK IS BRIDGED, NOT TORN. Rules 1 and 2 say when a follower
+  // may move and when it must not; neither of them can save the junction when the follower is held
+  // elsewhere, or when it is collinear with the wall being pushed (two parallel lines never meet).
+  // Until now that case simply detached, and `docs/decisions/0005` called the visible gap an
+  // accepted loss. The owner asked for the third answer, twice and with pictures: push a wall that
+  // continues into another one, and a SEGMENT SHOULD APPEAR to keep them joined, turning the tear
+  // into a step. It is better than both of the answers we had, because nothing is lost and nothing
+  // silently tilts.
+  //
+  // Only on the FINAL apply. Bridging on every pointer move would spawn a wall per frame; the
+  // gesture shows the gap opening, which is honest, and closes it on release.
+  // The bridging is called by the GESTURE on release, deliberately not from here: this function's
+  // `final` is ALSO what CANCEL uses to put everything back, and building walls while someone
+  // abandons a gesture is the last thing anyone wants.
   v5ClampOpenings(P);
   if (final) { v5RebuildCells(P); bornerLesMeubles(ctx); }
   v5Touch(ctx);
   return w;
+}
+
+/** The bridging half of rule 3: one segment per junction that the gesture has pulled apart. */
+function v5PontsDeJonction(ctx: Contexte, g: ContexteGlisserMur, ponts: Map<Suiveur, Mur>): void {
+  const P = ctx.etat.plan;
+  const { w, followers } = g;
+  if (!P) return;
+  for (const f of followers) {
+    // Where the contact point WOULD be if it had ridden along with the wall: the same fraction of
+    // the wall it was touching. For a perpendicular push this is the old point plus the offset, so
+    // the bridge comes out perpendicular too, which is the step the owner drew.
+    const cible: Pt = [
+      v5R2(w.a[0] + f.t * (w.b[0] - w.a[0])),
+      v5R2(w.a[1] + f.t * (w.b[1] - w.a[1])),
+    ];
+    const p = f.x[f.k];
+    const ecart = Math.hypot(p[0] - cible[0], p[1] - cible[1]);
+    // Still touching: rule 1 moved it, or the push was too small to separate anything. A junction
+    // that did not break needs no bridge. And it may still be touching the wall SOMEWHERE ELSE
+    // along its length, which is a perfectly good junction: a wall sliding along its own line
+    // keeps meeting the same flank.
+    const inutile = ecart <= 2
+      || closestOnSeg(p[0], p[1], w.a[0], w.a[1], w.b[0], w.b[1]).dist <= 2;
+    const dejaLa = ponts.get(f);
+    if (inutile) {
+      // The push came back: the bridge that was following the hand goes away with it.
+      if (dejaLa) { P.walls = (P.walls || []).filter((q) => q !== dejaLa); ponts.delete(f); }
+      continue;
+    }
+    // ONE bridge per junction, MOVED, not one per frame. The owner asked to see it while dragging
+    // rather than at the release, and the naive way to do that would push a new wall on every
+    // pointer move. The wall is created once and its two ends follow the hand.
+    if (dejaLa) { dejaLa.a = [p[0], p[1]]; dejaLa.b = cible; dejaLa.t = w.t || WALL; continue; }
+    // Built here rather than through `v5TryCreateWall`, which pushes its own history entry,
+    // reselects and saves: all three are wrong in the middle of another gesture's final apply,
+    // which has already pushed one history entry for the whole move.
+    //
+    // A bridge is FREE, always. It is a wall we placed ourselves, exactly where we want it;
+    // leaving it through-running would have the through rule stretch it away from the very joint
+    // it exists to hold. Same thickness as the wall being moved, so the step reads as one piece
+    // of masonry rather than two.
+    const pont: Mur = {
+      id: v5NewId("w"),
+      a: [p[0], p[1]],
+      b: cible,
+      t: w.t || WALL,
+      isOutline: false,
+      free: 1,
+    };
+    P.walls.push(pont);
+    ponts.set(f, pont);
+  }
 }
 
 export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
@@ -469,6 +538,9 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const g = v5WallDragCtx(ctx, wallId);
   if (!g) return;
   const { a0, s, followers } = g;
+  // The bridges of rule 3, kept BY FOLLOWER across the whole gesture so each junction owns one wall
+  // that follows the hand, instead of one wall per pointer move.
+  const ponts = new Map<Suiveur, Mur>();
   beginGesture();
   ctx.crochets.dragStart?.();
   // Pure APARTMENT space (evtApt): the pointer is read in the viewport and converted to cm.
@@ -495,6 +567,7 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
       else d = Math.round(d / 5) * 5;
     }
     v5WallDragApply(ctx, g, d, false);
+    v5PontsDeJonction(ctx, g, ponts);
     render(ctx);
     // The dragged wall, the ones following it, AND THE ONES TOUCHING IT: their length is what we're
     // trying to adjust by pushing this one. `Map` keyed by identifier so as not to dimension twice a
@@ -510,13 +583,17 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const up = (): void => {
     window.removeEventListener("pointermove", move);
     v5ClearDims(ctx);
-    if (moved) { v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx); }
+    if (moved) { v5PontsDeJonction(ctx, g, ponts); v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx); }
     render(ctx);
     endGesture();
     ctx.crochets.dragEnd?.();
   };
   // G-12. Escape: the wall (and its T junctions) return to their position from before the gesture.
-  const cancel = (): void => { v5WallDragApply(ctx, g, 0, true); moved = false; render(ctx); };
+  const cancel = (): void => {
+    // An abandoned gesture leaves NOTHING behind, bridges included.
+    if (ponts.size) { P.walls = (P.walls || []).filter((q) => ![...ponts.values()].includes(q)); ponts.clear(); }
+    v5WallDragApply(ctx, g, 0, true); moved = false; render(ctx);
+  };
   window.addEventListener("pointermove", move);
   armGesture(up, null, cancel);   // guaranteed end (G-1)
 }
@@ -616,6 +693,32 @@ export function v5WallEndDragApply(
   return w;
 }
 
+/**
+ * A T JUNCTION CUTS THE WALL IT LANDS ON. Owner's request: bringing a wall's end onto another wall
+ * must connect them AND cut the wall forming the bar of the T, so its two halves become walls in
+ * their own right, each with its handles. Connecting alone already worked, through the snap.
+ *
+ * Called for BOTH ends of the wall that just moved or was just drawn, because either of them can
+ * land on something. A refusal is stated once and does not stop the rest: an opening sitting on the
+ * contact point is a good reason not to cut there, and no reason at all to undo the junction.
+ */
+function v5CouperLesTraverses(ctx: Contexte, w: Mur): void {
+  const P = ctx.etat.plan;
+  if (!P) return;
+  for (const bout of ["a", "b"] as const) {
+    const cible = v5MurTraverse(P, w[bout], [w.id]);
+    if (!cible) continue;
+    const r = v5WallSplitAtPoint(P, cible.id, w[bout]);
+    if ("refus" in r) { toast(r.refus, { geste: true }); continue; }
+    // The two halves are frozen for the same reason the "+" freezes them: a through-running wall
+    // would be stretched straight back across the cut by `v5ResoudreGeometrie`, and the T would
+    // silently become one wall again.
+    const g = v5WallById(ctx, cible.id), d = v5WallById(ctx, r.id);
+    if (g) g.free = 1;
+    if (d) d.free = 1;
+  }
+}
+
 export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unknown, bout: "a" | "b"): void {
   const P = ctx.etat.plan;
   const w = v5WallById(ctx, wallId);
@@ -652,6 +755,10 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
     window.removeEventListener("pointermove", move);
     v5ClearDims(ctx);
     if (moved) {
+      // Le T se coupe AVANT de re-resoudre la geometrie: la coupe cree un mur, et les cellules
+      // doivent etre reconstruites sur le plan qui en resulte, pas sur celui d'avant.
+      const mur = v5WallById(ctx, wallId);
+      if (mur) v5CouperLesTraverses(ctx, mur);
       v5ResoudreGeometrie(P, true);
       const msg = v5FlushOpeningsBorned();
       if (msg) toast(msg, { geste: true });
@@ -677,106 +784,86 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
 }
 
 // =================================================================================================
-//  TOOL 1-TER: DRAGGING A WALL'S MIDPOINT TO CREATE AN ELBOW
+//  TOOL 1-TER: THE "+" SPLITS THE WALL AT ITS MIDPOINT, ON A CLICK
 // =================================================================================================
-// The split is delayed until the pointer crosses the ordinary 3 px geometry threshold. The
-// motionless press therefore remains selection only, with no wall, history entry, or wire diff.
-// Once split, both halves are free partitions because the shared endpoint is deliberately placed
-// in open space. Their shared point uses the endpoint snap cascade, with both halves excluded so
-// the new joint cannot snap back onto itself.
+// It used to be a DRAG that split the wall and placed the new joint in one gesture. The owner asked
+// for the simpler shape and he is right: press the plus, the wall becomes two, and each half then
+// carries the SAME controls at ITS OWN midpoint. So the "+" acts on a click, exactly like the "x"
+// sitting on the other side of the wall, and the joint the two halves now share is a real ENDPOINT
+// that the end handles can grab and extend.
+//
+// A CLICK THAT ACTS IS NOT A CLICK THAT SLIPS. The repository's rule is that a press-release
+// without movement never writes ON THE GEOMETRY: clicking a wall, a corner or an outline edge must
+// only ever select. This control is not geometry, it is a button, like the delete cross that has
+// always removed a wall on a plain click. What the rule forbids is a gesture whose ordinary
+// meaning is "look at this" quietly rewriting the plan.
+//
+// AND BECAUSE THE SPLIT MOVES NOTHING, IT CHANGES NOTHING ELSE. The drag version had to turn both
+// halves into FREE partitions, since a joint dragged into open space would otherwise be stretched
+// straight back out by the through-running rule, and it had to announce that change. A split that
+// leaves every point exactly where it was needs neither: the halves keep whatever nature the wall
+// had. Moving the joint afterwards goes through the endpoint drag, which sets `free` itself.
 
-export function v5StartWallElbowDrag(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
+/**
+ * THE "-" WELDS THIS WALL TO THE NEIGHBOUR MEETING THAT END. The owner's words: having partitioned
+ * a wall, he wants to be able to put it back together when the pieces still continue one another.
+ * A click, like the "+" that cut it and the "x" that removes it; the guard that decides whether the
+ * control exists at all lives in the model (`v5WallMergeCandidate`), so the button is only ever
+ * drawn where welding is legitimate.
+ */
+export function v5MergeWallAt(ctx: Contexte, e: PointerEvent, wallId: unknown, bout: "a" | "b"): void {
   const P = ctx.etat.plan;
-  const w = v5WallById(ctx, wallId);
-  if (!P || !w || w.isOutline) return;
+  if (!P) return;
   if (e.button !== undefined && e.button !== 0) return;
   if (spaceHeld() || measureMode()) return;
   e.preventDefault(); e.stopPropagation();
-  v5SelectWall(ctx, wallId); render(ctx);
+  pushHistory(ctx);
+  const r = v5WallMergeAt(P, String(wallId), bout);
+  if ("refus" in r) { toast(r.refus, { geste: true }); return; }
+  v5SelectWall(ctx, r.id);
+  v5ResoudreGeometrie(P, true);
+  bornerLesMeubles(ctx);
+  v5Touch(ctx);
+  render(ctx);
+  save(ctx);
+}
 
-  const bAvant: Pt = [w.b[0], w.b[1]];
-  const freeAvant = w.free;
-  const ouverturesAvant = (P.openings || []).map((o) => ({
-    o, wallId: o.wallId, t0: o.t0, w: o.w, h: o.h,
-  }));
-  beginGesture();
-  ctx.crochets.dragStart?.();
-  const px0 = e.clientX, py0 = e.clientY;
-  let moved = false, tentative = false;
-  let nouveauId: Id | null = null;
-
-  const move = (ev: PointerEvent): void => {
-    if (!tentative) {
-      if (Math.hypot(ev.clientX - px0, ev.clientY - py0) < 3) return;
-      tentative = true;
-      const refus = v5WallSplitRefusal(P, w.id);
-      if (refus) { toast(refus, { geste: true }); return; }
-      pushHistory(ctx);
-      const division = v5WallSplitAt(P, w.id);
-      if ("refus" in division) { toast(division.refus, { geste: true }); return; }
-      nouveauId = division.id;
-      moved = true;
-    }
-    if (!moved || !nouveauId) return;
-    const second = P.walls.find((q) => String(q.id) === String(nouveauId)) || null;
-    if (!second) return;
-    const cm = evtApt(ctx, ev);
-    const step = sansGrille(ev) ? 1 : (ctx.etat.opts.snap ? 5 : 1);
-    const snapped = v5SnapWallEnd(P, [w.id, second.id], cm.x, cm.y, ctx.vue.scale);
-    const target: Pt = snapped || [Math.round(cm.x / step) * step, Math.round(cm.y / step) * step];
-    w.b = [target[0], target[1]];
-    second.a = [target[0], target[1]];
-    w.free = 1;
-    second.free = 1;
-    v5ResoudreGeometrie(P, false);
-    v5Touch(ctx);
-    render(ctx);
-    v5DrawWallDims(ctx, [w, second]);
-    ctx.crochets.liveAnalyze?.();
-  };
-  const up = (): void => {
-    window.removeEventListener("pointermove", move);
-    v5ClearDims(ctx);
-    if (moved) {
-      v5ResoudreGeometrie(P, true);
-      const msg = v5FlushOpeningsBorned();
-      if (msg) toast(msg, { geste: true });
-      // THE ELBOW CHANGES THE NATURE OF THE WALL, SO IT SAYS SO. A v5 wall is THROUGH-RUNNING by
-      // default: each end is pushed to the first geometry beyond it. The joint just created sits
-      // in open space and IS an end of both halves, so leaving them through-running would stretch
-      // the elbow straight back out. Both halves therefore become free partitions, and that is not
-      // a detail: their OUTER ends stop following the outline as well. Nothing here changes what a
-      // wall is without a word, and this is the only moment the person who did it can see it.
-      if (freeAvant !== 1) {
-        toast("Elbow created. Both halves are now free partitions: their ends no longer stretch to meet what is around them.", { geste: true });
-      }
-      bornerLesMeubles(ctx);
-      v5Touch(ctx);
-    }
-    render(ctx);
-    endGesture();
-    ctx.crochets.dragEnd?.();
-  };
-  const cancel = (): void => {
-    if (moved && nouveauId) {
-      P.walls = P.walls.filter((q) => String(q.id) !== String(nouveauId));
-      w.b = [bAvant[0], bAvant[1]];
-      w.free = freeAvant;
-      for (const avant of ouverturesAvant) {
-        avant.o.wallId = avant.wallId;
-        avant.o.t0 = avant.t0;
-        avant.o.w = avant.w;
-        avant.o.h = avant.h;
-      }
-      v5ResoudreGeometrie(P, true);
-      bornerLesMeubles(ctx);
-      v5Touch(ctx);
-    }
-    moved = false;
-    render(ctx);
-  };
-  window.addEventListener("pointermove", move);
-  armGesture(up, null, cancel);
+export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
+  const P = ctx.etat.plan;
+  if (!P) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  if (spaceHeld() || measureMode()) return;
+  e.preventDefault(); e.stopPropagation();
+  // The refusals are stated, never swallowed: a facade is derived from the outline and cannot be
+  // split, and an opening straddling the midpoint blocks the cut by naming itself.
+  const refus = v5WallSplitRefusal(P, String(wallId));
+  if (refus) { toast(refus, { geste: true }); return; }
+  const avant = v5WallById(ctx, wallId);
+  const traversantAvant = !!avant && avant.free !== 1;
+  pushHistory(ctx);
+  const division = v5WallSplitAt(P, String(wallId));
+  if ("refus" in division) { toast(division.refus, { geste: true }); return; }
+  // THE TWO HALVES ARE FROZEN, OR THE CUT UNDOES ITSELF ON THE SPOT. A v5 wall is THROUGH-RUNNING
+  // by default: each end is pushed to the first geometry beyond it. The joint the split just
+  // created IS an end of both halves, so `v5ResoudreGeometrie` immediately stretches each of them
+  // straight back through it. Measured on the real flat: cutting a wall running from 277 to 1011
+  // left one half at 277..644 and the other at 353..1011, overlapping, looking exactly like the
+  // single wall it was a moment earlier. The person clicking "+" would see nothing happen and
+  // would be holding two walls on top of each other.
+  const moitieA = v5WallById(ctx, wallId), moitieB = v5WallById(ctx, division.id);
+  if (moitieA) moitieA.free = 1;
+  if (moitieB) moitieB.free = 1;
+  // Freezing them CHANGES WHAT THE WALL IS, so it is said once, and only when it changes something:
+  // their outer ends stop following the outline too. Nothing here rewrites a wall's nature silently.
+  if (traversantAvant) {
+    toast("Wall split in two. Both halves are now free partitions: their ends no longer stretch to meet what is around them.", { geste: true });
+  }
+  v5SelectWall(ctx, wallId);
+  v5ResoudreGeometrie(P, true);
+  bornerLesMeubles(ctx);
+  v5Touch(ctx);
+  render(ctx);
+  save(ctx);
 }
 
 // =================================================================================================
@@ -859,6 +946,8 @@ export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | 
   const w: Mur = { id: v5NewId("w"), a: [a[0], a[1]], b: [b[0], b[1]], t: WALL, isOutline: false, free: 1 };
   P.walls.push(w);
   v5ThroughWall(P, w);            // `free`: trimmed by the outline only, kept as drawn otherwise
+  // Un mur TRACE dans un autre forme un T lui aussi, et doit le couper de la meme facon.
+  v5CouperLesTraverses(ctx, w);
   v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx);
   v5SelectWall(ctx, w.id);
   render(ctx); save(ctx);

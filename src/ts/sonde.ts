@@ -187,12 +187,14 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
     v5RenderStats(): StatsCalque {
       const l = ctx.canvas.querySelector<HTMLElement>(".v5layer");
       if (!l) return { layer: 0 };
-      const svg = l.querySelector("svg.v5svg");
+      // COUNTED ON THE LAYER, NOT ON ONE SVG. The background is drawn in TWO svg elements now, the
+      // floors below the floor coverings and the wall bands above them, so a probe that looked
+      // inside "the" svg would report zero bands and be believed.
       return {
         layer: 1,
-        floors: svg ? svg.querySelectorAll("clipPath").length : 0,
-        bands: svg ? svg.querySelectorAll("line.v5band").length : 0,
-        outlineBands: svg ? svg.querySelectorAll("polygon[stroke='#3b3f3d']").length : 0,
+        floors: l.querySelectorAll("clipPath").length,
+        bands: l.querySelectorAll("line.v5band").length,
+        outlineBands: l.querySelectorAll("polygon[stroke='#3b3f3d']").length,
         pieces: l.querySelectorAll(".piece").length,
         openings: l.querySelectorAll(".piece.opening").length,
         labels: l.querySelectorAll(".ov-name").length,
@@ -381,14 +383,14 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
         };
       }).sort((a, b) => (a.id < b.id ? -1 : 1));
       const calque = ctx.canvas.querySelector<HTMLElement>(".v5layer");
-      const svg = calque ? calque.querySelector("svg.v5svg") : null;
+      const fonds = calque ? [...calque.querySelectorAll("svg.v5svg")] : [];
       const barre = $("scaleReadout"), puce = $("areaChip");
       return {
         nbMeubles: meubles.length, nbOuvertures: ouvertures.length, nbMurs: murs.length,
         contour: P.outline,
         vue: { scale: +ctx.vue.scale.toFixed(6), ox: ctx.vue.ox, oy: ctx.vue.oy },
         calque: calque ? [calque.style.left, calque.style.top, calque.style.width, calque.style.height].join("|") : null,
-        fond: svg ? String(svg.innerHTML) : null,
+        fond: fonds.length ? fonds.map((s) => s.innerHTML).join("") : null,
         barreOutils: barre ? String(barre.textContent || "") : null,
         puceSurface: puce ? String(puce.textContent || "") : null,
         pucesRail: [...document.querySelectorAll<HTMLElement>("#roomsList .room-chip")].map((n) => String(n.textContent || "")),

@@ -83,7 +83,8 @@ export interface Gestes {
   contourInsertionPointerDown?: (e: PointerEvent, i: number) => void;
   contourSommetPointerDown?: (e: PointerEvent, i: number) => void;
   contourSommetSupprimer?: (e: PointerEvent, i: number) => void;
-  supprimerMurSelectionne?: (e: PointerEvent) => void;
+  supprimerMurSelectionne?: (e: PointerEvent, id?: string) => void;
+  fusionnerMurPointerDown?: (e: PointerEvent, id: string, bout: "a" | "b") => void;
   /** A selected interior wall's own ENDPOINT handle (owner's report: "choper les extrémités des
    * murs et pouvoir étendre et relier à d'autres murs"), `gestes/murs.ts`'s `v5StartWallEndDrag`. */
   boutMurPointerDown?: (e: PointerEvent, wallId: string, bout: "a" | "b") => void;

@@ -144,22 +144,32 @@ async function seedUnMur() {
   const p = await aptPoint(100, 150); await M("mouseMoved", p.x, p.y); await pause(100);
 }
 
-await test("poignee_milieu_atteignable_et_glisser_cree_le_coude", async () => {
+// LE "+" COUPE AU CLIC. Il glissait, autrefois, pour couper ET placer l'articulation d'un seul
+// geste. Demande du propriétaire, mot pour mot: « j'appuie sur plus, ça me scinde le mur en deux et
+// ça me recrée les mêmes boutons au milieu des deux autres partitions ». Ce cas énonce donc la
+// règle telle qu'elle est maintenant, au lieu de l'ancienne.
+await test("clic_sur_plus_scinde_le_mur_en_deux_moities_jointes", async () => {
   await seedUnMur();
   const h = await centerOf('.v5wmid[data-w="w1"]');
-  if (!ok(h, "la poignée de coude doit exister sur le mur sélectionné")) return;
+  if (!ok(h, "la poignée de coupe doit exister sur le mur survolé")) return;
   const hit = await evaluate(`document.elementFromPoint(${h.x},${h.y})?.classList.contains("v5wmid")`);
   ok(hit === true, "le centre visible de la poignée doit être réellement atteignable");
   const avant = await mursInterieurs();
   ok(avant.length === 1, `un mur intérieur attendu avant le geste, vu ${avant.length}`);
-  await drag(h, { x: h.x + 75, y: h.y });
+  await click(h);
   const apres = await mursInterieurs();
-  if (!ok(apres.length === 2, `le glissement doit créer deux murs, vu ${apres.length}`)) return;
+  if (!ok(apres.length === 2, `le clic doit créer deux murs, vu ${apres.length}`)) return;
   const premier = apres.find((w: VerdictSonde) => w.id === "w1");
   const second = apres.find((w: VerdictSonde) => w.id !== "w1");
   if (!ok(premier && second, `deux moitiés introuvables: ${JSON.stringify(apres)}`)) return;
-  ok(premier.b[0] === second.a[0] && premier.b[1] === second.a[1], `la jonction doit rester partagée, vu ${JSON.stringify(apres)}`);
-  ok(premier.b[0] > 140, `la jonction doit suivre la main vers la droite, vu ${JSON.stringify(premier.b)}`);
+  ok(premier.b[0] === second.a[0] && premier.b[1] === second.a[1],
+    `les deux moitiés doivent partager exactement leur jonction, vu ${JSON.stringify(apres)}`);
+  // ET LA COUPE NE DÉPLACE RIEN. Le mur d'origine allait de a à b; les deux moitiés bout à bout
+  // doivent couvrir exactement le même segment, sinon la coupe a bougé la maçonnerie.
+  ok(premier.a[0] === avant[0].a[0] && premier.a[1] === avant[0].a[1],
+    `la première moitié doit garder le départ du mur, vu ${JSON.stringify(premier.a)}`);
+  ok(second.b[0] === avant[0].b[0] && second.b[1] === avant[0].b[1],
+    `la seconde moitié doit garder l'arrivée du mur, vu ${JSON.stringify(second.b)}`);
 });
 
 await test("poignee_move_deplace_le_mur_entier_sans_creer_de_coude", async () => {
@@ -180,17 +190,35 @@ await test("poignee_move_deplace_le_mur_entier_sans_creer_de_coude", async () =>
   ok((await mursInterieurs()).length === 1, "attraper move ne doit pas diviser le mur");
 });
 
-await test("clic_propre_sur_la_poignee_ne_change_rien", async () => {
+// LE "+" EST UN BOUTON, DONC IL AGIT UNE FOIS. La règle « un appui-relâché sans mouvement n'écrit
+// rien » vise la GÉOMÉTRIE: cliquer un mur, un sommet ou une arête de contour ne doit que
+// sélectionner. Un bouton posé à côté du mur, comme la croix qui supprime depuis toujours, agit au
+// clic. Ce qu'on vérifie ici, c'est qu'il agit UNE SEULE FOIS: un mur créé, une entrée d'historique,
+// et un Ctrl+Z qui rend exactement le plan d'avant.
+await test("le_plus_agit_une_fois_et_un_seul_ctrl_z_le_defait", async () => {
   await seedUnMur();
   const h = await centerOf('.v5wmid[data-w="w1"]');
-  if (!ok(h, "poignée de coude introuvable")) return;
-  const avantPlan = await evaluate(`JSON.stringify(__plan.serialize())`);
+  if (!ok(h, "poignée de coupe introuvable")) return;
+  // `_report` est un bloc de DIAGNOSTIC de la detection des cellules (segments, noeuds, aretes),
+  // present ou absent selon qu'une detection vient de tourner. Le comparer reviendrait a tester
+  // l'instrumentation, pas le plan.
+  const sansRapport = `(function(){var s=__plan.serialize();
+    if (s && s.plan) delete s.plan._report; delete s._report; return JSON.stringify(s);})()`;
+  const avantPlan = await evaluate(sansRapport);
   const avantUndo = await undoCount();
   const avantNombre = (await mursInterieurs()).length;
   await click(h);
-  ok(await undoCount() === avantUndo, "un clic propre ne doit ajouter aucune entrée d'historique");
-  ok((await mursInterieurs()).length === avantNombre, "un clic propre ne doit créer aucun mur");
-  ok(await evaluate(`JSON.stringify(__plan.serialize())`) === avantPlan, "un clic propre doit laisser le plan octet pour octet identique");
+  ok((await mursInterieurs()).length === avantNombre + 1, "le clic doit créer exactement un mur");
+  ok(Number(await undoCount()) === Number(avantUndo) + 1, "le clic doit ajouter exactement une entrée d'historique");
+  await evaluate(`__plan.undo(); true`); await pause(250);
+  ok((await mursInterieurs()).length === avantNombre, "un seul Ctrl+Z doit défaire la coupe");
+  const apresPlan = await evaluate(sansRapport);
+  let ou = "";
+  if (apresPlan !== avantPlan) {
+    let i = 0; while (i < avantPlan.length && avantPlan[i] === apresPlan[i]) i++;
+    ou = ` (a partir de l'octet ${i} : avant=${avantPlan.slice(i - 40, i + 60)} | apres=${apresPlan.slice(i - 40, i + 60)})`;
+  }
+  ok(apresPlan === avantPlan, "après ce Ctrl+Z le plan doit être identique octet pour octet" + ou);
 });
 
 // A v5 wall is THROUGH-RUNNING by default: each end is pushed to the first geometry beyond it. The

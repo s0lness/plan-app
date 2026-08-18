@@ -3,6 +3,12 @@
      The visible target under the pointer decides which gesture starts. */
   .v5layer{position:absolute;left:0;top:0;pointer-events:none;z-index:1;touch-action:none}
   .v5layer svg.v5svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+  /* The background is TWO layers so a floor covering can be painted between them: the floors and
+     their grid below, the wall bands above. A rug lies on the floor and a wall rises from it, so a
+     rug spread under a partition has to pass under it (`estAuSol`, `rendu/meubles.ts`, z-index 2 to
+     5, against 10 and up for every other piece). */
+  .v5layer svg.v5svg-sol{z-index:1}
+  .v5layer svg.v5svg-murs{z-index:6}
   .v5layer .piece{cursor:grab;pointer-events:auto}
   .v5layer .rot-handle,.v5layer .rsz-handle,.v5layer .vtx,.v5layer .mid,.v5layer .edge{pointer-events:auto}
   .v5layer .ov-name{pointer-events:auto;cursor:pointer}
@@ -17,11 +23,26 @@
   .v5wend,.v5wmid,.v5wmove{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
         background:var(--room-bg);border:2px solid var(--accent);z-index:41;cursor:grab;
         pointer-events:auto;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.3)}
-  .v5wmid{width:20px;height:20px;margin:-10px 0 0 -10px;text-align:center;
-        color:var(--accent-ink);font:700 13px/16px var(--mono)}
+  /* The SPLIT control is a "+" and it is dressed exactly like the delete "x": same disc, same
+     size, same filled accent. They are the two commands that ACT on a click, one adding a joint
+     and one removing the wall, so they read as a pair sitting on either side of the segment. The
+     pale outlined discs are the ones you DRAG (the move handle and the two ends). */
+  .v5wmid{width:20px;height:20px;margin:-10px 0 0 -10px;text-align:center;cursor:pointer;
+        background:var(--accent);color:#fff;border-color:var(--room-bg);
+        font:700 15px/16px var(--mono)}
   .v5wmove{width:20px;height:20px;margin:-10px 0 0 -10px;background:var(--accent);border-color:var(--room-bg)}
-  /* Furniture remains above wall controls, so a piece visibly covering a wall owns the press. */
-  .v5wend,.v5wmid,.v5wmove,.v5wx{z-index:9}
+  /* A WALL'S HANDLES SIT ABOVE THE FURNITURE. They used to sit below it, at 9 against a piece's
+     `10 + paint rank`, so that a piece visibly covering a wall would own the press. That reasoning
+     was about the wall's BODY, which no longer captures anything at all: the body falls through to
+     drawing. Applied to the handles it made them unusable, and the owner hit it immediately: a rug
+     spread over a partition swallowed both the "+" and the "x", which were painted underneath it
+     and tinted by it. A control a piece of furniture can cover is not a control. They are small
+     discs that only exist while their wall is hovered, so the surface they take from the furniture
+     underneath is a few pixels, for the few seconds the pointer is on that wall. */
+  .v5wjoin{position:absolute;border-radius:50%;text-align:center;cursor:pointer;pointer-events:auto;
+        background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 15px/16px var(--mono);
+        box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .v5wend,.v5wmid,.v5wmove,.v5wx,.v5wjoin{z-index:70}
   .v5wend:hover,.v5wmid:hover,.v5wmove:hover{background:var(--accent-soft)}
   .v5wend:active,.v5wmid:active,.v5wmove:active{cursor:grabbing}
   .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;
