@@ -168,6 +168,29 @@ test("la_portee_d_accroche_grandit_quand_on_dezoome", (a: DonneeDynamique) => {
     `a echelle 3 le meme point est a 54 px et ne doit rien accrocher, vu ${JSON.stringify(zoome)}`);
 });
 
+// LA CIBLE EST LA BANDE, PAS L'AXE. Un mur est une bande de 12 cm (60 pour un porteur), et l'oeil
+// vise la bande: « je l'ai pose contre le mur » veut dire que le pointeur est a sa FACE, deja a une
+// demi-epaisseur de l'axe auquel l'accroche se comparait. Mesure sur le vrai plan: la prise ne se
+// declenchait qu'a 9 cm de l'axe, soit 3 cm PASSE la face interieure, donc lacher la ou le mur
+// s'arrete visiblement ne faisait rien. Signale deux fois. Consequence directe et testable: a
+// distance d'axe egale, un mur EPAIS accroche la ou un mur FIN n'accroche pas.
+test("un_mur_epais_accroche_de_plus_loin_qu_un_mur_fin", (a: DonneeDynamique) => {
+  const aDistance = 26;                       // cm depuis l'AXE du mur vise
+  const fin = plan([
+    { id: "w1", a: [40, 40], b: [40, 90], t: 12, isOutline: false },
+    { id: "cible", a: [200, 100], b: [200, 200], t: 12, isOutline: false },
+  ]);
+  a(v5SnapWallEnd(fin, "w1", 200 + aDistance, 150, 1) === null,
+    `a ${aDistance} cm de l'axe d'un mur de 12 cm, on est a 20 cm de sa face: pas d'accroche`);
+  const epais = plan([
+    { id: "w1", a: [40, 40], b: [40, 90], t: 12, isOutline: false },
+    { id: "cible", a: [200, 100], b: [200, 200], t: 40, isOutline: false },
+  ]);
+  const p = v5SnapWallEnd(epais, "w1", 200 + aDistance, 150, 1);
+  a(!!p && p[0] === 200,
+    `le MEME point, contre un mur de 40 cm, n'est qu'a 6 cm de sa face et doit accrocher, vu ${JSON.stringify(p)}`);
+});
+
 test("un_mur_n_accroche_jamais_sur_sa_propre_extremite_fixe", (a: DonneeDynamique) => {
   // Dragging w1's `b` back toward its OWN fixed end `a` ([100,100]) must NOT snap there (that
   // would collapse the wall to zero length the moment the hand got close): excluded by

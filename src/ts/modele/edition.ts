@@ -100,6 +100,8 @@ export interface Barriere {
   a: Pt;
   b: Pt;
   outline: boolean;
+  /** cm: the barrier's THICKNESS. A wall is a band, not a line, and a hand aims at the band. */
+  t: number;
 }
 
 // "Barrier" segments: outline edges + interior walls (except `excludeId`).
@@ -119,11 +121,11 @@ export function v5Barriers(P: PlanV5 | null | undefined, excludeId: ExclusionMur
   const O = P.outline || [];
   for (let i = 0; i < O.length; i++) {
     const a = O[i]!, b = O[(i + 1) % O.length]!;
-    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1) out.push({ a, b, outline: true });
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1) out.push({ a, b, outline: true, t: WALL });
   }
   (P.walls || []).forEach((w) => {
     if (w.isOutline || exclus.has(String(w.id))) return;
-    out.push({ a: w.a, b: w.b, outline: false });
+    out.push({ a: w.a, b: w.b, outline: false, t: w.t || WALL });
   });
   return out;
 }
@@ -862,12 +864,12 @@ export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, sn
 /** cm: tolerance for stage 1 (another wall's endpoint, or an outline corner). A junction has to
  * hold, so it gets a more forgiving target than the drawing tool's own vertex snap. */
 function v5SnapTolBout(echelle: number): number {
-  return Math.max(WALL, 14 / (echelle || 1));
+  return Math.max(WALL, 16 / (echelle || 1));
 }
 
 /** cm: tolerance for stage 2 (a point ON another wall's segment, or on the outline's own body). */
 function v5SnapTolSegment(echelle: number): number {
-  return Math.max(WALL / 2, 10 / (echelle || 1));
+  return Math.max(WALL / 2, 18 / (echelle || 1));
 }
 
 /**
@@ -901,7 +903,13 @@ export function v5SnapWallEnd(
   let bestE: Pt | null = null, bdE = v5SnapTolSegment(echelle);
   v5Barriers(P, excludeWallId).forEach((s) => {
     const c = closestOnSeg(x, y, s.a[0], s.a[1], s.b[0], s.b[1]);
-    if (c.dist <= bdE) { bdE = c.dist; bestE = [c.x, c.y]; }
+    // MEASURED FROM THE WALL'S FACE, NOT ITS AXIS. A wall is a 12 cm band and the eye aims at the
+    // band, so "I dropped it against the wall" means the pointer is at the FACE, already half a
+    // thickness away from the centreline the snap compares against. Measured on the real flat: the
+    // latch only fired within 9 cm of the axis, i.e. 3 cm PAST the inner face, so dropping where
+    // the wall visibly ends did nothing. Owner's report, twice.
+    const dFace = Math.max(0, c.dist - (s.t || WALL) / 2);
+    if (dFace <= bdE) { bdE = dFace; bestE = [c.x, c.y]; }
   });
   if (bestE) return [v5R2((bestE as Pt)[0]), v5R2((bestE as Pt)[1])];
   return null;
