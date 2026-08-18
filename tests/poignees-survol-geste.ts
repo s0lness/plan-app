@@ -136,13 +136,22 @@ await test("meuble_sur_mur_reste_la_cible_visible", async () => {
   ok(await wall(setup.wid) !== null, "le mur sous le meuble ne doit pas être remplacé par le geste");
 });
 
-await test("corps_en_mode_par_defaut_dessine_un_nouveau_mur", async () => {
+// TRACER DEPUIS LE CORPS D'UN MUR FORME UN T, DONC LE COUPE. Ce cas attendait deux murs et un mur
+// d'origine intact: c'etait vrai tant qu'un T ne coupait rien. Depuis la demande du proprietaire
+// (« relier un bout de mur a un autre doit connecter ces murs ET couper le mur qui forme la barre
+// du T »), le mur de depart se scinde au point de contact. Ce qu'on verifie reste le meme: le corps
+// est bien une ORIGINE DE DESSIN et non une prise pour deplacer le mur.
+await test("corps_en_mode_par_defaut_dessine_un_nouveau_mur_et_coupe_le_T", async () => {
   await seed(200); await move(await apt(100, 120));
   ok((await handles("w1")).length > 0, "précondition: le survol par défaut doit révéler les poignées");
   const before = await wall("w1"), a = await apt(100, 130), b = await apt(260, 130);
   await drag(a, b);
-  ok(await evaluate(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`) === 2, "le corps doit rester une origine de dessin en mode par défaut");
-  ok(JSON.stringify(await wall("w1")) === JSON.stringify(before), "dessiner depuis le corps ne doit pas déplacer le mur existant");
+  const murs = await evaluate(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`);
+  ok(murs === 3, `le trace doit creer une cloison ET couper le mur de depart, vu ${murs} murs`);
+  // Le mur d'origine est raccourci au point de contact, pas deplace: son depart n'a pas bouge.
+  const apres = await wall("w1");
+  ok(JSON.stringify(apres.a) === JSON.stringify(before.a),
+    `le depart du mur d'origine ne doit pas bouger, ${JSON.stringify(before.a)} puis ${JSON.stringify(apres.a)}`);
 });
 
 await test("clic_propre_sur_corps_par_defaut_n_ecrit_rien", async () => {
@@ -191,11 +200,13 @@ await test("glisser_move_deplace_les_deux_bouts_du_meme_delta", async () => {
   ok(Math.hypot(da[0] - db[0], da[1] - db[1]) < 1, `les deux bouts doivent avoir le même delta, vu ${JSON.stringify({ da, db })}`);
 });
 
-await test("glisser_corps_dessine_un_nouveau_mur", async () => {
+await test("glisser_corps_dessine_un_nouveau_mur_et_coupe_le_T", async () => {
   await seed(); const before = await wall("w1"), a = await apt(100, 150), b = await apt(260, 150);
   await drag(a, b); const after = await wall("w1");
-  ok(await evaluate(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`) === 2, "glisser depuis le corps doit dessiner une nouvelle cloison");
-  ok(JSON.stringify(after) === JSON.stringify(before), "le corps ne doit plus déplacer le mur existant");
+  const murs = await evaluate(`__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length`);
+  ok(murs === 3, `glisser depuis le corps doit dessiner une cloison ET couper le T, vu ${murs} murs`);
+  ok(JSON.stringify(after.a) === JSON.stringify(before.a),
+    "le corps ne doit pas DEPLACER le mur existant: son depart reste identique");
 });
 
 await test("facade_selectionnee_revele_le_contour_sans_commandes_interieures", async () => {

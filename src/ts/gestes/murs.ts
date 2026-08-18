@@ -48,7 +48,9 @@ import {
   v5SyncOutlineWalls,
   v5ThroughWall,
   v5WallMergeAt,
+  v5MurTraverse,
   v5WallSplitAt,
+  v5WallSplitAtPoint,
   v5WallSplitRefusal,
   v5WallCovering,
 } from "../modele/edition.ts";
@@ -691,6 +693,32 @@ export function v5WallEndDragApply(
   return w;
 }
 
+/**
+ * A T JUNCTION CUTS THE WALL IT LANDS ON. Owner's request: bringing a wall's end onto another wall
+ * must connect them AND cut the wall forming the bar of the T, so its two halves become walls in
+ * their own right, each with its handles. Connecting alone already worked, through the snap.
+ *
+ * Called for BOTH ends of the wall that just moved or was just drawn, because either of them can
+ * land on something. A refusal is stated once and does not stop the rest: an opening sitting on the
+ * contact point is a good reason not to cut there, and no reason at all to undo the junction.
+ */
+function v5CouperLesTraverses(ctx: Contexte, w: Mur): void {
+  const P = ctx.etat.plan;
+  if (!P) return;
+  for (const bout of ["a", "b"] as const) {
+    const cible = v5MurTraverse(P, w[bout], [w.id]);
+    if (!cible) continue;
+    const r = v5WallSplitAtPoint(P, cible.id, w[bout]);
+    if ("refus" in r) { toast(r.refus, { geste: true }); continue; }
+    // The two halves are frozen for the same reason the "+" freezes them: a through-running wall
+    // would be stretched straight back across the cut by `v5ResoudreGeometrie`, and the T would
+    // silently become one wall again.
+    const g = v5WallById(ctx, cible.id), d = v5WallById(ctx, r.id);
+    if (g) g.free = 1;
+    if (d) d.free = 1;
+  }
+}
+
 export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unknown, bout: "a" | "b"): void {
   const P = ctx.etat.plan;
   const w = v5WallById(ctx, wallId);
@@ -727,6 +755,10 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
     window.removeEventListener("pointermove", move);
     v5ClearDims(ctx);
     if (moved) {
+      // Le T se coupe AVANT de re-resoudre la geometrie: la coupe cree un mur, et les cellules
+      // doivent etre reconstruites sur le plan qui en resulte, pas sur celui d'avant.
+      const mur = v5WallById(ctx, wallId);
+      if (mur) v5CouperLesTraverses(ctx, mur);
       v5ResoudreGeometrie(P, true);
       const msg = v5FlushOpeningsBorned();
       if (msg) toast(msg, { geste: true });
@@ -914,6 +946,8 @@ export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | 
   const w: Mur = { id: v5NewId("w"), a: [a[0], a[1]], b: [b[0], b[1]], t: WALL, isOutline: false, free: 1 };
   P.walls.push(w);
   v5ThroughWall(P, w);            // `free`: trimmed by the outline only, kept as drawn otherwise
+  // Un mur TRACE dans un autre forme un T lui aussi, et doit le couper de la meme facon.
+  v5CouperLesTraverses(ctx, w);
   v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx);
   v5SelectWall(ctx, w.id);
   render(ctx); save(ctx);

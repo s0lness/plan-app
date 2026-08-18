@@ -24,7 +24,7 @@
 //   node tests/bouts-de-mur.ts
 import type { DonneeDynamique } from "./_types.ts";
 import { v5ResoudreGeometrie, v5WallEndDragApply, v5WallEndDrop } from "../src/ts/gestes/murs.ts";
-import { v5SnapWallEnd } from "../src/ts/modele/edition.ts";
+import { v5MurTraverse, v5SnapWallEnd, v5WallSplitAtPoint } from "../src/ts/modele/edition.ts";
 import { v5RebuildCells } from "../src/ts/modele/cellules.ts";
 import { sanitizeV5Plan } from "../src/ts/modele/migrations.ts";
 import type { Contexte } from "../src/ts/app/contexte.ts";
@@ -189,6 +189,37 @@ test("un_mur_epais_accroche_de_plus_loin_qu_un_mur_fin", (a: DonneeDynamique) =>
   const p = v5SnapWallEnd(epais, "w1", 200 + aDistance, 150, 1);
   a(!!p && p[0] === 200,
     `le MEME point, contre un mur de 40 cm, n'est qu'a 6 cm de sa face et doit accrocher, vu ${JSON.stringify(p)}`);
+});
+
+// UN T COUPE LA BARRE QU'IL TOUCHE. Demande du proprietaire: amener le bout d'un mur sur un autre
+// doit (a) les connecter et (b) couper le mur qui forme la barre du T, pour que ses deux moities
+// deviennent des murs a part entiere avec leurs propres commandes. La connexion marchait deja par
+// l'accroche; la coupe est la partie qui manquait.
+test("un_bout_pose_au_milieu_d_un_mur_le_coupe_en_deux", (a: DonneeDynamique) => {
+  const P = plan([
+    { id: "barre", a: [200, 50], b: [200, 250], t: 12, isOutline: false },
+    { id: "pied", a: [40, 150], b: [190, 150], t: 12, isOutline: false },
+  ]);
+  const cible = v5MurTraverse(P, [200, 150], ["pied"]);
+  if (!a(!!cible && String(cible.id) === "barre", `la barre du T doit etre reconnue, vu ${cible && cible.id}`)) return;
+  const r = v5WallSplitAtPoint(P, "barre", [200, 150]);
+  if (!a("id" in r, `la coupe doit reussir, vu ${JSON.stringify(r)}`) || !("id" in r)) return;
+  const barre = P.walls.find((w) => String(w.id) === "barre")!;
+  const neuf = P.walls.find((w) => String(w.id) === String(r.id))!;
+  a(barre.a[1] === 50 && barre.b[1] === 150, `la moitie haute doit aller de 50 a 150, vu ${JSON.stringify([barre.a, barre.b])}`);
+  a(neuf.a[1] === 150 && neuf.b[1] === 250, `la moitie basse doit aller de 150 a 250, vu ${JSON.stringify([neuf.a, neuf.b])}`);
+  a(barre.a[0] === 200 && neuf.b[0] === 200, "les deux moities doivent rester sur la meme droite");
+});
+
+// ET UN CONTACT PRES DU BOUT N'EST PAS UN T, c'est deux murs qui se rejoignent en coin. Couper la
+// produirait un moignon de quelques centimetres que personne n'a demande.
+test("un_contact_pres_du_bout_de_la_barre_n_est_pas_un_T", (a: DonneeDynamique) => {
+  const P = plan([
+    { id: "barre", a: [200, 50], b: [200, 250], t: 12, isOutline: false },
+    { id: "pied", a: [40, 52], b: [190, 52], t: 12, isOutline: false },
+  ]);
+  a(v5MurTraverse(P, [200, 52], ["pied"]) === null,
+    "un contact a 2 cm du bout de la barre ne doit pas la couper");
 });
 
 test("un_mur_n_accroche_jamais_sur_sa_propre_extremite_fixe", (a: DonneeDynamique) => {

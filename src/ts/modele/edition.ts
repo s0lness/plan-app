@@ -935,30 +935,51 @@ function v5WallSplitPoint(w: Mur): { milieu: Pt; premiereMoitie: number } {
   return { milieu, premiereMoitie: Math.hypot(milieu[0] - w.a[0], milieu[1] - w.a[1]) };
 }
 
-/** A non-mutating preflight, also used by the gesture so a refusal creates no history entry. */
-export function v5WallSplitRefusal(P: PlanV5 | null | undefined, wallId: Id): string | null {
+/** A non-mutating preflight, also used by the gesture so a refusal creates no history entry.
+ *  `ou` is the distance IN CENTIMETRES from the wall's `a` end; omitted, it is the midpoint. */
+export function v5WallSplitRefusal(P: PlanV5 | null | undefined, wallId: Id, ou?: number): string | null {
   const w = v5WallById(P, wallId);
   if (!P || !w) return "This wall no longer exists.";
   // `isOutline` is only a cache. The shared deletion verdict verifies it against the current
   // outline geometry, which prevents a stale cache from deciding what may be edited.
   if (v5WallDeleteVerdict(P, wallId) === "facade") return "A facade wall cannot be split.";
-  const milieu = v5WallSplitPoint(w).premiereMoitie;
-  if (!(milieu > 0)) return "This wall is too short to split.";
+  const coupe = ou == null ? v5WallSplitPoint(w).premiereMoitie : ou;
+  const L = v5Seg(w).L;
+  if (!(coupe > 0) || !(coupe < L)) return "This wall is too short to split.";
   const obstacle = (P.openings || []).find((o) =>
-    String(o.wallId) === String(wallId) && o.t0 < milieu && milieu < o.t0 + o.w,
+    String(o.wallId) === String(wallId) && o.t0 < coupe && coupe < o.t0 + o.w,
   );
-  if (obstacle) return `“${obstacle.name || "This object"}” crosses the wall midpoint and prevents the elbow.`;
+  if (obstacle) return `“${obstacle.name || "This object"}” crosses that point, so the wall cannot be cut there.`;
   return null;
 }
 
 /** Splits an interior wall at its exact geometric midpoint, without moving anything on the floor. */
 export function v5WallSplitAt(P: PlanV5 | null | undefined, wallId: Id): ResultatDivisionMur {
-  const refus = v5WallSplitRefusal(P, wallId);
+  const w0 = v5WallById(P, wallId);
+  if (!P || !w0) return { refus: "This wall no longer exists." };
+  return v5WallSplitAtPoint(P, wallId, v5WallSplitPoint(w0).milieu);
+}
+
+/**
+ * SPLITS A WALL AT AN ARBITRARY POINT ON ITS BODY, which is what a T junction needs: bringing a
+ * wall's end onto another wall's flank must not only CONNECT them, it must cut the crossed wall in
+ * two at the contact, so the bar of the T becomes two walls with their own handles. The midpoint
+ * split of the "+" is this same function called at the middle.
+ *
+ * `pt` is projected onto the wall, so the caller may pass the raw contact point.
+ */
+export function v5WallSplitAtPoint(P: PlanV5 | null | undefined, wallId: Id, pt: Pt): ResultatDivisionMur {
+  const w0 = v5WallById(P, wallId);
+  if (!P || !w0) return { refus: "This wall no longer exists." };
+  const proj = closestOnSeg(pt[0], pt[1], w0.a[0], w0.a[1], w0.b[0], w0.b[1]);
+  const coupe: Pt = [v5R2(proj.x), v5R2(proj.y)];
+  const premiere = Math.hypot(coupe[0] - w0.a[0], coupe[1] - w0.a[1]);
+  const refus = v5WallSplitRefusal(P, wallId, premiere);
   if (refus) return { refus };
-  const plan = P!;
-  const w = v5WallById(plan, wallId)!;
+  const plan = P;
+  const w = w0;
   const ancienB: Pt = [w.b[0], w.b[1]];
-  const { milieu, premiereMoitie: demiLongueur } = v5WallSplitPoint(w);
+  const milieu = coupe, demiLongueur = premiere;
   const id = v5NewId("w", plan);
   const nouveau: Mur = { id, a: [milieu[0], milieu[1]], b: ancienB, t: w.t, isOutline: false };
   if (w.free !== undefined) nouveau.free = w.free;
@@ -971,6 +992,33 @@ export function v5WallSplitAt(P: PlanV5 | null | undefined, wallId: Id): Resulta
   }
   plan.walls.push(nouveau);
   return { id };
+}
+
+// ---- A T JUNCTION CUTS THE WALL IT LANDS ON ----------------------------------------------------
+// Owner's request, in his words: bringing a wall's END onto another wall must (a) connect them and
+// (b) cut the wall that forms the bar of the T. Connecting alone was already happening (the snap
+// puts the endpoint exactly on the other wall's axis), but the crossed wall stayed whole, so the
+// two halves of the bar could not be moved, split or deleted independently.
+//
+// THE MARGIN IS WHAT KEEPS THIS SANE. A contact within a few centimetres of the crossed wall's own
+// END is not a T, it is two walls meeting corner to corner: cutting there would produce a stub of
+// nothing. `MARGE_T` is that floor, and it is the same order as the junction tolerance itself.
+const MARGE_T = 5;
+
+/** The wall whose BODY passes through `pt`, if cutting it there would make a real T. */
+export function v5MurTraverse(P: PlanV5 | null | undefined, pt: Pt, exclure: readonly Id[]): Mur | null {
+  if (!P) return null;
+  const exclus = idsMursExclus(exclure);
+  for (const w of (P.walls || [])) {
+    if (w.isOutline || exclus.has(String(w.id))) continue;
+    const c = closestOnSeg(pt[0], pt[1], w.a[0], w.a[1], w.b[0], w.b[1]);
+    if (c.dist > 2) continue;
+    const dA = Math.hypot(c.x - w.a[0], c.y - w.a[1]);
+    const dB = Math.hypot(c.x - w.b[0], c.y - w.b[1]);
+    if (dA < MARGE_T || dB < MARGE_T) continue;      // corner to corner, not a T
+    return w;
+  }
+  return null;
 }
 
 // ---- MERGING TWO WALLS BACK INTO ONE -----------------------------------------------------------
