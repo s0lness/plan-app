@@ -25,6 +25,7 @@ import { fitView, renderView, scaleBounds, screenToApt, zoomAt } from "../rendu/
 import { render } from "../rendu/rendu.ts";
 import { clearSel } from "../rendu/selection.ts";
 import { armGesture } from "./sortie.ts";
+import { v5StartDraw } from "./murs.ts";
 import {
   TOUCH_DRAG_THRESH, isTouchEvt, measureMode, setCursorApt, setSpaceHeld, spaceHeld, touchPts,
 } from "./etat-pointeur.ts";
@@ -116,7 +117,12 @@ export function piecesInClientRect(
  * release, and the rectangle alone already says the gesture is in progress.
  */
 export function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
-  const additiveMod = e.shiftKey || e.ctrlKey || e.metaKey;   // shift/ctrl/cmd: ADDS
+  // CTRL/CMD ADDS, AND SHIFT NO LONGER DOES, because Shift is now what OPENS the lasso at all:
+  // an ordinary drag over empty space draws a wall. Leaving Shift in this set made every lasso
+  // additive and no lasso could ever replace a selection again, so the two modifiers stopped
+  // meaning different things. Caught by `selection-visible.ts`, which states the replacing half of
+  // the rule on its new base rather than dropping it when the unmodified gesture disappeared.
+  const additiveMod = e.ctrlKey || e.metaKey;
   const vr = ctx.viewport.getBoundingClientRect();
   const sx = e.clientX, sy = e.clientY;
   const rb = $("rubber");
@@ -382,9 +388,11 @@ export function brancherInteractionsVue(ctx: Contexte): void {
     if (pieceEl || nameEl || handleEl) return;   // pieces and handles have their own gestures
     // Walls mode: selection is cut off. Walls and the outline are grabbed by the layer.
     if (ctx.wallsMode) return;
-    // TOUCH: a finger over empty space = PAN (the rubber band is mouse only).
+    // TOUCH: a finger over empty space = PAN (the rubber band and wall drawing are mouse only).
     if (isTouchEvt(e)) { startTouchPanOrTap(ctx, e); return; }
-    startRubberOrClick(ctx, e);
+    if (e.shiftKey) { startRubberOrClick(ctx, e); return; }
+    ctx.crochets.showHint?.("draw");
+    v5StartDraw(ctx, e, () => { clearSel(ctx); ctx.crochets.hideInspector?.(); });
   });
 
   $("btnFit")?.addEventListener("click", () => fitView(ctx));

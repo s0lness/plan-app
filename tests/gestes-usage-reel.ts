@@ -457,7 +457,17 @@ await test("clic_net_sur_un_groupe_ne_borne_personne", async () => {
   const a = await aptPoint(bb.minX + 5, bb.minY + 5);
   const b = await aptPoint(bb.maxX - 5, bb.maxY - 5);
   await evaluate(`__plan.clearSel(); __plan.render(); true`); await pause(120);
-  await drag(a, b, 12);                                   // the lasso grabs everything inside it
+  // THE LASSO NOW LIVES UNDER SHIFT. An ordinary drag over empty space draws a wall, because
+  // drawing is no longer a mode you can be stranded in. `modifiers: 8` is Shift for CDP, and it
+  // must be on every event of the gesture, not only the press: the handler reads the modifier of
+  // the event it is given.
+  await M("mouseMoved", a.x, a.y, { button: "none", buttons: 0, modifiers: 8 });
+  await M("mousePressed", a.x, a.y, { modifiers: 8 });
+  for (let i = 1; i <= 12; i++) {
+    await M("mouseMoved", a.x + (b.x - a.x) * i / 12, a.y + (b.y - a.y) * i / 12, { modifiers: 8 });
+    await pause(8);
+  }
+  await M("mouseReleased", b.x, b.y, { buttons: 0, modifiers: 8 }); await pause(90);
   const sel = await J(`[].slice.call(document.querySelectorAll(".piece.sel")).map(function(e){return String(e.dataset.id);})`);
   ok(sel.length >= 3, `le lasso doit prendre plusieurs objets (${sel.length})`);
   if (sel.length < 3) return;
