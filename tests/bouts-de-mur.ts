@@ -151,6 +151,23 @@ test("accroche_exacte_sur_le_contour", (a: DonneeDynamique) => {
   a(!!p && p[0] === 200 && p[1] === 0, `l'accroche doit tomber EXACTEMENT sur le contour, vu ${JSON.stringify(p)}`);
 });
 
+// LA PORTEE D'ACCROCHE SE MESURE EN PIXELS, DONC ELLE GRANDIT QUAND ON DEZOOME. Elle etait
+// plafonnee a WALL (12 cm) par un `Math.min`, ce qui annulait le terme en pixels cense l'elargir:
+// des que l'echelle passait sous 1,25 px/cm, c'est-a-dire a tout zoom de travail, il fallait viser
+// a six pixels pres. Signale a l'usage: tirer le bout d'un mur contre une facade ne l'y accrochait
+// pas. Le meme point, a la meme distance en centimetres, doit accrocher a echelle 0,4 alors qu'il
+// est trop loin a echelle 3.
+test("la_portee_d_accroche_grandit_quand_on_dezoome", (a: DonneeDynamique) => {
+  const P = plan([{ id: "w1", a: [100, 100], b: [100, 200], t: 12, isOutline: false }]);
+  const loinEnCm = 18;                       // au-dela de l'ancien plafond de 12 cm
+  const dezoome = v5SnapWallEnd(P, "w1", 200, loinEnCm, 0.4);
+  a(!!dezoome && dezoome[1] === 0,
+    `a echelle 0,4 ce point est a 7 px de la facade et doit accrocher, vu ${JSON.stringify(dezoome)}`);
+  const zoome = v5SnapWallEnd(P, "w1", 200, loinEnCm, 3);
+  a(zoome === null,
+    `a echelle 3 le meme point est a 54 px et ne doit rien accrocher, vu ${JSON.stringify(zoome)}`);
+});
+
 test("un_mur_n_accroche_jamais_sur_sa_propre_extremite_fixe", (a: DonneeDynamique) => {
   // Dragging w1's `b` back toward its OWN fixed end `a` ([100,100]) must NOT snap there (that
   // would collapse the wall to zero length the moment the hand got close): excluded by

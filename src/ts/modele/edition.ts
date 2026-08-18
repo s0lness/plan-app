@@ -848,17 +848,26 @@ export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, sn
 //      GRID fallback, computed by the caller, is gated by that setting): a junction connection
 //      is not an optional convenience to turn off, only the grid-rounding fallback is.
 
-/** cm: tolerance for stage 1 (another wall's endpoint, or an outline corner). Mirrors
- * `v5SnapTol`'s shape (a floor, a ceiling at one wall thickness) with the wider px budget the
- * owner's report calls for: a junction has to hold, so it gets a more forgiving target than the
- * drawing tool's own vertex snap. */
+// A HAND AIMS IN PIXELS, NOT IN CENTIMETRES, AND THESE TWO SAID THE OPPOSITE. `Math.min(WALL, ...)`
+// capped both at 12 cm, which cancelled outright the `Math.max(8, 15 / echelle)` that was meant to
+// widen them as you zoom out: the cap wins as soon as the scale drops below 1,25 px/cm, so at EVERY
+// working zoom you had to aim within about six pixels. Reported from real use: dragging a wall's
+// end up against a facade would simply not latch onto it.
+//
+// The bound therefore becomes a FLOOR in centimetres, never below half a wall's thickness even
+// zoomed right in, and the term in pixels gets its job back. Covered by
+// `tests/bouts-de-mur.ts` (`la_portee_d_accroche_grandit_quand_on_dezoome`), which checks the SAME
+// point in centimetres latches when zoomed out and does not when zoomed in.
+
+/** cm: tolerance for stage 1 (another wall's endpoint, or an outline corner). A junction has to
+ * hold, so it gets a more forgiving target than the drawing tool's own vertex snap. */
 function v5SnapTolBout(echelle: number): number {
-  return Math.min(WALL, Math.max(8, 15 / (echelle || 1)));
+  return Math.max(WALL, 14 / (echelle || 1));
 }
 
 /** cm: tolerance for stage 2 (a point ON another wall's segment, or on the outline's own body). */
 function v5SnapTolSegment(echelle: number): number {
-  return Math.min(WALL, Math.max(6, 10 / (echelle || 1)));
+  return Math.max(WALL / 2, 10 / (echelle || 1));
 }
 
 /**
