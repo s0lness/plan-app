@@ -49,6 +49,7 @@ import {
   v5ThroughWall,
   v5WallMergeAt,
   v5CouperContour,
+  v5SommetPlatDeFacade,
   v5IndexAreteContour,
   v5MurTraverse,
   v5WallMergeCandidate,
@@ -861,6 +862,17 @@ export function v5MergeWallAt(ctx: Contexte, e: PointerEvent, wallId: unknown, b
   if (e.button !== undefined && e.button !== 0) return;
   if (spaceHeld() || measureMode()) return;
   e.preventDefault(); e.stopPropagation();
+  // RESSOUDER DEUX MOITIES DE FACADE, C'EST RETIRER LE SOMMET PLAT qui les separe, pas fusionner
+  // deux murs: une facade est RECALCULEE depuis le polygone, donc un mur fusionne serait defait au
+  // `v5SyncOutlineWalls` suivant. `v5DeleteVertex` fait le reste (historique, geometrie, sauvegarde),
+  // et depuis ce lot il RELOGE les ouvertures de l'arete qui disparait au lieu de les detruire.
+  const mur = v5WallById(ctx, String(wallId));
+  if (mur && mur.isOutline) {
+    const sommet = v5SommetPlatDeFacade(P, String(wallId), bout);
+    if (sommet < 0) { toast("These two facades do not continue one another, or something else meets them here.", { geste: true }); return; }
+    v5DeleteVertex(ctx, sommet);
+    return;
+  }
   pushHistory(ctx);
   const r = v5WallMergeAt(P, String(wallId), bout);
   if ("refus" in r) { toast(r.refus, { geste: true }); return; }
@@ -878,6 +890,31 @@ export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown
   if (e.button !== undefined && e.button !== 0) return;
   if (spaceHeld() || measureMode()) return;
   e.preventDefault(); e.stopPropagation();
+  // UNE FACADE SE COUPE AUSSI, ET PAS PAR LE MEME CHEMIN. Demande du proprietaire: « je peux resize
+  // un mur de facade comme je veux, donc je devrais aussi pouvoir le couper ». Une facade n'est pas
+  // stockee comme un mur, elle est RECALCULEE depuis le polygone du contour: la couper, c'est
+  // inserer un sommet (`v5CouperContour`), et les deux moities deviennent deux aretes portant
+  // chacune sa propre prise en son centre. `v5WallSplitAt`, lui, fabriquerait un mur que le
+  // prochain `v5SyncOutlineWalls` effacerait.
+  const cible = v5WallById(ctx, String(wallId));
+  if (cible && cible.isOutline) {
+    const L = Math.hypot(cible.b[0] - cible.a[0], cible.b[1] - cible.a[1]);
+    // Sous 10 cm, les deux moities tomberaient dans la marge des coins (`MARGE_T`) et la coupe
+    // fabriquerait un moignon: on le dit au lieu de ne rien faire.
+    if (!(L > 10)) { toast("This facade is too short to split.", { geste: true }); return; }
+    const coupe = L / 2;
+    const obstacle = (P.openings || []).find((o) =>
+      String(o.wallId) === String(cible.id) && o.t0 < coupe && coupe < o.t0 + o.w);
+    if (obstacle) {
+      toast(`“${obstacle.name || "This object"}” crosses that point, so the facade cannot be cut there.`, { geste: true });
+      return;
+    }
+    const milieu: Pt = [v5R2((cible.a[0] + cible.b[0]) / 2), v5R2((cible.a[1] + cible.b[1]) / 2)];
+    pushHistory(ctx);
+    if (!v5CouperContour(P, milieu)) { toast("This facade cannot be cut here.", { geste: true }); return; }
+    v5AfterGeometry(ctx, true); save(ctx);
+    return;
+  }
   // The refusals are stated, never swallowed: a facade is derived from the outline and cannot be
   // split, and an opening straddling the midpoint blocks the cut by naming itself.
   const refus = v5WallSplitRefusal(P, String(wallId));

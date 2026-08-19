@@ -308,17 +308,19 @@ export function v5SyncOutlineWalls(P: PlanV5 | null | undefined): void {
     else w = { id: v5DerivedId(P, "w"), a: [a[0], a[1]], b: [b[0], b[1]], t: WALL, isOutline: true };
     keep.push(w);
   }
+  // UNE FACADE QUI DISPARAIT NE PART PLUS AVEC SES OUVERTURES SANS UN MOT. Ce bloc les SUPPRIMAIT
+  // toutes, en silence: supprimer un coin du contour (`v5DeleteVertex`) fait disparaitre une arete,
+  // donc son mur, donc la fenetre, la porte et la prise qui etaient dessus. Et le cas le plus
+  // ordinaire est le plus destructeur: ressouder les deux moities d'une facade coupee, c'est
+  // exactement retirer un sommet plat, et l'arete fusionnee passe pile ou etaient les ouvertures.
+  // Elles sont donc RELOGEES par la geometrie, comme apres une coupe, et seules celles qui ne
+  // retrouvent aucun mur porteur sont supprimees, en le disant (ardoise `orpheline`, deja lue par
+  // `v5FlushOpeningsBorned`).
   const gone = old.filter((o) => !taken.has(o));
-  if (gone.length) {
-    const ids = new Set(gone.map((w) => String(w.id)));
-    for (let i = (P.openings || []).length - 1; i >= 0; i--) {
-      if (ids.has(String(P.openings[i]!.wallId))) P.openings.splice(i, 1);
-    }
-  }
   P.walls.length = 0;
   inner.forEach((w) => P.walls.push(w));
   keep.forEach((w) => P.walls.push(w));
-  v5RelogerOuverturesContour(P, keep);
+  v5RelogerOuverturesContour(P, keep, gone);
 }
 
 /**
@@ -331,30 +333,57 @@ export function v5SyncOutlineWalls(P: PlanV5 | null | undefined): void {
  * On travaille sur la POSITION REELLE de l'ouverture, pas sur son `t0`: on la place sur le mur de
  * contour qui contient son milieu, et on recalcule `t0` par projection. Une ouverture qui ne
  * retrouve aucun mur reste ou elle est, c'est le comportement d'avant et il ne perd rien.
+ *
+ * `disparus` SONT LES FACADES QUI VIENNENT DE S'EN ALLER, et leurs ouvertures passent par le meme
+ * chemin plutot que par une seconde mecanique. Leur geometrie n'a PAS ete reecrite (ce sont
+ * justement celles qu'aucune arete n'a reprises), donc leur position au sol est encore lisible: on
+ * cherche qui reprend cet emplacement. Deux differences avec le cas d'une facade toujours la:
+ *
+ * - on cherche TOUJOURS un nouveau mur, meme quand l'ouverture tenait encore sur l'ancien: c'est
+ *   l'ancien qui n'existe plus;
+ * - la portee vaut une EPAISSEUR DE MUR au lieu de 2 cm. Ressouder deux moities colineaires met la
+ *   nouvelle arete exactement sur l'ancienne (ecart nul), mais un contour redessine peut poser la
+ *   facade qui reprend l'emplacement a un demi-mur de la, et une fenetre a 6 cm de son mur est
+ *   toujours la fenetre de ce mur.
+ *
+ * Ce qui ne retrouve rien est SUPPRIME, et l'ardoise le dit avec son nombre (`orpheline`, le meme
+ * verdict que pour un mur interieur efface sous une ouverture): la suppression silencieuse etait le
+ * defaut.
  */
-function v5RelogerOuverturesContour(P: PlanV5, contour: readonly Mur[]): void {
-  if (!contour.length) return;
+function v5RelogerOuverturesContour(P: PlanV5, contour: readonly Mur[], disparus: readonly Mur[] = []): void {
   const parId = new Map<string, Mur>(contour.map((w) => [String(w.id), w]));
-  for (const o of P.openings || []) {
-    const actuel = parId.get(String(o.wallId));
+  const partis = new Map<string, Mur>(disparus.map((w) => [String(w.id), w]));
+  if (!parId.size && !partis.size) return;
+  const perdues: ChangementOuverture[] = [];
+  for (let i = (P.openings || []).length - 1; i >= 0; i--) {
+    const o = P.openings[i]!;
+    const actuel = parId.get(String(o.wallId)) || partis.get(String(o.wallId));
     if (!actuel) continue;                       // pas une ouverture de facade
+    const disparu = !parId.has(String(o.wallId));
     const L = Math.hypot(actuel.b[0] - actuel.a[0], actuel.b[1] - actuel.a[1]) || 1e-9;
     const ux = (actuel.b[0] - actuel.a[0]) / L, uy = (actuel.b[1] - actuel.a[1]) / L;
     const tc = o.t0 + o.w / 2;
     const centre: Pt = [actuel.a[0] + ux * tc, actuel.a[1] + uy * tc];
-    if (tc >= 0 && tc <= L) continue;            // elle tient encore sur son mur
+    if (!disparu && tc >= 0 && tc <= L) continue; // elle tient encore sur son mur
+    const portee = disparu ? Math.max(2, actuel.t || WALL) : 2;
     let cible: Mur | null = null, mieux = Infinity;
     for (const w of contour) {
       const c = closestOnSeg(centre[0], centre[1], w.a[0], w.a[1], w.b[0], w.b[1]);
       if (c.dist < mieux) { mieux = c.dist; cible = w; }
     }
-    if (!cible || mieux > 2) continue;
+    if (!cible || mieux > portee) {
+      if (!disparu) continue;                    // son mur est la, elle y reste: rien n'est perdu
+      P.openings.splice(i, 1);
+      perdues.push({ id: String(o.id), name: o.name || "", quoi: "orpheline" });
+      continue;
+    }
     const cl = Math.hypot(cible.b[0] - cible.a[0], cible.b[1] - cible.a[1]) || 1e-9;
     const cux = (cible.b[0] - cible.a[0]) / cl, cuy = (cible.b[1] - cible.a[1]) / cl;
     const d = (centre[0] - cible.a[0]) * cux + (centre[1] - cible.a[1]) * cuy;
     o.wallId = cible.id;
     o.t0 = v5R2(clamp(d - o.w / 2, 0, Math.max(0, cl - o.w)));
   }
+  if (perdues.length) ardoiseBorned = (ardoiseBorned || []).concat(perdues).slice(0, 50);
 }
 
 // =================================================================================================
@@ -1216,6 +1245,49 @@ export function v5WallMergeCandidate(P: PlanV5 | null | undefined, wallId: Id, b
   const scal = u[0] * v[0] + u[1] * v[1];
   if (croix > COLIN_TOL || scal > -0.9) return null;
   return trouve;
+}
+
+/**
+ * OU CETTE FACADE SE RESSOUDE: L'INDEX DU SOMMET PLAT, ou -1.
+ *
+ * Une facade coupee n'est pas deux murs poses cote a cote, c'est UN SOMMET DE PLUS dans le polygone
+ * du contour (`v5CouperContour`). La ressouder n'est donc pas une fusion de murs, c'est retirer ce
+ * sommet, et `v5WallMergeCandidate` ne peut pas repondre ici: il refuse categoriquement une facade,
+ * parce que fusionner deux murs DERIVES ne survivrait pas au prochain `v5SyncOutlineWalls`.
+ *
+ * La regle est la meme que pour deux cloisons, transposee au polygone: les deux aretes qui se
+ * rejoignent en ce sommet doivent CONTINUER l'une l'autre (en repartant du sommet, elles pointent
+ * en sens opposes), et rien d'autre ne doit tenir ce point, sinon on enterrerait une jonction dans
+ * la nouvelle facade. Un contour de trois sommets n'a rien a donner: il cesserait d'etre un polygone.
+ */
+export function v5SommetPlatDeFacade(
+  P: PlanV5 | null | undefined,
+  wallId: Id,
+  bout: "a" | "b",
+): number {
+  const w = v5WallById(P, wallId);
+  const O = P?.outline || [];
+  if (!P || !w || !w.isOutline || O.length <= 3) return -1;
+  const pt = w[bout];
+  for (let i = 0; i < O.length; i++) {
+    const v = O[i]!;
+    if (Math.hypot(v[0] - pt[0], v[1] - pt[1]) > JOINT_TOL) continue;
+    const p = O[(i - 1 + O.length) % O.length]!, n = O[(i + 1) % O.length]!;
+    const dep = (q: Pt): Pt => {
+      const dx = q[0] - v[0], dy = q[1] - v[1], L = Math.hypot(dx, dy) || 1e-9;
+      return [dx / L, dy / L];
+    };
+    const u = dep(p), z = dep(n);
+    if (Math.abs(u[0] * z[1] - u[1] * z[0]) > COLIN_TOL) return -1;
+    if (u[0] * z[0] + u[1] * z[1] > -0.9) return -1;
+    // Une cloison qui vient mourir sur ce sommet en fait une jonction a trois.
+    for (const x of P.walls || []) {
+      if (x.isOutline) continue;
+      if (closestOnSeg(v[0], v[1], x.a[0], x.a[1], x.b[0], x.b[1]).dist <= JOINT_TOL) return -1;
+    }
+    return i;
+  }
+  return -1;
 }
 
 /** Welds `wallId` to the neighbour meeting its `bout` end. The merged wall keeps `wallId`. */
