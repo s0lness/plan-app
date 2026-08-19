@@ -119,10 +119,20 @@ test("les_cellules_se_reconstruisent_a_la_fin_seulement", (a: DonneeDynamique) =
   a(P.cells.length === 2, `précondition : deux pièces, vu ${P.cells.length}`);
   const cellsAvant = JSON.stringify(P.cells);
   const ctx = ctxDe(P);
+  // CONTRAT INVERSÉ LE 19/08/2026 (voir `tests/jonction-glisser-mur.ts`, même cas, même raison, et
+  // `AGENTS.md`, « THE FLOOR FOLLOWS THE HAND »): le sol est peint à partir des cellules, donc ne
+  // les reconstruire qu'au relâchement laissait le fond immobile pendant tout le geste. Ce qui
+  // reste vrai, et que ce cas continue de garder: l'état final est le bon.
+  // Ce que ce cas n'exige PAS: que le nombre de pièces reste le même pendant le geste. Reculer le
+  // bout de `w1` détache la cloison de la façade, donc les deux pièces communiquent et n'en font
+  // plus qu'une. C'est la vérité géométrique de cet instant-là, et la montrer est précisément le
+  // but. Ce qui doit survivre à la traversée, c'est le NOM d'une pièce, et c'est la photo prise
+  // avant le geste qui s'en charge (`modele/photo-cellules.ts`, couvert par
+  // `tests/sol-suit-la-main-geste.ts`).
   v5WallEndDragApply(ctx, "w1", "a", [200, 20], false);
-  a(JSON.stringify(P.cells) === cellsAvant, "les cellules ne doivent pas bouger pendant une frame non finale");
+  a(JSON.stringify(P.cells) !== cellsAvant, "les cellules doivent suivre dès la frame non finale");
   v5WallEndDragApply(ctx, "w1", "a", [200, 20], true);
-  a(JSON.stringify(P.cells) !== cellsAvant, "la reconstruction finale doit, elle, refléter la nouvelle géométrie");
+  a(JSON.stringify(P.cells) !== cellsAvant, "la reconstruction finale doit refléter la nouvelle géométrie");
 });
 
 // ---------------------------------------------------------------------------------------------
