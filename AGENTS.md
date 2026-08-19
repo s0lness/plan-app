@@ -678,6 +678,34 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   is **queued** (`gQueuedOp`/`gQueuedState`) and applied at the end of the gesture, never discarded;
   a remote op never reframes the view (`v5SetModel(p,{keepView:true})`).
 
+## THE FLOOR FOLLOWS THE HAND, AND NO ROOM NAME IS LOST ON THE WAY
+Owner's report: "when i move a facade the ground underneath lags behind significantly". The walls
+followed the hand frame by frame, but the FLOOR is painted from the CELLS (`renderFond`), and
+`v5ResoudreGeometrie` rebuilt the cells only on release (`if (final)`). Measured on the real floor
+plan (22 walls, 10 cells), a facade pushed from 1090 to 1320 cm: the model followed live (60 fps
+held), the painted surface stayed at g=1098 d=1269 through all 20 steps, then JUMPED to g=659
+d=1089 on release. `v5RebuildCells` costs **0,40 ms median** (0,7 ms p90, 1,6 ms worst) against a
+16,7 ms frame budget in which a full `render()` already costs 2,3 ms: the guard paid for nothing.
+Cells are therefore rebuilt on EVERY frame of every geometry gesture (facade, partition, outline
+vertex). Measured again after: work per frame 3,5 ms median before, 4,7 ms after, three paired runs.
+- **BUT NAMES ARE MATCHED FROM A PHOTO OF THE CELLS TAKEN BEFORE THE GESTURE**
+  (`src/ts/modele/photo-cellules.ts`), never from the previous frame. A name and a floor are NOT
+  derived: they survive recomputation through area matching. Rebuilding every frame makes the plan
+  cross every INTERMEDIATE state, and a wall sweeping across a room merges it with its neighbour;
+  the merge keeps ONE name of the two, so a typed name is gone for good even though the geometry
+  comes back exactly where it was. Same reasoning as "bounds belong to the gesture's AUTHOR": apply
+  once, from the state before the gesture, because passing through every intermediate state
+  accumulates permanent drift. The photo is taken by `beginGesture`/`armGesture` and released by
+  `endGesture` (the ONE entry and exit of a gesture), and it is tied to its plan object, so a plan
+  replacement mid-gesture can never inherit another plan's names.
+- **AND AN INTERMEDIATE FRAME CLEANS UP NOTHING** (`enDirect`, `OptionsRecalcul`): no
+  `v5DedupeWalls` while dragging. A partition pushed onto another one overlaps it exactly for a few
+  frames, and deduplication DELETES a wall and re-homes its openings. Furniture bounding stays on
+  the final geometry too, for the reason above.
+- Covered by `tests/sol-suit-la-main-geste.ts` (real mouse). Both negative controls exist and they
+  are NOT the same: the floor case goes red without the per-frame rebuild; the name case goes red
+  with the per-frame rebuild but WITHOUT the photo ("Chambre d'Elise" comes back as "Room 2").
+
 ## Looking changes nothing, and repeating gives the same result
 Four rules born from a real-use session where a simple click rewrote the floor plan.
 - **SELECTING NEVER WRITES.** An outline gesture (`v5StartOutlineEdgeDrag`, js/53) pushes history and
