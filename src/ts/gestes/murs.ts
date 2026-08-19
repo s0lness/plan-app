@@ -1433,15 +1433,22 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
   // still reached v5StartOutlineEdgeDrag, and a simple click there triggered a
   // v5AfterGeometry(true) that lengthened a partition three meters away from there.
   if (ctx.ihm.draw) {
-    // MAIS UN BOUTON RESTE UN BOUTON, OUTIL ARMÉ OU NON. La règle ci-dessus vise ce qu'on TIRE :
-    // la bande d'une façade, un sommet, le bout d'un mur, le disque de déplacement. Tirer l'un de
-    // ces quatre pendant qu'on trace, c'est le geste raté que la règle existe pour empêcher.
-    // Elle emportait au passage les cinq contrôles qui AGISSENT AU CLIC : le « + » qui coupe, la
-    // croix qui supprime, le maillon qui ressoude, et leurs équivalents de contour. Signalé à
-    // l'usage : « quand je suis en mode Draw a wall je ne peux cliquer ni + ni x ». Ils sont posés
-    // à 18 px À CÔTÉ du mur, sur quelques pixels, et le seul geste qu'ils acceptent est un clic
-    // net : rien de ce qu'on trace ne passe par là.
-    if (t.closest(".v5wx,.v5wmid,.v5wjoin,.mid,.vx")) return;
+    // MAIS LES BOUTONS D'UN MUR RESTENT DES BOUTONS, OUTIL ARMÉ OU NON. La règle ci-dessus vise ce
+    // qu'on TIRE : la bande d'une façade, un sommet, le bout d'un mur, le disque de déplacement.
+    // Tirer l'un de ces quatre pendant qu'on trace, c'est le geste raté qu'elle existe pour
+    // empêcher. Elle emportait au passage les trois contrôles qui AGISSENT AU CLIC sur une cloison :
+    // le « + » qui coupe, la croix qui supprime, le maillon qui ressoude. Signalé à l'usage :
+    // « quand je suis en mode Draw a wall je ne peux cliquer ni + ni x ». Ils sont posés à 18 px À
+    // CÔTÉ du mur et n'acceptent qu'un appui : rien de ce qu'on trace ne passe par là.
+    //
+    // LES DEUX POIGNÉES DU CONTOUR, ELLES, RESTENT SOUS LA RÈGLE. Le « + » d'insertion de coin
+    // (`.mid`) et la croix de suppression de coin (`.vx`) ne coupent pas un mur, elles changent la
+    // FORME DU LOGEMENT, et un tracé part très souvent d'une façade, donc de leur voisinage
+    // immédiat. Deux suites énoncent ce contrat et l'ont attrapé quand je les avais exemptées :
+    // `tracer_gagne_sur_les_poignees` (un tracé démarré sur le « + » d'une façade doit tracer) et
+    // `outil_arme_ne_deforme_aucun_mur` (outil armé, un clic sur `.edge`, `.mid` ou `.vtx` ne
+    // modifie rien). Elles gardent raison : ce n'est pas le même bouton ni le même risque.
+    if (t.closest(".v5wx,.v5wmid,.v5wjoin")) return;
     e.stopPropagation();
     if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
     else v5StartDraw(ctx, e);
@@ -1459,7 +1466,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   const t = e.target as Element | null;
   if (ctx.ihm.draw) {
     // Même exception qu'en capture : les cinq contrôles qui agissent au clic gardent leur clic.
-    if (t?.closest?.(".v5wx,.v5wmid,.v5wjoin,.mid,.vx")) return;
+    if (t?.closest?.(".v5wx,.v5wmid,.v5wjoin")) return;
     if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
     else v5StartDraw(ctx, e);
     return;
