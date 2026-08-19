@@ -1086,7 +1086,7 @@ export function v5BoutJoint(P: PlanV5 | null | undefined, wallId: Id, bout: "a" 
  * Retourne l'index d'insertion, ou -1 s'il n'y a pas de coupe legitime ici (trop pres d'un coin
  * existant, meme marge que pour un T entre cloisons: sinon on fabrique un moignon).
  */
-export function v5AreteContourTraversee(P: PlanV5 | null | undefined, pt: Pt): { i: number; sur: Pt } | null {
+function v5AreteContourTraversee(P: PlanV5 | null | undefined, pt: Pt): { i: number; sur: Pt } | null {
   const O = P?.outline || [];
   for (let i = 0; i < O.length; i++) {
     const a = O[i]!, b = O[(i + 1) % O.length]!;
