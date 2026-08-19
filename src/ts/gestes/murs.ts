@@ -48,6 +48,7 @@ import {
   v5SyncOutlineWalls,
   v5ThroughWall,
   v5WallMergeAt,
+  v5CouperContour,
   v5MurTraverse,
   v5WallMergeCandidate,
   v5WallSplitAt,
@@ -734,7 +735,11 @@ function v5CouperLesTraverses(ctx: Contexte, w: Mur): void {
   if (!P) return;
   for (const bout of ["a", "b"] as const) {
     const cible = v5MurTraverse(P, w[bout], [w.id]);
-    if (!cible) continue;
+    // UNE FACADE SE COUPE AUSSI, et c'est la demande explicite du proprietaire: « le mur exterieur
+    // doit se comporter comme les murs normaux ». Une facade n'etant pas stockee comme un mur mais
+    // recalculee depuis le contour, la couper veut dire donner un sommet de plus au polygone: les
+    // deux moities deviennent deux aretes, chacune deplacable comme n'importe quelle facade.
+    if (!cible) { v5CouperContour(P, w[bout]); continue; }
     const r = v5WallSplitAtPoint(P, cible.id, w[bout]);
     if ("refus" in r) { toast(r.refus, { geste: true }); continue; }
     // The two halves are frozen for the same reason the "+" freezes them: a through-running wall

@@ -198,8 +198,19 @@ await test("tracer_gagne_sur_les_poignees", async () => {
     await drag(await aptPoint(140, dy), await aptPoint(140, 340), 14);
     const P = await plan();
     ok(P.walls.length === 1, `départ à ${dy} cm du mur (sur « ${cible} ») : ${P.walls.length} cloison(s) tracée(s) au lieu d'une`);
-    ok(JSON.stringify(P.outline) === JSON.stringify([[0, 0], [420, 0], [420, 360], [0, 360]]),
-      `départ à ${dy} cm : le contour a été traîné -> ${JSON.stringify(P.outline)}`);
+    // LE CONTOUR NE DOIT PAS ÊTRE TRAÎNÉ, ce qui n'est pas la même chose que « ne doit pas
+    // changer ». Un tracé qui PART d'une façade forme un T avec elle et la coupe désormais en
+    // deux, donc le polygone gagne un sommet ALIGNÉ: sa forme est identique, sa liste de sommets
+    // non. Ce cas vérifie donc ce qu'il a toujours voulu dire: aucun coin d'origine n'a bougé, et
+    // l'aire est inchangée. Un coin traîné casserait les deux.
+    const coins = [[0, 0], [420, 0], [420, 360], [0, 360]];
+    const tous = coins.every((c) => P.outline.some((q: number[]) => q[0] === c[0] && q[1] === c[1]));
+    const aire = (poly: number[][]) => Math.abs(poly.reduce((s2: number, p: number[], i: number) => {
+      const q = poly[(i + 1) % poly.length]!; return s2 + p[0]! * q[1]! - q[0]! * p[1]!;
+    }, 0) / 2);
+    ok(tous, `départ à ${dy} cm : un coin d'origine a disparu -> ${JSON.stringify(P.outline)}`);
+    ok(Math.abs(aire(P.outline) - aire(coins)) < 1,
+      `départ à ${dy} cm : le contour a été traîné, l'aire a changé -> ${JSON.stringify(P.outline)}`);
   }
   // The "+" at the middle of a facade doesn't steal the trace either.
   await seedModel([]);
@@ -210,7 +221,16 @@ await test("tracer_gagne_sur_les_poignees", async () => {
     await drag({ x: mid.x, y: mid.y }, await aptPoint(210, 340), 14);
     const P = await plan();
     ok(P.walls.length === 1, `départ sur le « + » : ${P.walls.length} cloison(s) au lieu d'une`);
-    ok(P.outline.length === 4, `départ sur le « + » : un angle a été inséré (${P.outline.length} sommets)`);
+    // Même distinction qu'au-dessus: ce qu'on interdit est un ANGLE, pas un sommet aligné. Le
+    // tracé part de la façade, donc il la coupe, et couper une façade veut dire lui donner un
+    // sommet de plus SUR SA PROPRE DROITE. La forme du logement, elle, ne bouge pas.
+    const coins2 = [[0, 0], [420, 0], [420, 360], [0, 360]];
+    const aire2 = (poly: number[][]) => Math.abs(poly.reduce((s2: number, p: number[], i: number) => {
+      const q = poly[(i + 1) % poly.length]!; return s2 + p[0]! * q[1]! - q[0]! * p[1]!;
+    }, 0) / 2);
+    ok(coins2.every((c) => P.outline.some((q: number[]) => q[0] === c[0] && q[1] === c[1]))
+      && Math.abs(aire2(P.outline) - aire2(coins2)) < 1,
+      `départ sur le « + » : la forme du contour a change -> ${JSON.stringify(P.outline)}`);
   }
 });
 
