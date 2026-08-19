@@ -122,11 +122,11 @@ test("maj_ralentit_le_point_suivi", (a: DonneeDynamique) => {
 // header): every reload, every `Ctrl+Z`/`Ctrl+Y` (`histReplay` -> `migrate` -> here), and every D1
 // or realtime adoption reads a plan back through it. It used to rebuild each wall from a fixed
 // `{id, a, b, t, isOutline}` literal and drop every other key, `free` included: a free-standing
-// partition (the freehand tool's loose end, `gestes/trace-libre.ts`) still LOOKED right (its `a`/`b`
-// survived) but silently became an ordinary through-going wall the next time anything touched it
+// partition still LOOKED right (its `a`/`b` survived) but silently became an ordinary
+// through-going wall the next time anything touched it
 // (`v5ThroughWall`, called by `v5WallDragApply` on every drag frame): the very next nudge would
 // snap it onto the nearest barrier, three rooms away, on a wall the person never asked to change.
-// Found via `Ctrl+Z` then `Ctrl+Y` on a freehand chain not reproducing the pre-undo state.
+// Found via `Ctrl+Z` then `Ctrl+Y` on a chain of free partitions not reproducing the pre-undo state.
 test("sanitize_garde_free_a_la_relecture", (a: DonneeDynamique) => {
   const P = plan([]);
   P.walls.push({ id: "w9", a: [150, 120], b: [150, 180], t: 12, isOutline: false, free: 1 });

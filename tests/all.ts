@@ -91,7 +91,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/partage-navigateur.ts",      chrome: 2 },   // the Share button in a real browser: household door, silent-return fix, local-only self-heal
   { f: "tests/retour-navigateur.ts",       chrome: 2 },   // the Feedback button in a real browser: both doors, server received it, text survives a failed send
   { f: "tests/interactions.ts",            chrome: 1 },
-  { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
   { f: "tests/mur-outil-geste.ts",         chrome: 1 },   // single-segment wall tool, real mouse+keyboard: stays armed across walls, endpoint snap shares the exact point, a drawn wall keeps its length, D-held guides on a wall write nothing
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
   { f: "tests/poignees-survol-geste.ts",    chrome: 1 }, // real mouse: wall handles on hover, dedicated move target, body draws, facade selects, short-wall crowding
@@ -121,7 +120,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/bouts-de-mur.ts",            chrome: 0 },   // PURE geometry: a wall endpoint's snap cascade (junction, segment, outline, then 45°, then the grid) and the `free` rule
   { f: "tests/coude-mur.ts",               chrome: 0 },   // PURE geometry: midpoint split, opening ownership and absolute positions
   { f: "tests/sans-grille.ts",             chrome: 0 },   // PURE: the Ctrl/Cmd modifier and the relative grid math, no browser
-  { f: "tests/trace-libre.ts",             chrome: 0 },   // PURE geometry, freehand wall trace: no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
   { f: "tests/etiquettes-disposition.ts",  chrome: 0 },   // PURE placement math: room labels vs furniture obstacles, no browser
   { f: "tests/chaise-dossier.ts",          chrome: 0 },   // PURE geometry: snapChairToTable's rotation, relative to the table's OWN rot, no browser

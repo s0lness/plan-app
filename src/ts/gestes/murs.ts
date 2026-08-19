@@ -81,18 +81,11 @@ import { checkShapeWarn, clearStitchGuides, drawOrthoGuides, orthoSnapVertex } f
 // same `w20` and every other wall would disappear without a word. This is not a function of the plan,
 // hence its own separate module.
 import { v5NewId } from "../fil/identite.ts";
-// FREEHAND WALL TRACE (a stroke becomes a CHAIN of walls). One-directional import ONLY (this
-// file -> trace-libre.ts): trace-libre.ts must not import back from here, see its own header for
-// why (a cycle between the two is exactly the shape of bug "Blank startup" warns about).
-import { v5StartFreeDraw } from "./trace-libre.ts";
-// THE 45-DEGREE TABLE, from the PURE half of the freehand trace (`geometrie/trace-libre.ts`, no
-// `Contexte`, no DOM): the wall-endpoint drag below quantises a dragged end's direction the SAME
-// way a freehand stroke's own runs are quantised (AGENTS.md, "same convention as the freehand
-// trace"), so it reuses the exact table rather than a second hand-rolled `cos`/`sin` (which would
-// reintroduce the `1.2246e-16` trap that table exists to avoid). No cycle risk: this is a
-// DIFFERENT file from `./trace-libre.ts` above (the impure gesture half), and the pure
-// `geometrie/` module imports nothing from `gestes/`.
-import { DIR8, quantizeAngleDeg } from "../geometrie/trace-libre.ts";
+// THE 45-DEGREE TABLE, pure (`geometrie/angles.ts`, no `Contexte`, no DOM): the wall-endpoint
+// drag below quantises a dragged end's direction with it rather than a hand-rolled `cos`/`sin`
+// (which would reintroduce the `1.2246e-16` trap that table exists to avoid). No cycle risk: the
+// pure `geometrie/` module imports nothing from `gestes/`.
+import { DIR8, quantizeAngleDeg } from "../geometrie/angles.ts";
 
 // =================================================================================================
 //  SELECTING A WALL, A CELL, AND DELETION
@@ -683,8 +676,8 @@ const P0 = (ctx: Contexte): PlanV5 | null => ctx.etat.plan || null;
  *        EXACT, regardless of Alt: a deliberate connection is not something "free hand" mode
  *        should make harder to hit.
  *   4. otherwise, the wall's DIRECTION quantised to the nearest 45° measured from the FIXED end
- *      (`DIR8`/`quantizeAngleDeg`, the freehand trace's own table) — unless Alt is held, which
- *      frees the angle, "same convention as the freehand trace" (AGENTS.md).
+ *      (`DIR8`/`quantizeAngleDeg`, `geometrie/angles.ts`) — unless Alt is held, which frees the
+ *      angle, the same meaning Alt already has everywhere else in this file.
  *   5. `step` (5cm, or 1cm under Ctrl/Cmd — the caller passes it, see `sansGrille`) rounds the
  *      result along whichever direction stage 4 picked.
  * Mirrors `v5StartDraw`'s own precedence (vertex > edge > grid) so extending a wall feels
@@ -922,25 +915,16 @@ export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown
 // =================================================================================================
 
 /**
- * Arms (or disarms) a draw tool. `libre` picks WHICH one while `on` is true: the single-segment
- * tool (default, unchanged behaviour) or the freehand trace (`gestes/trace-libre.ts`), which
- * turns a stroke into a chain of walls. Two buttons, one state machine: activating one clears
- * the other, matching the segmented Furniture/Walls control's own look.
+ * Arms (or disarms) THE draw tool: one tool, one button, one flag. It used to pick between two
+ * tools through a `libre` parameter (the freehand trace, a stroke becoming a chain of walls),
+ * removed on the owner's request; nothing selects a variant anymore.
  */
-export function v5SetDraw(ctx: Contexte, on: boolean, libre?: boolean): void {
+export function v5SetDraw(ctx: Contexte, on: boolean): void {
   ctx.ihm.draw = !!on;
-  ctx.ihm.drawFree = !!on && !!libre;
   const bSeg = $("btnDrawWall");
   if (bSeg) {
-    const actif = ctx.ihm.draw && !ctx.ihm.drawFree;
-    bSeg.classList.toggle("pri", actif);
-    bSeg.setAttribute("aria-pressed", actif ? "true" : "false");
-  }
-  const bLibre = $("btnDrawWallFree");
-  if (bLibre) {
-    const actif = ctx.ihm.draw && ctx.ihm.drawFree;
-    bLibre.classList.toggle("pri", actif);
-    bLibre.setAttribute("aria-pressed", actif ? "true" : "false");
+    bSeg.classList.toggle("pri", ctx.ihm.draw);
+    bSeg.setAttribute("aria-pressed", ctx.ihm.draw ? "true" : "false");
   }
   const l = ctx.canvas.querySelector<HTMLElement>(".v5layer");
   if (l) l.classList.toggle("drawing", !!on);
@@ -1443,8 +1427,7 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
     // net : rien de ce qu'on trace ne passe par là.
     if (t.closest(".v5wx,.v5wmid,.v5wjoin,.mid,.vx")) return;
     e.stopPropagation();
-    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
-    else v5StartDraw(ctx, e);
+    v5StartDraw(ctx, e);
     return;
   }
 }
@@ -1460,8 +1443,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (ctx.ihm.draw) {
     // Même exception qu'en capture : les cinq contrôles qui agissent au clic gardent leur clic.
     if (t?.closest?.(".v5wx,.v5wmid,.v5wjoin,.mid,.vx")) return;
-    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
-    else v5StartDraw(ctx, e);
+    v5StartDraw(ctx, e);
     return;
   }
   if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove")) return;
@@ -1487,12 +1469,7 @@ export function brancherOutilsMurs(ctx: Contexte): void {
   ctx.canvas.addEventListener("pointerdown", (e) => v5CaptureDown(ctx, e as PointerEvent), true);
   const b = $("btnDrawWall");
   if (b) b.addEventListener("click", () => {
-    v5SetDraw(ctx, !(ctx.ihm.draw && !ctx.ihm.drawFree), false);
-    render(ctx);
-  });
-  const bLibre = $("btnDrawWallFree");
-  if (bLibre) bLibre.addEventListener("click", () => {
-    v5SetDraw(ctx, !(ctx.ihm.draw && ctx.ihm.drawFree), true);
+    v5SetDraw(ctx, !ctx.ihm.draw);
     render(ctx);
   });
   // "Delete wall" from the cell card. The REST of the card (name, flooring) belongs to the

@@ -320,8 +320,8 @@ await test("une_pose_rabotee_par_un_mur_court_est_annoncee", SEED, `
 // =============================================================================
 //  7. A FREE-STANDING PARTITION SURVIVES THE INCREMENTAL WIRE
 // =============================================================================
-// A wall can carry `free:1`: it does NOT extend to the first barrier (the Freehand tool's loose
-// ends, and the "Ends: Through | Free" control). `sanitizeV5Plan` (full-plan re-read: reload,
+// A wall can carry `free:1`: it does NOT extend to the first barrier (a wall drawn with the tool,
+// a split half, and the "Ends: Through | Free" control). `sanitizeV5Plan` (full-plan re-read: reload,
 // undo/redo, D1/realtime adoption) already keeps it. The receive path for a SINGLE incremental
 // op (`ws5ApplyRemoteOp`'s `wall.set` case, `src/ts/fil/reception.ts`) is a SEPARATE code path
 // that merges only the keys present on the op: it used to merge neither on wall CREATION nor on

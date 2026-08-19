@@ -38,10 +38,9 @@ export interface EtatIHM {
   /** Wall whose band or handle is under a mouse, or the last wall tapped by a finger. */
   hoverWall: string | null;
   selCell: string | null;
+  /** THE draw tool is armed. One tool, one flag: the second one that used to pick the freehand
+   * trace went with it. */
   draw: boolean;
-  /** Which draw tool is armed while `draw` is true: the single-segment tool (false) or the
-   * freehand trace, which becomes a CHAIN of walls (true). Meaningless while `draw` is false. */
-  drawFree: boolean;
 }
 
 /**
@@ -265,7 +264,7 @@ export function creerContexte(etat: Etat, canvas: HTMLElement, viewport: HTMLEle
   return {
     etat,
     vue: { scale: 1, ox: 0, oy: 0 },
-    ihm: { selWall: null, hoverWall: null, selCell: null, draw: false, drawFree: false },
+    ihm: { selWall: null, hoverWall: null, selCell: null, draw: false },
     selection: { ids: new Set<string>(), primaire: null },
     selVtx: -1,
     rev: 0,

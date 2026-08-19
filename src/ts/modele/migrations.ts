@@ -56,13 +56,15 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       b,
       t: clamp(num(w["t"], WALL), WALL_T_MIN, WALL_T_MAX),
       isOutline: !!w["isOutline"] || v5OnOutline(a, b, outline, 1),
-      // FREE PARTITION (freehand trace, `gestes/trace-libre.ts`): it must NOT extend to the first
+      // FREE PARTITION (a wall drawn with the tool, a split half, the "Ends: Through | Free"
+      // control): it must NOT extend to the first
       // barrier the next time it is touched (`v5ThroughWall`, modele/edition.ts). This field used
       // to be DROPPED here on every re-read: reload, undo/redo (`histReplay` -> `migrate` ->
       // `sanitizeV5Plan`), and D1/realtime adoption all go through this function, so a
       // free-standing segment silently turned into an ordinary through-running wall the moment
-      // anyone touched it again. Measured: a freehand chain's loose end, redrawn then undone and
-      // redone, came back withOUT `free` even though the geometry looked identical.
+      // anyone touched it again. Measured (on the freehand chain tool, since removed): a chain's
+      // loose end, redrawn then undone and redone, came back withOUT `free` even though the
+      // geometry looked identical.
       free: w["free"] ? 1 : undefined,
     });
   });
