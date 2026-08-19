@@ -215,7 +215,12 @@ await test("facade_selectionnee_revele_le_contour_sans_commandes_interieures", a
   await click(h);
   ok(await evaluate(`String(__plan.v5ui.selWall)`) === id, "la poignée doit sélectionner la façade");
   ok(await center(`.edge[data-w="${id}"]`), "sélectionner la façade doit révéler sa bande de contour");
-  ok(await evaluate(`document.querySelector('.v5wx[data-w="${id}"],.v5wmid[data-w="${id}"]')===null`) === true, "une façade ne doit offrir ni suppression ni coude");
+  // CE CAS EST REECRIT, PAS SUPPRIME. Il affirmait qu'une facade n'offre NI suppression NI coupe,
+  // ce qui etait vrai tant qu'elle n'exposait que son bouton rond. Ce qu'il protege est la regle qui
+  // n'a pas bouge: un mur de contour est DERIVE du contour, il ne se supprime pas
+  // (`v5WallDeleteVerdict` verdict `facade`), donc aucune croix, jamais. Sa COUPE, elle, existe
+  // maintenant, et `tests/facade-controles-geste.ts` la mesure.
+  ok(await evaluate(`document.querySelector('.v5wx[data-w="${id}"]')===null`) === true, "une façade ne doit offrir aucune suppression");
 });
 
 // UN MUR COURT RÉTRÉCIT SES POIGNÉES, IL N'EN SUPPRIME PLUS. La priorité d'avant les faisait

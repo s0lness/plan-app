@@ -16,7 +16,7 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
-import { v5BoutJoint, v5WallMergeCandidate } from "../modele/edition.ts";
+import { v5BoutJoint, v5IndexAreteContour, v5SommetPlatDeFacade, v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
@@ -548,9 +548,15 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     move.title = w.isOutline ? "Click to select this facade" : "Click to select this wall, or drag to move it";
     move.addEventListener("pointerdown", (ev) => ctx.gestes.deplacerMurPointerDown?.(ev as PointerEvent, String(w.id)));
     layer.appendChild(move);
-    // A facade is derived from the outline. Its move handle deliberately SELECTS only: moving the
-    // outline remains the job of its existing edge and vertex controls.
-    if (w.isOutline) continue;
+    // UNE FACADE PORTE SON « + » ET SON MAILLON, JAMAIS SA CROIX NI SES BOUTS. Demande du
+    // proprietaire, mot pour mot: « je peux resize un mur de facade comme je veux, donc je devrais
+    // aussi pouvoir le couper », et « quand un autre mur coupe une facade je veux que les deux
+    // moities aient ce bouton en leur centre ». Les deux exceptions sont DELIBEREES:
+    //   - pas de croix: un mur de contour est DERIVE du contour, il ne se supprime pas
+    //     (`v5WallDeleteVerdict` verdict `facade`), et un bouton qui refuse n'apprend rien;
+    //   - pas de poignees de bout: les bouts d'une facade sont les COINS du contour, qui ont deja
+    //     leur poignee `.vtx` exactement au meme pixel. Deux commandes au meme endroit s'annulent.
+    const facade = !!w.isOutline;
     // The split and delete controls sit on the PERPENDICULAR, so they never crowd the axis. The
     // only length they cannot survive is one where they would swallow the segment itself.
     const showDetails = lenpx >= 28;
@@ -560,7 +566,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // band already covers the whole segment INCLUDING its very tip, and grabbing the small
     // circle right on top of it starts `v5StartWallEndDrag` instead (wired through
     // `ctx.gestes.boutMurPointerDown`, `gestes/branchement.ts`), which moves ONLY that end.
-    (["a", "b"] as const).forEach((bout) => {
+    if (!facade) (["a", "b"] as const).forEach((bout) => {
       // UN JOINT N'EST PAS UN BOUT. Si quelque chose tient deja cette extremite (un autre mur, son
       // flanc, la facade), on n'offre pas de prise pour l'etirer: tirer dessus dechirerait la
       // jonction qu'on vient de faire. Signale par le proprietaire juste apres une coupe, ou les
@@ -599,6 +605,18 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // the wall, and the split control always above (or left of) it.
     let nx = -dy / L, ny = dx / L;
     if (ny < 0 || (Math.abs(ny) < 1e-9 && nx < 0)) { nx = -nx; ny = -ny; }
+    // ET SUR UNE FACADE, LA NORMALE EST CELLE DU CONTOUR, TOURNEE VERS L'INTERIEUR. Le « + » du
+    // contour (`.mid`, G-15) est deja pose 18 px A L'EXTERIEUR de la meme arete: y poser aussi la
+    // coupe de la facade remettrait deux commandes au meme pixel, ce qui est exactement le defaut
+    // que G-15 a corrige. On prend donc l'AUTRE cote, a l'interieur du logement, ou la seule chose
+    // presente est le sol de la cellule. Les deux « + » sont alors separes d'au moins 50 px et
+    // chacun reste atteignable. Sans arete identifiable (une facade orpheline en cours de
+    // recalcul), on retombe sur l'orientation ecran ordinaire.
+    if (facade) {
+      const arete = v5IndexAreteContour(ctx.etat.plan, w.id);
+      const dehors = arete >= 0 ? outlineOutward(ctx, arete) : null;
+      if (dehors) { nx = dehors.x; ny = dehors.y; }
+    }
     // DEUX BOITES NE SE RECOUVRENT JAMAIS. L'ecart perpendiculaire doit valoir au moins une boite
     // entiere, sinon la coupe et la suppression mordent sur le bouton de deplacement et un
     // presque-rate atteint la mauvaise commande. C'est la meme famille de defaut que le « + » du
@@ -617,32 +635,39 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // centres et coherents entre eux.
     coude.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
       traits('<line x1="16" y1="11.6" x2="16" y2="20.4"/><line x1="11.6" y1="16" x2="20.4" y2="16"/>'));
-    coude.title = "Split this wall in two here";
+    coude.title = facade ? "Split this facade in two here" : "Split this wall in two here";
     coude.style.cssText = boite(20);
     coude.style.left = (sMid.x - nx * off) + "px";
     coude.style.top = (sMid.y - ny * off) + "px";
     coude.addEventListener("pointerdown", (ev) => ctx.gestes.coudeMurPointerDown?.(ev as PointerEvent, String(w.id)));
     layer.appendChild(coude);
-    const s = { x: sMid.x + nx * off, y: sMid.y + ny * off };
-    const x = document.createElement("div");
-    x.className = "v5wx";
-    x.dataset["w"] = String(w.id);
-    x.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
-      traits('<line x1="12.9" y1="12.9" x2="19.1" y2="19.1"/><line x1="19.1" y1="12.9" x2="12.9" y2="19.1"/>'));
-    x.title = "Delete this wall (the two rooms merge)";
-    x.style.cssText = boite(20);
-    x.style.left = s.x + "px";
-    x.style.top = s.y + "px";
-    x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent, String(w.id)));
-    layer.appendChild(x);
+    if (!facade) {
+      const s = { x: sMid.x + nx * off, y: sMid.y + ny * off };
+      const x = document.createElement("div");
+      x.className = "v5wx";
+      x.dataset["w"] = String(w.id);
+      x.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+        traits('<line x1="12.9" y1="12.9" x2="19.1" y2="19.1"/><line x1="19.1" y1="12.9" x2="12.9" y2="19.1"/>'));
+      x.title = "Delete this wall (the two rooms merge)";
+      x.style.cssText = boite(20);
+      x.style.left = s.x + "px";
+      x.style.top = s.y + "px";
+      x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent, String(w.id)));
+      layer.appendChild(x);
+    }
 
     // THE "-" ONLY EXISTS WHERE WELDING IS LEGITIMATE. The model decides (`v5WallMergeCandidate`):
     // exactly two walls at this joint, neither of them a facade, and the two continuing one
     // another. A control that appears and then refuses teaches nothing; one that is simply absent
     // says "not here" without a word. It sits on the same side as the "+", so the pair that cuts
     // and welds reads together, and the delete cross keeps the other side to itself.
+    // SUR UNE FACADE, LE MAILLON RESSOUDE UN SOMMET PLAT. Deux moities de facade ne sont pas deux
+    // murs poses cote a cote: ce sont deux ARETES du contour separees par un sommet, et les
+    // recoller veut dire retirer ce sommet (`v5SommetPlatDeFacade`). Meme garde que pour deux
+    // cloisons: les deux aretes doivent se continuer, et rien d'autre ne doit tenir ce point.
     (["a", "b"] as const).forEach((bout) => {
-      if (!v5WallMergeCandidate(ctx.etat.plan, w.id, bout)) return;
+      if (facade ? v5SommetPlatDeFacade(ctx.etat.plan, w.id, bout) < 0
+        : !v5WallMergeCandidate(ctx.etat.plan, w.id, bout)) return;
       const p = toC(w[bout][0], w[bout][1]);
       const m = document.createElement("div");
       m.className = "v5wjoin";
@@ -655,7 +680,8 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
         '<g fill="none" stroke="#fff" stroke-width="1.9" stroke-linejoin="round">'
         + '<rect x="8.9" y="13.2" width="7.4" height="5.6" rx="2.8"/>'
         + '<rect x="15.7" y="13.2" width="7.4" height="5.6" rx="2.8"/></g>');
-      m.title = "Weld this wall to the one it continues";
+      m.title = facade ? "Weld these two halves of the facade back together"
+        : "Weld this wall to the one it continues";
       m.style.cssText = boite(20);
       m.style.left = (p.x - nx * off) + "px";
       m.style.top = (p.y - ny * off) + "px";
