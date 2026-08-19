@@ -1433,6 +1433,15 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
   // still reached v5StartOutlineEdgeDrag, and a simple click there triggered a
   // v5AfterGeometry(true) that lengthened a partition three meters away from there.
   if (ctx.ihm.draw) {
+    // MAIS UN BOUTON RESTE UN BOUTON, OUTIL ARMÉ OU NON. La règle ci-dessus vise ce qu'on TIRE :
+    // la bande d'une façade, un sommet, le bout d'un mur, le disque de déplacement. Tirer l'un de
+    // ces quatre pendant qu'on trace, c'est le geste raté que la règle existe pour empêcher.
+    // Elle emportait au passage les cinq contrôles qui AGISSENT AU CLIC : le « + » qui coupe, la
+    // croix qui supprime, le maillon qui ressoude, et leurs équivalents de contour. Signalé à
+    // l'usage : « quand je suis en mode Draw a wall je ne peux cliquer ni + ni x ». Ils sont posés
+    // à 18 px À CÔTÉ du mur, sur quelques pixels, et le seul geste qu'ils acceptent est un clic
+    // net : rien de ce qu'on trace ne passe par là.
+    if (t.closest(".v5wx,.v5wmid,.v5wjoin,.mid,.vx")) return;
     e.stopPropagation();
     if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
     else v5StartDraw(ctx, e);
@@ -1447,12 +1456,14 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
 export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (!v5On(ctx) || measureMode() || spaceHeld()) return;
   if (e.button !== undefined && e.button !== 0) return;
+  const t = e.target as Element | null;
   if (ctx.ihm.draw) {
+    // Même exception qu'en capture : les cinq contrôles qui agissent au clic gardent leur clic.
+    if (t?.closest?.(".v5wx,.v5wmid,.v5wjoin,.mid,.vx")) return;
     if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
     else v5StartDraw(ctx, e);
     return;
   }
-  const t = e.target as Element | null;
   if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove")) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
   if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], true); return; }
