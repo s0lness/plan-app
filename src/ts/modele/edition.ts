@@ -1005,6 +1005,23 @@ export function v5WallSplitAtPoint(P: PlanV5 | null | undefined, wallId: Id, pt:
 // nothing. `MARGE_T` is that floor, and it is the same order as the junction tolerance itself.
 const MARGE_T = 5;
 
+/**
+ * IS THIS ENDPOINT A JOINT? True when something else is already holding it: another wall's end,
+ * another wall's flank, or the outline. Reported by the owner: after splitting a wall, the cut
+ * point was still offered as a grabbable END on both halves, and pulling it would have torn open
+ * the junction that had just been made. A joint is not an end. What belongs there is the "-" that
+ * welds the two halves back together, and that one is already drawn.
+ */
+export function v5BoutJoint(P: PlanV5 | null | undefined, wallId: Id, bout: "a" | "b"): boolean {
+  const w = v5WallById(P, wallId);
+  if (!P || !w) return false;
+  const pt = w[bout];
+  return (P.walls || []).some((x) => {
+    if (String(x.id) === String(wallId)) return false;
+    return closestOnSeg(pt[0], pt[1], x.a[0], x.a[1], x.b[0], x.b[1]).dist <= JOINT_TOL;
+  });
+}
+
 /** The wall whose BODY passes through `pt`, if cutting it there would make a real T. */
 export function v5MurTraverse(P: PlanV5 | null | undefined, pt: Pt, exclure: readonly Id[]): Mur | null {
   if (!P) return null;

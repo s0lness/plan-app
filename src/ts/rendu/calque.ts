@@ -16,7 +16,7 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
-import { v5WallMergeCandidate } from "../modele/edition.ts";
+import { v5BoutJoint, v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
@@ -533,6 +533,12 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // circle right on top of it starts `v5StartWallEndDrag` instead (wired through
     // `ctx.gestes.boutMurPointerDown`, `gestes/branchement.ts`), which moves ONLY that end.
     (["a", "b"] as const).forEach((bout) => {
+      // UN JOINT N'EST PAS UN BOUT. Si quelque chose tient deja cette extremite (un autre mur, son
+      // flanc, la facade), on n'offre pas de prise pour l'etirer: tirer dessus dechirerait la
+      // jonction qu'on vient de faire. Signale par le proprietaire juste apres une coupe, ou les
+      // deux moities exhibaient le point de coupe comme un bout saisissable. Ce qui a sa place la
+      // est le « - » qui ressoude, et il y est deja.
+      if (v5BoutJoint(ctx.etat.plan, w.id, bout)) return;
       const p = w[bout];
       const s = toC(p[0], p[1]);
       const h = document.createElement("div");

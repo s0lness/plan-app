@@ -49,6 +49,7 @@ import {
   v5ThroughWall,
   v5WallMergeAt,
   v5MurTraverse,
+  v5WallMergeCandidate,
   v5WallSplitAt,
   v5WallSplitAtPoint,
   v5WallSplitRefusal,
@@ -123,6 +124,30 @@ export function bornerLesMeubles(ctx: Contexte): number {
   return bilan.perdus;
 }
 
+/**
+ * SUPPRIMER LA BARRE D'UN T REFERME LA COUPE QU'ELLE AVAIT FAITE. Demande du proprietaire: il trace
+ * un mur dans un autre, ce qui coupe le second en deux; en supprimant le premier, la coupe doit
+ * disparaitre avec lui, sinon le plan garde la cicatrice d'un mur qui n'existe plus.
+ *
+ * C'est exactement la regle du « - », appliquee toute seule: on ne ressoude que si le joint
+ * n'appartient plus qu'a DEUX murs qui se continuent, ce que `v5WallMergeCandidate` verifie deja.
+ * S'il reste un troisieme mur, ou si les deux ne sont pas alignes, on ne touche a rien.
+ */
+function v5RessouderJoints(ctx: Contexte, joints: readonly Pt[]): void {
+  const P = ctx.etat.plan;
+  if (!P) return;
+  for (const pt of joints) {
+    for (const x of [...(P.walls || [])]) {
+      if (x.isOutline) continue;
+      const bout = (["a", "b"] as const).find((k) => Math.hypot(x[k][0] - pt[0], x[k][1] - pt[1]) <= 2);
+      if (!bout) continue;
+      if (!v5WallMergeCandidate(P, x.id, bout)) break;
+      v5WallMergeAt(P, x.id, bout);
+      break;
+    }
+  }
+}
+
 export function v5DeleteSelectedWall(ctx: Contexte): void {
   const P = ctx.etat.plan, id = ctx.ihm.selWall;
   if (!P || !id) return;
@@ -140,8 +165,10 @@ export function v5DeleteSelectedWall(ctx: Contexte): void {
   for (let i = P.openings.length - 1; i >= 0; i--) {
     if (String(P.openings[i]!.wallId) === String(id)) P.openings.splice(i, 1);
   }
+  const joints: Pt[] = [[w.a[0], w.a[1]], [w.b[0], w.b[1]]];
   const k = P.walls.indexOf(w);
   if (k >= 0) P.walls.splice(k, 1);
+  v5RessouderJoints(ctx, joints);
   v5SelectWall(ctx, null);
   // the two cells merge; v5AssignNames gives the name of the LARGER one (max overlap)
   v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx);

@@ -24,7 +24,7 @@
 //   node tests/bouts-de-mur.ts
 import type { DonneeDynamique } from "./_types.ts";
 import { v5ResoudreGeometrie, v5WallEndDragApply, v5WallEndDrop } from "../src/ts/gestes/murs.ts";
-import { v5MurTraverse, v5SnapWallEnd, v5WallSplitAtPoint } from "../src/ts/modele/edition.ts";
+import { v5BoutJoint, v5MurTraverse, v5SnapWallEnd, v5WallSplitAtPoint } from "../src/ts/modele/edition.ts";
 import { v5RebuildCells } from "../src/ts/modele/cellules.ts";
 import { sanitizeV5Plan } from "../src/ts/modele/migrations.ts";
 import type { Contexte } from "../src/ts/app/contexte.ts";
@@ -220,6 +220,18 @@ test("un_contact_pres_du_bout_de_la_barre_n_est_pas_un_T", (a: DonneeDynamique) 
   ]);
   a(v5MurTraverse(P, [200, 52], ["pied"]) === null,
     "un contact a 2 cm du bout de la barre ne doit pas la couper");
+});
+
+// UN JOINT N'EST PAS UN BOUT, et le rendu s'appuie la-dessus pour ne pas offrir de prise a une
+// extremite deja tenue: tirer dessus dechirerait la jonction. Signale apres une coupe, ou les deux
+// moities exhibaient le point de coupe comme un bout saisissable.
+test("une_extremite_tenue_par_un_autre_mur_est_un_joint", (a: DonneeDynamique) => {
+  const P = plan([
+    { id: "barre", a: [200, 50], b: [200, 250], t: 12, isOutline: false },
+    { id: "pied", a: [40, 150], b: [200, 150], t: 12, isOutline: false },
+  ]);
+  a(v5BoutJoint(P, "pied", "b") === true, "le bout pose sur la barre est un joint");
+  a(v5BoutJoint(P, "pied", "a") === false, "l'autre bout, en plein air, n'en est pas un");
 });
 
 test("un_mur_n_accroche_jamais_sur_sa_propre_extremite_fixe", (a: DonneeDynamique) => {
