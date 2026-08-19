@@ -30,6 +30,17 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+// THE BROWSER CAP IS A MACHINE CAP, NOT A PROCESS CAP. `JOBS` below bounds THIS barrier; it cannot
+// see the eight other worktrees, each of which was politely holding its own cap of 8. On 19/08/2026
+// at 11:11 that arithmetic froze the workstation for seven minutes: Chrome from 44 to 264
+// processes, 1,98 GB free, a run queue of 318 on 12 cores. The permit pool served by local-agent
+// (`:5100`) counts BROWSERS across every worktree at once, so a suite waits for a real slot instead
+// of for a slot this process alone believes in. ONE PERMIT = ONE BROWSER, which is why the count
+// comes from `suite.chrome` and not from the number of suites. The two caps compose: `JOBS` still
+// limits how many suites this barrier starts, the pool limits how many browsers exist anywhere.
+// If local-agent is unreachable the helper warns once and runs anyway: a barrier must never be
+// blocked by the supervisor.
+import { withBrowserPermits } from "file:///C:/Users/sylve/projects/local-agent/sem-client.ts";
 
 interface EntreeSuite {
   f: string;
@@ -87,6 +98,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/sans-mode-geste.ts",          chrome: 1 }, // real mouse and finger: one aim-based canvas with no persistent structural toggle
   { f: "tests/bouts-de-mur-geste.ts",      chrome: 1 },   // real mouse: a wall's own endpoint handle is hittable and extends it, the wall body still drags the whole wall, a clean click writes nothing
   { f: "tests/coude-mur-geste.ts",         chrome: 1 },   // real mouse: midpoint elbow handle, wall body remains reachable, clean click writes nothing
+  { f: "tests/facade-glisse-geste.ts",     chrome: 1 },   // real mouse: a facade half SLIDES, the outline never bends, corner drags carry the whole straight run
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
   { f: "tests/etiquettes-recouvrement.ts", chrome: 1 },   // room labels vs furniture labels vs each other, real DOM, the owner's real apartment
@@ -348,7 +360,19 @@ const battement = setInterval(() => {
 }, 60000);
 battement.unref();
 
+const PROPRIETAIRE_PERMIS = "plan-app/" + path.basename(ROOT);
+// Five minutes without a single line. `PLAN_TESTS_SILENCE=0` disables the watchdog, for the day
+// someone wants to attach a debugger to a suite and let it sit.
+const SILENCE_MAX = Number(process.env.PLAN_TESTS_SILENCE ?? 300_000) || Infinity;
+
 function lance(suite: EntreeSuite): Promise<ResultatSuite> {
+  // A suite that opens no browser takes no permit: it costs CPU, not Chrome, and making it queue
+  // behind the browsers would only slow the barrier down without freeing a single process.
+  if (!suite.chrome) return lanceVraiment(suite);
+  return withBrowserPermits(suite.chrome, PROPRIETAIRE_PERMIS, () => lanceVraiment(suite));
+}
+
+function lanceVraiment(suite: EntreeSuite): Promise<ResultatSuite> {
   return new Promise<ResultatSuite>((res) => {
     const t0 = Date.now();
     const nom = path.basename(suite.f, ".ts").replace(/[^a-z0-9-]/gi, "");
@@ -364,11 +388,28 @@ function lance(suite: EntreeSuite): Promise<ResultatSuite> {
     });
     abaissePriorite(p.pid);
     let out = "";
-    p.stdout.on("data", (d) => { out += d; });
-    p.stderr.on("data", (d) => { out += d; });
+    // A SUITE THAT FREEZES IS KILLED, IT IS NOT WAITED FOR. The orphan sweep only recovers what a
+    // DEAD process left behind; a suite still alive and stuck on a promise that will never settle
+    // keeps its slot, its browser and now its machine permit, forever, and the barrier reports
+    // nothing at all. So we watch the only signal that proves a suite is still working: it talks.
+    // Every case prints its verdict line, and the quietest one on this machine takes ~40 s, so
+    // five silent minutes is not slowness, it is a hang. Killing it turns an infinite wait into a
+    // named failure, and `withBrowserPermits` releases the permit in its `finally`.
+    let dernierMot = Date.now(), fige = false;
+    const parle = (d: unknown): void => { out += d; dernierMot = Date.now(); };
+    p.stdout.on("data", parle);
+    p.stderr.on("data", parle);
+    const chien = setInterval(() => {
+      if (Date.now() - dernierMot < SILENCE_MAX) return;
+      fige = true;
+      out += `\n[barriere] suite muette pendant ${Math.round(SILENCE_MAX / 1000)} s: arret force.\n`;
+      try { p.kill(); } catch { /* already gone */ }
+    }, 15_000);
+    (chien as { unref?: () => void }).unref?.();
     const fin = (code: number | null, err?: Error) => {
+      clearInterval(chien);
       enVol.delete(suite.f);
-      const r = { suite, code, out: err ? out + String(err) : out, ms: Date.now() - t0 };
+      const r = { suite, code: fige ? (code || 1) : code, out: err ? out + String(err) : out, ms: Date.now() - t0 };
       tueArbresEtEfface(priv).then(() => res(r));
     };
     p.on("error", (e) => fin(1, e));

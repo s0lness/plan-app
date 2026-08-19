@@ -56,6 +56,7 @@ import {
   v5WallSplitAtPoint,
   v5WallSplitRefusal,
   v5WallCovering,
+  v5DerivedId,
 } from "../modele/edition.ts";
 import { render } from "../rendu/rendu.ts";
 import { syncCellCard } from "../rendu/fiche-cellule.ts";
@@ -1095,6 +1096,50 @@ export function v5StartVertexDrag(ctx: Contexte, e: PointerEvent, i: number): vo
   ctx.crochets.dragStart?.();
   ctx.selVtx = i; v5SelectWall(ctx, null);
   const sx = v0[0], sy = v0[1];
+  // UN SOMMET NE PLIE PLUS SES FACADES: IL LES EMMENE. Tirer un coin ne bougeait que lui, donc les
+  // deux aretes voisines PIVOTAIENT et une facade droite devenait oblique. Signale a l'usage, image
+  // a l'appui: le mur du haut plie en zigzag, avec ses fenetres de travers. Depuis que couper une
+  // facade insere un sommet, il y en a beaucoup plus sous la main, donc le defaut est devenu facile
+  // a declencher. Decision du proprietaire: les sommets restent sur leurs axes.
+  //
+  // On retient donc, pour chaque voisin, l'axe le long duquel l'arete partagee est CONSTANTE, et on
+  // reporte le mouvement dessus: une arete horizontale le reste, une verticale aussi, et un
+  // decrochement reste a angle droit. Une arete deja oblique (un plan ancien, un pan coupe) n'a
+  // aucun axe constant: on ne lui impose rien, elle se comporte comme avant.
+  //
+  // ET ON SUIT LA COURSE ENTIERE, PAS LE SEUL VOISIN. Depuis qu'on coupe les facades, un sommet
+  // n'est pas forcement un coin: le point de coupe est un sommet PLAT, dont les deux aretes vont
+  // dans le meme sens. N'emmener que lui deplacait la moitie attenante et laissait la suivante en
+  // place, donc pliait quand meme (mesure: l'arete [450,60]-[900,0] apres avoir tire le coin
+  // haut-gauche). Un pan de facade est une course DROITE: on la remonte de sommet plat en sommet
+  // plat, et on s'arrete au premier vrai coin, qui lui absorbe le mouvement en s'allongeant.
+  const n = poly.length;
+  type Voisin = { p: Pt; axe: "x" | "y" | null; d: [number, number] };
+  const axeConstant = (p: Pt, q: Pt): "x" | "y" | null =>
+    Math.abs(q[0] - p[0]) < 0.5 ? "x" : (Math.abs(q[1] - p[1]) < 0.5 ? "y" : null);
+  const course = (pas: 1 | -1): Voisin[] => {
+    const out: Voisin[] = [];
+    let k = i, prec: Pt = poly[i]!;
+    for (let garde = 0; garde < n - 1; garde++) {
+      const kk = (k + pas + n) % n, q = poly[kk]!;
+      const axe = axeConstant(prec, q);
+      out.push({ p: q, axe, d: [q[0] - sx, q[1] - sy] });
+      if (axe === null) break;                      // arete deja oblique: on ne lui impose rien
+      if (axeConstant(q, poly[(kk + pas + n) % n]!) !== axe) break;   // vrai coin: la course s'arrete
+      prec = q; k = kk;
+    }
+    return out;
+  };
+  const voisins: Voisin[] = [...course(-1), ...course(1)];
+  const suivreLesVoisins = (nx: number, ny: number): void => {
+    for (const v of voisins) {
+      if (v.axe === "x") v.p[0] = nx;                 // arete verticale: elle reste verticale
+      else if (v.axe === "y") v.p[1] = ny;            // arete horizontale: elle reste horizontale
+    }
+  };
+  const rendreLesVoisins = (): void => {
+    for (const v of voisins) { v.p[0] = sx + v.d[0]; v.p[1] = sy + v.d[1]; }
+  };
   const px0 = e.clientX, py0 = e.clientY;
   let moved = false;
   const move = (ev: PointerEvent): void => {
@@ -1109,6 +1154,7 @@ export function v5StartVertexDrag(ctx: Contexte, e: PointerEvent, i: number): vo
     const lx = Math.round(cm.x / step) * step, ly = Math.round(cm.y / step) * step;
     const o = orthoSnapVertex(poly, i, lx, ly, ev.shiftKey, sx, sy, ctx.vue.scale);
     poly[i] = [Math.round(o.x), Math.round(o.y)];
+    suivreLesVoisins(poly[i]![0], poly[i]![1]);
     drawOrthoGuides(ctx, o.guides);
     v5AfterGeometry(ctx, false);
   };
@@ -1117,7 +1163,7 @@ export function v5StartVertexDrag(ctx: Contexte, e: PointerEvent, i: number): vo
     clearStitchGuides(ctx);
     if (!moved) {
       // CLEAN CLICK: the vertex is SELECTED (it can be removed with Delete), nothing else.
-      poly[i] = [sx, sy];
+      poly[i] = [sx, sy]; rendreLesVoisins();
       render(ctx); endGesture();
       ctx.crochets.dragEnd?.();
       return;
@@ -1126,7 +1172,7 @@ export function v5StartVertexDrag(ctx: Contexte, e: PointerEvent, i: number): vo
     ctx.crochets.dragEnd?.();
   };
   // G-12. Escape: the vertex goes back.
-  const cancel = (): void => { poly[i] = [sx, sy]; moved = false; clearStitchGuides(ctx); };
+  const cancel = (): void => { poly[i] = [sx, sy]; rendreLesVoisins(); moved = false; clearStitchGuides(ctx); };
   window.addEventListener("pointermove", move);
   armGesture(up, null, cancel);
 }
@@ -1150,11 +1196,66 @@ export function v5StartOutlineEdgeDrag(
   if (e.button !== undefined && e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
   const poly = ctx.etat.plan.outline, n = poly.length;
-  const j = (i + 1) % n;
+  let j = (i + 1) % n;
   const pi = poly[i], pj = poly[j];
   if (!pi || !pj) return;
   const a0: Pt = [pi[0], pi[1]], b0: Pt = [pj[0], pj[1]];
   const s = v5Seg({ a: a0, b: b0 });
+  // THE STARTING SHAPE, kept whole: pushing a facade half can INSERT corners (below), so a clean
+  // click and a cancel have to put the polygon AND the wall list back as they were, not just the
+  // two endpoints of the dragged edge.
+  const i0 = i, j0 = j;
+  const poly0: Pt[] = poly.map((p) => [p[0], p[1]] as Pt);
+  const murs0: Mur[] = ctx.etat.plan.walls.slice();
+  const memePt = (p: Pt, q: Pt): boolean => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1;
+  const murArete = ctx.etat.plan.walls.find((w) => w.isOutline
+    && ((memePt(w.a, a0) && memePt(w.b, b0)) || (memePt(w.a, b0) && memePt(w.b, a0))));
+  const epaisseur = murArete?.t || WALL;
+  const restaurer = (): void => {
+    poly.length = 0; for (const p of poly0) poly.push([p[0], p[1]]);
+    ctx.etat.plan.walls.length = 0; for (const w of murs0) ctx.etat.plan.walls.push(w);
+    i = i0; j = j0; coinsPoses = false;
+  };
+  // A FACADE SLIDES, IT NEVER BENDS. Pushing an edge moves its two ends; a neighbouring edge that
+  // continues in the SAME direction (the other half of a cut facade) would then have one end moved
+  // and one end still, so it would TILT, and the outline would come out bent (owner's report, an
+  // oblique segment across the top facade with its windows askew). At the first real centimeter we
+  // therefore INSERT a corner at the old position of that end: the neighbour keeps its direction
+  // and the two halves are joined by a right-angle connector, which is the outline version of the
+  // junction bridge for partitions (decision record 0007). A neighbour that is PERPENDICULAR just
+  // grows or shrinks, which is the ordinary rectangle case, and gets no corner.
+  let coinsPoses = false;
+  const poserLesCoins = (d: number): void => {
+    coinsPoses = true;
+    const m = poly.length;
+    const av = (i - 1 + m) % m, ap = (j + 1) % m;
+    const parallele = (p?: Pt, q?: Pt): boolean => {
+      if (!p || !q) return false;
+      const ux = q[0] - p[0], uy = q[1] - p[1], L = Math.hypot(ux, uy);
+      return L >= 1 && Math.abs(ux * s.nx + uy * s.ny) / L < 0.02;
+    };
+    const avant = parallele(poly[av], poly[i]), apres = parallele(poly[j], poly[ap]);
+    if (!avant && !apres) return;
+    const out: Pt[] = []; let ni = i, nj = j;
+    for (let k = 0; k < m; k++) {
+      if (k === i && avant) out.push([a0[0], a0[1]]);
+      if (k === i) ni = out.length;
+      if (k === j) nj = out.length;
+      out.push(poly[k]!);
+      if (k === j && apres) out.push([b0[0], b0[1]]);
+    }
+    poly.length = 0; for (const p of out) poly.push(p);
+    i = ni; j = nj;
+    // The connector wall is created HERE, and not left to `v5SyncOutlineWalls`: an edge it cannot
+    // pair falls back on the first free outline wall, which shifts every facade downstream by one
+    // AND takes their windows along (measured: 9 openings out of 30 moved by up to 11 m on a single
+    // gesture). Same reason, same fix as cutting a facade.
+    const P = ctx.etat.plan;
+    if (avant) P.walls.push({ id: v5DerivedId(P, "w"), a: [a0[0], a0[1]],
+      b: [a0[0] + s.nx * d, a0[1] + s.ny * d], t: epaisseur, isOutline: true });
+    if (apres) P.walls.push({ id: v5DerivedId(P, "w"), a: [b0[0] + s.nx * d, b0[1] + s.ny * d],
+      b: [b0[0], b0[1]], t: epaisseur, isOutline: true });
+  };
   beginGesture();
   ctx.crochets.dragStart?.();
   ctx.selVtx = -1;
@@ -1180,6 +1281,7 @@ export function v5StartOutlineEdgeDrag(
       else if (Math.abs(s.ny) > 0.99) d += (Math.round(na[1]! / 5) * 5 - na[1]!) / s.ny;
       else d = Math.round(d / 5) * 5;
     }
+    if (!coinsPoses && Math.abs(d) >= 1) poserLesCoins(d);
     poly[i] = [Math.round(a0[0] + s.nx * d), Math.round(a0[1] + s.ny * d)];
     poly[j] = [Math.round(b0[0] + s.nx * d), Math.round(b0[1] + s.ny * d)];
     v5AfterGeometry(ctx, false);
@@ -1205,18 +1307,23 @@ export function v5StartOutlineEdgeDrag(
     if (!moved) {
       // CLEAN CLICK: the outline hasn't moved by a centimeter, so NOTHING is recomputed. No
       // v5AfterGeometry, no re-traversal of walls, no re-bounding of furniture.
-      poly[i] = [a0[0], a0[1]]; poly[j] = [b0[0], b0[1]];
+      restaurer();
       endGesture();
       ctx.crochets.dragEnd?.();
       if (onClick) onClick();
       return;
+    }
+    // A CONNECTOR BROUGHT BACK TO ZERO IS NOT A CORNER: pushing a half and putting it back leaves
+    // two vertices on the same spot, so the outline would keep an invisible corner per round trip.
+    for (let k = poly.length - 1; k >= 0 && poly.length > 3; k--) {
+      if (memePt(poly[k]!, poly[(k + 1) % poly.length]!)) poly.splice(k, 1);
     }
     v5AfterGeometry(ctx, true);
     endGesture();
     ctx.crochets.dragEnd?.();
   };
   const cancel = (): void => {
-    poly[i] = [a0[0], a0[1]]; poly[j] = [b0[0], b0[1]];
+    restaurer();
     moved = false; v5ClearDims(ctx);
   };
   window.addEventListener("pointermove", move);
