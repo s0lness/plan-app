@@ -99,7 +99,8 @@ function brancherSurvolMurs(ctx: Contexte): void {
     // traitait comme des meubles et effacait les poignees: une facade portant une fenetre en son
     // milieu devenait insaisissable a l'endroit exact ou son bouton se pose. Signale par le
     // proprietaire: « s'il y a une fenetre a l'endroit du bouton, je dois pouvoir saisir le
-    // bouton ». Un MEUBLE, lui, efface bien: il ne appartient a aucun mur et c'est la cible visible.
+    // bouton ». Une ouverture RESOUT vers son mur; un MEUBLE, lui, n'appartient a aucun mur, donc
+    // il ne resout vers rien: il retient, mais ne revele pas (voir plus bas).
     const ouv = t?.closest<HTMLElement>('.piece[data-op="1"]');
     if (ouv) {
       const o = (ctx.etat.plan.openings || []).find((q) => String(q.id) === String(ouv.dataset["id"]));
@@ -111,11 +112,27 @@ function brancherSurvolMurs(ctx: Contexte): void {
     // dessous. Ce chemin la traitait comme un meuble, et l'etiquette se pose au pole de la
     // cellule, c'est-a-dire au milieu d'un couloir etroit, pile sur le bouton du mur qui le
     // borde: approcher ce bouton faisait disparaitre la commande qu'on visait. On laisse donc
-    // decider la GEOMETRIE, comme pour une ouverture. Un MEUBLE, lui, efface toujours: il
-    // n'appartient a aucun mur et c'est la cible visible.
-    if (t?.closest(".piece")) { montrerPoigneesMur(ctx, layer, null); return; }
+    // decider la GEOMETRIE, comme pour une ouverture.
+    // UN MEUBLE RETIENT LES COMMANDES DU MUR QU'IL RECOUVRE, MAIS IL N'EN REVELE AUCUNE.
+    // Ce chemin les EFFACAIT: passer au-dessus d'un meuble en allant vers le bouton d'un mur
+    // faisait disparaitre le bouton qu'on visait, et un bouton se pose justement A COTE de la
+    // bande du mur (la croix et la coupe sont decalees d'une boite entiere), donc le trajet
+    // traverse par force ce qui est pose la. C'est la meme famille de defaut que l'etiquette de
+    // piece, un cran plus loin.
+    //
+    // MAIS UN MEUBLE N'EST PAS UNE ETIQUETTE, et c'est la seule nuance qui compte ici: on le
+    // SAISIT. Si un meuble revelait les commandes du mur sous lequel il est pose, alors depuis
+    // que ces commandes passent au-dessus de lui (`css/06`), venir prendre un lit colle a une
+    // cloison ferait apparaitre un bouton sous la main juste avant l'appui. Le defaut serait
+    // seulement deplace. La regle est donc DISSYMETRIQUE: un meuble RETIENT le survol du mur
+    // qu'on tenait deja (on venait du mur, on va vers son bouton), il n'en DEMARRE jamais un
+    // nouveau (on arrive du sol libre, on vient prendre le meuble). Quand il ne retient rien, on
+    // passe par le masquage DIFFERE ordinaire, celui-la meme qui donne le temps d'atteindre un
+    // bouton, au lieu d'effacer sur-le-champ.
+    const surMeuble = !!t?.closest(".piece");
     const id = murGeometrique(ctx, e);
-    if (id) montrerPoigneesMur(ctx, layer, id); else planifierMasquageMur(ctx, layer);
+    if (id && (!surMeuble || id === ctx.ihm.hoverWall)) montrerPoigneesMur(ctx, layer, id);
+    else planifierMasquageMur(ctx, layer);
   });
   ctx.viewport.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "touch") return;

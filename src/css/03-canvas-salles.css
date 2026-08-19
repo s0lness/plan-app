@@ -18,7 +18,7 @@
     border:1px solid rgba(35,39,42,.14);border-radius:3px 3px 0 0;padding:2px 7px;white-space:nowrap;
     z-index:120;box-shadow:0 1px 1px rgba(20,30,30,.05);cursor:pointer;touch-action:none;user-select:none}
   /* centered label: placed on the cell's pole of inaccessibility */
-  /* ET ELLE PASSE SOUS LES COMMANDES DU MUR (z-index 9), parce qu'un controle qu'une etiquette
+  /* ET ELLE PASSE SOUS LES COMMANDES DU MUR (2100, `css/06`), parce qu'un controle qu'une etiquette
      peut recouvrir n'est pas un controle: c'est la meme regle que pour le tapis, une famille
      d'objets plus loin. Une etiquette de piece se pose au pole de la cellule, donc en plein
      milieu d'un couloir etroit elle tombe pile sur le disque de deplacement du mur qui le borde.

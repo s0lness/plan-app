@@ -7,6 +7,7 @@
 //   node tests/all.ts run model-v5    # only run suites whose name contains this
 //   node tests/all.ts --repeat 5      # rerun the whole barrier 5 times (stability proof)
 //   node tests/all.ts --list          # list the suites and exit
+//   node tests/all.ts --part 1/2      # une suite sur deux ; deux passages couvrent tout
 //   node tests/all.ts --sans-verrou   # run even if another barrier holds the lock (see below)
 //
 // WHAT THE DEFAULT MODE MEASURES, AND THAT IS THE WHOLE POINT OF THE SWITCHOVER (batch E5c): the
@@ -144,7 +145,7 @@ const argv = process.argv.slice(2);
 const NO_RETRY = argv.includes("--sans-reprise");
 const flag = (n: string) => argv.includes(n);
 const opt = (n: string, d: string | number) => { const i = argv.indexOf(n); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
-const filters = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && /^(--jobs|--repeat)$/.test(argv[i - 1])));
+const filters = argv.filter((a, i) => !a.startsWith("--") && !(i > 0 && argv[i - 1].startsWith("--") && /^(--jobs|--repeat|--part)$/.test(argv[i - 1])));
 
 // These suites launch REAL Chrome instances (several processes each, CPU-hungry when rendering).
 // A concurrency of N runs up to ~2N browsers: we target roughly two thirds of the cores,
@@ -172,6 +173,24 @@ const REPEAT = Math.max(1, Number(opt("--repeat", 1)) || 1);
 
 let liste = SUITES.filter((s) => !filters.length || filters.some((f) => s.f.includes(f)));
 if (!liste.length) { console.error("Aucune suite ne correspond à " + JSON.stringify(filters)); process.exit(1); }
+
+// COUPER LA BARRIÈRE EN TRANCHES, SANS LA TRIER PAR NOM. `--part 1/2` prend une suite sur deux,
+// `--part 2/2` les autres: DEUX passages couvrent exactement les 67 suites, sans trou ni doublon,
+// ce qu'un filtre par sous-chaîne ne sait pas garantir. Le découpage est en QUINCONCE et non par
+// blocs, parce que la liste est triée par durée décroissante: un découpage par blocs mettrait les
+// trois suites les plus longues dans la même tranche, et l'une des deux durerait le double.
+// À quoi ça sert: un lancement qui ne peut pas dépasser un plafond de temps (une session d'agent,
+// une tâche planifiée, un CI qui coupe) reste capable de passer la barrière ENTIÈRE, en deux fois.
+// Ce n'est pas une façon de lancer moins de tests, c'est une façon de tous les lancer quand même.
+const partArg = String(opt("--part", ""));
+if (partArg) {
+  const m = /^(\d+)\s*\/\s*(\d+)$/.exec(partArg);
+  if (!m) { console.error("--part attend « i/n », par exemple --part 1/2"); process.exit(1); }
+  const i = Number(m[1]), n = Number(m[2]);
+  if (!(n >= 1 && i >= 1 && i <= n)) { console.error(`--part ${partArg} : i doit aller de 1 à n`); process.exit(1); }
+  liste = liste.filter((_, k) => k % n === (i - 1));
+  console.log(`tranche ${i}/${n} : ${liste.length} suite(s) sur ${SUITES.length}`);
+}
 
 // The flag from the porting period. It doesn't just get ignored: someone who types it
 // believes they're measuring the typed client SEPARATELY, when it IS what the barrier measures by

@@ -106,6 +106,20 @@ const boitesMur = (id: string) => J(`Array.from(document.querySelectorAll('[data
   .filter(function(e){return /v5w(move|end|mid|join)|v5wx/.test(e.className)})
   .map(function(e){var r=e.getBoundingClientRect();return{c:String(e.className),x:r.left,y:r.top,w:r.width,h:r.height}})`);
 
+/** Un point DU MEUBLE qui n'est sous aucune boîte de commande du mur: c'est là que se juge « le
+ *  meuble reste la cible visible », les pixels du bouton appartenant désormais au bouton. */
+async function pointLibre(pid: string, wid: string): Promise<Point | null> {
+  const r = await J(`(function(){var e=document.querySelector('.piece[data-id="'+${JSON.stringify(pid)}+'"]');
+    if(!e)return null;var b=e.getBoundingClientRect();return{x:b.left,y:b.top,w:b.width,h:b.height}})()`);
+  if (!r) return null;
+  const bs = await boitesMur(wid);
+  for (let i = 1; i <= 7; i++) for (let j = 1; j <= 7; j++) {
+    const p = { x: r.x + r.w * i / 8, y: r.y + r.h * j / 8 };
+    if (!bs.some((q: any) => p.x >= q.x - 1 && p.x <= q.x + q.w + 1 && p.y >= q.y - 1 && p.y <= q.y + q.h + 1)) return p;
+  }
+  return null;
+}
+
 const results: VerdictSonde[] = [];
 let cur: VerdictSonde;
 function ok(cond: unknown, msg: string) { if (!cond) cur.fails.push(msg); return !!cond; }
@@ -133,13 +147,22 @@ await test("survol_par_defaut_et_trajet_vers_poignee_conservent_les_poignees", a
   ok((await handles("w1")).length > 0, "passer du mur à une poignée doit conserver les poignées en mode par défaut");
 });
 
+// CE CAS EST RÉÉCRIT, PAS SUPPRIMÉ. Il pressait le CENTRE du meuble, qui tombait pile sur le
+// disque de déplacement du mur: c'était sans conséquence tant que les commandes du mur vivaient
+// SOUS les meubles. Elles passent maintenant au-dessus (un contrôle qu'un meuble peut recouvrir
+// n'est pas un contrôle), donc ces quelques pixels-là appartiennent au bouton, et c'est le cas
+// `le_bouton_du_mur_gagne_le_clic_sous_un_meuble` qui les tient. Ce que ce cas-ci protège n'a pas
+// bougé d'un pouce: le CORPS du mur ne dispute rien au meuble peint dessus, partout ailleurs, et
+// c'est « partout ailleurs » qui est la surface d'un meuble.
 await test("meuble_sur_mur_reste_la_cible_visible", async () => {
   await seed(200, false, true);
   const setup = await J(`(function(){var p=__plan.addV5Piece("chair",70,150),vr=document.getElementById('viewport').getBoundingClientRect(),s=__plan.aptToScreen(p.x+p.w/2,p.y+p.h/2);
     return{pid:String(p.id),wid:"w1",px:vr.left+s.x,py:vr.top+s.y,locked:p.locked,mount:__plan.isWallMount(p.type)}})()`);
   await pause(100); await move(await apt(100, 100));
   ok((await handles(setup.wid)).length > 0, "précondition: le mur doit avoir ses poignées en mode par défaut");
-  const p = { x: setup.px, y: setup.py }; if (!ok(await center(`.piece[data-id="${setup.pid}"]`), "meuble superposé au mur absent")) return;
+  if (!ok(await center(`.piece[data-id="${setup.pid}"]`), "meuble superposé au mur absent")) return;
+  const p = await pointLibre(setup.pid, setup.wid);
+  if (!ok(p, "aucun point du meuble n'échappe aux boîtes de commande du mur")) return;
   await move(p);
   ok(await evaluate(`document.elementFromPoint(${p.x},${p.y})?.closest('.piece[data-id="${setup.pid}"]')!==null`) === true,
     "le meuble peint au-dessus du mur doit gagner le hit test");
@@ -463,6 +486,123 @@ await test("la_croix_d_un_mur_sous_le_seuil_le_supprime_vraiment", async () => {
   await pause(300);
   ok(await evaluate(`String(__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length)`) === "0",
     "la croix d'un mur court doit le supprimer");
+});
+
+// =============================================================================
+//  UN MEUBLE NE VOLE PAS LE BOUTON D'UN MUR, ET LE BOUTON NE VOLE PAS LE MEUBLE
+// =============================================================================
+// Troisième famille d'objets à qui s'applique la même règle, après le tapis puis l'étiquette de
+// pièce: un contrôle qu'autre chose peut recouvrir n'est pas un contrôle. Mesure au zoom
+// d'ajustement sur le plan réel à 77 objets: 18 boutons de mur sur 60 étaient sous un meuble,
+// dont la croix de w13 sous la machine à laver, peinte en pâle et morte au clic; 0 après.
+//
+// MAIS UN MEUBLE N'EST PAS UNE ÉTIQUETTE: on le SAISIT. Monter les boutons au-dessus de lui sans
+// rien d'autre déplacerait simplement le défaut, puisqu'un lit contre une cloison est le cas
+// ordinaire d'un appartement. La règle est donc dissymétrique, et les trois cas ci-dessous en
+// tiennent chacun un morceau: le bouton gagne LÀ OÙ IL EST PEINT, un meuble n'efface plus les
+// poignées du mur qu'il recouvre, et un meuble n'en RÉVÈLE jamais.
+//
+// Mesuré sur le plan réel, vraie souris, 25 points de prise par meuble: en arrivant du sol libre,
+// 0 point volé, aux deux zooms; en arrivant en TRAVERSANT la cloison, 143 sur 600 au zoom
+// d'ajustement (24 % des points des 24 meubles exposés) et 370 sur 975 dézoomé de moitié, dont
+// deux chaises plus petites qu'une boîte de bouton qui perdent tous les leurs. C'est le prix
+// accepté, réversible d'un geste, et l'alternative mesurée était pire: qu'un meuble RÉVÈLE les
+// commandes du mur qu'il recouvre rend ces mêmes meubles inatteignables par tous les chemins,
+// ce que tient le troisième cas.
+
+/** Une cloison verticale, et un meuble posé EXACTEMENT sur la croix de ce mur. La position de la
+ *  croix est LUE à l'écran puis reconvertie en centimètres: on ne devine pas où elle tombe. */
+async function seedMeubleSurLaCroix(): Promise<{ ax: number; ay: number } | null> {
+  await seed(200);
+  await move(await apt(100, 120));
+  const croix = await center('.v5wx[data-w="w1"]');
+  if (!croix) return null;
+  const vrr = await J(`(function(){var r=document.getElementById("viewport").getBoundingClientRect();return{x:r.left,y:r.top}})()`);
+  const a = await J(`__plan.screenToApt(${croix.x} - ${vrr.x}, ${croix.y} - ${vrr.y})`);
+  await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],walls:[
+    {id:"w1",a:[100,80],b:[100,280],t:12,free:1},
+    {id:"o0",a:[0,0],b:[420,0],t:12,isOutline:1},{id:"o1",a:[420,0],b:[420,360],t:12,isOutline:1},
+    {id:"o2",a:[420,360],b:[0,360],t:12,isOutline:1},{id:"o3",a:[0,360],b:[0,0],t:12,isOutline:1}
+  ],openings:[],pieces:[{id:"m1",type:"washer",name:"Machine a laver",
+    x:${a.x - 30},y:${a.y - 30},w:60,h:60,rot:0,locked:false}],
+    cells:[{id:"c1",name:"Buanderie",floor:"plain",poly:[[0,0],[420,0],[420,360],[0,360]]}]});true`);
+  await pause(150);
+  return a;
+}
+const recouvreCroix = () => J(`(function(){
+  var b=document.querySelector('.v5wx[data-w="w1"]'), m=document.querySelector('.piece[data-id="m1"]');
+  if(!b||!m) return null;
+  var a=b.getBoundingClientRect(), z=m.getBoundingClientRect();
+  return {dx:Math.min(a.right,z.right)-Math.max(a.left,z.left), dy:Math.min(a.bottom,z.bottom)-Math.max(a.top,z.top)};
+})()`);
+
+await test("le_bouton_du_mur_gagne_le_clic_sous_un_meuble", async () => {
+  if (!ok(await seedMeubleSurLaCroix(), "croix introuvable au moment de poser le meuble")) return;
+  ok(await evaluate(`__plan.isWallMount("washer")===false`) === true,
+    "précondition: le meuble témoin doit être un meuble ordinaire, pas un objet de mur");
+  // On découvre les poignées LOIN du meuble, pour que la précondition ne dépende pas du défaut.
+  await move(await apt(100, 120));
+  const b = await center('.v5wx[data-w="w1"]');
+  if (!ok(b, "précondition: survoler le mur doit révéler sa croix")) return;
+  const r = await recouvreCroix();
+  if (!ok(r && r.dx > 8 && r.dy > 8, `précondition: le meuble doit recouvrir la croix, vu ${JSON.stringify(r)}`)) return;
+  const dessus = await evaluate(`(function(){var e=document.elementFromPoint(${b.x},${b.y});
+    return e&&e.closest ? (e.closest(".v5wx") ? "v5wx" : (e.closest(".piece") ? "piece" : String(e.tagName))) : "rien";})()`);
+  ok(dessus === "v5wx", `la croix doit gagner le test de clic sous le meuble, vu « ${dessus} »`);
+  // UN BOUTON CONSERVÉ QUI NE MARCHE PAS NE VAUT PAS MIEUX QU'UN BOUTON ABSENT.
+  await move(b); await mouse("mousePressed", b); await mouse("mouseReleased", b); await pause(300);
+  ok(await evaluate(`String(__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length)`) === "0",
+    "appuyer sur la croix peinte au-dessus du meuble doit vraiment supprimer le mur");
+});
+
+await test("traverser_un_meuble_n_efface_pas_les_poignees_du_mur", async () => {
+  if (!ok(await seedMeubleSurLaCroix(), "croix introuvable au moment de poser le meuble")) return;
+  await move(await apt(100, 120));
+  if (!ok((await handles("w1")).length, "précondition: le mur survolé doit avoir ses poignées")) return;
+  // Sur l'axe du mur, DANS le meuble, et en dehors de toute boîte de bouton: c'est le trajet
+  // ordinaire entre la bande du mur et le bouton qu'on vise.
+  const p = await apt(100, 160);
+  const boites = await boitesMur("w1");
+  if (!ok(!boites.some((q: any) => p.x >= q.x && p.x <= q.x + q.w && p.y >= q.y && p.y <= q.y + q.h),
+    `précondition: le point de passage ne doit être sous aucun bouton, vu ${JSON.stringify(boites.map((q: any) => q.c))}`)) return;
+  await move(p);
+  const cible = await evaluate(`(function(){var e=document.elementFromPoint(${p.x},${p.y});
+    return e&&e.closest&&e.closest('.piece[data-id="m1"]') ? "meuble" : "autre";})()`);
+  if (!ok(cible === "meuble", `précondition: c'est bien le meuble qui reçoit le pointeur ici, vu « ${cible} »`)) return;
+  ok((await handles("w1")).length > 0,
+    "passer au-dessus d'un meuble en allant vers un bouton ne doit pas effacer les poignées du mur");
+});
+
+await test("un_meuble_ne_revele_jamais_les_poignees_du_mur_qu_il_recouvre", async () => {
+  // LE CORRECTIF NE DOIT PAS DÉPLACER LE DÉFAUT. Si un meuble révélait les commandes du mur sous
+  // lequel il est posé, venir prendre un lit collé à une cloison ferait apparaître un bouton sous
+  // la main juste avant l'appui, et le bouton passe désormais AU-DESSUS. Un meuble RETIENT donc un
+  // survol qu'on tenait déjà, il n'en DÉMARRE aucun.
+  if (!ok(await seedMeubleSurLaCroix(), "croix introuvable au moment de poser le meuble")) return;
+  // On arrive du sol libre, loin de tout mur, et on laisse expirer le masquage différé.
+  await move(await apt(300, 300)); await pause(250);
+  if (!ok((await toutesPoignees()).length === 0,
+    `précondition: le sol libre ne doit révéler aucune poignée, vu ${JSON.stringify(await toutesPoignees())}`)) return;
+  // Le milieu du mur, donc le disque de déplacement, mais recouvert par le meuble.
+  const p = await apt(100, 180);
+  await move(p);
+  ok((await handles("w1")).length === 0,
+    `venir sur un meuble ne doit révéler aucune poignée du mur qu'il recouvre, vu ${JSON.stringify(await handles("w1"))}`);
+  const cible = await evaluate(`(function(){var e=document.elementFromPoint(${p.x},${p.y});
+    return e&&e.closest&&e.closest('.piece[data-id="m1"]') ? "meuble" : "autre";})()`);
+  ok(cible === "meuble", `le meuble doit garder le test de clic, vu « ${cible} »`);
+  const avantMur = await wall("w1");
+  const avant = await J(`(function(){var p=__plan.state.plan.pieces[0];return{x:p.x,y:p.y}})()`);
+  await mouse("mousePressed", p);
+  ok(await evaluate(`String(__plan.selId)`) === "m1", "l'appui doit sélectionner le meuble, pas le mur");
+  for (let i = 1; i <= 12; i++) { await mouse("mouseMoved", { x: p.x, y: p.y + 90 * i / 12 }, { button: "left", buttons: 1 }); await pause(8); }
+  await mouse("mouseReleased", { x: p.x, y: p.y + 90 }); await pause(200);
+  const apres = await J(`(function(){var p=__plan.state.plan.pieces[0];return{x:p.x,y:p.y}})()`);
+  const apresMur = await wall("w1");
+  ok(apres.x !== avant.x || apres.y !== avant.y,
+    `tirer là doit déplacer le MEUBLE, vu ${JSON.stringify({ avant, apres })}`);
+  ok(apresMur && Math.abs(apresMur.a[0] - avantMur.a[0]) < 1,
+    `tirer là ne doit pas déplacer le mur, vu ${JSON.stringify({ avantMur, apresMur })}`);
 });
 
 const bad = results.filter((r) => r.fails.length);
