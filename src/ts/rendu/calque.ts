@@ -608,7 +608,14 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
       m.className = "v5wjoin";
       m.dataset["w"] = String(w.id);
       m.dataset["bout"] = bout;
-      m.textContent = "−";
+      // DEUX MAILLONS, PAS UN MOINS. Un « - » dit « enlever »; ici on RELIE. Demande du
+      // proprietaire. Deux capsules qui se chevauchent se lisent encore a 11 px, la ou une chaine
+      // dessinee finement devient une tache.
+      m.innerHTML = '<svg viewBox="0 0 20 20" width="100%" height="100%" aria-hidden="true">'
+        + '<g fill="none" stroke="#fff" stroke-width="2.1" stroke-linejoin="round">'
+        + '<rect x="1.7" y="6.3" width="9.2" height="7.4" rx="3.7"/>'
+        + '<rect x="9.1" y="6.3" width="9.2" height="7.4" rx="3.7"/>'
+        + '</g></svg>';
       m.title = "Weld this wall to the one it continues";
       m.style.cssText = taille(20);
       m.style.left = (p.x - nx * off) + "px";

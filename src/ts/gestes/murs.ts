@@ -741,7 +741,12 @@ function v5CouperLesTraverses(ctx: Contexte, w: Mur): void {
     // deux moities deviennent deux aretes, chacune deplacable comme n'importe quelle facade.
     if (!cible) { v5CouperContour(P, w[bout]); continue; }
     const r = v5WallSplitAtPoint(P, cible.id, w[bout]);
-    if ("refus" in r) { toast(r.refus, { geste: true }); continue; }
+    // ON NE REFUSE PAS CE QUE PERSONNE N'A DEMANDE. La coupe du T est une CONSEQUENCE du geste, pas
+    // le geste: la personne a trace un mur, et il est trace. Quand une porte occupe le point de
+    // contact, la jonction tient quand meme et seule la coupe n'a pas lieu; annoncer un refus
+    // ferait croire que le trace a echoue. Mesure: retracer une cloison sur le plan reel sortait
+    // « "Porte 2" crosses that point », alors que la cloison etait bien la.
+    if ("refus" in r) continue;
     // The two halves are frozen for the same reason the "+" freezes them: a through-running wall
     // would be stretched straight back across the cut by `v5ResoudreGeometrie`, and the T would
     // silently become one wall again.
