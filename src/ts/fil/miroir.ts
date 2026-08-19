@@ -175,7 +175,9 @@ export function ws5FieldDiff<E extends { id: Id }>(cur: E, prevStr: string | und
  * ACKNOWLEDGED mirror, which gives exactly the work the server has never received (C-3).
  *
  * THE ORDER IS A CONTRACT: the outline goes out BEFORE the walls (a facade `wall.del` arriving
- * before its `outline.set` would be refused by the peer, C-13), and cells LAST (derived).
+ * before its `outline.set` would be refused by the peer, C-13), a `wall.del` goes out AFTER the
+ * openings (the server cascades a deleted wall's openings, so an opening that MOVED to another
+ * wall has to be re-homed first, or the weld loses it), and cells LAST (derived).
  */
 export function ws5DiffOps(wire: PlanFil, m: Miroir): Op[] {
   const ops: Op[] = [];
@@ -190,7 +192,15 @@ export function ws5DiffOps(wire: PlanFil, m: Miroir): Op[] {
     const d = ws5FieldDiff(w, m.walls.get(w.id));
     if (d) ops.push({ kind: "wall.set", wall: d });
   });
-  m.walls.forEach((_, id) => { if (!curW.has(id)) ops.push({ kind: "wall.del", wallId: id }); });
+  // UN MUR SE SUPPRIME EN DERNIER, APRES LES OUVERTURES, et c'est une regle de non-perte, pas de
+  // style. Le serveur CASCADE les ouvertures d'un `wall.del`. La soudure de deux murs deplace les
+  // ouvertures du mur avale vers le survivant puis supprime le mur avale: en envoyant la
+  // suppression d'abord, le serveur detruisait ces ouvertures, et l'`opening.set` qui suivait etait
+  // refuse (`opening_w`, la ligne n'existe plus) donc rien ne les ramenait. Mesure par une revue
+  // adverse, en rejouant les ops emises contre le VRAI validateur: souder un mur portant deux
+  // portes en laissait une sur le plan partage. On garde donc la suppression pour la fin.
+  const mursSupprimes: Id[] = [];
+  m.walls.forEach((_, id) => { if (!curW.has(id)) mursSupprimes.push(id); });
 
   // openings
   const curO = new Set<Id>();
@@ -200,6 +210,8 @@ export function ws5DiffOps(wire: PlanFil, m: Miroir): Op[] {
     if (d) ops.push({ kind: "opening.set", opening: d });
   });
   m.openings.forEach((_, id) => { if (!curO.has(id)) ops.push({ kind: "opening.del", openingId: id }); });
+  // Ici, et pas plus tot: toute ouverture qui a change de mur porte deja son nouveau `wallId`.
+  mursSupprimes.forEach((id) => ops.push({ kind: "wall.del", wallId: id }));
 
   // furniture (FLAT list: piece.set/piece.del with no roomId)
   const curP = new Set<Id>();

@@ -16,7 +16,7 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
-import { v5WallMergeCandidate } from "../modele/edition.ts";
+import { v5BoutJoint, v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
@@ -95,8 +95,17 @@ function brancherSurvolMurs(ctx: Contexte): void {
     const direct = murPointe(e.target);
     if (direct) { montrerPoigneesMur(ctx, layer, direct); return; }
     const t = e.target instanceof Element ? e.target : null;
-    // Furniture and openings are the visible target. Clear wall handles immediately so even a
-    // direct jump onto a piece cannot leave a wall control above the following press.
+    // UNE OUVERTURE APPARTIENT A UN MUR, donc la survoler c'est survoler SON MUR. Ce chemin les
+    // traitait comme des meubles et effacait les poignees: une facade portant une fenetre en son
+    // milieu devenait insaisissable a l'endroit exact ou son bouton se pose. Signale par le
+    // proprietaire: « s'il y a une fenetre a l'endroit du bouton, je dois pouvoir saisir le
+    // bouton ». Un MEUBLE, lui, efface bien: il ne appartient a aucun mur et c'est la cible visible.
+    const ouv = t?.closest<HTMLElement>('.piece[data-op="1"]');
+    if (ouv) {
+      const o = (ctx.etat.plan.openings || []).find((q) => String(q.id) === String(ouv.dataset["id"]));
+      montrerPoigneesMur(ctx, layer, o ? String(o.wallId) : null);
+      return;
+    }
     if (t?.closest(".piece,.ov-name")) { montrerPoigneesMur(ctx, layer, null); return; }
     const id = murGeometrique(ctx, e);
     if (id) montrerPoigneesMur(ctx, layer, id); else planifierMasquageMur(ctx, layer);
@@ -499,10 +508,26 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // tried the same day and rejected: the disc then no longer sits where the end IS, so pressing
     // the visible tip of the wall fell through to DRAWING, the same defect in another hat.
     // Position must stay truthful. Size is what gives, down to 55 %, which keeps a 9 px target.
-    const facteur = Math.max(0.55, Math.min(1, lenpx / 56));
-    const taille = (base: number): string => {
-      const d = base * facteur;
-      return `width:${d.toFixed(1)}px;height:${d.toFixed(1)}px;margin:${(-d / 2).toFixed(1)}px 0 0 ${(-d / 2).toFixed(1)}px;`;
+    // Le facteur se mesure sur la BOITE, pas sur le disque: c'est elle qui decide si deux commandes
+    // se marchent dessus, et c'est un clic vole qui fait mal, pas un dessin serre.
+    const facteur = Math.max(0.55, Math.min(1, lenpx / 64));
+    // UNE CIBLE PLUS LARGE QUE SON DESSIN. Le bouton faisait 20 px, exactement sa taille visible, et
+    // le corps du mur autour TRACE depuis qu'il n'y a plus de mode: rater la prise de deux pixels
+    // creait donc un mur par-dessus celui qu'on voulait deplacer. Signale a l'usage: « je veux
+    // attraper le mur par le rond et ca dessine ». Chaque bouton devient une boite TRANSPARENTE de
+    // 32 px qui contient son disque de 20: la surface saisissable grandit de moitie, le dessin ne
+    // bouge pas d'un pixel, et un quasi-succes cesse d'etre destructif.
+    const BOITE = 32;
+    const disque = (r: number, remplissage: string, contour: string, dedans: string): string =>
+      `<svg viewBox="0 0 ${BOITE} ${BOITE}" width="100%" height="100%" aria-hidden="true">`
+      + `<circle cx="16" cy="16" r="${r}" fill="${remplissage}" stroke="${contour}" stroke-width="2"/>`
+      + dedans + `</svg>`;
+    const traits = (d: string): string =>
+      `<g stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none">${d}</g>`;
+    const boite = (base: number): string => {
+      const c = BOITE * facteur * (base / 20);
+      return `width:${c.toFixed(1)}px;height:${c.toFixed(1)}px;`
+        + `margin:${(-c / 2).toFixed(1)}px 0 0 ${(-c / 2).toFixed(1)}px;`;
     };
     // UNE FAÇADE N'A PAS DEUX COMMANDES AU MÊME ENDROIT. Sa poignée de déplacement ne sait que
     // SÉLECTIONNER (le contour se remodèle par ses arêtes et ses coins), et elle se pose au milieu
@@ -510,11 +535,14 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // passent au-dessus des meubles, elle passait aussi au-dessus de `.edge` et volait le
     // glissement: tirer une façade ne la déplaçait plus. Une fois le contour révélé, `.edge`
     // sélectionne ET déplace, donc la poignée n'a plus de raison d'être là.
-    if (w.isOutline && contourVisible) continue;
+    // La facade GARDE son bouton meme quand le contour est revele: c'est lui la prise de premiere
+    // classe, au-dessus des fenetres, et c'est lui qui deplace. La bande `.edge` reste disponible
+    // partout ailleurs le long du mur, la ou une fenetre a le droit de gagner le clic.
     const move = document.createElement("div");
     move.className = "v5wmove";
     move.dataset["w"] = String(w.id);
-    move.style.cssText = taille(20);
+    move.style.cssText = boite(20);
+    move.innerHTML = disque(9, "var(--accent)", "var(--room-bg)", "");
     move.style.left = sMid.x + "px";
     move.style.top = sMid.y + "px";
     move.title = w.isOutline ? "Click to select this facade" : "Click to select this wall, or drag to move it";
@@ -533,13 +561,20 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // circle right on top of it starts `v5StartWallEndDrag` instead (wired through
     // `ctx.gestes.boutMurPointerDown`, `gestes/branchement.ts`), which moves ONLY that end.
     (["a", "b"] as const).forEach((bout) => {
+      // UN JOINT N'EST PAS UN BOUT. Si quelque chose tient deja cette extremite (un autre mur, son
+      // flanc, la facade), on n'offre pas de prise pour l'etirer: tirer dessus dechirerait la
+      // jonction qu'on vient de faire. Signale par le proprietaire juste apres une coupe, ou les
+      // deux moities exhibaient le point de coupe comme un bout saisissable. Ce qui a sa place la
+      // est le « - » qui ressoude, et il y est deja.
+      if (v5BoutJoint(ctx.etat.plan, w.id, bout)) return;
       const p = w[bout];
       const s = toC(p[0], p[1]);
       const h = document.createElement("div");
       h.className = "v5wend";
       h.dataset["w"] = String(w.id);
       h.dataset["bout"] = bout;
-      h.style.cssText = taille(16);
+      h.style.cssText = boite(16);
+      h.innerHTML = disque(7, "var(--room-bg)", "var(--accent)", "");
       h.style.left = s.x + "px";
       h.style.top = s.y + "px";
       h.title = "Drag to extend this wall, or connect it to another";
@@ -564,16 +599,26 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // the wall, and the split control always above (or left of) it.
     let nx = -dy / L, ny = dx / L;
     if (ny < 0 || (Math.abs(ny) < 1e-9 && nx < 0)) { nx = -nx; ny = -ny; }
-    const off = Math.max(((w.t || 0) * S) / 2 + 16, 22);
+    // DEUX BOITES NE SE RECOUVRENT JAMAIS. L'ecart perpendiculaire doit valoir au moins une boite
+    // entiere, sinon la coupe et la suppression mordent sur le bouton de deplacement et un
+    // presque-rate atteint la mauvaise commande. C'est la meme famille de defaut que le « + » du
+    // contour qui volait le clic d'une facade.
+    const off = Math.max(((w.t || 0) * S) / 2 + 16, BOITE * facteur + 2);
     // The split control uses the same clearance as the delete cross, on the opposite normal. If it
     // sat on the segment itself it would steal the wall band's midpoint, the ordinary place used
     // to grab the selected wall again and nudge the whole partition.
     const coude = document.createElement("div");
     coude.className = "v5wmid";
     coude.dataset["w"] = String(w.id);
-    coude.textContent = "+";
+    // DESSINE, PAS ECRIT. Un glyphe de police s'aligne sur ses propres metriques: en monospace, le
+    // « + » et le « x » s'assoient sur l'axe mathematique, donc plus haut que le centre optique du
+    // disque, et aucun centrage CSS ne rattrape ca. Signale a l'oeil par le proprietaire sur la
+    // croix. Les trois boutons sont donc des traits dans le meme carre de 20, geometriquement
+    // centres et coherents entre eux.
+    coude.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+      traits('<line x1="16" y1="11.6" x2="16" y2="20.4"/><line x1="11.6" y1="16" x2="20.4" y2="16"/>'));
     coude.title = "Split this wall in two here";
-    coude.style.cssText = taille(20);
+    coude.style.cssText = boite(20);
     coude.style.left = (sMid.x - nx * off) + "px";
     coude.style.top = (sMid.y - ny * off) + "px";
     coude.addEventListener("pointerdown", (ev) => ctx.gestes.coudeMurPointerDown?.(ev as PointerEvent, String(w.id)));
@@ -582,9 +627,10 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     const x = document.createElement("div");
     x.className = "v5wx";
     x.dataset["w"] = String(w.id);
-    x.textContent = "×";
+    x.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+      traits('<line x1="12.9" y1="12.9" x2="19.1" y2="19.1"/><line x1="19.1" y1="12.9" x2="12.9" y2="19.1"/>'));
     x.title = "Delete this wall (the two rooms merge)";
-    x.style.cssText = taille(20);
+    x.style.cssText = boite(20);
     x.style.left = s.x + "px";
     x.style.top = s.y + "px";
     x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent, String(w.id)));
@@ -602,9 +648,15 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
       m.className = "v5wjoin";
       m.dataset["w"] = String(w.id);
       m.dataset["bout"] = bout;
-      m.textContent = "−";
+      // DEUX MAILLONS, PAS UN MOINS. Un « - » dit « enlever »; ici on RELIE. Demande du
+      // proprietaire. Deux capsules qui se chevauchent se lisent encore a 11 px, la ou une chaine
+      // dessinee finement devient une tache.
+      m.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+        '<g fill="none" stroke="#fff" stroke-width="1.9" stroke-linejoin="round">'
+        + '<rect x="8.9" y="13.2" width="7.4" height="5.6" rx="2.8"/>'
+        + '<rect x="15.7" y="13.2" width="7.4" height="5.6" rx="2.8"/></g>');
       m.title = "Weld this wall to the one it continues";
-      m.style.cssText = taille(20);
+      m.style.cssText = boite(20);
       m.style.left = (p.x - nx * off) + "px";
       m.style.top = (p.y - ny * off) + "px";
       m.addEventListener("pointerdown", (ev) => ctx.gestes.fusionnerMurPointerDown?.(ev as PointerEvent, String(w.id), bout));

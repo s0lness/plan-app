@@ -283,8 +283,24 @@ export function v5SyncOutlineWalls(P: PlanV5 | null | undefined): void {
   for (let i = 0; i < n; i++) {
     const a = O[i]!, b = O[(i + 1) % n]!;
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) continue;
+    // APPARIE PAR RECOUVREMENT, PAS PAR DROITE. Deux aretes COLINEAIRES, ce qui arrive des qu'on
+    // coupe une facade en deux, portent la MEME cle de droite: la premiere prenait l'ancien mur et
+    // la seconde ramassait un mur de facade quelconque parmi les restants. Les ouvertures suivant
+    // l'identifiant du mur et non la geometrie, une fenetre changeait de facade en silence.
+    // On prend donc, parmi les murs restes sur la meme droite, celui qui RECOUVRE le plus cette
+    // arete; la moitie qui n'en herite pas recoit un identifiant derive neuf, et
+    // `v5RelogerOuverturesContour` (plus bas) redistribue les ouvertures par la geometrie.
     const k = v5LineKey(a, b);
-    let w = old.find((o) => !taken.has(o) && v5SameLine(v5LineKey(o.a, o.b), k, 6));
+    const ux = b[0] - a[0], uy = b[1] - a[1];
+    const L = Math.hypot(ux, uy) || 1e-9;
+    const proj = (q: Pt): number => ((q[0] - a[0]) * ux + (q[1] - a[1]) * uy) / L;
+    let w: Mur | undefined, meilleur = -1;
+    for (const o of old) {
+      if (taken.has(o) || !v5SameLine(v5LineKey(o.a, o.b), k, 6)) continue;
+      const t0 = proj(o.a), t1 = proj(o.b);
+      const recouvre = Math.max(0, Math.min(L, Math.max(t0, t1)) - Math.max(0, Math.min(t0, t1)));
+      if (recouvre > meilleur) { meilleur = recouvre; w = o; }
+    }
     if (!w) w = old.find((o) => !taken.has(o));
     if (w) { taken.add(w); w.a = [a[0], a[1]]; w.b = [b[0], b[1]]; w.t = w.t || WALL; }
     // OUTLINE wall: an entity derived from the outline, recomputed identically on both sides ->
@@ -302,6 +318,43 @@ export function v5SyncOutlineWalls(P: PlanV5 | null | undefined): void {
   P.walls.length = 0;
   inner.forEach((w) => P.walls.push(w));
   keep.forEach((w) => P.walls.push(w));
+  v5RelogerOuverturesContour(P, keep);
+}
+
+/**
+ * REDISTRIBUE LES OUVERTURES DE FACADE PAR LA GEOMETRIE, apres que les murs de contour ont ete
+ * recalcules. Une ouverture appartient a un mur par son IDENTIFIANT et une distance le long de
+ * lui; quand une facade est coupee en deux, la moitie qui garde l'identifiant ne contient plus
+ * forcement la fenetre. Sans ce passage, la fenetre reste attachee a un mur trop court et se
+ * retrouve ecrasee a son extremite.
+ *
+ * On travaille sur la POSITION REELLE de l'ouverture, pas sur son `t0`: on la place sur le mur de
+ * contour qui contient son milieu, et on recalcule `t0` par projection. Une ouverture qui ne
+ * retrouve aucun mur reste ou elle est, c'est le comportement d'avant et il ne perd rien.
+ */
+function v5RelogerOuverturesContour(P: PlanV5, contour: readonly Mur[]): void {
+  if (!contour.length) return;
+  const parId = new Map<string, Mur>(contour.map((w) => [String(w.id), w]));
+  for (const o of P.openings || []) {
+    const actuel = parId.get(String(o.wallId));
+    if (!actuel) continue;                       // pas une ouverture de facade
+    const L = Math.hypot(actuel.b[0] - actuel.a[0], actuel.b[1] - actuel.a[1]) || 1e-9;
+    const ux = (actuel.b[0] - actuel.a[0]) / L, uy = (actuel.b[1] - actuel.a[1]) / L;
+    const tc = o.t0 + o.w / 2;
+    const centre: Pt = [actuel.a[0] + ux * tc, actuel.a[1] + uy * tc];
+    if (tc >= 0 && tc <= L) continue;            // elle tient encore sur son mur
+    let cible: Mur | null = null, mieux = Infinity;
+    for (const w of contour) {
+      const c = closestOnSeg(centre[0], centre[1], w.a[0], w.a[1], w.b[0], w.b[1]);
+      if (c.dist < mieux) { mieux = c.dist; cible = w; }
+    }
+    if (!cible || mieux > 2) continue;
+    const cl = Math.hypot(cible.b[0] - cible.a[0], cible.b[1] - cible.a[1]) || 1e-9;
+    const cux = (cible.b[0] - cible.a[0]) / cl, cuy = (cible.b[1] - cible.a[1]) / cl;
+    const d = (centre[0] - cible.a[0]) * cux + (centre[1] - cible.a[1]) * cuy;
+    o.wallId = cible.id;
+    o.t0 = v5R2(clamp(d - o.w / 2, 0, Math.max(0, cl - o.w)));
+  }
 }
 
 // =================================================================================================
@@ -1004,6 +1057,95 @@ export function v5WallSplitAtPoint(P: PlanV5 | null | undefined, wallId: Id, pt:
 // END is not a T, it is two walls meeting corner to corner: cutting there would produce a stub of
 // nothing. `MARGE_T` is that floor, and it is the same order as the junction tolerance itself.
 const MARGE_T = 5;
+
+/**
+ * IS THIS ENDPOINT A JOINT? True when something else is already holding it: another wall's end,
+ * another wall's flank, or the outline. Reported by the owner: after splitting a wall, the cut
+ * point was still offered as a grabbable END on both halves, and pulling it would have torn open
+ * the junction that had just been made. A joint is not an end. What belongs there is the "-" that
+ * welds the two halves back together, and that one is already drawn.
+ */
+export function v5BoutJoint(P: PlanV5 | null | undefined, wallId: Id, bout: "a" | "b"): boolean {
+  const w = v5WallById(P, wallId);
+  if (!P || !w) return false;
+  const pt = w[bout];
+  return (P.walls || []).some((x) => {
+    if (String(x.id) === String(wallId)) return false;
+    return closestOnSeg(pt[0], pt[1], x.a[0], x.a[1], x.b[0], x.b[1]).dist <= JOINT_TOL;
+  });
+}
+
+/**
+ * COUPER UNE FACADE, C'EST INSERER UN SOMMET DANS LE CONTOUR. Une facade n'est pas stockee comme un
+ * mur: elle est RECALCULEE a partir du polygone du contour a chaque changement (`v5SyncOutlineWalls`).
+ * La couper en deux revient donc a donner un sommet de plus au polygone, et les deux moities
+ * deviennent deux aretes, chacune deplacable comme n'importe quelle facade. C'est exactement ce que
+ * demande le proprietaire: « je peux resize un mur de facade comme je veux, donc je devrais aussi
+ * pouvoir le couper et bouger les deux bissections comme si c'etait deux facades ».
+ *
+ * Retourne l'index d'insertion, ou -1 s'il n'y a pas de coupe legitime ici (trop pres d'un coin
+ * existant, meme marge que pour un T entre cloisons: sinon on fabrique un moignon).
+ */
+function v5AreteContourTraversee(P: PlanV5 | null | undefined, pt: Pt): { i: number; sur: Pt } | null {
+  const O = P?.outline || [];
+  for (let i = 0; i < O.length; i++) {
+    const a = O[i]!, b = O[(i + 1) % O.length]!;
+    const c = closestOnSeg(pt[0], pt[1], a[0], a[1], b[0], b[1]);
+    if (c.dist > 2) continue;
+    if (Math.hypot(c.x - a[0], c.y - a[1]) < MARGE_T) continue;
+    if (Math.hypot(c.x - b[0], c.y - b[1]) < MARGE_T) continue;
+    return { i, sur: [v5R2(c.x), v5R2(c.y)] };
+  }
+  return null;
+}
+
+/**
+ * L'INDEX DE L'ARETE DU CONTOUR que ce mur de facade represente, ou -1. Une facade est recalculee
+ * depuis le polygone: pour la DEPLACER il faut savoir quelle arete elle mirroir.
+ */
+export function v5IndexAreteContour(P: PlanV5 | null | undefined, wallId: Id): number {
+  const w = v5WallById(P, wallId);
+  const O = P?.outline || [];
+  if (!w || !w.isOutline) return -1;
+  for (let i = 0; i < O.length; i++) {
+    const a = O[i]!, b = O[(i + 1) % O.length]!;
+    const direct = Math.hypot(a[0] - w.a[0], a[1] - w.a[1]) + Math.hypot(b[0] - w.b[0], b[1] - w.b[1]);
+    const inverse = Math.hypot(a[0] - w.b[0], a[1] - w.b[1]) + Math.hypot(b[0] - w.a[0], b[1] - w.a[1]);
+    if (Math.min(direct, inverse) < 2) return i;
+  }
+  return -1;
+}
+
+/** Inserts that vertex, so the facade becomes two. Returns false if there was nothing to cut. */
+export function v5CouperContour(P: PlanV5 | null | undefined, pt: Pt): boolean {
+  const t = v5AreteContourTraversee(P, pt);
+  if (!t || !P) return false;
+  // ON SCINDE LE MUR AVANT D'INSERER LE SOMMET, et ce n'est pas une optimisation, c'est ce qui
+  // empeche une perte de donnees. `v5SyncOutlineWalls` reapparie chaque arete a un mur de facade;
+  // la seconde moitie d'une arete coupee est COLINEAIRE a la premiere, donc son seul candidat sur
+  // la meme droite est deja pris, et le repli `old.find(non pris)` lui donnait alors une facade
+  // QUELCONQUE. Toutes les suivantes se decalaient d'un cran, et comme une ouverture designe son
+  // mur par IDENTIFIANT, portes et fenetres changeaient de facade en silence. Mesure sur le vrai
+  // plan par une revue adverse: UNE cloison tracee depuis une facade deplacait 9 ouvertures sur 30,
+  // jusqu'a 11 metres, sans un mot. En creant nous-memes le mur de la seconde moitie, chaque arete
+  // retrouve un candidat exact et le repli n'est plus atteint.
+  const O = P.outline, n = O.length;
+  const ea = O[t.i]!, eb = O[(t.i + 1) % n]!;
+  const mur = (P.walls || []).find((w) => w.isOutline
+    && (Math.hypot(w.a[0] - ea[0], w.a[1] - ea[1]) + Math.hypot(w.b[0] - eb[0], w.b[1] - eb[1]) < 2
+     || Math.hypot(w.a[0] - eb[0], w.a[1] - eb[1]) + Math.hypot(w.b[0] - ea[0], w.b[1] - ea[1]) < 2));
+  if (mur) {
+    P.walls.push({
+      id: v5DerivedId(P, "w"),
+      a: [t.sur[0], t.sur[1]], b: [mur.b[0], mur.b[1]],
+      t: mur.t || WALL, isOutline: true,
+    });
+    mur.b = [t.sur[0], t.sur[1]];
+  }
+  P.outline = [...O.slice(0, t.i + 1), t.sur, ...O.slice(t.i + 1)];
+  v5SyncOutlineWalls(P);
+  return true;
+}
 
 /** The wall whose BODY passes through `pt`, if cutting it there would make a real T. */
 export function v5MurTraverse(P: PlanV5 | null | undefined, pt: Pt, exclure: readonly Id[]): Mur | null {

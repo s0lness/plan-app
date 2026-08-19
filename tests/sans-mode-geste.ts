@@ -120,8 +120,12 @@ await test("survol_poignees_et_transformations", async () => {
   await cliquer(h); ok(await evaluer(`String(__plan.v5ui.selWall)`) === "w1", "move doit sélectionner");
   const avant = await mur("w1"); await glisser(h, { x: h.x + 50, y: h.y }); const apres = await mur("w1");
   ok(apres.a[0] !== avant.a[0], "move doit déplacer le mur"); await pointer(await apt(apres.a[0], 180));
-  ok(await centre('.v5wend[data-w="w1"]'), "les extrémités doivent apparaître");
-  ok(await centre('.v5wmid[data-w="w1"]'), "le coude doit apparaître");
+  ok(await centre('.v5wmid[data-w="w1"]'), "la coupe doit apparaître");
+  // UN JOINT N'EST PAS UN BOUT. Ce mur va d'une façade à l'autre: ses deux extrémités sont tenues,
+  // donc aucune n'offre de prise pour l'étirer, sinon tirer dessus déchirerait la jonction.
+  // Signalé par le propriétaire après une coupe, où le point de coupe restait saisissable.
+  ok(!(await centre('.v5wend[data-w="w1"]')),
+    "un mur calé entre deux façades ne doit offrir AUCUNE poignée de bout");
 });
 
 await test("sol_corps_shift_et_doigt", async () => {

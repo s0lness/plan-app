@@ -152,7 +152,9 @@ await test("clic_sur_plus_scinde_le_mur_en_deux_moities_jointes", async () => {
   await seedUnMur();
   const h = await centerOf('.v5wmid[data-w="w1"]');
   if (!ok(h, "la poignée de coupe doit exister sur le mur survolé")) return;
-  const hit = await evaluate(`document.elementFromPoint(${h.x},${h.y})?.classList.contains("v5wmid")`);
+  // `closest`, pas `classList`: le bouton contient un SVG qui dessine son disque, donc
+  // `elementFromPoint` rend ce SVG. Ce qui compte est que la pression atterrisse DANS le bouton.
+  const hit = await evaluate(`!!document.elementFromPoint(${h.x},${h.y})?.closest(".v5wmid")`);
   ok(hit === true, "le centre visible de la poignée doit être réellement atteignable");
   const avant = await mursInterieurs();
   ok(avant.length === 1, `un mur intérieur attendu avant le geste, vu ${avant.length}`);

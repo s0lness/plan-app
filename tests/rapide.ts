@@ -628,6 +628,44 @@ test("rapide_diff_n_emet_que_le_champ_change", () => {
       && expect(!("y" in ops[0].piece) || ops[0].piece.y === 10, "y ne doit pas être réécrit à tort : " + JSON.stringify(ops[0].piece));
 });
 
+// UN MUR SE SUPPRIME EN DERNIER, APRES LES OUVERTURES. Le serveur CASCADE les ouvertures d'un
+// `wall.del`. Souder deux murs deplace les ouvertures du mur avale vers le survivant PUIS supprime
+// le mur avale: en envoyant la suppression d'abord, le serveur detruisait ces ouvertures, et
+// l'`opening.set` qui suivait etait refuse (`opening_w`: la ligne n'existe plus) donc rien ne les
+// ramenait. Trouve par une revue adverse en rejouant les ops emises contre le VRAI validateur:
+// souder un mur portant deux portes en laissait une seule sur le plan partage.
+test("rapide_un_mur_se_supprime_apres_les_ouvertures_qui_l_ont_quitte", () => {
+  const st = planV5();
+  applyOp(st.plan, { kind: "wall.set", wall: { id: "wA", a: [0, 300], b: [200, 300], t: 12, free: 1 } });
+  applyOp(st.plan, { kind: "wall.set", wall: { id: "wB", a: [200, 300], b: [400, 300], t: 12, free: 1 } });
+  applyOp(st.plan, { kind: "opening.set", opening: { id: "oA", wallId: "wA", t0: 40, w: 80, h: 12, type: "door", side: 0 } });
+  applyOp(st.plan, { kind: "opening.set", opening: { id: "oB", wallId: "wB", t0: 40, w: 80, h: 12, type: "door", side: 0 } });
+  const avant = copieDe(miroirDe(st.plan));
+  // L'etat que le SERVEUR a avant la soudure: une copie exacte, passee par son propre validateur.
+  const serveur = { plan: sanitizeState(JSON.parse(JSON.stringify(st.plan))) };
+  // La soudure telle que le modele la fait: l'ouverture du mur avale passe au survivant, et le mur
+  // avale disparait.
+  const wA = st.plan.walls.find((w: DonneeDynamique) => String(w.id) === "wA");
+  wA.b = [400, 300];
+  const oB = st.plan.openings.find((o: DonneeDynamique) => String(o.id) === "oB");
+  oB.wallId = "wA"; oB.t0 = 240;
+  st.plan.walls = st.plan.walls.filter((w: DonneeDynamique) => String(w.id) !== "wB");
+  const ops = FIL.ws5DiffOps(st.plan, avant);
+  const iSup = ops.findIndex((o: DonneeDynamique) => o.kind === "wall.del" && o.wallId === "wB");
+  const iOuv = ops.findIndex((o: DonneeDynamique) => o.kind === "opening.set" && o.opening && o.opening.id === "oB");
+  if (!expect(iSup >= 0 && iOuv >= 0, "la soudure doit emettre wall.del ET opening.set : " + JSON.stringify(ops))) return false;
+  if (!expect(iOuv < iSup, "l'ouverture doit etre relogee AVANT que son ancien mur ne parte : " + JSON.stringify(ops.map((o: DonneeDynamique) => o.kind)))) return false;
+  // Et on rejoue contre le VRAI serveur: les deux portes doivent survivre.
+  let refus = "";
+  for (const op of ops) {
+    try { applyOpReel(serveur.plan, op as unknown as Operation); }
+    catch (e) { refus += (e instanceof OpError ? e.message : String(e)) + " "; }
+  }
+  return expect(!refus, "le serveur ne doit refuser aucune op de la soudure, vu : " + refus)
+      && expect(serveur.plan.openings.length === 2,
+        "les DEUX portes doivent survivre a la soudure, vu " + JSON.stringify(serveur.plan.openings.map((o: DonneeDynamique) => String(o.id))));
+});
+
 test("rapide_diff_ne_dit_rien_quand_rien_ne_bouge", () => {
   const st = planV5();
   applyOp(st.plan, { kind: "piece.set", id: "p1",

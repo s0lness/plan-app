@@ -24,7 +24,7 @@
 //   node tests/bouts-de-mur.ts
 import type { DonneeDynamique } from "./_types.ts";
 import { v5ResoudreGeometrie, v5WallEndDragApply, v5WallEndDrop } from "../src/ts/gestes/murs.ts";
-import { v5MurTraverse, v5SnapWallEnd, v5WallSplitAtPoint } from "../src/ts/modele/edition.ts";
+import { v5BoutJoint, v5CouperContour, v5MurTraverse, v5SnapWallEnd, v5WallSplitAtPoint } from "../src/ts/modele/edition.ts";
 import { v5RebuildCells } from "../src/ts/modele/cellules.ts";
 import { sanitizeV5Plan } from "../src/ts/modele/migrations.ts";
 import type { Contexte } from "../src/ts/app/contexte.ts";
@@ -34,7 +34,13 @@ let ok = 0, ko = 0;
 const rates: DonneeDynamique[] = [];
 function test(nom: string, fn: (...args: DonneeDynamique[]) => DonneeDynamique | Promise<DonneeDynamique>) {
   const fails: string[] = [];
-  try { fn((c: DonneeDynamique, m: DonneeDynamique) => { if (!c) fails.push(m); }); } catch (e) { fails.push("EXCEPTION: " + (e && (e as Error).stack || e)); }
+  // L'ASSERT RENVOIE SON VERDICT. Plusieurs cas ci-dessous sont ecrits `if (!a(...)) return;` pour
+  // s'arreter avant de dereferencer ce qui n'existe pas. Avec un assistant qui ne renvoyait rien,
+  // `!a(...)` valait TOUJOURS vrai: ces cas sortaient a leur premiere ligne en affichant `ok`. Le
+  // meme defaut a ete trouve et corrige dans `tests/coude-mur.ts`; il rendait ici le controle
+  // negatif de la coupe de facade vert alors que le correctif etait retire.
+  try { fn((c: DonneeDynamique, m: DonneeDynamique) => { if (!c) { fails.push(m); return false; } return true; }); }
+  catch (e) { fails.push("EXCEPTION: " + (e && (e as Error).stack || e)); }
   if (fails.length) { ko++; rates.push(nom); } else ok++;
   console.log(`  ${fails.length ? "FAIL " : "ok   "} ${nom}`);
   fails.forEach(f => console.log("        - " + f));
@@ -220,6 +226,66 @@ test("un_contact_pres_du_bout_de_la_barre_n_est_pas_un_T", (a: DonneeDynamique) 
   ]);
   a(v5MurTraverse(P, [200, 52], ["pied"]) === null,
     "un contact a 2 cm du bout de la barre ne doit pas la couper");
+});
+
+// UN JOINT N'EST PAS UN BOUT, et le rendu s'appuie la-dessus pour ne pas offrir de prise a une
+// extremite deja tenue: tirer dessus dechirerait la jonction. Signale apres une coupe, ou les deux
+// moities exhibaient le point de coupe comme un bout saisissable.
+test("une_extremite_tenue_par_un_autre_mur_est_un_joint", (a: DonneeDynamique) => {
+  const P = plan([
+    { id: "barre", a: [200, 50], b: [200, 250], t: 12, isOutline: false },
+    { id: "pied", a: [40, 150], b: [200, 150], t: 12, isOutline: false },
+  ]);
+  a(v5BoutJoint(P, "pied", "b") === true, "le bout pose sur la barre est un joint");
+  a(v5BoutJoint(P, "pied", "a") === false, "l'autre bout, en plein air, n'en est pas un");
+});
+
+// COUPER UNE FACADE NE DEPLACE AUCUNE OUVERTURE, NULLE PART SUR LE CONTOUR. C'est la regression la
+// plus grave que ce lot ait produite, trouvee par une revue adverse et mesuree sur le vrai plan:
+// tracer UNE cloison depuis une facade deplacait 9 ouvertures sur 30, jusqu'a 11 metres, sans un
+// mot. `v5SyncOutlineWalls` reapparie chaque arete a un mur; la seconde moitie d'une arete coupee
+// est colineaire a la premiere, son seul candidat sur la meme droite est deja pris, et le repli
+// donnait alors une facade QUELCONQUE, decalant toutes les suivantes d'un cran. Une ouverture
+// designant son mur par identifiant, portes et fenetres changeaient de facade.
+//
+// Le cas coupe une arete qui n'est PAS la derniere, sinon le decalage n'a personne a decaler, et il
+// verifie la position ABSOLUE de chaque ouverture, seule chose qui compte pour qui regarde son plan.
+test("couper_une_facade_ne_deplace_aucune_ouverture", (a: DonneeDynamique) => {
+  const P: PlanV5 = {
+    outline: [[0, 0], [900, 0], [900, 600], [0, 600]],
+    walls: [
+      { id: "f0", a: [0, 0], b: [900, 0], t: 12, isOutline: true },
+      { id: "f1", a: [900, 0], b: [900, 600], t: 12, isOutline: true },
+      { id: "f2", a: [900, 600], b: [0, 600], t: 12, isOutline: true },
+      { id: "f3", a: [0, 600], b: [0, 0], t: 12, isOutline: true },
+    ],
+    openings: [
+      { id: "porte", wallId: "f1", t0: 100, w: 90, h: 12, type: "door", side: 0, name: "Porte" },
+      { id: "fen1", wallId: "f2", t0: 200, w: 120, h: 12, type: "window", side: 0, name: "Fenetre 1" },
+      { id: "fen2", wallId: "f3", t0: 250, w: 120, h: 12, type: "window", side: 0, name: "Fenetre 2" },
+      { id: "prise", wallId: "f0", t0: 700, w: 10, h: 12, type: "plug", side: 0, name: "Prise" },
+    ],
+    pieces: [], cells: [],
+  } as unknown as PlanV5;
+  const ou = (o: DonneeDynamique): [number, number] => {
+    const w = P.walls.find((x) => String(x.id) === String(o.wallId));
+    if (!w) return [NaN, NaN];
+    const L = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) || 1;
+    const t = o.t0 + o.w / 2;
+    return [w.a[0] + (w.b[0] - w.a[0]) / L * t, w.a[1] + (w.b[1] - w.a[1]) / L * t];
+  };
+  const avant = P.openings.map((o) => ({ id: String(o.id), nom: o.name, p: ou(o) }));
+  // On coupe la PREMIERE arete, celle du haut, pour laisser trois facades derriere elle.
+  a(v5CouperContour(P, [400, 0]) === true, "la coupe de la facade doit avoir lieu");
+  a(P.outline.length === 5, `le contour doit gagner un sommet, vu ${JSON.stringify(P.outline)}`);
+  a(P.walls.filter((w) => w.isOutline).length === 5, "il doit y avoir cinq facades apres la coupe");
+  for (const t of avant) {
+    const o = P.openings.find((q) => String(q.id) === t.id);
+    if (!a(!!o, `${t.nom} a disparu`)) continue;
+    const p = ou(o);
+    a(Math.hypot(p[0] - t.p[0], p[1] - t.p[1]) < 1,
+      `${t.nom} a bouge de ${Math.round(Math.hypot(p[0] - t.p[0], p[1] - t.p[1]))} cm : ${JSON.stringify(t.p)} puis ${JSON.stringify(p)}`);
+  }
 });
 
 test("un_mur_n_accroche_jamais_sur_sa_propre_extremite_fixe", (a: DonneeDynamique) => {

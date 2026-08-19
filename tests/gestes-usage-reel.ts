@@ -242,8 +242,17 @@ await test("mur_supprime_se_retrace", async () => {
   ok(await evaluate(`String(__plan.v5ui.draw)`) === "true", "l'outil de tracé ne s'arme pas");
   await drag(await aptPoint(w.a[0], w.a[1]), await aptPoint(w.b[0], w.b[1]), 20);
   await pause(300);
+  // CE QUI COMPTE EST QUE LA CLOISON SOIT REVENUE, PAS LE COMPTE. Depuis qu'un T coupe la barre
+  // qu'il touche, retracer une cloison entre deux murs peut aussi couper l'un d'eux, donc le total
+  // grandit de plus d'un. On verifie donc la seule chose que ce cas a toujours voulu dire: un mur
+  // occupe de nouveau exactement ce segment.
   const n1 = await J(`__plan.plan.walls.length`);
-  ok(n1 === n0, `retracer la cloison au même endroit doit la recréer (${n0 - 1} -> ${n1} murs, toast « ${await toastNow()} »)`);
+  const revenu = await J(`(function(){var A=${JSON.stringify(w.a)}, B=${JSON.stringify(w.b)};
+    return __plan.plan.walls.some(function(x){
+      var ok1 = Math.hypot(x.a[0]-A[0],x.a[1]-A[1]) < 3 && Math.hypot(x.b[0]-B[0],x.b[1]-B[1]) < 3;
+      var ok2 = Math.hypot(x.a[0]-B[0],x.a[1]-B[1]) < 3 && Math.hypot(x.b[0]-A[0],x.b[1]-A[1]) < 3;
+      return ok1 || ok2; });})()`);
+  ok(revenu, `retracer la cloison au même endroit doit la recréer (${n0 - 1} -> ${n1} murs, toast « ${await toastNow()} »)`);
 });
 
 // =============================================================================
