@@ -49,6 +49,7 @@ import {
   v5ThroughWall,
   v5WallMergeAt,
   v5CouperContour,
+  v5IndexAreteContour,
   v5MurTraverse,
   v5WallMergeCandidate,
   v5WallSplitAt,
@@ -631,11 +632,23 @@ export function v5StartWallMove(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const w = v5WallById(ctx, wallId);
   if (!w) return;
   if (!w.isOutline) { v5StartWallDrag(ctx, e, wallId); return; }
+  // UNE FACADE SE PREND PAR SON BOUTON, COMME LES AUTRES MURS. Il ne faisait que SELECTIONNER, en
+  // laissant le deplacement a la bande du contour; or cette bande n'a pas de z-index, donc une
+  // fenetre posee dessus la recouvrait et la facade devenait insaisissable a cet endroit. Demande
+  // du proprietaire: « les boutons pour saisir la facade doivent etre de premiere classe, s'il y a
+  // une fenetre a l'endroit du bouton je dois pouvoir saisir le bouton ». Un petit disque au-dessus
+  // de tout, qui deplace vraiment, repond aux deux: il gagne le test de clic sur sa propre surface,
+  // et il ne vole rien ailleurs le long du mur, ou la fenetre reste la cible.
+  const i = v5IndexAreteContour(P0(ctx), String(wallId));
+  if (i >= 0) { v5StartOutlineEdgeDrag(ctx, e, i, () => v5SelectOutlineEdge(ctx, i)); return; }
   if (e.button !== undefined && e.button !== 0) return;
   if (spaceHeld() || measureMode()) return;
   e.preventDefault(); e.stopPropagation();
   v5SelectWall(ctx, wallId); render(ctx);
 }
+
+/** Raccourci lisible: le plan du contexte. */
+const P0 = (ctx: Contexte): PlanV5 | null => ctx.etat.plan || null;
 
 // =================================================================================================
 //  TOOL 1-BIS: DRAGGING A WALL'S OWN ENDPOINT, TO EXTEND OR CONNECT IT

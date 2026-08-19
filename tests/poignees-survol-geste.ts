@@ -267,6 +267,34 @@ await test("supprimer_un_mur_ne_laisse_aucune_poignee_fantome", async () => {
   ok(restantes.length === 0, `aucune poignee ne doit survivre au mur supprime, vu ${JSON.stringify(restantes)}`);
 });
 
+// LE BOUTON D'UNE FACADE EST DE PREMIERE CLASSE, et c'est la demande du proprietaire mot pour mot:
+// « s'il y a une fenetre a l'endroit du bouton, je dois pouvoir saisir le bouton ». Les commandes du
+// contour n'avaient aucun z-index, donc elles passaient sous les ouvertures et la facade devenait
+// insaisissable la ou une fenetre etait posee. Le bouton, lui, est au-dessus de tout ET il DEPLACE:
+// c'est ce qui permet de bouger separement les deux moities d'une facade coupee.
+await test("une_fenetre_ne_vole_pas_le_bouton_de_la_facade", async () => {
+  await evaluate(`__plan.setModel({outline:[[0,0],[900,0],[900,600],[0,600]],walls:[
+    {id:"o0",a:[0,0],b:[900,0],t:12,isOutline:1},{id:"o1",a:[900,0],b:[900,600],t:12,isOutline:1},
+    {id:"o2",a:[900,600],b:[0,600],t:12,isOutline:1},{id:"o3",a:[0,600],b:[0,0],t:12,isOutline:1}
+  ],openings:[{id:"fen",wallId:"o0",t0:390,w:120,h:12,type:"window",side:0,name:"Fenetre"}],
+    pieces:[],cells:[]}); true`);
+  await pause(250);
+  // La fenetre est centree sur le MILIEU de la facade du haut, exactement la ou son bouton se pose.
+  await move(await apt(450, 2)); await pause(300);
+  const b = await center('.v5wmove[data-w="o0"]');
+  if (!ok(b, "la facade doit offrir son bouton meme sous une fenetre")) return;
+  const dessus = await evaluate(`(function(){var e=document.elementFromPoint(${b.x},${b.y});
+    return e ? String(e.className || e.tagName) : "rien";})()`);
+  ok(String(dessus).includes("v5wmove"), `le bouton doit gagner le test de clic, vu « ${dessus} »`);
+  const avant = await evaluate(`JSON.stringify(__plan.state.plan.outline)`);
+  await mouse("mousePressed", b);
+  for (let i = 1; i <= 12; i++) { await mouse("mouseMoved", { x: b.x, y: b.y + 60 * i / 12 }, { buttons: 1 }); await pause(10); }
+  await mouse("mouseReleased", { x: b.x, y: b.y + 60 });
+  await pause(400);
+  ok(await evaluate(`JSON.stringify(__plan.state.plan.outline)`) !== avant,
+    "tirer le bouton d'une facade doit la deplacer, pas seulement la selectionner");
+});
+
 const bad = results.filter((r) => r.fails.length);
 console.log("");
 if (bad.length) { console.log(`FAILURES ${bad.length}/${results.length}:`); bad.forEach((r) => r.fails.forEach((f) => console.log(`  - ${r.name}: ${f}`))); }

@@ -1099,6 +1099,23 @@ function v5AreteContourTraversee(P: PlanV5 | null | undefined, pt: Pt): { i: num
   return null;
 }
 
+/**
+ * L'INDEX DE L'ARETE DU CONTOUR que ce mur de facade represente, ou -1. Une facade est recalculee
+ * depuis le polygone: pour la DEPLACER il faut savoir quelle arete elle mirroir.
+ */
+export function v5IndexAreteContour(P: PlanV5 | null | undefined, wallId: Id): number {
+  const w = v5WallById(P, wallId);
+  const O = P?.outline || [];
+  if (!w || !w.isOutline) return -1;
+  for (let i = 0; i < O.length; i++) {
+    const a = O[i]!, b = O[(i + 1) % O.length]!;
+    const direct = Math.hypot(a[0] - w.a[0], a[1] - w.a[1]) + Math.hypot(b[0] - w.b[0], b[1] - w.b[1]);
+    const inverse = Math.hypot(a[0] - w.b[0], a[1] - w.b[1]) + Math.hypot(b[0] - w.a[0], b[1] - w.a[1]);
+    if (Math.min(direct, inverse) < 2) return i;
+  }
+  return -1;
+}
+
 /** Inserts that vertex, so the facade becomes two. Returns false if there was nothing to cut. */
 export function v5CouperContour(P: PlanV5 | null | undefined, pt: Pt): boolean {
   const t = v5AreteContourTraversee(P, pt);

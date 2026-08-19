@@ -95,8 +95,17 @@ function brancherSurvolMurs(ctx: Contexte): void {
     const direct = murPointe(e.target);
     if (direct) { montrerPoigneesMur(ctx, layer, direct); return; }
     const t = e.target instanceof Element ? e.target : null;
-    // Furniture and openings are the visible target. Clear wall handles immediately so even a
-    // direct jump onto a piece cannot leave a wall control above the following press.
+    // UNE OUVERTURE APPARTIENT A UN MUR, donc la survoler c'est survoler SON MUR. Ce chemin les
+    // traitait comme des meubles et effacait les poignees: une facade portant une fenetre en son
+    // milieu devenait insaisissable a l'endroit exact ou son bouton se pose. Signale par le
+    // proprietaire: « s'il y a une fenetre a l'endroit du bouton, je dois pouvoir saisir le
+    // bouton ». Un MEUBLE, lui, efface bien: il ne appartient a aucun mur et c'est la cible visible.
+    const ouv = t?.closest<HTMLElement>('.piece[data-op="1"]');
+    if (ouv) {
+      const o = (ctx.etat.plan.openings || []).find((q) => String(q.id) === String(ouv.dataset["id"]));
+      montrerPoigneesMur(ctx, layer, o ? String(o.wallId) : null);
+      return;
+    }
     if (t?.closest(".piece,.ov-name")) { montrerPoigneesMur(ctx, layer, null); return; }
     const id = murGeometrique(ctx, e);
     if (id) montrerPoigneesMur(ctx, layer, id); else planifierMasquageMur(ctx, layer);
@@ -510,7 +519,9 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // passent au-dessus des meubles, elle passait aussi au-dessus de `.edge` et volait le
     // glissement: tirer une façade ne la déplaçait plus. Une fois le contour révélé, `.edge`
     // sélectionne ET déplace, donc la poignée n'a plus de raison d'être là.
-    if (w.isOutline && contourVisible) continue;
+    // La facade GARDE son bouton meme quand le contour est revele: c'est lui la prise de premiere
+    // classe, au-dessus des fenetres, et c'est lui qui deplace. La bande `.edge` reste disponible
+    // partout ailleurs le long du mur, la ou une fenetre a le droit de gagner le clic.
     const move = document.createElement("div");
     move.className = "v5wmove";
     move.dataset["w"] = String(w.id);
