@@ -360,9 +360,17 @@ const battement = setInterval(() => {
 battement.unref();
 
 const PROPRIETAIRE_PERMIS = "plan-app/" + path.basename(ROOT);
-// Five minutes without a single line. `PLAN_TESTS_SILENCE=0` disables the watchdog, for the day
-// someone wants to attach a debugger to a suite and let it sit.
-const SILENCE_MAX = Number(process.env.PLAN_TESTS_SILENCE ?? 300_000) || Infinity;
+// QUINZE MINUTES, ET LE CHIFFRE VIENT D'UNE MESURE, PAS D'UNE INTUITION. La première version
+// coupait à cinq minutes et a tué deux suites saines dès sa première barrière complète
+// (`gestes-precision`, `repli-d1-live`). Mesuré ensuite, cette suite lancée SEULE sur une machine
+// au repos : 247 s au total et **100 s sans écrire une ligne**, parce qu'un cas à la vraie souris
+// enchaîne 300 objets sans rien dire entre deux verdicts. Sous une barrière chargée, où un
+// ralentissement d'un facteur trois est ordinaire, ces 100 s deviennent 300 et le garde tuait
+// exactement quand la machine est occupée, c'est-à-dire quand la barrière tourne.
+// 900 s laisse neuf fois la pire attente observée, tout en restant sans commune mesure avec un
+// blocage, qui lui est infini. `PLAN_TESTS_SILENCE=0` le désarme, pour le jour où quelqu'un
+// attache un débogueur à une suite et la laisse attendre.
+const SILENCE_MAX = Number(process.env.PLAN_TESTS_SILENCE ?? 900_000) || Infinity;
 
 function lance(suite: EntreeSuite): Promise<ResultatSuite> {
   // A suite that opens no browser takes no permit: it costs CPU, not Chrome, and making it queue

@@ -39,7 +39,6 @@
     "src/ts/gestes/guides.ts → ALIGN_TOL",
     "src/ts/gestes/guides.ts → addGuideLine",
     "src/ts/gestes/guides.ts → rayToPoly",
-    "src/ts/gestes/murs.ts → v5CaptureDown",
     "src/ts/gestes/murs.ts → v5ClearDraft",
     "src/ts/gestes/murs.ts → v5DrawDraft",
     "src/ts/gestes/murs.ts → v5InsertVertex",
