@@ -347,6 +347,65 @@ await test("au_doigt_le_vide_pan_sans_creer_de_mur", async () => {
 });
 
 // ---- verdict -----------------------------------------------------------------------------------
+
+// =============================================================================
+//  6. outil_arme_les_boutons_d_une_cloison_agissent_quand_meme
+// =============================================================================
+// Signalé à l'usage, mot pour mot : « quand je suis en mode Draw a wall je ne peux cliquer ni +
+// ni x ». `v5CaptureDown` fait gagner l'outil armé sur toutes les poignées du calque, et cette
+// règle est juste POUR CE QU'ON TIRE : la bande d'une façade, un sommet, le bout d'un mur, le
+// disque de déplacement. Elle emportait au passage les trois boutons d'une cloison, qui agissent
+// au CLIC et sont posés à 18 px à côté du mur, là où aucun tracé ne passe.
+// Mesuré avant : outil armé, clic sur le « + » d'une cloison, 1 mur avant, 1 mur après.
+await test("outil_arme_les_boutons_d_une_cloison_agissent_quand_meme", async () => {
+  await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
+    walls:[{id:"w1",a:[0,180],b:[420,180],t:12}], openings:[], pieces:[], cells:[]}); true`);
+  await pause(150);
+  if (!ok(await armDraw(), "l'outil de tracé ne s'arme pas")) return;
+  const survol = await aptPoint(210, 180);
+  await M("mouseMoved", survol.x, survol.y, { button: "none", buttons: 0 });
+  await pause(250);
+  const plus = await centerOf('.v5wmid[data-w="w1"]');
+  if (!ok(plus, "le « + » de la cloison doit exister sous le survol, outil armé")) return;
+  const avant = (await interiorWalls()).length;
+  await click(plus);
+  await pause(200);
+  const apres = (await interiorWalls()).length;
+  ok(apres === avant + 1, `le « + » doit couper même outil armé, vu ${avant} puis ${apres} cloison(s)`);
+  ok(await armed() === "true", "couper avec le « + » ne doit pas désarmer l'outil");
+});
+
+// =============================================================================
+//  7. outil_arme_la_croix_supprime_et_le_corps_du_mur_trace_toujours
+// =============================================================================
+// Les deux moitiés de la même règle. La croix agit comme le « + », et le CORPS du mur, lui, reste
+// une surface de tracé : c'est le geste que la tuile de l'outil armé existe pour protéger
+// (« drag from one wall to another »), et il ne doit rien perdre au passage.
+await test("outil_arme_la_croix_supprime_et_le_corps_du_mur_trace_toujours", async () => {
+  await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
+    walls:[{id:"w1",a:[0,180],b:[420,180],t:12}], openings:[], pieces:[], cells:[]}); true`);
+  await pause(150);
+  if (!ok(await armDraw(), "l'outil de tracé ne s'arme pas")) return;
+  const survol = await aptPoint(210, 180);
+  await M("mouseMoved", survol.x, survol.y, { button: "none", buttons: 0 });
+  await pause(250);
+  const croix = await centerOf('.v5wx[data-w="w1"]');
+  if (!ok(croix, "la croix de la cloison doit exister sous le survol, outil armé")) return;
+  await click(croix);
+  await pause(200);
+  ok((await interiorWalls()).length === 0, "la croix doit supprimer la cloison même outil armé");
+
+  // Et le tracé ordinaire n'a rien perdu : on repose une cloison et on trace en partant de SON CORPS.
+  await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],
+    walls:[{id:"w1",a:[0,180],b:[420,180],t:12}], openings:[], pieces:[], cells:[]}); true`);
+  await pause(150);
+  if (!ok(await armDraw(), "l'outil de tracé ne se réarme pas")) return;
+  await drag(await aptPoint(120, 180), await aptPoint(120, 340), 14);
+  await pause(200);
+  const apres = await interiorWalls();
+  ok(apres.length >= 2, `un tracé partant du corps du mur doit tracer, vu ${apres.length} cloison(s)`);
+});
+
 const bad = results.filter(r => r.fails.length);
 console.log("");
 if (bad.length) {
