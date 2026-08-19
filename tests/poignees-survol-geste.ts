@@ -224,11 +224,18 @@ await test("facade_selectionnee_revele_le_contour_sans_commandes_interieures", a
 // donc viser un bout attrapait celui d'à côté. Les bouts sont ce que ce mur a de plus utile: ils ne
 // disparaissent jamais, ils réduisent, et la position reste vraie.
 await test("mur_court_garde_ses_bouts_et_aucune_poignee_ne_se_recouvre", async () => {
-  await seed(60); await move(await apt(100, 110)); const hs = await handles("w1");
+  // 30 cm: assez court pour que la reduction se declenche VRAIMENT a l'echelle de ce banc. A 60 cm
+  // le mur n'etait plus court en PIXELS, donc rien ne retrecissait et le cas mesurait autre chose
+  // que son nom.
+  await seed(30); await move(await apt(100, 105)); const hs = await handles("w1");
   ok(hs.some((h: any) => h.c.includes("v5wmove")), "la poignée move doit toujours rester visible");
   ok(hs.filter((h: any) => h.c.includes("v5wend")).length === 2,
     `les DEUX bouts doivent rester, vu ${JSON.stringify(hs.map((h: any) => h.c))}`);
-  ok(hs.every((h: any) => h.w <= 20 && h.h <= 20), "sur un mur court les poignées doivent avoir rétréci");
+  // La boite de saisie fait 32 px a pleine taille, plus large que le disque de 20 qu'elle dessine:
+  // rater la prise de deux pixels ne doit pas tomber sur le corps du mur, qui trace. Ce qu'on
+  // verifie ici est donc qu'un mur court REDUIT ses boites, et surtout, plus bas, qu'aucune ne
+  // recouvre une autre.
+  ok(hs.every((h: any) => h.w < 32), `sur un mur court les poignées doivent avoir rétréci, vu ${JSON.stringify(hs.map((h: any) => Math.round(h.w)))}`);
   for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) {
     const a = hs[i], b = hs[j], overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     ok(!overlap, `deux poignées visibles se recouvrent: ${a.c} et ${b.c}`);
@@ -283,9 +290,11 @@ await test("une_fenetre_ne_vole_pas_le_bouton_de_la_facade", async () => {
   await move(await apt(450, 2)); await pause(300);
   const b = await center('.v5wmove[data-w="o0"]');
   if (!ok(b, "la facade doit offrir son bouton meme sous une fenetre")) return;
+  // `closest`, pas `className`: le bouton contient desormais un SVG qui dessine son disque, donc
+  // `elementFromPoint` rend ce SVG. Ce qui compte est que la pression ATTERRISSE dans le bouton.
   const dessus = await evaluate(`(function(){var e=document.elementFromPoint(${b.x},${b.y});
-    return e ? String(e.className || e.tagName) : "rien";})()`);
-  ok(String(dessus).includes("v5wmove"), `le bouton doit gagner le test de clic, vu « ${dessus} »`);
+    return e && e.closest && e.closest(".v5wmove") ? "v5wmove" : (e ? String(e.tagName) : "rien");})()`);
+  ok(dessus === "v5wmove", `le bouton doit gagner le test de clic, vu « ${dessus} »`);
   const avant = await evaluate(`JSON.stringify(__plan.state.plan.outline)`);
   await mouse("mousePressed", b);
   for (let i = 1; i <= 12; i++) { await mouse("mouseMoved", { x: b.x, y: b.y + 60 * i / 12 }, { buttons: 1 }); await pause(10); }

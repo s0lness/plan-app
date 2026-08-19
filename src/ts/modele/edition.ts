@@ -1120,7 +1120,29 @@ export function v5IndexAreteContour(P: PlanV5 | null | undefined, wallId: Id): n
 export function v5CouperContour(P: PlanV5 | null | undefined, pt: Pt): boolean {
   const t = v5AreteContourTraversee(P, pt);
   if (!t || !P) return false;
-  P.outline = [...P.outline.slice(0, t.i + 1), t.sur, ...P.outline.slice(t.i + 1)];
+  // ON SCINDE LE MUR AVANT D'INSERER LE SOMMET, et ce n'est pas une optimisation, c'est ce qui
+  // empeche une perte de donnees. `v5SyncOutlineWalls` reapparie chaque arete a un mur de facade;
+  // la seconde moitie d'une arete coupee est COLINEAIRE a la premiere, donc son seul candidat sur
+  // la meme droite est deja pris, et le repli `old.find(non pris)` lui donnait alors une facade
+  // QUELCONQUE. Toutes les suivantes se decalaient d'un cran, et comme une ouverture designe son
+  // mur par IDENTIFIANT, portes et fenetres changeaient de facade en silence. Mesure sur le vrai
+  // plan par une revue adverse: UNE cloison tracee depuis une facade deplacait 9 ouvertures sur 30,
+  // jusqu'a 11 metres, sans un mot. En creant nous-memes le mur de la seconde moitie, chaque arete
+  // retrouve un candidat exact et le repli n'est plus atteint.
+  const O = P.outline, n = O.length;
+  const ea = O[t.i]!, eb = O[(t.i + 1) % n]!;
+  const mur = (P.walls || []).find((w) => w.isOutline
+    && (Math.hypot(w.a[0] - ea[0], w.a[1] - ea[1]) + Math.hypot(w.b[0] - eb[0], w.b[1] - eb[1]) < 2
+     || Math.hypot(w.a[0] - eb[0], w.a[1] - eb[1]) + Math.hypot(w.b[0] - ea[0], w.b[1] - ea[1]) < 2));
+  if (mur) {
+    P.walls.push({
+      id: v5DerivedId(P, "w"),
+      a: [t.sur[0], t.sur[1]], b: [mur.b[0], mur.b[1]],
+      t: mur.t || WALL, isOutline: true,
+    });
+    mur.b = [t.sur[0], t.sur[1]];
+  }
+  P.outline = [...O.slice(0, t.i + 1), t.sur, ...O.slice(t.i + 1)];
   v5SyncOutlineWalls(P);
   return true;
 }

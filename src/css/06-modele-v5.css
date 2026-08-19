@@ -40,12 +40,25 @@
      discs that only exist while their wall is hovered, so the surface they take from the furniture
      underneath is a few pixels, for the few seconds the pointer is on that wall. */
   /* L'icone est un SVG, donc la boite doit le porter sans padding ni ligne de base de texte. */
-  .v5wjoin > svg{display:block}
+  /* Les trois boutons portent un SVG: meme boite, meme centrage, aucune metrique de police. */
+  /* CHAQUE BOUTON EST UNE BOITE TRANSPARENTE QUI CONTIENT SON DISQUE. Le fond, la bordure et
+     l'ombre sont dans le SVG, donc la surface saisissable peut etre plus large que le dessin sans
+     que rien ne grossisse a l'oeil: rater la prise de deux pixels ne doit pas tomber sur le corps
+     du mur, qui trace. Le dessin garde son ombre portee via un filtre CSS, qui suit la forme. */
+  .v5wmove,.v5wend,.v5wmid,.v5wx,.v5wjoin{background:none;border:none;box-shadow:none;padding:0;
+        filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+  .v5wmove > svg,.v5wend > svg,.v5wmid > svg,.v5wx > svg,.v5wjoin > svg{display:block}
+  .v5wend:hover > svg circle,.v5wmid:hover > svg circle,.v5wmove:hover > svg circle{opacity:.85}
   .v5wjoin{position:absolute;border-radius:50%;cursor:pointer;pointer-events:auto;
         display:flex;align-items:center;justify-content:center;padding:2px;box-sizing:border-box;
         background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 15px/16px var(--mono);
         box-shadow:0 1px 3px rgba(0,0,0,.3)}
-  .v5wend,.v5wmid,.v5wmove,.v5wx,.v5wjoin{z-index:70}
+  /* LA PILE, ET CHAQUE ETAGE EST UNE REGLE. Un tapis (2 a 5) passe SOUS les murs (6), parce qu'il
+     est au sol et qu'un mur s'eleve depuis ce sol. Une ouverture (8) est PART du mur. Les commandes
+     du mur (9) passent au-dessus des ouvertures, parce qu'une fenetre posee pile sur le bouton
+     d'une facade ne doit pas le voler. Un MEUBLE (10 et au-dessus) passe au-dessus des commandes,
+     parce qu'il n'appartient a aucun mur et que c'est lui la cible visible. */
+  .v5wend,.v5wmid,.v5wmove,.v5wx,.v5wjoin{z-index:9}
   .v5wend:hover,.v5wmid:hover,.v5wmove:hover{background:var(--accent-soft)}
   .v5wend:active,.v5wmid:active,.v5wmove:active{cursor:grabbing}
   .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;
