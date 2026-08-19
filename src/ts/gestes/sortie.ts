@@ -21,6 +21,7 @@
 // end can no longer lie about its state.
 
 import type { Contexte } from "../app/contexte.ts";
+import { oublierPhotoCellules, photographierCellules } from "../modele/photo-cellules.ts";
 
 /** Without the slightest sign of life during this delay, it is no longer a gesture. */
 export const GESTURE_IDLE_MS = 8000;
@@ -59,11 +60,17 @@ export function vieillirGeste(ms?: number | null): boolean {
 export function beginGesture(): void {
   gestureActive = true;
   gPoke();
+  // LA PHOTO DES CELLULES. Le geste va recalculer les cellules à chaque image pour que le sol suive
+  // la main; tous ces recalculs apparient les noms depuis CET état-ci, jamais depuis l'image
+  // précédente. Ici, parce que c'est le seul endroit qui allume `gestureActive`
+  // (`modele/photo-cellules.ts` dit pourquoi la photo existe).
+  photographierCellules(_ctx?.etat.plan ?? null);
   _ctx?.crochets.crumb?.("drag", "start");
 }
 
 export function endGesture(): void {
   gestureActive = false;
+  oublierPhotoCellules();             // le recalcul FINAL a déjà eu lieu, dans le `finish` du geste
   _ctx?.crochets.crumb?.("drag", "end");
   _ctx?.crochets.persister?.();       // one single real write for the whole gesture
   _ctx?.crochets.analyser?.();        // the analysis skipped during the gesture is finalized
@@ -94,6 +101,11 @@ export function armGesture(finish: Finish, onUp?: OnUp | null, onCancel?: OnCanc
   // Never two stacked gestures. The remote queue is NOT flushed here: it would be applied under
   // the gesture that is starting (whose closure already holds its objects). It waits for this one to end.
   if (gFinish) endActiveGesture(null, true);
+  // Et on REPREND la photo: la sortie forcée juste au-dessus passe par `endGesture`, qui oublie
+  // celle que `beginGesture` vient de prendre pour le geste qui commence (les gestes de mur
+  // appellent `beginGesture` AVANT `armGesture`). Reprise ici, après la sortie du geste périmé,
+  // elle décrit bien l'avant-geste: rien de géométrique ne se produit entre les deux.
+  if (gestureActive) photographierCellules(_ctx?.etat.plan ?? null);
   gFinish = finish; gOnUp = onUp || null; gCancel = onCancel || null; gPoke();
   window.addEventListener("pointerup", gUpEvt);
   window.addEventListener("pointercancel", gCancelEvt);

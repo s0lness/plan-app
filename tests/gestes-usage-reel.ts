@@ -440,7 +440,16 @@ await test("geste_sans_effet_dit_pourquoi", async () => {
     await pause(220);
     const ap = await pose(id);
     const fige = (ap.cx === av.cx && ap.cy === av.cy);
-    if (fige) { bloque++; dits.push(await toastNow()); }
+    // ON ATTEND LE BANDEAU, PAS UNE DURÉE. Ce cas lisait le message juste après une pause fixe de
+    // 220 ms et voyait « » sous barrière chargée, où tout est trois fois plus lent : le geste
+    // était bien refusé, la phrase n'était simplement pas encore peinte. Allonger la pause ne
+    // ferait que déplacer le seuil (AGENTS.md, « attendre une CONDITION, jamais une durée »).
+    if (fige) {
+      bloque++;
+      let dit = "";
+      for (let i = 0; i < 60 && !dit; i++) { dit = String((await toastNow()) || ""); if (!dit) await pause(50); }
+      dits.push(dit);
+    }
   }
   ok(bloque >= 2, `le geste doit finir par ne plus rien changer (bloqué ${bloque} fois sur 6)`);
   // THREE LEGITIMATE EXPLANATIONS, NOT TWO. G-13 requires that a gesture with no effect SAY WHY;

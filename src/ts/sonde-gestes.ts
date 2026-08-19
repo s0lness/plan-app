@@ -96,7 +96,7 @@ export interface SondeGestes {
   clampToInset(cx: number, cy: number, w: number, h: number, rot: number, poly: Pt[]): { cx: number; cy: number; fits: boolean };
   clampCenterToApt(ax: number, ay: number, hors?: number): { x: number; y: number };
 
-  readonly v5ui: { selWall: string | null; selCell: string | null; draw: boolean; drawFree: boolean };
+  readonly v5ui: { selWall: string | null; selCell: string | null; draw: boolean };
   canDeleteWall(id: unknown): boolean;
   wallDeleteVerdict(id: unknown, plan?: unknown): string;
   delWall(id: unknown): number;
@@ -235,7 +235,7 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     clampCenterToApt: (ax, ay, hors) => clampCenterToApt(ctx.etat.plan, ax, ay, hors),
 
     get v5ui() {
-      return { selWall: ctx.ihm.selWall, selCell: ctx.ihm.selCell, draw: ctx.ihm.draw, drawFree: ctx.ihm.drawFree };
+      return { selWall: ctx.ihm.selWall, selCell: ctx.ihm.selCell, draw: ctx.ihm.draw };
     },
     canDeleteWall: (id: unknown) => v5CanDeleteWall(ctx.etat.plan, String(id)),
     wallDeleteVerdict: (id: unknown, plan?: unknown) =>

@@ -241,13 +241,35 @@ export function v5AssignNames<T extends Cellule>(
   return cells;
 }
 
+export interface OptionsRecalcul {
+  /**
+   * The cells to inherit names and floors FROM, instead of the plan's current ones. This is how a
+   * gesture matches from the PHOTO taken before it started (`modele/photo-cellules.ts`) rather than
+   * from the intermediate state its own previous frame left behind.
+   */
+  depuis?: readonly CellulePrecedente[] | null;
+  /**
+   * DURING a gesture (`final=false`): recompute the cells, and touch NOTHING ELSE. In particular no
+   * `v5DedupeWalls`: a partition pushed onto another one is EXACTLY overlapping for a few frames,
+   * and deduplication DELETES a wall and re-homes its openings. Run per frame it would destroy, for
+   * good and without a word, a wall the hand is merely sweeping past. Cleaning up belongs to the
+   * final recomputation, on the geometry that was actually released.
+   */
+  enDirect?: boolean;
+}
+
 /** Recomputes `cells` from outline+walls while keeping name/floor. Mutates and returns the plan. */
-export function v5RebuildCells(plan: PlanV5 | null | undefined): PlanV5 | null | undefined {
+export function v5RebuildCells(
+  plan: PlanV5 | null | undefined,
+  opts?: OptionsRecalcul | null,
+): PlanV5 | null | undefined {
   if (!plan) return plan;
-  v5DedupeWalls(plan); // sanitization: never two exactly overlapping walls
-  const prev: CellulePrecedente[] = Array.isArray(plan.cells)
-    ? plan.cells.map((c) => ({ name: c.name, floor: c.floor, poly: c.poly }))
-    : [];
+  if (!opts?.enDirect) v5DedupeWalls(plan); // sanitization: never two exactly overlapping walls
+  const prev: CellulePrecedente[] = opts?.depuis
+    ? opts.depuis.slice()
+    : (Array.isArray(plan.cells)
+      ? plan.cells.map((c) => ({ name: c.name, floor: c.floor, poly: c.poly }))
+      : []);
   const { cells, report } = v5DetectCells(plan.outline, plan.walls);
   plan.cells = v5AssignNames(cells, prev).map((c) => ({ id: c.id, poly: c.poly, name: c.name, floor: c.floor }));
   plan._report = report;

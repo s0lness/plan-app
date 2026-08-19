@@ -16,7 +16,7 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
-import { v5BoutJoint, v5WallMergeCandidate } from "../modele/edition.ts";
+import { v5BoutJoint, v5IndexAreteContour, v5SommetPlatDeFacade, v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
@@ -106,14 +106,21 @@ function brancherSurvolMurs(ctx: Contexte): void {
       montrerPoigneesMur(ctx, layer, o ? String(o.wallId) : null);
       return;
     }
-    if (t?.closest(".piece,.ov-name")) { montrerPoigneesMur(ctx, layer, null); return; }
+    // UNE ETIQUETTE DE PIECE N'EFFACE PAS LES POIGNEES, elle n'est le nom d'aucun objet: une
+    // cellule est DERIVEE des murs, donc survoler son nom c'est encore survoler ce qu'il y a
+    // dessous. Ce chemin la traitait comme un meuble, et l'etiquette se pose au pole de la
+    // cellule, c'est-a-dire au milieu d'un couloir etroit, pile sur le bouton du mur qui le
+    // borde: approcher ce bouton faisait disparaitre la commande qu'on visait. On laisse donc
+    // decider la GEOMETRIE, comme pour une ouverture. Un MEUBLE, lui, efface toujours: il
+    // n'appartient a aucun mur et c'est la cible visible.
+    if (t?.closest(".piece")) { montrerPoigneesMur(ctx, layer, null); return; }
     const id = murGeometrique(ctx, e);
     if (id) montrerPoigneesMur(ctx, layer, id); else planifierMasquageMur(ctx, layer);
   });
   ctx.viewport.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "touch") return;
     const layer = focusEl(ctx), t = e.target instanceof Element ? e.target : null;
-    if (!layer || t?.closest(".piece,.ov-name")) return;
+    if (!layer || t?.closest(".piece")) return;
     montrerPoigneesMur(ctx, layer, murPointe(e.target) || murGeometrique(ctx, e));
   }, { capture: true });
   ctx.viewport.addEventListener("pointerleave", () => {
@@ -267,7 +274,12 @@ export function renderOuvertures(ctx: Contexte, layer: HTMLElement, bb: BBox, S:
     }
     seen[String(op.id)] = 1;
     const w = box.w, h = box.h, rot = box.rot;
-    el.style.zIndex = "8";
+    // 7, ET PLUS 8: l'etage libere sert a l'etiquette de piece, qui doit passer SOUS les commandes
+    // du mur (9) sans pour autant passer sous les fenetres, ce qu'elle ne faisait pas avant. Rien
+    // d'autre ne vit entre la bande de mur (6) et les commandes, donc l'ouverture ne change de
+    // place par rapport a rien: elle reste au-dessus du mur dont elle fait partie, et sous ce qui
+    // le commande.
+    el.style.zIndex = "7";
     el.dataset["paint"] = "-1";   // an opening is ALWAYS below the furniture (cf. `stackedAt`)
     el.style.left = X(box.cx - w / 2) + "px";
     el.style.top = Y(box.cy - h / 2) + "px";
@@ -529,6 +541,66 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
       return `width:${c.toFixed(1)}px;height:${c.toFixed(1)}px;`
         + `margin:${(-c / 2).toFixed(1)}px 0 0 ${(-c / 2).toFixed(1)}px;`;
     };
+    const facade = !!w.isOutline;
+    // LA NORMALE ET L'ÉCART SONT DÉCIDÉS AVANT TOUT BOUTON, parce que c'est d'eux que dépend la
+    // place de chacun, donc le palier auquel il tombe.
+    // THE SIDE IS DECIDED ON SCREEN, NOT BY THE WALL'S STORED DIRECTION. The normal of a segment
+    // flips with the order of `a` and `b`, which is arbitrary: two walls drawn the same way but
+    // stored in opposite directions put the delete cross on opposite sides, and the owner has to
+    // look for it every time. We therefore orient the normal so it always points DOWN the screen,
+    // and to the RIGHT for a vertical wall. The delete cross then always sits below (or right of)
+    // the wall, and the split control always above (or left of) it.
+    let nx = -dy / L, ny = dx / L;
+    if (ny < 0 || (Math.abs(ny) < 1e-9 && nx < 0)) { nx = -nx; ny = -ny; }
+    // ET SUR UNE FACADE, LA NORMALE EST CELLE DU CONTOUR, TOURNEE VERS L'INTERIEUR. Le « + » du
+    // contour (`.mid`, G-15) est deja pose 18 px A L'EXTERIEUR de la meme arete: y poser aussi la
+    // coupe de la facade remettrait deux commandes au meme pixel, ce qui est exactement le defaut
+    // que G-15 a corrige. On prend donc l'AUTRE cote, a l'interieur du logement, ou la seule chose
+    // presente est le sol de la cellule. Les deux « + » sont alors separes d'au moins 50 px et
+    // chacun reste atteignable. Sans arete identifiable (une facade orpheline en cours de
+    // recalcul), on retombe sur l'orientation ecran ordinaire.
+    if (facade) {
+      const arete = v5IndexAreteContour(ctx.etat.plan, w.id);
+      const dehors = arete >= 0 ? outlineOutward(ctx, arete) : null;
+      if (dehors) { nx = dehors.x; ny = dehors.y; }
+    }
+    // DEUX BOITES NE SE RECOUVRENT JAMAIS. L'ecart perpendiculaire doit valoir au moins une boite
+    // entiere, sinon la coupe et la suppression mordent sur le bouton de deplacement et un
+    // presque-rate atteint la mauvaise commande. C'est la meme famille de defaut que le « + » du
+    // contour qui volait le clic d'une facade.
+    const off = Math.max(((w.t || 0) * S) / 2 + 16, BOITE * facteur + 2);
+
+    // UN MUR TROP COURT EN PORTE MOINS, JAMAIS ZÉRO, ET L'ORDRE N'EST PAS ARBITRAIRE.
+    // Avant, un seul seuil (28 px de longueur à l'écran) retirait d'un coup la coupe, la croix ET
+    // les maillons: sur le plan réel à 77 objets, au zoom d'ajustement, la cloison de 47 cm
+    // (24,3 px) devenait impossible à couper comme à supprimer, et il fallait zoomer de 15 % de
+    // plus pour la retrouver, sans que rien ne le dise. Dézoomé de moitié, 3 murs sur 22 étaient
+    // dans ce cas. Les boutons se posent donc du plus utile au moins utile, et chacun n'apparaît
+    // que s'il reste de la place pour lui:
+    //   1. le DISQUE DE DÉPLACEMENT: sans lui le corps du mur trace au lieu de le saisir, donc
+    //      il n'a aucune solution de rechange, pas même le clavier (rien n'est sélectionné);
+    //   2. la CROIX: elle est le seul geste de pointage qui supprime, et elle se pose de l'autre
+    //      côté de la normale, donc elle ne dispute sa place à personne;
+    //   3. la COUPE « + »: elle garde son seuil de longueur, mais pour ce qu'il veut vraiment
+    //      dire — couper plus court laisse deux moitiés qu'on ne peut plus viser;
+    //   4. les BOUTS, puis 5. les MAILLONS: ils cèdent en premier parce qu'ils ont, eux, une
+    //      solution de rechange immédiate, zoomer.
+    // Et la place se vérifie sur les BOITES, pas sur la longueur: deux boutons au même pixel
+    // valent zéro bouton (mesuré: sous ~32 px, le disque de déplacement et les deux bouts se
+    // recouvraient, chacun rendant l'autre inatteignable).
+    const COUPE_MIN = 28;
+    const posees: Array<{ x: number; y: number; c: number }> = [];
+    const poser = (el: HTMLElement, x: number, y: number, base: number): boolean => {
+      const c = BOITE * facteur * (base / 20);
+      for (const q of posees) {
+        if (Math.abs(q.x - x) < (q.c + c) / 2 - 0.5 && Math.abs(q.y - y) < (q.c + c) / 2 - 0.5) return false;
+      }
+      posees.push({ x, y, c });
+      el.style.left = x + "px";
+      el.style.top = y + "px";
+      layer.appendChild(el);
+      return true;
+    };
     // UNE FAÇADE N'A PAS DEUX COMMANDES AU MÊME ENDROIT. Sa poignée de déplacement ne sait que
     // SÉLECTIONNER (le contour se remodèle par ses arêtes et ses coins), et elle se pose au milieu
     // du segment, exactement là où la bande `.edge` du contour se saisit. Depuis que les poignées
@@ -543,24 +615,71 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     move.dataset["w"] = String(w.id);
     move.style.cssText = boite(20);
     move.innerHTML = disque(9, "var(--accent)", "var(--room-bg)", "");
-    move.style.left = sMid.x + "px";
-    move.style.top = sMid.y + "px";
     move.title = w.isOutline ? "Click to select this facade" : "Click to select this wall, or drag to move it";
     move.addEventListener("pointerdown", (ev) => ctx.gestes.deplacerMurPointerDown?.(ev as PointerEvent, String(w.id)));
-    layer.appendChild(move);
-    // A facade is derived from the outline. Its move handle deliberately SELECTS only: moving the
-    // outline remains the job of its existing edge and vertex controls.
-    if (w.isOutline) continue;
-    // The split and delete controls sit on the PERPENDICULAR, so they never crowd the axis. The
-    // only length they cannot survive is one where they would swallow the segment itself.
-    const showDetails = lenpx >= 28;
+    poser(move, sMid.x, sMid.y, 20);
+    // UNE FACADE PORTE SON « + » ET SON MAILLON, JAMAIS SA CROIX NI SES BOUTS. Demande du
+    // proprietaire, mot pour mot: « je peux resize un mur de facade comme je veux, donc je devrais
+    // aussi pouvoir le couper », et « quand un autre mur coupe une facade je veux que les deux
+    // moities aient ce bouton en leur centre ». Les deux exceptions sont DELIBEREES:
+    //   - pas de croix: un mur de contour est DERIVE du contour, il ne se supprime pas
+    //     (`v5WallDeleteVerdict` verdict `facade`), et un bouton qui refuse n'apprend rien;
+    //   - pas de poignees de bout: les bouts d'une facade sont les COINS du contour, qui ont deja
+    //     leur poignee `.vtx` exactement au meme pixel. Deux commandes au meme endroit s'annulent.
+    // UNE FACADE PORTE SON « + » ET SON MAILLON, JAMAIS SA CROIX NI SES BOUTS: voir plus haut.
+    // G-15-BIS: SAME TRAP AS THE OUTLINE'S "+", one wall family over. Dead-center on the wall's
+    // own segment, this "x" used to sit exactly where `[data-w]` (the drag band, G-3's "grab it
+    // again to nudge it") is grabbed: selecting a wall by dragging it once, then reaching for the
+    // SAME spot to adjust it again, deleted it instead — the delete handler wins the hit-test the
+    // layer's own early return grants `.v5wx` (`v5LayerDown`). Measured: a wall dragged out and
+    // back vanished on the second grab, silently (no toast, `v5DeleteSelectedWall`'s refusal path
+    // is for facades, not "wrong target"). Offset PERPENDICULAR to the wall, clear of its own
+    // half-thickness, exactly the outline fix's shape (`outlineOutward`, an outward normal), so
+    // the drag band stays reachable at its own center.
+    // PALIER 2, ET IL NE CONNAIT PAS DE SEUIL DE LONGUEUR: la croix est seule de son cote de la
+    // normale, donc raccourcir le mur ne la met en concurrence avec rien. C'est exactement ce qui
+    // manquait: elle tombait avec la coupe alors que rien ne l'y obligeait.
+    if (!facade) {
+      const x = document.createElement("div");
+      x.className = "v5wx";
+      x.dataset["w"] = String(w.id);
+      x.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+        traits('<line x1="12.9" y1="12.9" x2="19.1" y2="19.1"/><line x1="19.1" y1="12.9" x2="12.9" y2="19.1"/>'));
+      x.title = "Delete this wall (the two rooms merge)";
+      x.style.cssText = boite(20);
+      x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent, String(w.id)));
+      poser(x, sMid.x + nx * off, sMid.y + ny * off, 20);
+    }
+    // PALIER 3, LE SEUL QUI RESTE UNE LONGUEUR, et pour ce qu'il veut vraiment dire: couper un mur
+    // plus court que ca donne deux moities trop petites pour porter leur propre bouton, donc une
+    // coupe qu'on ne peut plus defaire a la main.
+    // The split control uses the same clearance as the delete cross, on the opposite normal. If it
+    // sat on the segment itself it would steal the wall band's midpoint, the ordinary place used
+    // to grab the selected wall again and nudge the whole partition.
+    if (lenpx >= COUPE_MIN) {
+      const coude = document.createElement("div");
+      coude.className = "v5wmid";
+      coude.dataset["w"] = String(w.id);
+      // DESSINE, PAS ECRIT. Un glyphe de police s'aligne sur ses propres metriques: en monospace, le
+      // « + » et le « x » s'assoient sur l'axe mathematique, donc plus haut que le centre optique du
+      // disque, et aucun centrage CSS ne rattrape ca. Signale a l'oeil par le proprietaire sur la
+      // croix. Les trois boutons sont donc des traits dans le meme carre de 20, geometriquement
+      // centres et coherents entre eux.
+      coude.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+        traits('<line x1="16" y1="11.6" x2="16" y2="20.4"/><line x1="11.6" y1="16" x2="20.4" y2="16"/>'));
+      coude.title = facade ? "Split this facade in two here" : "Split this wall in two here";
+      coude.style.cssText = boite(20);
+      coude.addEventListener("pointerdown", (ev) => ctx.gestes.coudeMurPointerDown?.(ev as PointerEvent, String(w.id)));
+      poser(coude, sMid.x - nx * off, sMid.y - ny * off, 20);
+    }
+    // PALIER 4: LES BOUTS, qui cedent quand leur boite mord celle du deplacement.
     // ENDPOINT HANDLES (owner's report: "choper les extrémités des murs et pouvoir étendre et
     // relier à d'autres murs"). One per end, sitting EXACTLY on the endpoint: unlike the
     // outline's "+" (G-15) there is no selection click to steal here, since the wall's own drag
     // band already covers the whole segment INCLUDING its very tip, and grabbing the small
     // circle right on top of it starts `v5StartWallEndDrag` instead (wired through
     // `ctx.gestes.boutMurPointerDown`, `gestes/branchement.ts`), which moves ONLY that end.
-    (["a", "b"] as const).forEach((bout) => {
+    if (!facade) (["a", "b"] as const).forEach((bout) => {
       // UN JOINT N'EST PAS UN BOUT. Si quelque chose tient deja cette extremite (un autre mur, son
       // flanc, la facade), on n'offre pas de prise pour l'etirer: tirer dessus dechirerait la
       // jonction qu'on vient de faire. Signale par le proprietaire juste apres une coupe, ou les
@@ -575,74 +694,26 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
       h.dataset["bout"] = bout;
       h.style.cssText = boite(16);
       h.innerHTML = disque(7, "var(--room-bg)", "var(--accent)", "");
-      h.style.left = s.x + "px";
-      h.style.top = s.y + "px";
       h.title = "Drag to extend this wall, or connect it to another";
       h.addEventListener("pointerdown", (ev) => ctx.gestes.boutMurPointerDown?.(ev as PointerEvent, String(w.id), bout));
-      layer.appendChild(h);
+      poser(h, s.x, s.y, 16);
     });
-    // G-15-BIS: SAME TRAP AS THE OUTLINE'S "+", one wall family over. Dead-center on the wall's
-    // own segment, this "x" used to sit exactly where `[data-w]` (the drag band, G-3's "grab it
-    // again to nudge it") is grabbed: selecting a wall by dragging it once, then reaching for the
-    // SAME spot to adjust it again, deleted it instead — the delete handler wins the hit-test the
-    // layer's own early return grants `.v5wx` (`v5LayerDown`). Measured: a wall dragged out and
-    // back vanished on the second grab, silently (no toast, `v5DeleteSelectedWall`'s refusal path
-    // is for facades, not "wrong target"). Offset PERPENDICULAR to the wall, clear of its own
-    // half-thickness, exactly the outline fix's shape (`outlineOutward`, an outward normal), so
-    // the drag band stays reachable at its own center.
-    if (!showDetails) continue;
-    // THE SIDE IS DECIDED ON SCREEN, NOT BY THE WALL'S STORED DIRECTION. The normal of a segment
-    // flips with the order of `a` and `b`, which is arbitrary: two walls drawn the same way but
-    // stored in opposite directions put the delete cross on opposite sides, and the owner has to
-    // look for it every time. We therefore orient the normal so it always points DOWN the screen,
-    // and to the RIGHT for a vertical wall. The delete cross then always sits below (or right of)
-    // the wall, and the split control always above (or left of) it.
-    let nx = -dy / L, ny = dx / L;
-    if (ny < 0 || (Math.abs(ny) < 1e-9 && nx < 0)) { nx = -nx; ny = -ny; }
-    // DEUX BOITES NE SE RECOUVRENT JAMAIS. L'ecart perpendiculaire doit valoir au moins une boite
-    // entiere, sinon la coupe et la suppression mordent sur le bouton de deplacement et un
-    // presque-rate atteint la mauvaise commande. C'est la meme famille de defaut que le « + » du
-    // contour qui volait le clic d'une facade.
-    const off = Math.max(((w.t || 0) * S) / 2 + 16, BOITE * facteur + 2);
-    // The split control uses the same clearance as the delete cross, on the opposite normal. If it
-    // sat on the segment itself it would steal the wall band's midpoint, the ordinary place used
-    // to grab the selected wall again and nudge the whole partition.
-    const coude = document.createElement("div");
-    coude.className = "v5wmid";
-    coude.dataset["w"] = String(w.id);
-    // DESSINE, PAS ECRIT. Un glyphe de police s'aligne sur ses propres metriques: en monospace, le
-    // « + » et le « x » s'assoient sur l'axe mathematique, donc plus haut que le centre optique du
-    // disque, et aucun centrage CSS ne rattrape ca. Signale a l'oeil par le proprietaire sur la
-    // croix. Les trois boutons sont donc des traits dans le meme carre de 20, geometriquement
-    // centres et coherents entre eux.
-    coude.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
-      traits('<line x1="16" y1="11.6" x2="16" y2="20.4"/><line x1="11.6" y1="16" x2="20.4" y2="16"/>'));
-    coude.title = "Split this wall in two here";
-    coude.style.cssText = boite(20);
-    coude.style.left = (sMid.x - nx * off) + "px";
-    coude.style.top = (sMid.y - ny * off) + "px";
-    coude.addEventListener("pointerdown", (ev) => ctx.gestes.coudeMurPointerDown?.(ev as PointerEvent, String(w.id)));
-    layer.appendChild(coude);
-    const s = { x: sMid.x + nx * off, y: sMid.y + ny * off };
-    const x = document.createElement("div");
-    x.className = "v5wx";
-    x.dataset["w"] = String(w.id);
-    x.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
-      traits('<line x1="12.9" y1="12.9" x2="19.1" y2="19.1"/><line x1="19.1" y1="12.9" x2="12.9" y2="19.1"/>'));
-    x.title = "Delete this wall (the two rooms merge)";
-    x.style.cssText = boite(20);
-    x.style.left = s.x + "px";
-    x.style.top = s.y + "px";
-    x.addEventListener("pointerdown", (ev) => ctx.gestes.supprimerMurSelectionne?.(ev as PointerEvent, String(w.id)));
-    layer.appendChild(x);
 
     // THE "-" ONLY EXISTS WHERE WELDING IS LEGITIMATE. The model decides (`v5WallMergeCandidate`):
     // exactly two walls at this joint, neither of them a facade, and the two continuing one
     // another. A control that appears and then refuses teaches nothing; one that is simply absent
     // says "not here" without a word. It sits on the same side as the "+", so the pair that cuts
     // and welds reads together, and the delete cross keeps the other side to itself.
+    // SUR UNE FACADE, LE MAILLON RESSOUDE UN SOMMET PLAT. Deux moities de facade ne sont pas deux
+    // murs poses cote a cote: ce sont deux ARETES du contour separees par un sommet, et les
+    // recoller veut dire retirer ce sommet (`v5SommetPlatDeFacade`). Meme garde que pour deux
+    // cloisons: les deux aretes doivent se continuer, et rien d'autre ne doit tenir ce point.
+    // PALIER 5, LE DERNIER A ETRE SERVI: le maillon partage le cote du « + », donc c'est lui qui
+    // cede quand les deux se disputent le meme pixel sur un mur court. Ressouder a une solution de
+    // rechange immediate, zoomer; supprimer n'en a pas.
     (["a", "b"] as const).forEach((bout) => {
-      if (!v5WallMergeCandidate(ctx.etat.plan, w.id, bout)) return;
+      if (facade ? v5SommetPlatDeFacade(ctx.etat.plan, w.id, bout) < 0
+        : !v5WallMergeCandidate(ctx.etat.plan, w.id, bout)) return;
       const p = toC(w[bout][0], w[bout][1]);
       const m = document.createElement("div");
       m.className = "v5wjoin";
@@ -655,12 +726,11 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
         '<g fill="none" stroke="#fff" stroke-width="1.9" stroke-linejoin="round">'
         + '<rect x="8.9" y="13.2" width="7.4" height="5.6" rx="2.8"/>'
         + '<rect x="15.7" y="13.2" width="7.4" height="5.6" rx="2.8"/></g>');
-      m.title = "Weld this wall to the one it continues";
+      m.title = facade ? "Weld these two halves of the facade back together"
+        : "Weld this wall to the one it continues";
       m.style.cssText = boite(20);
-      m.style.left = (p.x - nx * off) + "px";
-      m.style.top = (p.y - ny * off) + "px";
       m.addEventListener("pointerdown", (ev) => ctx.gestes.fusionnerMurPointerDown?.(ev as PointerEvent, String(w.id), bout));
-      layer.appendChild(m);
+      poser(m, p.x - nx * off, p.y - ny * off, 20);
     });
   }
 }

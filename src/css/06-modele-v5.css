@@ -54,10 +54,13 @@
         background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 15px/16px var(--mono);
         box-shadow:0 1px 3px rgba(0,0,0,.3)}
   /* LA PILE, ET CHAQUE ETAGE EST UNE REGLE. Un tapis (2 a 5) passe SOUS les murs (6), parce qu'il
-     est au sol et qu'un mur s'eleve depuis ce sol. Une ouverture (8) est PART du mur. Les commandes
-     du mur (9) passent au-dessus des ouvertures, parce qu'une fenetre posee pile sur le bouton
-     d'une facade ne doit pas le voler. Un MEUBLE (10 et au-dessus) passe au-dessus des commandes,
-     parce qu'il n'appartient a aucun mur et que c'est lui la cible visible. */
+     est au sol et qu'un mur s'eleve depuis ce sol. Une ouverture (7) est PART du mur. Une ETIQUETTE
+     DE PIECE (8) passe au-dessus d'elle, parce que c'est du texte a lire et qu'elle se lisait deja
+     ainsi. Les commandes du mur (9) passent au-dessus des deux, parce qu'une fenetre posee pile sur
+     le bouton d'une facade ne doit pas le voler, et qu'un nom de piece pose dessus ne le doit pas
+     davantage: un controle qu'un texte peut recouvrir n'est pas un controle. Un MEUBLE (10 et
+     au-dessus) passe au-dessus des commandes, parce qu'il n'appartient a aucun mur et que c'est lui
+     la cible visible. */
   .v5wend,.v5wmid,.v5wmove,.v5wx,.v5wjoin{z-index:9}
   .v5wend:hover,.v5wmid:hover,.v5wmove:hover{background:var(--accent-soft)}
   .v5wend:active,.v5wmid:active,.v5wmove:active{cursor:grabbing}

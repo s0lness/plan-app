@@ -228,8 +228,17 @@ try {
     f.value = ${JSON.stringify(NEW_NAME)};
     f.dispatchEvent(new Event("input", { bubbles: true }));   // the REAL rename path
   })()`);
-  await sleep(2000);   // PUT debounce (1 s) + margin
-  const putRev = db.store.row ? db.store.row.rev : 0;
+  // ON ATTEND LA CONDITION, PAS LE DÉBOUNCE. Ce cas dormait 2 s en misant sur « débounce de 1 s +
+  // marge », et il est tombé en barrière complète (`rev 1 -> 1`) alors qu'il passe seul: sous
+  // charge, la marge d'une seconde ne couvre plus la frappe, le débounce et le PUT. Allonger le
+  // sommeil ne ferait que déplacer le seuil (AGENTS.md: « attendre une CONDITION, jamais une
+  // durée »). L'étape suivante, elle, sondait déjà correctement.
+  let putRev = 0;
+  for (let i = 0; i < 100; i++) {
+    putRev = db.store.row ? db.store.row.rev : 0;
+    if (putRev > revAvantRenom && String(db.store.row.data).indexOf(NEW_NAME) >= 0) break;
+    await sleep(200);
+  }
   check("l'écriture de Device A atteint la base (le PUT est accepté)",
     putRev > revAvantRenom && String(db.store.row.data).indexOf(NEW_NAME) >= 0,
     "rev " + revAvantRenom + " -> " + putRev);

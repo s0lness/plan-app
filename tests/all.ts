@@ -91,7 +91,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/partage-navigateur.ts",      chrome: 2 },   // the Share button in a real browser: household door, silent-return fix, local-only self-heal
   { f: "tests/retour-navigateur.ts",       chrome: 2 },   // the Feedback button in a real browser: both doors, server received it, text survives a failed send
   { f: "tests/interactions.ts",            chrome: 1 },
-  { f: "tests/trace-libre-geste.ts",       chrome: 1 },   // freehand wall trace, real mouse: an L, shared corner, one undo, click writes nothing
   { f: "tests/mur-outil-geste.ts",         chrome: 1 },   // single-segment wall tool, real mouse+keyboard: stays armed across walls, endpoint snap shares the exact point, a drawn wall keeps its length, D-held guides on a wall write nothing
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
   { f: "tests/poignees-survol-geste.ts",    chrome: 1 }, // real mouse: wall handles on hover, dedicated move target, body draws, facade selects, short-wall crowding
@@ -99,6 +98,8 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/bouts-de-mur-geste.ts",      chrome: 1 },   // real mouse: a wall's own endpoint handle is hittable and extends it, the wall body still drags the whole wall, a clean click writes nothing
   { f: "tests/coude-mur-geste.ts",         chrome: 1 },   // real mouse: midpoint elbow handle, wall body remains reachable, clean click writes nothing
   { f: "tests/facade-glisse-geste.ts",     chrome: 1 },   // real mouse: a facade half SLIDES, the outline never bends, corner drags carry the whole straight run
+  { f: "tests/facade-controles-geste.ts",  chrome: 1 },   // real mouse: a hovered facade offers its "+" and its weld link, never a cross nor endpoint handles, and the outline's own "+" stays reachable
+  { f: "tests/sol-suit-la-main-geste.ts",  chrome: 1 },   // real mouse: the painted floor follows the hand during the drag instead of jumping on release, and a typed room name survives a room being swept away and reopened
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
   { f: "tests/etiquettes-recouvrement.ts", chrome: 1 },   // room labels vs furniture labels vs each other, real DOM, the owner's real apartment
@@ -121,7 +122,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/bouts-de-mur.ts",            chrome: 0 },   // PURE geometry: a wall endpoint's snap cascade (junction, segment, outline, then 45°, then the grid) and the `free` rule
   { f: "tests/coude-mur.ts",               chrome: 0 },   // PURE geometry: midpoint split, opening ownership and absolute positions
   { f: "tests/sans-grille.ts",             chrome: 0 },   // PURE: the Ctrl/Cmd modifier and the relative grid math, no browser
-  { f: "tests/trace-libre.ts",             chrome: 0 },   // PURE geometry, freehand wall trace: no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
   { f: "tests/etiquettes-disposition.ts",  chrome: 0 },   // PURE placement math: room labels vs furniture obstacles, no browser
   { f: "tests/chaise-dossier.ts",          chrome: 0 },   // PURE geometry: snapChairToTable's rotation, relative to the table's OWN rot, no browser
@@ -361,9 +361,17 @@ const battement = setInterval(() => {
 battement.unref();
 
 const PROPRIETAIRE_PERMIS = "plan-app/" + path.basename(ROOT);
-// Five minutes without a single line. `PLAN_TESTS_SILENCE=0` disables the watchdog, for the day
-// someone wants to attach a debugger to a suite and let it sit.
-const SILENCE_MAX = Number(process.env.PLAN_TESTS_SILENCE ?? 300_000) || Infinity;
+// QUINZE MINUTES, ET LE CHIFFRE VIENT D'UNE MESURE, PAS D'UNE INTUITION. La première version
+// coupait à cinq minutes et a tué deux suites saines dès sa première barrière complète
+// (`gestes-precision`, `repli-d1-live`). Mesuré ensuite, cette suite lancée SEULE sur une machine
+// au repos : 247 s au total et **100 s sans écrire une ligne**, parce qu'un cas à la vraie souris
+// enchaîne 300 objets sans rien dire entre deux verdicts. Sous une barrière chargée, où un
+// ralentissement d'un facteur trois est ordinaire, ces 100 s deviennent 300 et le garde tuait
+// exactement quand la machine est occupée, c'est-à-dire quand la barrière tourne.
+// 900 s laisse neuf fois la pire attente observée, tout en restant sans commune mesure avec un
+// blocage, qui lui est infini. `PLAN_TESTS_SILENCE=0` le désarme, pour le jour où quelqu'un
+// attache un débogueur à une suite et la laisse attendre.
+const SILENCE_MAX = Number(process.env.PLAN_TESTS_SILENCE ?? 900_000) || Infinity;
 
 function lance(suite: EntreeSuite): Promise<ResultatSuite> {
   // A suite that opens no browser takes no permit: it costs CPU, not Chrome, and making it queue

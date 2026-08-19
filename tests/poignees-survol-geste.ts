@@ -4,6 +4,18 @@
 // =============================================================================
 // The wall body is now a drawing surface. Moving and selecting a partition belongs to its visible
 // move handle, including the facade variant which deliberately selects without moving geometry.
+//
+// ET UN BOUTON DE MUR RESTE ATTEIGNABLE. Deux défauts relevés sur le plan réel du propriétaire, et
+// mesurés avant d'être corrigés:
+//   - une ÉTIQUETTE DE PIÈCE se pose au pôle de sa cellule et captait le pointeur par-dessus les
+//     commandes du mur (z-index 20 contre 9). Au zoom d'ajustement du plan réel à 77 objets,
+//     2 disques de déplacement sur 22 étaient sous une étiquette, dont un recouvert entièrement
+//     (32x17 px), 4 sur 22 en dézoomant de moitié. Le survol de l'étiquette EFFAÇAIT en plus les
+//     poignées du mur visé;
+//   - un MUR COURT ne recevait plus rien au-delà de son disque et de ses bouts: un seuil unique de
+//     28 px retirait d'un coup la coupe, la croix ET les maillons. Sur le plan réel, au zoom
+//     d'ajustement, la cloison de 47 cm (24,3 px) n'était ni coupable ni supprimable, et il fallait
+//     zoomer de 15 % de plus pour la retrouver. Dézoomé de moitié: 3 murs sur 22.
 
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
@@ -87,6 +99,12 @@ const handles = (id: string) => J(`Array.from(document.querySelectorAll('[data-w
 const toutesPoignees = () => J(`Array.from(document.querySelectorAll(".vtx,.mid,.edge,[class^=v5w]"))
   .filter(function(e){ return !/v5wall|v5wband/.test(e.className); })
   .map(function(e){ return e.className + ":" + (e.dataset.w || ""); })`);
+
+/** TOUTES les boites de commande d'un mur, classe + rectangle: c'est sur les BOITES que se juge
+ *  « deux boutons au meme pixel valent zero bouton », jamais sur la longueur du mur. */
+const boitesMur = (id: string) => J(`Array.from(document.querySelectorAll('[data-w="'+${JSON.stringify(id)}+'"]'))
+  .filter(function(e){return /v5w(move|end|mid|join)|v5wx/.test(e.className)})
+  .map(function(e){var r=e.getBoundingClientRect();return{c:String(e.className),x:r.left,y:r.top,w:r.width,h:r.height}})`);
 
 const results: VerdictSonde[] = [];
 let cur: VerdictSonde;
@@ -215,7 +233,12 @@ await test("facade_selectionnee_revele_le_contour_sans_commandes_interieures", a
   await click(h);
   ok(await evaluate(`String(__plan.v5ui.selWall)`) === id, "la poignée doit sélectionner la façade");
   ok(await center(`.edge[data-w="${id}"]`), "sélectionner la façade doit révéler sa bande de contour");
-  ok(await evaluate(`document.querySelector('.v5wx[data-w="${id}"],.v5wmid[data-w="${id}"]')===null`) === true, "une façade ne doit offrir ni suppression ni coude");
+  // CE CAS EST REECRIT, PAS SUPPRIME. Il affirmait qu'une facade n'offre NI suppression NI coupe,
+  // ce qui etait vrai tant qu'elle n'exposait que son bouton rond. Ce qu'il protege est la regle qui
+  // n'a pas bouge: un mur de contour est DERIVE du contour, il ne se supprime pas
+  // (`v5WallDeleteVerdict` verdict `facade`), donc aucune croix, jamais. Sa COUPE, elle, existe
+  // maintenant, et `tests/facade-controles-geste.ts` la mesure.
+  ok(await evaluate(`document.querySelector('.v5wx[data-w="${id}"]')===null`) === true, "une façade ne doit offrir aucune suppression");
 });
 
 // UN MUR COURT RÉTRÉCIT SES POIGNÉES, IL N'EN SUPPRIME PLUS. La priorité d'avant les faisait
@@ -302,6 +325,144 @@ await test("une_fenetre_ne_vole_pas_le_bouton_de_la_facade", async () => {
   await pause(400);
   ok(await evaluate(`JSON.stringify(__plan.state.plan.outline)`) !== avant,
     "tirer le bouton d'une facade doit la deplacer, pas seulement la selectionner");
+});
+
+// =============================================================================
+//  UNE ÉTIQUETTE DE PIÈCE NE VOLE PAS LE BOUTON D'UN MUR
+// =============================================================================
+// UNE CLOISON LIBRE AU MILIEU D'UNE PIÈCE: le pôle d'inaccessibilité de la cellule, donc le centre
+// de son étiquette, tombe exactement sur le milieu du mur, donc sur son disque de déplacement.
+// C'est la forme pure du cas mesuré sur le plan réel, où un couloir étroit met le nom de la pièce
+// sur le mur qui le borde.
+async function seedEtiquetteSurLeBouton(): Promise<void> {
+  await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],walls:[
+    {id:"w1",a:[60,180],b:[360,180],t:12,free:1},
+    {id:"o0",a:[0,0],b:[420,0],t:12,isOutline:1},{id:"o1",a:[420,0],b:[420,360],t:12,isOutline:1},
+    {id:"o2",a:[420,360],b:[0,360],t:12,isOutline:1},{id:"o3",a:[0,360],b:[0,0],t:12,isOutline:1}
+  ],openings:[],pieces:[],cells:[{id:"c1",name:"Salon salle a manger",floor:"plain",
+    poly:[[0,0],[420,0],[420,360],[0,360]]}]});true`);
+  await pause(150);
+}
+const recouvrement = () => J(`(function(){
+  var m=document.querySelector('.v5wmove[data-w="w1"]'), e=document.querySelector('.ov-name[data-c]');
+  if(!m||!e) return null;
+  var a=m.getBoundingClientRect(), z=e.getBoundingClientRect();
+  return {bouton:{g:a.left,d:a.right,h:a.top,b:a.bottom}, etiquette:{g:z.left,d:z.right,h:z.top,b:z.bottom},
+    dx:Math.min(a.right,z.right)-Math.max(a.left,z.left), dy:Math.min(a.bottom,z.bottom)-Math.max(a.top,z.top)};
+})()`);
+
+await test("le_bouton_du_mur_gagne_le_clic_sous_une_etiquette_de_piece", async () => {
+  await seedEtiquetteSurLeBouton();
+  // On découvre les poignées LOIN de l'étiquette, pour que la précondition ne dépende pas du
+  // défaut qu'on mesure.
+  await move(await apt(90, 180));
+  const b = await center('.v5wmove[data-w="w1"]');
+  if (!ok(b, "précondition: survoler le mur doit révéler son disque de déplacement")) return;
+  const r = await recouvrement();
+  if (!ok(r && r.dx > 4 && r.dy > 4, `précondition: l'étiquette doit recouvrir le bouton, vu ${JSON.stringify(r)}`)) return;
+  await move(b);
+  ok((await handles("w1")).some((h: any) => h.c.includes("v5wmove")),
+    "aller sur un bouton posé sous une étiquette ne doit pas effacer les poignées");
+  // `closest`, pas `className`: le bouton contient un SVG qui dessine son disque.
+  const dessus = await evaluate(`(function(){var e=document.elementFromPoint(${b.x},${b.y});
+    return e&&e.closest ? (e.closest(".v5wmove") ? "v5wmove" : (e.closest(".ov-name") ? "ov-name" : String(e.tagName))) : "rien";})()`);
+  ok(dessus === "v5wmove", `le bouton du mur doit gagner le test de clic, vu « ${dessus} »`);
+  const avant = await wall("w1");
+  await drag(b, { x: b.x, y: b.y + 60 });
+  const apres = await wall("w1");
+  ok(apres && Math.abs(apres.a[1] - avant.a[1]) > 5,
+    `tirer ce bouton doit déplacer le mur, pas sélectionner la pièce, vu ${JSON.stringify({ avant, apres })}`);
+});
+
+await test("survoler_une_etiquette_n_efface_pas_le_mur_qui_est_dessous", async () => {
+  await seedEtiquetteSurLeBouton();
+  await move(await apt(90, 180));
+  if (!ok((await handles("w1")).length, "précondition: le mur survolé doit avoir ses poignées")) return;
+  const r = await recouvrement();
+  if (!ok(r && r.etiquette.d - r.bouton.d > 8,
+    `précondition: l'étiquette doit déborder du bouton, vu ${JSON.stringify(r)}`)) return;
+  // Dans l'étiquette, en dehors de la boîte du bouton, et sur l'axe du mur.
+  const p = { x: (r.etiquette.d + r.bouton.d) / 2, y: (r.bouton.h + r.bouton.b) / 2 };
+  await move(p);
+  const cible = await evaluate(`(function(){var e=document.elementFromPoint(${p.x},${p.y});
+    return e&&e.closest ? (e.closest(".ov-name") ? "ov-name" : String(e.className||e.tagName)) : "rien";})()`);
+  if (!ok(cible === "ov-name", `précondition: c'est bien l'étiquette qui reçoit le pointeur ici, vu « ${cible} »`)) return;
+  ok((await handles("w1")).length > 0,
+    "survoler l'étiquette posée sur un mur ne doit pas effacer les poignées de ce mur");
+});
+
+await test("une_etiquette_garde_son_clic_la_ou_aucun_bouton_ne_se_pose", async () => {
+  // LE CORRECTIF NE DOIT RIEN PRENDRE À L'ÉTIQUETTE: elle renomme sa pièce partout où aucune
+  // commande de mur ne se pose, ce qui est le cas de presque toute sa surface.
+  await seedEtiquetteSurLeBouton();
+  await move(await apt(90, 180));
+  const r = await recouvrement();
+  if (!ok(r && r.etiquette.d - r.bouton.d > 8, `précondition: étiquette débordante attendue, vu ${JSON.stringify(r)}`)) return;
+  await evaluate(`__plan.gestes && 0; true`);
+  await click({ x: (r.etiquette.d + r.bouton.d) / 2, y: (r.bouton.h + r.bouton.b) / 2 });
+  ok(await evaluate(`String(__plan.v5ui.selCell)`) === "c1",
+    `un clic sur l'étiquette doit encore choisir sa pièce, vu ${await evaluate("String(__plan.v5ui.selCell)")}`);
+});
+
+// =============================================================================
+//  UN MUR TROP COURT EN PORTE MOINS, PAS ZÉRO
+// =============================================================================
+// Le seuil de 28 px retirait d'un coup la coupe, la croix et les maillons. Les paliers vont
+// désormais du plus utile au moins utile: le disque de déplacement (aucune solution de rechange,
+// le corps du mur trace), puis la croix (seul geste de pointage qui supprime, et seule de son côté
+// de la normale, donc rien ne lui dispute sa place), puis la coupe (qui garde un seuil de
+// LONGUEUR, parce que couper plus court laisse deux moitiés invisables), puis les bouts et les
+// maillons, qui cèdent parce qu'ils ont, eux, une solution de rechange: zoomer.
+async function seedMurCourt(cm = 30, pixels = 20): Promise<void> {
+  await seed(cm);
+  await evaluate(`__plan.setZoom(${pixels}/${cm}); true`);
+  await pause(200);
+}
+
+await test("un_mur_sous_le_seuil_garde_son_deplacement_et_sa_croix", async () => {
+  await seedMurCourt();
+  await move(await apt(100, 95));
+  const lenpx = await evaluate(`(function(){var w=__plan.v5WallById("w1");
+    return Math.hypot(w.b[0]-w.a[0],w.b[1]-w.a[1])*__plan.viewTransform().scale;})()`);
+  if (!ok(lenpx < 28, `précondition: le mur doit être SOUS le seuil, vu ${lenpx} px`)) return;
+  const bs = await boitesMur("w1");
+  const classes = bs.map((b: any) => b.c);
+  ok(bs.some((b: any) => /v5wmove/.test(b.c)), `le disque de déplacement doit rester, vu ${JSON.stringify(classes)}`);
+  ok(bs.some((b: any) => /v5wx/.test(b.c)),
+    `la croix doit rester: supprimer est un geste sans solution de rechange, vu ${JSON.stringify(classes)}`);
+  ok(!bs.some((b: any) => /v5wmid/.test(b.c)),
+    `la coupe doit céder sous le seuil: deux moitiés de 10 px ne se visent plus, vu ${JSON.stringify(classes)}`);
+});
+
+await test("sous_le_seuil_aucun_bouton_n_en_recouvre_un_autre", async () => {
+  // DEUX BOUTONS AU MÊME PIXEL VALENT ZÉRO BOUTON. Avant, le disque de déplacement et les deux
+  // bouts se recouvraient dès que la boîte cessait de rétrécir (55 % à partir de 35 px), chacun
+  // rendant l'autre inatteignable, et personne ne le voyait: le cas court de cette suite mesure un
+  // mur de 30 cm qui fait encore 70 px à l'écran.
+  await seedMurCourt();
+  await move(await apt(100, 95));
+  const bs = await boitesMur("w1");
+  ok(bs.length >= 2, `un mur court doit garder PLUSIEURS commandes, vu ${JSON.stringify(bs.map((b: any) => b.c))}`);
+  for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+    const a = bs[i], b = bs[j];
+    const dx = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const dy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    ok(!(dx > 0.5 && dy > 0.5), `${a.c} et ${b.c} se recouvrent de ${Math.round(dx)}x${Math.round(dy)} px`);
+  }
+});
+
+await test("la_croix_d_un_mur_sous_le_seuil_le_supprime_vraiment", async () => {
+  // UN BOUTON CONSERVÉ QUI NE MARCHE PAS NE VAUT PAS MIEUX QU'UN BOUTON ABSENT: on appuie dessus,
+  // à la vraie souris, et on regarde le modèle.
+  await seedMurCourt();
+  await move(await apt(100, 95));
+  const croix = await center('.v5wx[data-w="w1"]');
+  if (!ok(croix, "la croix doit être présente sous le seuil")) return;
+  await move(croix);
+  await mouse("mousePressed", croix); await mouse("mouseReleased", croix);
+  await pause(300);
+  ok(await evaluate(`String(__plan.state.plan.walls.filter(function(w){return !w.isOutline}).length)`) === "0",
+    "la croix d'un mur court doit le supprimer");
 });
 
 const bad = results.filter((r) => r.fails.length);

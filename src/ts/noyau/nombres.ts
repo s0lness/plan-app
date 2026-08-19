@@ -102,36 +102,3 @@ export const WALL = 12;
 
 export const v5R2 = (v: number): number => Math.round(v * 100) / 100;
 
-// ---- free-draw wall trace ("trace libre") constants --------------------------------------------
-// The owner's request: "sometimes you want to make a corner ... and it's not easy" (drawing two
-// straight walls that must meet exactly, fighting the magnet). A free-hand stroke becomes a
-// CHAIN of walls: geometrie/trace-libre.ts simplifies it, straightens near-axis runs, and shares
-// the corner vertex between consecutive walls.
-
-/**
- * cm: Ramer-Douglas-Peucker tolerance when simplifying a freehand stroke into straight runs.
- * Chosen BELOW one wall's thickness (WALL=12): a deviation this size is a genuine corner, not
- * hand jitter, and must survive simplification. Chosen ABOVE the 5cm snap grid used elsewhere,
- * so ordinary mouse tremor at working zoom collapses into a single straight run instead of
- * spawning a wall per wobble. Verified against a 200-point shaky stroke (tests/trace-libre.ts):
- * a lower value lets jitter through, a higher one starts eating real corners.
- */
-export const TRACE_LIBRE_RDP_TOL_CM = 8;
-
-/**
- * cm: a stroke shorter than this, measured along its own path, is a click, not a wall. Same
- * floor as the single-segment tool's own minimum drag (`v5StartDraw`).
- */
-export const TRACE_LIBRE_MIN_CM = 20;
-
-/**
- * cm: every run of a freehand stroke is now quantised to the NEAREST MULTIPLE OF 45 DEGREES,
- * unconditionally (no tolerance: "with freehand you should only ever get 90 and 45 degree
- * angles, nothing else", the owner's words after a badly-drawn L came out ~12deg off on both
- * legs, corner not square). Rebuilding the corner as the intersection of two quantised lines can
- * leave a run shorter than this between two corners it should not have produced (a sliver, not a
- * corner): fold it into a neighbour instead of emitting it as its own wall. Chosen equal to the
- * default wall thickness (`WALL`): a wall shorter than its own thickness is not a wall, the same
- * reasoning already used for the minimums in `live-worker/ops.ts`.
- */
-export const TRACE_LIBRE_45_MIN_RUN_CM = WALL;

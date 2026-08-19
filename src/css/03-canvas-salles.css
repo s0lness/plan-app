@@ -18,8 +18,18 @@
     border:1px solid rgba(35,39,42,.14);border-radius:3px 3px 0 0;padding:2px 7px;white-space:nowrap;
     z-index:120;box-shadow:0 1px 1px rgba(20,30,30,.05);cursor:pointer;touch-action:none;user-select:none}
   /* centered label: placed on the cell's pole of inaccessibility */
+  /* ET ELLE PASSE SOUS LES COMMANDES DU MUR (z-index 9), parce qu'un controle qu'une etiquette
+     peut recouvrir n'est pas un controle: c'est la meme regle que pour le tapis, une famille
+     d'objets plus loin. Une etiquette de piece se pose au pole de la cellule, donc en plein
+     milieu d'un couloir etroit elle tombe pile sur le disque de deplacement du mur qui le borde.
+     Mesure au zoom d'ajustement sur le plan reel a 77 objets: 2 boutons sur 22 sous une etiquette,
+     dont un recouvert entierement (32x17 px), 4 sur 22 des qu'on dezoome de moitie. L'etiquette
+     capte le pointeur (elle renomme la piece), donc ces boutons-la etaient morts a cet endroit
+     precis. Elle garde en revanche sa place au-dessus des sols, des bandes de mur (6) et des
+     ouvertures (descendues a 7 pour lui laisser l'etage): elle se lit exactement comme avant, et
+     elle passe sous les meubles (10+), qui sont des objets et non du texte. */
   .ov-name-center{transform:translate(-50%,-50%);border-radius:4px;cursor:pointer;
-    z-index:20;background:rgba(255,255,255,.82)}
+    z-index:8;background:rgba(255,255,255,.82)}
 
   /* undo/redo toolbar buttons */
   .hbtn{font-size:15px;padding:6px 9px;line-height:1}

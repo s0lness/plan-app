@@ -24,7 +24,10 @@
 //   node tests/bouts-de-mur.ts
 import type { DonneeDynamique } from "./_types.ts";
 import { v5ResoudreGeometrie, v5WallEndDragApply, v5WallEndDrop } from "../src/ts/gestes/murs.ts";
-import { v5BoutJoint, v5CouperContour, v5MurTraverse, v5SnapWallEnd, v5WallSplitAtPoint } from "../src/ts/modele/edition.ts";
+import {
+  v5BoutJoint, v5CouperContour, v5FlushOpeningsBorned, v5MurTraverse, v5SnapWallEnd,
+  v5SommetPlatDeFacade, v5SyncOutlineWalls, v5WallSplitAtPoint,
+} from "../src/ts/modele/edition.ts";
 import { v5RebuildCells } from "../src/ts/modele/cellules.ts";
 import { sanitizeV5Plan } from "../src/ts/modele/migrations.ts";
 import type { Contexte } from "../src/ts/app/contexte.ts";
@@ -116,10 +119,20 @@ test("les_cellules_se_reconstruisent_a_la_fin_seulement", (a: DonneeDynamique) =
   a(P.cells.length === 2, `précondition : deux pièces, vu ${P.cells.length}`);
   const cellsAvant = JSON.stringify(P.cells);
   const ctx = ctxDe(P);
+  // CONTRAT INVERSÉ LE 19/08/2026 (voir `tests/jonction-glisser-mur.ts`, même cas, même raison, et
+  // `AGENTS.md`, « THE FLOOR FOLLOWS THE HAND »): le sol est peint à partir des cellules, donc ne
+  // les reconstruire qu'au relâchement laissait le fond immobile pendant tout le geste. Ce qui
+  // reste vrai, et que ce cas continue de garder: l'état final est le bon.
+  // Ce que ce cas n'exige PAS: que le nombre de pièces reste le même pendant le geste. Reculer le
+  // bout de `w1` détache la cloison de la façade, donc les deux pièces communiquent et n'en font
+  // plus qu'une. C'est la vérité géométrique de cet instant-là, et la montrer est précisément le
+  // but. Ce qui doit survivre à la traversée, c'est le NOM d'une pièce, et c'est la photo prise
+  // avant le geste qui s'en charge (`modele/photo-cellules.ts`, couvert par
+  // `tests/sol-suit-la-main-geste.ts`).
   v5WallEndDragApply(ctx, "w1", "a", [200, 20], false);
-  a(JSON.stringify(P.cells) === cellsAvant, "les cellules ne doivent pas bouger pendant une frame non finale");
+  a(JSON.stringify(P.cells) !== cellsAvant, "les cellules doivent suivre dès la frame non finale");
   v5WallEndDragApply(ctx, "w1", "a", [200, 20], true);
-  a(JSON.stringify(P.cells) !== cellsAvant, "la reconstruction finale doit, elle, refléter la nouvelle géométrie");
+  a(JSON.stringify(P.cells) !== cellsAvant, "la reconstruction finale doit refléter la nouvelle géométrie");
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -286,6 +299,106 @@ test("couper_une_facade_ne_deplace_aucune_ouverture", (a: DonneeDynamique) => {
     a(Math.hypot(p[0] - t.p[0], p[1] - t.p[1]) < 1,
       `${t.nom} a bouge de ${Math.round(Math.hypot(p[0] - t.p[0], p[1] - t.p[1]))} cm : ${JSON.stringify(t.p)} puis ${JSON.stringify(p)}`);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+//  UNE FACADE QUI DISPARAIT N'EMPORTE PLUS SES OUVERTURES SANS UN MOT
+// ---------------------------------------------------------------------------------------------
+// Perte de donnees, silencieuse. Retirer un coin du contour (`v5DeleteVertex`, et c'est aussi ce
+// que fait le maillon qui ressoude deux moities de facade) fait disparaitre une arete, donc son
+// mur: `v5SyncOutlineWalls` le rangeait dans `gone` et SUPPRIMAIT toutes les ouvertures qui
+// pointaient dessus. Une fenetre, une porte, une prise posees sur cette facade s'evaporaient.
+// Elles sont desormais relogees par la GEOMETRIE sur la facade qui reprend leur emplacement, comme
+// apres une coupe, et ce qui ne retrouve rien est annonce.
+
+/** Ou une ouverture SE TROUVE AU SOL, en centimetres: la seule chose que regarde le proprietaire. */
+function ouOuverture(P: PlanV5, id: string): Pt | null {
+  const o = (P.openings || []).find((q) => String(q.id) === id);
+  if (!o) return null;
+  const w = P.walls.find((x) => String(x.id) === String(o.wallId));
+  if (!w) return null;
+  const L = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) || 1;
+  const t = o.t0 + o.w / 2;
+  return [w.a[0] + (w.b[0] - w.a[0]) / L * t, w.a[1] + (w.b[1] - w.a[1]) / L * t];
+}
+
+/** Un rectangle 900x600 dont la facade du HAUT est deja coupee en deux, une ouverture par moitie. */
+function planFacadeCoupee(): PlanV5 {
+  return {
+    outline: [[0, 0], [450, 0], [900, 0], [900, 600], [0, 600]],
+    walls: [
+      { id: "f0", a: [0, 0], b: [450, 0], t: 12, isOutline: true },
+      { id: "f0b", a: [450, 0], b: [900, 0], t: 12, isOutline: true },
+      { id: "f1", a: [900, 0], b: [900, 600], t: 12, isOutline: true },
+      { id: "f2", a: [900, 600], b: [0, 600], t: 12, isOutline: true },
+      { id: "f3", a: [0, 600], b: [0, 0], t: 12, isOutline: true },
+    ],
+    openings: [
+      { id: "fenG", wallId: "f0", t0: 150, w: 120, h: 12, type: "window", side: 0, name: "Fenetre gauche" },
+      { id: "fenD", wallId: "f0b", t0: 200, w: 120, h: 12, type: "window", side: 0, name: "Fenetre droite" },
+    ],
+    pieces: [], cells: [],
+  } as unknown as PlanV5;
+}
+
+test("retirer_un_sommet_plat_reloge_les_ouvertures_au_lieu_de_les_detruire", (a: DonneeDynamique) => {
+  const P = planFacadeCoupee();
+  v5FlushOpeningsBorned();                                  // ardoise propre avant la mesure
+  const g0 = ouOuverture(P, "fenG"), d0 = ouOuverture(P, "fenD");
+  if (!a(!!g0 && !!d0, "les deux fenetres doivent etre lisibles au depart")) return;
+  P.outline.splice(1, 1);                                   // le sommet plat [450,0] s'en va
+  v5SyncOutlineWalls(P);
+  a(P.walls.filter((w) => w.isOutline).length === 4, "il doit rester quatre facades");
+  a(P.openings.length === 2, `aucune fenetre ne doit disparaitre, vu ${P.openings.length}`);
+  const g1 = ouOuverture(P, "fenG"), d1 = ouOuverture(P, "fenD");
+  if (!a(!!g1 && !!d1, `les deux fenetres doivent tenir sur un mur, vu ${JSON.stringify(P.openings)}`)) return;
+  a(Math.hypot(g1![0] - g0![0], g1![1] - g0![1]) < 1,
+    `la fenetre de gauche ne doit pas bouger: ${JSON.stringify(g0)} puis ${JSON.stringify(g1)}`);
+  a(Math.hypot(d1![0] - d0![0], d1![1] - d0![1]) < 1,
+    `la fenetre de droite ne doit pas bouger: ${JSON.stringify(d0)} puis ${JSON.stringify(d1)}`);
+  a(v5FlushOpeningsBorned() === null, "rien n'etant perdu, il n'y a rien a annoncer");
+});
+
+// ET CE QUI N'A PLUS AUCUN MUR PORTEUR EST SUPPRIME, EN LE DISANT, AVEC SON NOMBRE. Retirer un VRAI
+// coin (pas un sommet plat) remplace deux aretes par une diagonale qui ne passe pas la ou etaient
+// les ouvertures: a 378 cm, aucune facade ne reprend leur emplacement. Elles partent, et l'ardoise
+// deja lue par `v5AfterGeometry` le dit, au lieu du silence d'avant.
+test("une_facade_sans_remplacante_emporte_ses_ouvertures_mais_le_dit", (a: DonneeDynamique) => {
+  const P: PlanV5 = {
+    outline: [[0, 0], [900, 0], [900, 600], [0, 600]],
+    walls: [
+      { id: "f0", a: [0, 0], b: [900, 0], t: 12, isOutline: true },
+      { id: "f1", a: [900, 0], b: [900, 600], t: 12, isOutline: true },
+      { id: "f2", a: [900, 600], b: [0, 600], t: 12, isOutline: true },
+      { id: "f3", a: [0, 600], b: [0, 0], t: 12, isOutline: true },
+    ],
+    openings: [
+      { id: "porte", wallId: "f1", t0: 100, w: 90, h: 12, type: "door", side: 0, name: "Porte" },
+      { id: "prise", wallId: "f1", t0: 400, w: 10, h: 12, type: "plug", side: 0, name: "Prise" },
+    ],
+    pieces: [], cells: [],
+  } as unknown as PlanV5;
+  v5FlushOpeningsBorned();
+  P.outline.splice(1, 1);                                   // le coin haut-droit, un vrai angle
+  v5SyncOutlineWalls(P);
+  a(P.openings.length === 0, `les deux ouvertures de la facade droite doivent partir, vu ${JSON.stringify(P.openings)}`);
+  const msg = v5FlushOpeningsBorned();
+  a(!!msg && /and 1 other/.test(String(msg)),
+    `la perte doit etre annoncee AVEC son nombre, vu ${JSON.stringify(msg)}`);
+});
+
+// LE MAILLON D'UNE FACADE N'EXISTE QUE SUR UN SOMMET PLAT. C'est la garde qui decide si le bouton
+// est dessine du tout: un vrai coin ne se ressoude pas (le logement changerait de forme), et une
+// cloison qui vient mourir sur le sommet en fait une jonction a trois, qu'on enterrerait.
+test("le_sommet_plat_d_une_facade_se_reconnait_et_un_vrai_coin_non", (a: DonneeDynamique) => {
+  const P = planFacadeCoupee();
+  a(v5SommetPlatDeFacade(P, "f0", "b") === 1, `le sommet plat [450,0] doit etre trouve, vu ${v5SommetPlatDeFacade(P, "f0", "b")}`);
+  a(v5SommetPlatDeFacade(P, "f0b", "a") === 1, "vu depuis l'autre moitie, c'est le meme sommet");
+  a(v5SommetPlatDeFacade(P, "f0b", "b") === -1, "le coin haut-droit est un vrai angle: rien a ressouder");
+  a(v5SommetPlatDeFacade(P, "f1", "a") === -1, "et un mur interieur n'a pas de sommet de contour");
+  // Une cloison plantee sur le sommet plat en fait une jonction a trois: le maillon disparait.
+  P.walls.push({ id: "c1", a: [450, 0], b: [450, 300], t: 12, isOutline: false });
+  a(v5SommetPlatDeFacade(P, "f0", "b") === -1, "une cloison tenant ce point interdit la ressoudure");
 });
 
 test("un_mur_n_accroche_jamais_sur_sa_propre_extremite_fixe", (a: DonneeDynamique) => {

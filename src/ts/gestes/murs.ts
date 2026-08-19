@@ -37,6 +37,7 @@ import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
 import { closestOnSeg } from "../geometrie/polygones.ts";
 import { v5DedupeWalls, v5Seg } from "../modele/murs.ts";
 import { v5RebuildCells } from "../modele/cellules.ts";
+import { photoCellules } from "../modele/photo-cellules.ts";
 import {
   v5CanDeleteWall,
   v5ClampOpenings,
@@ -49,6 +50,7 @@ import {
   v5ThroughWall,
   v5WallMergeAt,
   v5CouperContour,
+  v5SommetPlatDeFacade,
   v5IndexAreteContour,
   v5MurTraverse,
   v5WallMergeCandidate,
@@ -81,18 +83,11 @@ import { checkShapeWarn, clearStitchGuides, drawOrthoGuides, orthoSnapVertex } f
 // same `w20` and every other wall would disappear without a word. This is not a function of the plan,
 // hence its own separate module.
 import { v5NewId } from "../fil/identite.ts";
-// FREEHAND WALL TRACE (a stroke becomes a CHAIN of walls). One-directional import ONLY (this
-// file -> trace-libre.ts): trace-libre.ts must not import back from here, see its own header for
-// why (a cycle between the two is exactly the shape of bug "Blank startup" warns about).
-import { v5StartFreeDraw } from "./trace-libre.ts";
-// THE 45-DEGREE TABLE, from the PURE half of the freehand trace (`geometrie/trace-libre.ts`, no
-// `Contexte`, no DOM): the wall-endpoint drag below quantises a dragged end's direction the SAME
-// way a freehand stroke's own runs are quantised (AGENTS.md, "same convention as the freehand
-// trace"), so it reuses the exact table rather than a second hand-rolled `cos`/`sin` (which would
-// reintroduce the `1.2246e-16` trap that table exists to avoid). No cycle risk: this is a
-// DIFFERENT file from `./trace-libre.ts` above (the impure gesture half), and the pure
-// `geometrie/` module imports nothing from `gestes/`.
-import { DIR8, quantizeAngleDeg } from "../geometrie/trace-libre.ts";
+// THE 45-DEGREE TABLE, pure (`geometrie/angles.ts`, no `Contexte`, no DOM): the wall-endpoint
+// drag below quantises a dragged end's direction with it rather than a hand-rolled `cos`/`sin`
+// (which would reintroduce the `1.2246e-16` trap that table exists to avoid). No cycle risk: the
+// pure `geometrie/` module imports nothing from `gestes/`.
+import { DIR8, quantizeAngleDeg } from "../geometrie/angles.ts";
 
 // =================================================================================================
 //  SELECTING A WALL, A CELL, AND DELETION
@@ -272,7 +267,27 @@ export function v5ResoudreGeometrie(P: PlanV5 | null | undefined, final: boolean
   v5SyncOutlineWalls(P);
   (P.walls || []).forEach((w) => { if (!w.isOutline) v5ThroughWall(P, w); });
   v5ClampOpenings(P);
-  if (final) v5RebuildCells(P);
+  recalculerCellules(P, final);
+}
+
+/**
+ * LE SOL SUIT LA MAIN. Les murs suivaient la main image par image, mais le SOL est peint à partir
+ * des CELLULES (`renderFond`), et les cellules n'étaient recalculées qu'au relâchement
+ * (`if (final)`): le fond restait immobile pendant tout le geste, puis sautait. Mesuré sur le plan
+ * réel (22 murs, 10 cellules), une façade poussée de 1090 à 1320 cm: le modèle suivait bien en
+ * direct, 60 images par seconde tenues, mais la surface peinte restait à g=1098 d=1269 aux 20
+ * paliers du glissement, puis sautait à g=659 d=1089 au relâchement. Le garde-fou économisait
+ * **0,40 ms de médiane** (0,7 ms au p90, 1,6 ms au pire, sur 30 appels) sur un budget d'image de
+ * 16,7 ms, dont un `render()` complet prend déjà 2,3 ms: il ne payait rien.
+ *
+ * Deux choses restent réservées au relâchement, et ce sont les deux qui ÉCRIVENT quelque chose
+ * d'irréversible: le bornage des meubles (C-11, il appartient à l'auteur du geste) et le nettoyage
+ * des murs en doublon (`enDirect`, voir `OptionsRecalcul`). Les noms de pièces, eux, sont appariés
+ * depuis la PHOTO d'avant-geste, à chaque image comme au relâchement.
+ */
+function recalculerCellules(P: PlanV5 | null | undefined, final: boolean): void {
+  if (!P) return;
+  v5RebuildCells(P, { depuis: photoCellules(P), enDirect: !final });
 }
 
 /**
@@ -500,7 +515,10 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
   // `final` is ALSO what CANCEL uses to put everything back, and building walls while someone
   // abandons a gesture is the last thing anyone wants.
   v5ClampOpenings(P);
-  if (final) { v5RebuildCells(P); bornerLesMeubles(ctx); }
+  // Le sol suit la main ici aussi: pousser une cloison recoupe les deux pièces qu'elle sépare à
+  // chaque image (`recalculerCellules`). Le bornage des meubles, lui, reste au relâchement.
+  recalculerCellules(P, final);
+  if (final) bornerLesMeubles(ctx);
   v5Touch(ctx);
   return w;
 }
@@ -613,7 +631,7 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const up = (): void => {
     window.removeEventListener("pointermove", move);
     v5ClearDims(ctx);
-    if (moved) { v5PontsDeJonction(ctx, g, ponts); v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx); }
+    if (moved) { v5PontsDeJonction(ctx, g, ponts); recalculerCellules(P, true); bornerLesMeubles(ctx); v5Touch(ctx); }
     render(ctx);
     endGesture();
     ctx.crochets.dragEnd?.();
@@ -683,8 +701,8 @@ const P0 = (ctx: Contexte): PlanV5 | null => ctx.etat.plan || null;
  *        EXACT, regardless of Alt: a deliberate connection is not something "free hand" mode
  *        should make harder to hit.
  *   4. otherwise, the wall's DIRECTION quantised to the nearest 45° measured from the FIXED end
- *      (`DIR8`/`quantizeAngleDeg`, the freehand trace's own table) — unless Alt is held, which
- *      frees the angle, "same convention as the freehand trace" (AGENTS.md).
+ *      (`DIR8`/`quantizeAngleDeg`, `geometrie/angles.ts`) — unless Alt is held, which frees the
+ *      angle, the same meaning Alt already has everywhere else in this file.
  *   5. `step` (5cm, or 1cm under Ctrl/Cmd — the caller passes it, see `sansGrille`) rounds the
  *      result along whichever direction stage 4 picked.
  * Mirrors `v5StartDraw`'s own precedence (vertex > edge > grid) so extending a wall feels
@@ -868,6 +886,17 @@ export function v5MergeWallAt(ctx: Contexte, e: PointerEvent, wallId: unknown, b
   if (e.button !== undefined && e.button !== 0) return;
   if (spaceHeld() || measureMode()) return;
   e.preventDefault(); e.stopPropagation();
+  // RESSOUDER DEUX MOITIES DE FACADE, C'EST RETIRER LE SOMMET PLAT qui les separe, pas fusionner
+  // deux murs: une facade est RECALCULEE depuis le polygone, donc un mur fusionne serait defait au
+  // `v5SyncOutlineWalls` suivant. `v5DeleteVertex` fait le reste (historique, geometrie, sauvegarde),
+  // et depuis ce lot il RELOGE les ouvertures de l'arete qui disparait au lieu de les detruire.
+  const mur = v5WallById(ctx, String(wallId));
+  if (mur && mur.isOutline) {
+    const sommet = v5SommetPlatDeFacade(P, String(wallId), bout);
+    if (sommet < 0) { toast("These two facades do not continue one another, or something else meets them here.", { geste: true }); return; }
+    v5DeleteVertex(ctx, sommet);
+    return;
+  }
   pushHistory(ctx);
   const r = v5WallMergeAt(P, String(wallId), bout);
   if ("refus" in r) { toast(r.refus, { geste: true }); return; }
@@ -885,6 +914,31 @@ export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown
   if (e.button !== undefined && e.button !== 0) return;
   if (spaceHeld() || measureMode()) return;
   e.preventDefault(); e.stopPropagation();
+  // UNE FACADE SE COUPE AUSSI, ET PAS PAR LE MEME CHEMIN. Demande du proprietaire: « je peux resize
+  // un mur de facade comme je veux, donc je devrais aussi pouvoir le couper ». Une facade n'est pas
+  // stockee comme un mur, elle est RECALCULEE depuis le polygone du contour: la couper, c'est
+  // inserer un sommet (`v5CouperContour`), et les deux moities deviennent deux aretes portant
+  // chacune sa propre prise en son centre. `v5WallSplitAt`, lui, fabriquerait un mur que le
+  // prochain `v5SyncOutlineWalls` effacerait.
+  const cible = v5WallById(ctx, String(wallId));
+  if (cible && cible.isOutline) {
+    const L = Math.hypot(cible.b[0] - cible.a[0], cible.b[1] - cible.a[1]);
+    // Sous 10 cm, les deux moities tomberaient dans la marge des coins (`MARGE_T`) et la coupe
+    // fabriquerait un moignon: on le dit au lieu de ne rien faire.
+    if (!(L > 10)) { toast("This facade is too short to split.", { geste: true }); return; }
+    const coupe = L / 2;
+    const obstacle = (P.openings || []).find((o) =>
+      String(o.wallId) === String(cible.id) && o.t0 < coupe && coupe < o.t0 + o.w);
+    if (obstacle) {
+      toast(`“${obstacle.name || "This object"}” crosses that point, so the facade cannot be cut there.`, { geste: true });
+      return;
+    }
+    const milieu: Pt = [v5R2((cible.a[0] + cible.b[0]) / 2), v5R2((cible.a[1] + cible.b[1]) / 2)];
+    pushHistory(ctx);
+    if (!v5CouperContour(P, milieu)) { toast("This facade cannot be cut here.", { geste: true }); return; }
+    v5AfterGeometry(ctx, true); save(ctx);
+    return;
+  }
   // The refusals are stated, never swallowed: a facade is derived from the outline and cannot be
   // split, and an opening straddling the midpoint blocks the cut by naming itself.
   const refus = v5WallSplitRefusal(P, String(wallId));
@@ -922,25 +976,16 @@ export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown
 // =================================================================================================
 
 /**
- * Arms (or disarms) a draw tool. `libre` picks WHICH one while `on` is true: the single-segment
- * tool (default, unchanged behaviour) or the freehand trace (`gestes/trace-libre.ts`), which
- * turns a stroke into a chain of walls. Two buttons, one state machine: activating one clears
- * the other, matching the segmented Furniture/Walls control's own look.
+ * Arms (or disarms) THE draw tool: one tool, one button, one flag. It used to pick between two
+ * tools through a `libre` parameter (the freehand trace, a stroke becoming a chain of walls),
+ * removed on the owner's request; nothing selects a variant anymore.
  */
-export function v5SetDraw(ctx: Contexte, on: boolean, libre?: boolean): void {
+export function v5SetDraw(ctx: Contexte, on: boolean): void {
   ctx.ihm.draw = !!on;
-  ctx.ihm.drawFree = !!on && !!libre;
   const bSeg = $("btnDrawWall");
   if (bSeg) {
-    const actif = ctx.ihm.draw && !ctx.ihm.drawFree;
-    bSeg.classList.toggle("pri", actif);
-    bSeg.setAttribute("aria-pressed", actif ? "true" : "false");
-  }
-  const bLibre = $("btnDrawWallFree");
-  if (bLibre) {
-    const actif = ctx.ihm.draw && ctx.ihm.drawFree;
-    bLibre.classList.toggle("pri", actif);
-    bLibre.setAttribute("aria-pressed", actif ? "true" : "false");
+    bSeg.classList.toggle("pri", ctx.ihm.draw);
+    bSeg.setAttribute("aria-pressed", ctx.ihm.draw ? "true" : "false");
   }
   const l = ctx.canvas.querySelector<HTMLElement>(".v5layer");
   if (l) l.classList.toggle("drawing", !!on);
@@ -1433,9 +1478,24 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
   // still reached v5StartOutlineEdgeDrag, and a simple click there triggered a
   // v5AfterGeometry(true) that lengthened a partition three meters away from there.
   if (ctx.ihm.draw) {
+    // MAIS LES BOUTONS D'UN MUR RESTENT DES BOUTONS, OUTIL ARMÉ OU NON. La règle ci-dessus vise ce
+    // qu'on TIRE : la bande d'une façade, un sommet, le bout d'un mur, le disque de déplacement.
+    // Tirer l'un de ces quatre pendant qu'on trace, c'est le geste raté qu'elle existe pour
+    // empêcher. Elle emportait au passage les trois contrôles qui AGISSENT AU CLIC sur une cloison :
+    // le « + » qui coupe, la croix qui supprime, le maillon qui ressoude. Signalé à l'usage :
+    // « quand je suis en mode Draw a wall je ne peux cliquer ni + ni x ». Ils sont posés à 18 px À
+    // CÔTÉ du mur et n'acceptent qu'un appui : rien de ce qu'on trace ne passe par là.
+    //
+    // LES DEUX POIGNÉES DU CONTOUR, ELLES, RESTENT SOUS LA RÈGLE. Le « + » d'insertion de coin
+    // (`.mid`) et la croix de suppression de coin (`.vx`) ne coupent pas un mur, elles changent la
+    // FORME DU LOGEMENT, et un tracé part très souvent d'une façade, donc de leur voisinage
+    // immédiat. Deux suites énoncent ce contrat et l'ont attrapé quand je les avais exemptées :
+    // `tracer_gagne_sur_les_poignees` (un tracé démarré sur le « + » d'une façade doit tracer) et
+    // `outil_arme_ne_deforme_aucun_mur` (outil armé, un clic sur `.edge`, `.mid` ou `.vtx` ne
+    // modifie rien). Elles gardent raison : ce n'est pas le même bouton ni le même risque.
+    if (t.closest(".v5wx,.v5wmid,.v5wjoin")) return;
     e.stopPropagation();
-    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
-    else v5StartDraw(ctx, e);
+    v5StartDraw(ctx, e);
     return;
   }
 }
@@ -1447,12 +1507,13 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
 export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (!v5On(ctx) || measureMode() || spaceHeld()) return;
   if (e.button !== undefined && e.button !== 0) return;
+  const t = e.target as Element | null;
   if (ctx.ihm.draw) {
-    if (ctx.ihm.drawFree) v5StartFreeDraw(ctx, e);
-    else v5StartDraw(ctx, e);
+    // Même exception qu'en capture : les cinq contrôles qui agissent au clic gardent leur clic.
+    if (t?.closest?.(".v5wx,.v5wmid,.v5wjoin")) return;
+    v5StartDraw(ctx, e);
     return;
   }
-  const t = e.target as Element | null;
   if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove")) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
   if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], true); return; }
@@ -1476,12 +1537,7 @@ export function brancherOutilsMurs(ctx: Contexte): void {
   ctx.canvas.addEventListener("pointerdown", (e) => v5CaptureDown(ctx, e as PointerEvent), true);
   const b = $("btnDrawWall");
   if (b) b.addEventListener("click", () => {
-    v5SetDraw(ctx, !(ctx.ihm.draw && !ctx.ihm.drawFree), false);
-    render(ctx);
-  });
-  const bLibre = $("btnDrawWallFree");
-  if (bLibre) bLibre.addEventListener("click", () => {
-    v5SetDraw(ctx, !(ctx.ihm.draw && ctx.ihm.drawFree), true);
+    v5SetDraw(ctx, !ctx.ihm.draw);
     render(ctx);
   });
   // "Delete wall" from the cell card. The REST of the card (name, flooring) belongs to the

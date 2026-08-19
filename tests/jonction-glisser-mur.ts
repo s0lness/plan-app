@@ -382,14 +382,25 @@ test("une_seule_reconstruction_de_cellules_a_la_fin", (a: DonneeDynamique) => {
   const cellsAvant = JSON.stringify(P.cells);
   const ctx = ctxDe(P);
   const g = v5WallDragCtx(ctx, "wB")!;
-  // Several intermediate (non-final) frames: the stale cell polygons must not be touched.
+  // CONTRAT INVERSÉ LE 19/08/2026, ET C'EST VOULU. Ce cas exigeait l'inverse: « les cellules ne
+  // doivent pas bouger pendant les frames intermédiaires ». Cette économie était le défaut
+  // signalé par le propriétaire, mot pour mot: « when i move a facade the ground underneath lags
+  // behind significantly ». Le sol est peint À PARTIR des cellules, donc ne les reconstruire qu'au
+  // relâchement laissait le fond immobile pendant tout le geste, puis sauter. Mesuré sur le plan
+  // réel: la surface peinte restait à la même place aux vingt paliers d'un glissement, puis
+  // bondissait de 439 px. Et la reconstruction coûte 0,4 ms en médiane, 1,6 ms au pire, contre
+  // 2,3 ms pour un rendu complet: l'économie ne payait rien.
+  // Le cas énonce donc la règle en vigueur, sans rien perdre de ce qu'il protégeait: la
+  // reconstruction finale reste juste, et le nombre de pièces est le même à la fin.
   v5WallDragApply(ctx, g, 10, false);
+  const cellsMiGeste = JSON.stringify(P.cells);
   v5WallDragApply(ctx, g, 25, false);
   v5WallDragApply(ctx, g, 40, false);
   a(JSON.stringify(mur(P, "wB").a) !== JSON.stringify([200, 150]), "précondition : le mur a bougé pendant les frames intermédiaires");
-  a(JSON.stringify(P.cells) === cellsAvant, "les cellules ne doivent pas bouger pendant les frames intermédiaires (final=false)");
+  a(cellsMiGeste !== cellsAvant, "les cellules doivent suivre dès la première frame intermédiaire, pas attendre le relâchement");
+  a(JSON.stringify(P.cells) !== cellsMiGeste, "et continuer de suivre aux frames suivantes");
   v5WallDragApply(ctx, g, 40, true);
-  a(JSON.stringify(P.cells) !== cellsAvant, "la reconstruction finale doit, elle, refléter la nouvelle géométrie");
+  a(JSON.stringify(P.cells) !== cellsAvant, "la reconstruction finale doit refléter la nouvelle géométrie");
   a(P.cells.length === 2, `toujours deux pièces après reconstruction, vu ${P.cells.length}`);
 });
 
