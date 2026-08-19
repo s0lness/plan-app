@@ -37,6 +37,7 @@ import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
 import { closestOnSeg } from "../geometrie/polygones.ts";
 import { v5DedupeWalls, v5Seg } from "../modele/murs.ts";
 import { v5RebuildCells } from "../modele/cellules.ts";
+import { photoCellules } from "../modele/photo-cellules.ts";
 import {
   v5CanDeleteWall,
   v5ClampOpenings,
@@ -266,7 +267,27 @@ export function v5ResoudreGeometrie(P: PlanV5 | null | undefined, final: boolean
   v5SyncOutlineWalls(P);
   (P.walls || []).forEach((w) => { if (!w.isOutline) v5ThroughWall(P, w); });
   v5ClampOpenings(P);
-  if (final) v5RebuildCells(P);
+  recalculerCellules(P, final);
+}
+
+/**
+ * LE SOL SUIT LA MAIN. Les murs suivaient la main image par image, mais le SOL est peint à partir
+ * des CELLULES (`renderFond`), et les cellules n'étaient recalculées qu'au relâchement
+ * (`if (final)`): le fond restait immobile pendant tout le geste, puis sautait. Mesuré sur le plan
+ * réel (22 murs, 10 cellules), une façade poussée de 1090 à 1320 cm: le modèle suivait bien en
+ * direct, 60 images par seconde tenues, mais la surface peinte restait à g=1098 d=1269 aux 20
+ * paliers du glissement, puis sautait à g=659 d=1089 au relâchement. Le garde-fou économisait
+ * **0,40 ms de médiane** (0,7 ms au p90, 1,6 ms au pire, sur 30 appels) sur un budget d'image de
+ * 16,7 ms, dont un `render()` complet prend déjà 2,3 ms: il ne payait rien.
+ *
+ * Deux choses restent réservées au relâchement, et ce sont les deux qui ÉCRIVENT quelque chose
+ * d'irréversible: le bornage des meubles (C-11, il appartient à l'auteur du geste) et le nettoyage
+ * des murs en doublon (`enDirect`, voir `OptionsRecalcul`). Les noms de pièces, eux, sont appariés
+ * depuis la PHOTO d'avant-geste, à chaque image comme au relâchement.
+ */
+function recalculerCellules(P: PlanV5 | null | undefined, final: boolean): void {
+  if (!P) return;
+  v5RebuildCells(P, { depuis: photoCellules(P), enDirect: !final });
 }
 
 /**
@@ -494,7 +515,10 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
   // `final` is ALSO what CANCEL uses to put everything back, and building walls while someone
   // abandons a gesture is the last thing anyone wants.
   v5ClampOpenings(P);
-  if (final) { v5RebuildCells(P); bornerLesMeubles(ctx); }
+  // Le sol suit la main ici aussi: pousser une cloison recoupe les deux pièces qu'elle sépare à
+  // chaque image (`recalculerCellules`). Le bornage des meubles, lui, reste au relâchement.
+  recalculerCellules(P, final);
+  if (final) bornerLesMeubles(ctx);
   v5Touch(ctx);
   return w;
 }
@@ -607,7 +631,7 @@ export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown)
   const up = (): void => {
     window.removeEventListener("pointermove", move);
     v5ClearDims(ctx);
-    if (moved) { v5PontsDeJonction(ctx, g, ponts); v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx); }
+    if (moved) { v5PontsDeJonction(ctx, g, ponts); recalculerCellules(P, true); bornerLesMeubles(ctx); v5Touch(ctx); }
     render(ctx);
     endGesture();
     ctx.crochets.dragEnd?.();
