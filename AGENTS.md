@@ -740,6 +740,59 @@ PR #17, and intersection alone) are in `docs/decisions/0005-un-suiveur-ne-bascul
 Covered by `tests/jonction-glisser-mur.ts`, whose `aucun_mur_ne_bascule_jamais` sweeps EVERY wall of
 EVERY case in the suite for a direction change: that is the invariant, not one example of it.
 
+## A CROOKED WALL IS SQUARED UP BY A BUTTON, NEVER BY A MAGNET AND NEVER IN SILENCE
+Owner's report: "the vertical wall on the right is slightly off, i want a way to make it
+perpendicular", then "automatically", then "it should snap". Measured on the real floor plan
+(22 walls): two walls are neither horizontal nor vertical, `w3` (154 cm, 0,373°) and `w7` (146 cm,
+0,392°), each missing square by 1 cm at its far end. Invisible in the numbers, visible to the eye
+because the wall is no longer parallel to its neighbours.
+
+**A MAGNET COULD NOT HAVE HELPED THOSE TWO, AND THAT IS THE WHOLE POINT.** Their four ends are
+JUNCTIONS, so `v5BoutJoint` removes every endpoint handle (deliberate, from `771bab5`: pulling an
+end that something already holds would tear the junction open). Hovered, they carry only the disc
+that MOVES them (a translation: it cannot change a direction), the "+" that splits and the "×" that
+deletes. No gesture of theirs could fix their direction, so no magnet hung on a gesture had
+anything to bite. And the three gestures that DO fix a direction are already square: drawing
+projects onto the nearest axis (`v5StartDraw`), an endpoint drag quantises to 45° from the fixed end
+(`v5WallEndDrop`/`DIR8`), the outline vertex has `orthoSnapVertex`. What was missing was not a
+fourth magnet, it was a GESTURE.
+
+**THE RULE**: a button that exists ONLY on a crooked wall (`v5MurDeTravers`, `modele/edition.ts`)
+and squares it up on a click, exactly as the "+" splits on a click. Same doctrine as the "-": a
+control that appears and then refuses teaches nothing; one that is simply absent says "not here"
+without a word. And unlike a magnet, **it takes away no angle at all**: a deliberate oblique stays
+exactly as reachable, it merely carries no button.
+
+- **Three thresholds, each answering one question.** Beyond **2°** the oblique is a CHOICE (a
+  chamfered corner is at 45°, twenty times further out). Under **0,5 cm** of end displacement there
+  is nothing to see: without that floor, `w2` (0,003°, i.e. 0,1 mm over 164 cm) would carry the
+  button too. And the displacement is capped by **the wall's own thickness**: correcting by less
+  than the masonry is a correction, beyond that it is a redesign, and that does not fire from a
+  small disc. Measured: 3 of 22 walls are not square, 2 are visibly so, and at 1° a 12 m wall is
+  refused (21 cm) while a 3 m wall is offered (5,2 cm).
+- **We pivot around the CROSSROADS, never around a simple rest.** Both ends are held, so one has to
+  move; the one that stays is the one where the MOST other wall ENDS coincide, because that is the
+  junction that would tear. Measured on `w3`: end `a` carries the ends of `w2` and `w7` (the middle
+  T), end `b` only `w4`, so `b` is the one that slides by 1 cm. The wall opposite is not left
+  dangling: `w4` and `w6` are THROUGH walls, so `v5ThroughWall` stretches them onto the new line by
+  itself.
+- **And the squared-up wall FREEZES (`free`), or it runs away.** The end just moved by 1 cm no
+  longer touches, for one frame, the wall that was waiting for it, and the through rule then sends
+  it all the way to the facade (measured: `w3` went from 154 cm to 716 cm, crossing the whole top of
+  the flat, in silence). Same reason the "+" freezes both halves and an endpoint drag freezes its
+  wall. That change of nature is STATED, like the split states it.
+- **NOTHING IS SQUARED UP IN SILENCE, AND NOTHING IN BULK.** No pass at load, none inside
+  `v5ThroughWall`: this is the "NO MASS RENORMALIZATION" rule below, born from a click that rewrote
+  the floor plan. The correction is a consequence of a DELIBERATE gesture on THAT wall, and it is
+  announced with both figures (`toast({geste:true})`), because a 1 cm move is indistinguishable
+  from a click that did nothing.
+- Facades are out of scope: a facade is DERIVED from the outline, squaring it up would mean moving a
+  polygon vertex, which is the vertex's gesture and not this wall's.
+- Covered by `tests/mur-droit-geste.ts` (6 cases, real mouse, one of them on the REAL floor plan).
+  Four negative controls, and they are not the same one: removing the button (4 of 6 suites red),
+  removing the three thresholds (2 red), removing the freeze (`w3` runs to 716 cm), and adding a
+  mass pass to `v5ResoudreGeometrie` (`[0,0]` instead of `[0,373 · 0,392]`).
+
 ## A click lands on what is visible, and repeating gives EXACTLY the same number
 Four rules born from a second real-use session (1 500 gestures, real floor plan then 300 objects).
 Covered by `tests/gestes-precision.ts` (7 tests, real mouse).

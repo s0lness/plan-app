@@ -384,7 +384,7 @@ export function brancherInteractionsVue(ctx: Contexte): void {
     const t = e.target as HTMLElement | null;
     const pieceEl = t && t.closest && t.closest(".piece");
     const nameEl = t && t.closest && t.closest(".ov-name");
-    const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove");
+    const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove,.v5wdroit");
     if (pieceEl || nameEl || handleEl) return;   // pieces and handles have their own gestures
     // Empty space and a wall body are ordinary drawing space. A selected facade only keeps its
     // perimeter controls until the next press elsewhere, so those large controls do not linger.
