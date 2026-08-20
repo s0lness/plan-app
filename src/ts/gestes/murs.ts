@@ -30,7 +30,7 @@
 // returns a TEXT, it no longer talks on its own.
 
 import type { Contexte } from "../app/contexte.ts";
-import type { Mur, PlanV5, Pt } from "../partage/plan.ts";
+import type { Mur, Ouverture, PlanV5, Pt } from "../partage/plan.ts";
 import { v5Touch, v5On, v5WallById } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
@@ -1277,6 +1277,74 @@ export function v5StartVertexDrag(ctx: Contexte, e: PointerEvent, i: number): vo
   armGesture(up, null, cancel);
 }
 
+// =================================================================================================
+//  UNE AVANCÉE S'ARRÊTE SUR LE MUR DE LA PIÈCE, PAS SUR LA COUPE DE LA FAÇADE
+// =================================================================================================
+// Signalement du propriétaire, captures à l'appui: il pousse vers le haut le tronçon de façade qui
+// forme le mur du haut d'une petite pièce, « ça crée un trou » et « la bissection à droite ne se
+// fait pas au bon endroit ». Mesuré sur la reproduction (contour 900x700 coupé en 350 et 550,
+// cloisons à 350 et à 560, poussée de 200 cm vers le haut): l'avancée sort large de 200 cm
+// (350..550) alors que la pièce en fait 210 (350..560), donc son coin droit tombe 10 cm avant le
+// mur de la pièce et le plan garde une encoche de 10 x 200 cm d'EXTÉRIEUR mordant dans le coin
+// haut-droit de la pièce. La cloison de gauche, elle, tombe pile sur la coupe: ce côté-là est
+// correct aujourd'hui, et c'est pour ça que le défaut est invisible quand les deux coupes tombent
+// juste.
+//
+// LA CLOISON NE BOUGE PAS, C'EST LE COIN DE L'AVANCÉE QUI VA LA CHERCHER. Les deux réponses se
+// défendaient: faire glisser la cloison de 10 cm déplacerait latéralement un mur que la personne
+// n'a pas touché (ce dépôt refuse ça partout ailleurs, « NO MASS RENORMALIZATION »), et l'écarter
+// de sa pièce sur toute sa hauteur (700 cm) pour rattraper une coupe de façade est un dégât bien
+// plus grand que celui qu'on répare. Ne rien faire laisse l'encoche. Le coin de l'avancée, lui,
+// n'existe QUE parce que le geste vient de le créer: le poser 10 cm plus loin ne défait rien.
+//
+// C'est la règle de la décision 0007 appliquée au cas où c'est la FAÇADE qui s'en va: une jonction
+// qui se romprait est pontée. Le pont du contour est le raccord à angle droit que `poserLesCoins`
+// crée déjà; ce qui manquait, c'est qu'il naisse là où la pièce se termine.
+//
+// PORTÉE, VOLONTAIREMENT ÉTROITE: seulement le bout où un RACCORD naît, c'est-à-dire là où la
+// façade a été coupée et où sa voisine la prolonge en ligne droite. Un voisin PERPENDICULAIRE (le
+// cas ordinaire, pousser le haut d'un rectangle) ne reçoit aucun coin, donc aucun aimant: sinon
+// pousser une façade de rectangle déplacerait les deux façades latérales de côté.
+
+/** The outline wall carrying the edge `p`->`q`, in either orientation. */
+function v5MurDeArete(P: PlanV5, p: Pt, q: Pt): Mur | undefined {
+  const pres = (u: Pt, v: Pt): boolean => Math.hypot(u[0] - v[0], u[1] - v[1]) < 2;
+  return (P.walls || []).find((w) => !!w.isOutline
+    && ((pres(w.a, p) && pres(w.b, q)) || (pres(w.a, q) && pres(w.b, p))));
+}
+
+/**
+ * How far the corner `coin` has to slide along `e` (outward, away from the edge's other end) to
+ * land on the end of a partition resting on this facade. 0 if there is none in reach, if the
+ * partition is already exactly there, or if sliding would eat one of the two edges.
+ *
+ * `tol` is the SAME magnet reach as `aimantFacade` (one wall thickness, or 16 screen pixels,
+ * whichever is larger): what is within a finger's width of the corner under the hand.
+ */
+function v5CoinSurCloison(
+  P: PlanV5, coin: Pt, e: Pt, nrm: Pt, longArete: number, longVoisine: number, tol: number,
+): number {
+  let best = 0;
+  for (const w of (P.walls || [])) {
+    if (w.isOutline) continue;
+    const L = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]);
+    if (L < 1) continue;
+    // A partition RUNNING ALONG the facade is not a room's side wall: it says nothing about where
+    // the room ends. Same 0.09 (~5°) as the follower rule.
+    const ux = (w.b[0] - w.a[0]) / L, uy = (w.b[1] - w.a[1]) / L;
+    if (Math.abs(ux * e[0] + uy * e[1]) > 0.996) continue;
+    for (const k of ["a", "b"] as const) {
+      const q = w[k];
+      if (Math.abs((q[0] - coin[0]) * nrm[0] + (q[1] - coin[1]) * nrm[1]) > 2) continue;  // pas sur la façade
+      const d = (q[0] - coin[0]) * e[0] + (q[1] - coin[1]) * e[1];
+      if (Math.abs(d) < 0.5 || Math.abs(d) > tol) continue;
+      if (longArete + d < 1 || longVoisine - d < 1) continue;    // ni l'arête ni sa voisine ne disparaissent
+      if (best === 0 || Math.abs(d) < Math.abs(best)) best = d;
+    }
+  }
+  return best;
+}
+
 /**
  * G-3. SELECTING NEVER MODIFIES ANYTHING. A simple click on an outline wall must not cost a
  * `v5AfterGeometry(true)`: this recomputation re-traverses every wall, recuts the cells and re-bounds
@@ -1311,9 +1379,18 @@ export function v5StartOutlineEdgeDrag(
   const murArete = ctx.etat.plan.walls.find((w) => w.isOutline
     && ((memePt(w.a, a0) && memePt(w.b, b0)) || (memePt(w.a, b0) && memePt(w.b, a0))));
   const epaisseur = murArete?.t || WALL;
+  // Les deux bouts de l'arête AVANT tout aimantage: le coin d'une avancée peut aller chercher la
+  // cloison voisine (`v5CoinSurCloison`), et un clic net comme un Échap doivent rendre l'arête
+  // telle qu'elle était, ses ouvertures comprises.
+  const a00: Pt = [a0[0], a0[1]], b00: Pt = [b0[0], b0[1]];
+  let t0Memoire: Array<[Ouverture, number]> = [];
+  let decalage = 0;
   const restaurer = (): void => {
     poly.length = 0; for (const p of poly0) poly.push([p[0], p[1]]);
     ctx.etat.plan.walls.length = 0; for (const w of murs0) ctx.etat.plan.walls.push(w);
+    a0[0] = a00[0]; a0[1] = a00[1]; b0[0] = b00[0]; b0[1] = b00[1];
+    for (const [o, t] of t0Memoire) o.t0 = t;
+    t0Memoire = []; decalage = 0;
     i = i0; j = j0; coinsPoses = false;
   };
   // A FACADE SLIDES, IT NEVER BENDS. Pushing an edge moves its two ends; a neighbouring edge that
@@ -1325,6 +1402,41 @@ export function v5StartOutlineEdgeDrag(
   // junction bridge for partitions (decision record 0007). A neighbour that is PERPENDICULAR just
   // grows or shrinks, which is the ordinary rectangle case, and gets no corner.
   let coinsPoses = false;
+  /**
+   * Le coin d'une avancée va chercher la cloison qui borde la pièce, quand elle est à portée
+   * d'aimant. `coin` est le bout de l'arête tirée (muté ici), `loin` le bout opposé de la façade
+   * voisine qui la prolonge, `courant` le sommet vivant à ce coin (il sert à retrouver le mur de la
+   * voisine), et `autre` l'autre bout de l'arête tirée.
+   *
+   * UNE OUVERTURE DÉSIGNE SON MUR ET SA DISTANCE DEPUIS `a`: bouger le `a` d'un mur emmène toutes
+   * ses fenêtres avec lui, en silence. Les deux murs qui touchent ce coin sont donc corrigés d'un
+   * cran avant qu'il ne bouge, et la valeur d'origine est retenue pour Échap.
+   */
+  const glisserLeCoin = (coin: Pt, loin: Pt, courant: Pt, autre: Pt): void => {
+    const P = ctx.etat.plan;
+    if (!P) return;
+    const ex = coin[0] - autre[0], ey = coin[1] - autre[1];
+    const L = Math.hypot(ex, ey);
+    if (L < 1) return;
+    const e: Pt = [ex / L, ey / L];
+    const M = (loin[0] - coin[0]) * e[0] + (loin[1] - coin[1]) * e[1];
+    const tol = Math.max(WALL, 16 / (ctx.vue.scale || 1));
+    const d = v5CoinSurCloison(P, coin, e, [s.nx, s.ny], L, M, tol);
+    if (!d) return;
+    const v: Pt = [d * e[0], d * e[1]];
+    for (const w of [murArete, v5MurDeArete(P, loin, courant)]) {
+      if (!w || Math.hypot(w.a[0] - coin[0], w.a[1] - coin[1]) > 2) continue;
+      const l = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) || 1e-9;
+      const dl = (v[0] * (w.b[0] - w.a[0]) + v[1] * (w.b[1] - w.a[1])) / l;
+      for (const o of (P.openings || [])) {
+        if (String(o.wallId) !== String(w.id)) continue;
+        t0Memoire.push([o, o.t0]);
+        o.t0 = Math.max(0, v5R2(o.t0 - dl));
+      }
+    }
+    coin[0] = v5R2(coin[0] + v[0]); coin[1] = v5R2(coin[1] + v[1]);
+    decalage = Math.max(decalage, Math.abs(d));
+  };
   const poserLesCoins = (d: number): void => {
     coinsPoses = true;
     const m = poly.length;
@@ -1336,6 +1448,10 @@ export function v5StartOutlineEdgeDrag(
     };
     const avant = parallele(poly[av], poly[i]), apres = parallele(poly[j], poly[ap]);
     if (!avant && !apres) return;
+    // ET CE COIN SE POSE SUR LE MUR DE LA PIÈCE. Il naît ici et nulle part ailleurs, donc c'est ici
+    // qu'on décide où: sur la coupe de la façade, ou sur la cloison qui borde vraiment la pièce.
+    if (avant) glisserLeCoin(a0, poly[av]!, poly[i]!, b0);
+    if (apres) glisserLeCoin(b0, poly[ap]!, poly[j]!, a0);
     const out: Pt[] = []; let ni = i, nj = j;
     for (let k = 0; k < m; k++) {
       if (k === i && avant) out.push([a0[0], a0[1]]);
@@ -1431,6 +1547,13 @@ export function v5StartOutlineEdgeDrag(
     // l'encoche irréversible (mesuré: à 6 sommets, un glissement du milieu la rouvre telle quelle;
     // à 4, il faut d'abord recouper la façade au « + »). Le maillon, lui, est un geste demandé.
     v5AfterGeometry(ctx, true);
+    // RIEN NE CHANGE DE FORME EN SILENCE. Le coin de l'avancée n'est pas tombé sur la coupe de la
+    // façade mais sur le mur de la pièce: la pièce n'a donc pas la largeur qu'on lisait avant le
+    // geste, et ça se dit avec le chiffre.
+    if (decalage >= 0.5) {
+      toast(`The recess stopped on the partition, ${decalage.toFixed(0)} cm past the cut,`
+        + " so the room keeps a square corner.", { geste: true });
+    }
     endGesture();
     ctx.crochets.dragEnd?.();
   };
