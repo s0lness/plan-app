@@ -52,6 +52,7 @@ import {
   v5CouperContour,
   v5SommetPlatDeFacade,
   v5IndexAreteContour,
+  v5MurDeTravers,
   v5MurTraverse,
   v5WallMergeCandidate,
   v5WallSplitAt,
@@ -909,6 +910,59 @@ export function v5MergeWallAt(ctx: Contexte, e: PointerEvent, wallId: unknown, b
   save(ctx);
 }
 
+/**
+ * L'ÉQUERRE REDRESSE CE MUR-LÀ, AU CLIC, ET LE DIT.
+ *
+ * Demande du propriétaire: « the vertical wall on the right is slightly off, i want a way to make
+ * it perpendicular », « automatiquement », « it should snap ». Le pourquoi du bouton plutôt que
+ * d'un aimant, et les trois seuils qui décident de son existence, sont dans `v5MurDeTravers`
+ * (`modele/edition.ts`), avec les chiffres mesurés sur son plan.
+ *
+ * RIEN NE SE REDRESSE EN SILENCE, ET RIEN NE SE REDRESSE EN MASSE. C'est une CONSÉQUENCE d'un
+ * geste délibéré sur CE mur, jamais une passe au chargement ni dans `v5ThroughWall`: la règle
+ * « pas de renormalisation de masse » d'AGENTS.md est née d'un clic qui réécrivait le plan. Et
+ * comme le mur bouge sous la main, le message le dit avec ses deux chiffres, l'écart corrigé et le
+ * déplacement, sinon un déplacement d'1 cm est indistinguable d'un clic qui n'a rien fait.
+ */
+export function v5RedresserMurAt(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
+  const P = ctx.etat.plan;
+  if (!P) return;
+  if (e.button !== undefined && e.button !== 0) return;
+  if (spaceHeld() || measureMode()) return;
+  e.preventDefault(); e.stopPropagation();
+  const r = v5MurDeTravers(P, String(wallId));
+  // Le bouton n'existe que là où le redressement est légitime, donc ce refus n'est pas une porte
+  // fermée à l'usage: c'est la garde du chemin, pour un identifiant périmé d'une image à l'autre.
+  if (!r) return;
+  const w = v5WallById(ctx, String(wallId));
+  if (!w) return;
+  pushHistory(ctx);
+  w[r.bout] = r.cible;
+  // ET LE MUR REDRESSÉ GÈLE, SINON IL S'ENFUIT. Un mur v5 est TRAVERSANT par défaut: chaque bout
+  // est repoussé jusqu'à la première géométrie rencontrée. Le bout qu'on vient de bouger d'1 cm ne
+  // touche plus, pendant une image, le mur qui l'attendait, et `v5ThroughWall` l'envoie alors
+  // jusqu'à la façade. Mesuré sur le plan réel: `w3`, redressé, passait de 154 cm à 716 cm et
+  // traversait tout le haut du logement, en silence. C'est exactement la raison qui gèle les deux
+  // moitiés après un « + » (`v5SplitWallAtMid`) et le bout après un glissement
+  // (`v5WallEndDragApply`), et c'est la même réponse.
+  const traversantAvant = w.free !== 1;
+  w.free = 1;
+  v5SelectWall(ctx, w.id);
+  // Le mur d'en face, lui, n'est pas laissé en plan: `v5ResoudreGeometrie` rallonge les murs restés
+  // TRAVERSANTS jusqu'à la nouvelle droite (mesuré: `w4` et `w6` retrouvent x=276 tout seuls).
+  v5ResoudreGeometrie(P, true);
+  bornerLesMeubles(ctx);
+  v5Touch(ctx);
+  render(ctx);
+  save(ctx);
+  // Le message porte les deux chiffres: un déplacement d'1 cm est indistinguable d'un clic qui n'a
+  // rien fait. Et le gel CHANGE CE QU'EST LE MUR, donc il se dit, et seulement quand il change
+  // quelque chose.
+  toast(`Wall squared up: it was ${r.deg.toFixed(2)}° off, and its end moved by ${r.cm.toFixed(1)} cm.`
+    + (traversantAvant ? " It is now a free partition: its ends no longer stretch to meet what is around them." : ""),
+    { geste: true });
+}
+
 export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
   const P = ctx.etat.plan;
   if (!P) return;
@@ -1506,7 +1560,7 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
     // `tracer_gagne_sur_les_poignees` (un tracé démarré sur le « + » d'une façade doit tracer) et
     // `outil_arme_ne_deforme_aucun_mur` (outil armé, un clic sur `.edge`, `.mid` ou `.vtx` ne
     // modifie rien). Elles gardent raison : ce n'est pas le même bouton ni le même risque.
-    if (t.closest(".v5wx,.v5wmid,.v5wjoin")) return;
+    if (t.closest(".v5wx,.v5wmid,.v5wjoin,.v5wdroit")) return;
     e.stopPropagation();
     v5StartDraw(ctx, e);
     return;
@@ -1527,7 +1581,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
     v5StartDraw(ctx, e);
     return;
   }
-  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove")) return;
+  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove,.v5wdroit")) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
   if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], true); return; }
 }

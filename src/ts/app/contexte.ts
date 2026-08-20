@@ -89,6 +89,8 @@ export interface Gestes {
   boutMurPointerDown?: (e: PointerEvent, wallId: string, bout: "a" | "b") => void;
   /** A selected interior wall's offset midpoint handle, which splits it and drags the new joint. */
   coudeMurPointerDown?: (e: PointerEvent, wallId: string) => void;
+  /** L'ÉQUERRE: elle n'est dessinée que sur un mur de travers (`v5MurDeTravers`), et le redresse au clic. */
+  redresserMurPointerDown?: (e: PointerEvent, wallId: string) => void;
   /** A wall's central move handle. Facades use the same visible target for selection only. */
   deplacerMurPointerDown?: (e: PointerEvent, wallId: string) => void;
   /** Placing an object turns its layer back on (G-22, gestes/pose.ts): the toggles follow (js/28). */

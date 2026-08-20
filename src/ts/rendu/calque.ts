@@ -16,7 +16,7 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
-import { v5BoutJoint, v5IndexAreteContour, v5SommetPlatDeFacade, v5WallMergeCandidate } from "../modele/edition.ts";
+import { v5BoutJoint, v5IndexAreteContour, v5MurDeTravers, v5SommetPlatDeFacade, v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
@@ -459,7 +459,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   // EVERY handle class belongs in this list, and forgetting one leaves ghosts on screen. `.v5wjoin`
   // was missing: the merge controls were never removed, so they piled up and survived the deletion
   // of the very wall they belonged to. Reported from real use as two "-" floating in mid-air.
-  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove,.v5wjoin").forEach((n) => n.remove());
+  layer.querySelectorAll(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove,.v5wjoin,.v5wdroit").forEach((n) => n.remove());
   if (ctx.ihm.hoverWall && !(ctx.etat.plan.walls || []).some((w) => String(w.id) === String(ctx.ihm.hoverWall))) {
     ctx.ihm.hoverWall = null;
   }
@@ -688,6 +688,27 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
       coude.style.cssText = boite(20);
       coude.addEventListener("pointerdown", (ev) => ctx.gestes.coudeMurPointerDown?.(ev as PointerEvent, String(w.id)));
       poser(coude, sMid.x - nx * off, sMid.y - ny * off, 20);
+    }
+    // PALIER 3-BIS: L'ÉQUERRE, ET ELLE N'EXISTE QUE SUR UN MUR DE TRAVERS.
+    // Le propriétaire: « the vertical wall on the right is slightly off, i want a way to make it
+    // perpendicular ». Ses deux murs de travers n'ont AUCUNE poignée de bout (leurs quatre bouts
+    // sont des jonctions, `v5BoutJoint` les retire), donc aucun geste ne pouvait fixer leur
+    // direction. Le modèle décide seul si ce bouton a le droit d'exister (`v5MurDeTravers`), comme
+    // le maillon plus bas: un contrôle qui apparaît puis refuse n'apprend rien.
+    // Il se pose du côté de la croix, un cran plus loin, donc il ne dispute son pixel ni au disque
+    // ni au « + »; et sur un mur trop court `poser` le refuse, comme tous les autres.
+    if (!facade && v5MurDeTravers(ctx.etat.plan, w.id)) {
+      const eq = document.createElement("div");
+      eq.className = "v5wdroit";
+      eq.dataset["w"] = String(w.id);
+      // UNE ÉQUERRE, DESSINÉE. Un angle droit et son petit carré de sommet: c'est le symbole du
+      // dessin technique pour « ici c'est perpendiculaire », et il se lit dans une boite de 20.
+      eq.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+        traits('<path d="M11.2 10 L11.2 21 L22.2 21"/><path d="M15.8 21 L15.8 16.4 L20.4 16.4" stroke-width="1.3" opacity=".75"/>'));
+      eq.title = "Square this wall up (it is slightly off)";
+      eq.style.cssText = boite(20);
+      eq.addEventListener("pointerdown", (ev) => ctx.gestes.redresserMurPointerDown?.(ev as PointerEvent, String(w.id)));
+      poser(eq, sMid.x + nx * off * 2, sMid.y + ny * off * 2, 20);
     }
     // PALIER 4: LES BOUTS, qui cedent quand leur boite mord celle du deplacement.
     // ENDPOINT HANDLES (owner's report: "choper les extrémités des murs et pouvoir étendre et

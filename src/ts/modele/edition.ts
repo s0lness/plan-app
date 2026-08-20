@@ -1117,6 +1117,93 @@ export function v5BoutJoint(P: PlanV5 | null | undefined, wallId: Id, bout: "a" 
   });
 }
 
+// ---- UN MUR DE TRAVERS SE REDRESSE, ET SEULEMENT LUI ------------------------------------------
+// Signalé par le propriétaire: « the vertical wall on the right is slightly off, i want a way to
+// make it perpendicular », puis « automatiquement », puis « it should snap ».
+//
+// POURQUOI AUCUN AIMANT NE POUVAIT L'AIDER. Ses deux murs de travers (`w3` et `w7` du plan réel)
+// n'exposent AUCUNE poignée de bout: `v5BoutJoint` juste au-dessus les retire dès que quelque chose
+// tient déjà l'extrémité, et leurs quatre bouts sont des jonctions. Ils ne portent donc que le
+// disque qui DÉPLACE (une translation, elle ne change pas de direction), le « + » qui coupe et la
+// croix qui supprime: aucun geste de ce mur ne pouvait fixer sa direction, donc aucun aimant posé
+// sur un geste n'avait de prise. Et les trois gestes qui, eux, fixent une direction sont DÉJÀ
+// d'équerre: le tracé projette sur l'axe le plus proche (`v5StartDraw`), le glissement de bout
+// quantifie à 45° depuis le bout fixe (`v5WallEndDrop`/`DIR8`), le sommet de contour a
+// `orthoSnapVertex`. Ce qui manquait n'était pas un quatrième aimant, c'était un GESTE.
+//
+// LA RÈGLE: un bouton qui n'existe QUE sur un mur de travers, et qui le redresse au clic, comme le
+// « + » coupe au clic. Même doctrine que le maillon juste plus bas: un contrôle qui apparaît puis
+// refuse n'apprend rien, un contrôle absent dit « pas ici » sans un mot. Et surtout, à la
+// différence d'un aimant, **il ne retire AUCUN angle**: une oblique voulue reste tenable, elle se
+// contente de ne pas porter de bouton.
+//
+// TROIS SEUILS, ET CHACUN RÉPOND À UNE QUESTION.
+//   - `REDRESSE_DEG_MAX` (2°): au-delà, l'oblique est un CHOIX. Un pan coupé est à 45°, vingt fois
+//     plus loin; mesuré sur le plan réel, les deux murs de travers sont à 0,373° et 0,392°.
+//   - `REDRESSE_MIN_CM` (0,5 cm): en deçà, il n'y a rien à voir. Sans ce plancher, `w2` (0,003°,
+//     soit 0,1 mm sur 164 cm) porterait le bouton lui aussi, et un bouton posé sur un défaut
+//     invisible est du bruit. Mesuré: 3 murs sur 22 ne sont pas d'équerre, 2 le sont visiblement.
+//   - L'ÉPAISSEUR DU MUR comme plafond de déplacement: corriger de moins que la maçonnerie
+//     elle-même, c'est une correction; au-delà, c'est un redessin, et ça ne se déclenche pas depuis
+//     un petit disque. Sur un mur de 6 m, 12 cm valent 1,15°, donc c'est ce plafond-là qui mord.
+//
+// ON PIVOTE AUTOUR DU CARREFOUR, JAMAIS AUTOUR D'UN SIMPLE APPUI. Les deux bouts sont tenus, donc
+// il faut choisir lequel bouge; on garde immobile celui où le PLUS de bouts d'autres murs
+// coïncident, parce que c'est la jonction qui se déchirerait le plus. Mesuré sur `w3`: son bout `a`
+// porte les bouts de `w2` et `w7` (le T du milieu), son bout `b` seulement celui de `w4`; on pivote
+// donc autour de `a` et c'est `b` qui glisse d'1 cm. Le mur d'en face n'est pas laissé en plan pour
+// autant: `w4` et `w6` sont TRAVERSANTS, donc `v5ThroughWall` les rallonge jusqu'à la nouvelle
+// droite au recalcul qui suit, sans qu'on ait à les toucher.
+//
+// PAS SUR UNE FACADE: elle est DÉRIVÉE du contour (`v5SyncOutlineWalls`), la redresser voudrait
+// dire déplacer un sommet du polygone, ce qui est le geste du sommet et pas celui de ce mur.
+const REDRESSE_DEG_MAX = 2;
+const REDRESSE_MIN_CM = 0.5;
+
+export interface RedressementMur {
+  /** le bout qui bouge (l'autre est le pivot) */
+  bout: "a" | "b";
+  /** où il se pose */
+  cible: Pt;
+  /** l'écart à l'équerre, en degrés */
+  deg: number;
+  /** de combien ce bout se déplace, en cm */
+  cm: number;
+}
+
+export function v5MurDeTravers(P: PlanV5 | null | undefined, wallId: Id): RedressementMur | null {
+  const w = v5WallById(P, wallId);
+  if (!P || !w || w.isOutline) return null;
+  const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1];
+  const L = Math.hypot(dx, dy);
+  if (L < 1) return null;
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  // L'écart à l'axe LE PLUS PROCHE, en degrés, toujours positif.
+  const deg = Math.abs(Math.atan2(horizontal ? dy : dx, horizontal ? Math.abs(dx) : Math.abs(dy)) * 180 / Math.PI);
+  const cm = horizontal ? Math.abs(dy) : Math.abs(dx);
+  if (deg > REDRESSE_DEG_MAX || cm < REDRESSE_MIN_CM || cm > (w.t || WALL)) return null;
+  // LE PIVOT EST LE BOUT LE PLUS CHARGÉ: on compte les BOUTS d'autres murs qui coïncident avec
+  // lui, pas les appuis de flanc. Un flanc laisse glisser, un bout se déchire.
+  const carrefour = (bout: "a" | "b"): number => {
+    const pt = w[bout];
+    let k = 0;
+    for (const x of (P.walls || [])) {
+      if (String(x.id) === String(wallId)) continue;
+      if (Math.hypot(x.a[0] - pt[0], x.a[1] - pt[1]) <= JOINT_TOL) { k++; continue; }
+      if (Math.hypot(x.b[0] - pt[0], x.b[1] - pt[1]) <= JOINT_TOL) k++;
+    }
+    return k;
+  };
+  // Égalité: on bouge `b`, pour que le geste soit le même que celui du glissement de bout, qui
+  // ancre lui aussi sur le bout resté en place.
+  const bout: "a" | "b" = carrefour("a") >= carrefour("b") ? "b" : "a";
+  const pivot = bout === "b" ? w.a : w.b;
+  const cible: Pt = horizontal
+    ? [v5R2(w[bout][0]), v5R2(pivot[1])]
+    : [v5R2(pivot[0]), v5R2(w[bout][1])];
+  return { bout, cible, deg, cm };
+}
+
 /**
  * COUPER UNE FACADE, C'EST INSERER UN SOMMET DANS LE CONTOUR. Une facade n'est pas stockee comme un
  * mur: elle est RECALCULEE a partir du polygone du contour a chaque changement (`v5SyncOutlineWalls`).

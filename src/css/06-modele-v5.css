@@ -37,9 +37,9 @@
      l'ombre sont dans le SVG, donc la surface saisissable peut etre plus large que le dessin sans
      que rien ne grossisse a l'oeil: rater la prise de deux pixels ne doit pas tomber sur le corps
      du mur, qui trace. Le dessin garde son ombre portee via un filtre CSS, qui suit la forme. */
-  .v5wmove,.v5wend,.v5wmid,.v5wx,.v5wjoin{background:none;border:none;box-shadow:none;padding:0;
+  .v5wmove,.v5wend,.v5wmid,.v5wx,.v5wjoin,.v5wdroit{background:none;border:none;box-shadow:none;padding:0;
         filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
-  .v5wmove > svg,.v5wend > svg,.v5wmid > svg,.v5wx > svg,.v5wjoin > svg{display:block}
+  .v5wmove > svg,.v5wend > svg,.v5wmid > svg,.v5wx > svg,.v5wjoin > svg,.v5wdroit > svg{display:block}
   .v5wend:hover > svg circle,.v5wmid:hover > svg circle,.v5wmove:hover > svg circle{opacity:.85}
   .v5wjoin{position:absolute;border-radius:50%;cursor:pointer;pointer-events:auto;
         display:flex;align-items:center;justify-content:center;padding:2px;box-sizing:border-box;
@@ -76,7 +76,9 @@
      d'un geste (s'ecarter du mur rend le meuble), et l'alternative testee etait pire: laisser un
      meuble reveler les commandes du mur qu'il recouvre rend ces memes meubles inatteignables par
      TOUS les chemins. */
-  .v5wend,.v5wmid,.v5wmove,.v5wx,.v5wjoin{z-index:2100}
+  .v5wend,.v5wmid,.v5wmove,.v5wx,.v5wjoin,.v5wdroit{z-index:2100}
+  /* L'EQUERRE: meme disque plein que le « + » et la croix, parce qu'elle AGIT au clic elle aussi. */
+  .v5wdroit{position:absolute;border-radius:50%;cursor:pointer;pointer-events:auto;touch-action:none}
   .v5wend:hover,.v5wmid:hover,.v5wmove:hover{background:var(--accent-soft)}
   .v5wend:active,.v5wmid:active,.v5wmove:active{cursor:grabbing}
   .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;
