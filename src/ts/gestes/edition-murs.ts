@@ -14,6 +14,7 @@ import type { Contexte } from "../app/contexte.ts";
 import type { Pt } from "../partage/plan.ts";
 import { $ } from "../noyau/dom.ts";
 import { selfIntersects } from "../geometrie/polygones.ts";
+import { WALL } from "../noyau/nombres.ts";
 import { resolveColor } from "../rendu/couleurs.ts";
 import { aptToScreen } from "../rendu/vue.ts";
 
@@ -71,15 +72,89 @@ export function orthoSnapVertex(
   return { x, y, guides };
 }
 
+/**
+ * UNE FAÇADE COLLE À CELLE QUI EST DANS SON PROLONGEMENT.
+ *
+ * Signalé par le propriétaire, mot pour mot: « j'arrive pas à le refaire coller, il est toujours
+ * slightly on top or below et se stick jamais dans le mur ». Sa façade porte une encoche en U;
+ * pour la refermer il faut pousser le fond du U PILE sur la ligne des deux façades voisines, et
+ * le glissement n'était arrondi qu'à la grille de 5 cm. Mesuré sur
+ * `[[0,0],[300,0],[300,200],[600,200],[600,0],[900,0],[900,600],[0,600]]`, fond du U tiré vers
+ * y=0: visé 0 pile, l'encoche se referme (6 sommets); visé -7, +6 ou +3, il reste une marche de
+ * 5 cm et 8 sommets. À la main on tombe toujours sur un multiple de 5 non nul, donc jamais sur
+ * l'alignement, quel que soit le soin mis à viser.
+ *
+ * On cherche donc, parmi les AUTRES arêtes du contour, celles qui sont PARALLÈLES à celle qu'on
+ * tire, et si la position atteinte tombe à portée de l'une de leurs lignes, on s'y pose
+ * exactement. Trois choses qui ne sont pas des détails:
+ *
+ * - **La portée se mesure à l'écran**, `Math.max(WALL, 16 / echelle)`, la même formule que
+ *   `v5SnapTolBout`: un aimant en centimètres ne s'attrape plus une fois dézoomé, et une main
+ *   vise en pixels.
+ * - **L'aimant PRIME sur la grille**: se poser à 5 cm près d'un alignement, c'est exactement le
+ *   défaut. Il est armé par le même réglage et désarmé par la même échappatoire (`sansGrille`,
+ *   Ctrl/Cmd), parce que c'est la même promesse: une touche pour poser où l'on veut.
+ * - **Il ne s'applique que sur un axe**, donc là où le guide qui le PROUVE peut être dessiné. Un
+ *   aimant muet est indistinguable d'un hasard, et c'est une façade oblique qui paierait le
+ *   silence.
+ *
+ * Prix payé, mesuré: les seules positions perdues sont les multiples de 5 situés à moins d'une
+ * portée d'un alignement, soit 4 positions au zoom de travail (portée 12 cm), 6 à 1 px/cm et 12
+ * une fois dézoomé à 0,5 px/cm. Ctrl les rend toutes.
+ */
+export function aimantFacade(
+  poly: readonly Pt[], i: number, a0: Pt, b0: Pt,
+  nx: number, ny: number, d: number, scale: number,
+): { d: number; guide: GuideOrtho | null } {
+  const axe: "x" | "y" | null = Math.abs(nx) > 0.99 ? "x" : (Math.abs(ny) > 0.99 ? "y" : null);
+  if (!axe) return { d, guide: null };
+  const tol = Math.max(WALL, 16 / (scale || 1));
+  const n = poly.length;
+  let cible: { d: number; p: Pt; q: Pt } | null = null;
+  for (let k = 0; k < n; k++) {
+    if (k === i) continue;
+    const p = poly[k], q = poly[(k + 1) % n];
+    if (!p || !q) continue;
+    const ux = q[0] - p[0], uy = q[1] - p[1], L = Math.hypot(ux, uy);
+    if (L < 1) continue;
+    if (Math.abs(ux * nx + uy * ny) / L >= 0.02) continue;        // pas parallèle
+    const dc = (p[0] - a0[0]) * nx + (p[1] - a0[1]) * ny;         // le d qui pose l'arête sur SA ligne
+    if (Math.abs(dc - d) > tol) continue;
+    if (!cible || Math.abs(dc - d) < Math.abs(cible.d - d)) cible = { d: dc, p, q };
+  }
+  if (!cible) return { d, guide: null };
+  // Le guide relie les deux arêtes: il va d'un bout à l'autre de leur étendue commune le long de
+  // la ligne attrapée, donc on voit CE À QUOI ça s'est aligné, pas seulement que ça a sauté. Et il
+  // DÉBORDE largement des deux côtés: une façade posée pile sur la ligne d'une autre est peinte
+  // par-dessus le trait, donc ce qui se voit, ce sont ses deux dépassements, de part et d'autre du
+  // plan. Un débord de la longueur d'une porte se lit à l'œil à tous les zooms de travail.
+  const c = axe === "x" ? 1 : 0;                                   // la coordonnée LE LONG de l'arête
+  const vals = [a0[c]!, b0[c]!];
+  for (let k = 0; k < n; k++) {                                    // TOUT ce qui est sur la ligne attrapée
+    const p = poly[k], q = poly[(k + 1) % n];
+    if (k === i || !p || !q) continue;
+    const ux = q[0] - p[0], uy = q[1] - p[1], L = Math.hypot(ux, uy);
+    if (L < 1 || Math.abs(ux * nx + uy * ny) / L >= 0.02) continue;
+    if (Math.abs((p[0] - a0[0]) * nx + (p[1] - a0[1]) * ny - cible.d) > 0.5) continue;
+    vals.push(p[c]!, q[c]!);
+  }
+  const ligne = axe === "x" ? a0[0] + nx * cible.d : a0[1] + ny * cible.d;
+  const DEBORD = 80;
+  return { d: cible.d, guide: { axis: axe, line: ligne, a: Math.min(...vals) - DEBORD, b: Math.max(...vals) + DEBORD } };
+}
+
 /** The snapping guides live on the canvas (viewport px via `aptToScreen`). */
 export function clearStitchGuides(ctx: Contexte): void {
-  const g = ctx.canvas.querySelector(".ov-guides"); if (g) g.remove();
+  // PAR LEUR PROPRE CLASSE, JAMAIS PAR `.ov-guides`: les cotes vivantes d'un glissement de façade
+  // (`v5DrawWallDims`) portent la même classe de conteneur, et le premier `.ov-guides` venu, c'était
+  // parfois elles. Le guide de l'image précédente survivait alors à son effacement et s'empilait.
+  ctx.canvas.querySelectorAll(".ov-stitch").forEach((g) => g.remove());
 }
 
 export function drawOrthoGuides(ctx: Contexte, guides: GuideOrtho[] | null | undefined): void {
   clearStitchGuides(ctx);
   if (!guides || !guides.length) return;
-  const cont = document.createElement("div"); cont.className = "ov-guides";
+  const cont = document.createElement("div"); cont.className = "ov-guides ov-stitch";
   const acc = resolveColor("var(--accent)");
   const pad = 14;   // cm of overshoot, so the line clearly connects the two corners
   guides.forEach((g) => {
