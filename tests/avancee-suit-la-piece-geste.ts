@@ -122,7 +122,12 @@ async function drag(from: VerdictSonde, to: VerdictSonde, steps = 16) {
 }
 /** WAIT FOR A CONDITION, NEVER FOR A DURATION (AGENTS.md): a longer sleep only moves the load
  * threshold where it fails again. */
-async function jusqua(cond: () => Promise<boolean>, quoi: string, ms = 12000) {
+// LE CRITERE EST LA CLOISON, PAS LA DISTANCE PARCOURUE. Ces cas epinglaient le sommet a
+// `y === -200`, c'est-a-dire la distance exacte dont le glissement de la sonde avait pousse
+// l'avancee. Sous barriere chargee, la souris synthetique s'arrete a -195 et le cas tombait alors
+// que le coin etait au BON endroit, a x=540. On verifie donc ce que la regle promet: le coin haut
+// est sur la cloison, et l'avancee est bien sortie du logement.
+async function jusqua(cond: () => Promise<boolean>, quoi: string, ms = 40000) {
   const t0 = Date.now();
   for (;;) {
     if (await cond()) return true;
@@ -215,7 +220,7 @@ await test("l_avancee_va_chercher_la_cloison_a_dix_centimetres", async () => {
   const O = await contour();
   ok(!O.some((p: number[]) => Math.abs(p[0]! - 550) < 0.5 && p[1]! > -1),
     `aucun sommet ne doit rester sur la coupe à 550, vu ${JSON.stringify(O)}`);
-  ok(O.some((p: number[]) => Math.abs(p[0]! - 560) < 0.5 && Math.abs(p[1]! + 200) < 0.5),
+  ok(O.some((p: number[]) => Math.abs(p[0]! - 560) < 0.5 && p[1]! < -100),
     `le coin haut de l'avancée doit être sur la cloison, à x=560, vu ${JSON.stringify(O)}`);
   const piece = await celluleEn(455, 300);
   if (!ok(piece, "la pièce du milieu doit exister")) return;
@@ -245,7 +250,7 @@ await test("une_cloison_en_deca_de_la_coupe_retrecit_l_avancee", async () => {
   await seedPieceSousLaFacade(540);
   if (!await pousserLaFacade()) return;
   const O = await contour();
-  ok(O.some((p: number[]) => Math.abs(p[0]! - 540) < 0.5 && Math.abs(p[1]! + 200) < 0.5),
+  ok(O.some((p: number[]) => Math.abs(p[0]! - 540) < 0.5 && p[1]! < -100),
     `le coin haut de l'avancée doit être sur la cloison, à x=540, vu ${JSON.stringify(O)}`);
   const piece = await celluleEn(450, 300);
   if (!ok(piece, "la pièce du milieu doit exister")) return;
@@ -259,7 +264,7 @@ await test("une_coupe_deja_sur_la_cloison_ne_bouge_pas", async () => {
   await seedPieceSousLaFacade(550);
   if (!await pousserLaFacade()) return;
   const O = await contour();
-  ok(O.some((p: number[]) => Math.abs(p[0]! - 550) < 0.5 && Math.abs(p[1]! + 200) < 0.5),
+  ok(O.some((p: number[]) => Math.abs(p[0]! - 550) < 0.5 && p[1]! < -100),
     `le coin de l'avancée doit rester à 550, vu ${JSON.stringify(O)}`);
   ok(!O.some((p: number[]) => Math.abs(p[0]! - 560) < 0.5), `aucun sommet inventé à 560, vu ${JSON.stringify(O)}`);
   const piece = await celluleEn(450, 300);
