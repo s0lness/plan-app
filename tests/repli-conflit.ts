@@ -439,8 +439,16 @@ try {
   await B.evaluate(`(function(){ try{ document.activeElement.blur(); }catch(e){}
     window.dispatchEvent(new KeyboardEvent("keydown",
       { key:"z", ctrlKey:true, bubbles:true, cancelable:true })); })()`);
-  await sleep(400);
-  const bUndo = await B.evaluate("window.__plan.plan.cells[0].name");
+  // ON ATTEND LA CONDITION, PAS LE Ctrl+Z. Ce cas dormait 400 ms puis lisait le nom, et il est
+  // tombe en barriere complete (« Device B voit Room 1 ») alors qu'il passe seul, deux fois de
+  // suite: sous charge, l'annulation n'avait pas encore repeint. Allonger le sommeil ne ferait que
+  // deplacer le seuil (AGENTS.md: attendre une CONDITION, jamais une duree).
+  let bUndo = "";
+  for (let i = 0; i < 60; i++) {
+    bUndo = await B.evaluate("window.__plan.plan.cells[0].name");
+    if (bUndo === DEVICE_B) break;
+    await sleep(200);
+  }
   mesure("Ctrl+Z ramène à l'écran la version qu'on lui a refusée",
     bUndo === DEVICE_B, "après Ctrl+Z, Device B voit " + JSON.stringify(bUndo));
 
