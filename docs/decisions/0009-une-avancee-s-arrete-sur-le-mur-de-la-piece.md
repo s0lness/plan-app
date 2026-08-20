@@ -1,4 +1,4 @@
-# 0008 - Une avancée s'arrête sur le mur de la pièce
+# 0009 - Une avancée s'arrête sur le mur de la pièce
 
 Status: accepted, 2026-08-20. Prolonge [0007](0007-une-jonction-qui-se-romprait-est-pontee.md)
 au cas où c'est une FAÇADE qui s'en va.
