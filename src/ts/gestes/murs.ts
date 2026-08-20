@@ -77,7 +77,8 @@ import { measureMode, sansGrille, spaceHeld } from "./etat-pointeur.ts";
 // the outline's orthogonal snap, its guides, and the "walls cross" alert. Outline editing
 // can't do without them (`v5StartVertexDrag` and `v5AfterGeometry` call them), and js/15
 // belongs to no batch of the project: flagged to the coordinator.
-import { checkShapeWarn, clearStitchGuides, drawOrthoGuides, orthoSnapVertex } from "./edition-murs.ts";
+import type { GuideOrtho } from "./edition-murs.ts";
+import { aimantFacade, checkShapeWarn, clearStitchGuides, drawOrthoGuides, orthoSnapVertex } from "./edition-murs.ts";
 // C-8. `v5NewId` (js/51) draws a device tag from the realtime socket or from
 // `sessionStorage`: without it, two people drawing a partition at the same instant would get the
 // same `w20` and every other wall would disappear without a word. This is not a function of the plan,
@@ -1320,12 +1321,19 @@ export function v5StartOutlineEdgeDrag(
     // Alt = free partition (unchanged). Ctrl/Cmd (`sansGrille`) is the SAME escape hatch as
     // furniture and openings: one key to remember for "no grid," without taking Alt away from
     // free-drawing.
+    let guide: GuideOrtho | null = null;
     if (ctx.etat.opts.snap && !ev.altKey && !sansGrille(ev)) {
       const na = [a0[0] + s.nx * d, a0[1] + s.ny * d];
       if (Math.abs(s.nx) > 0.99) d += (Math.round(na[0]! / 5) * 5 - na[0]!) / s.nx;
       else if (Math.abs(s.ny) > 0.99) d += (Math.round(na[1]! / 5) * 5 - na[1]!) / s.ny;
       else d = Math.round(d / 5) * 5;
+      // ET L'AIMANT PASSE APRÈS LA GRILLE, ET GAGNE CONTRE ELLE (`aimantFacade`, gestes/edition-murs):
+      // une façade se pose PILE sur la ligne d'une autre façade parallèle, sinon il reste la marche
+      // de 5 cm qui empêche de refermer une encoche.
+      const aim = aimantFacade(poly0, i0, a0, b0, s.nx, s.ny, d, ctx.vue.scale);
+      d = aim.d; guide = aim.guide;
     }
+    drawOrthoGuides(ctx, guide ? [guide] : null);
     if (!coinsPoses && Math.abs(d) >= 1) poserLesCoins(d);
     poly[i] = [Math.round(a0[0] + s.nx * d), Math.round(a0[1] + s.ny * d)];
     poly[j] = [Math.round(b0[0] + s.nx * d), Math.round(b0[1] + s.ny * d)];
@@ -1348,7 +1356,7 @@ export function v5StartOutlineEdgeDrag(
   };
   const up = (): void => {
     window.removeEventListener("pointermove", move);
-    v5ClearDims(ctx);
+    v5ClearDims(ctx); clearStitchGuides(ctx);
     if (!moved) {
       // CLEAN CLICK: the outline hasn't moved by a centimeter, so NOTHING is recomputed. No
       // v5AfterGeometry, no re-traversal of walls, no re-bounding of furniture.
@@ -1363,13 +1371,18 @@ export function v5StartOutlineEdgeDrag(
     for (let k = poly.length - 1; k >= 0 && poly.length > 3; k--) {
       if (memePt(poly[k]!, poly[(k + 1) % poly.length]!)) poly.splice(k, 1);
     }
+    // UNE ENCOCHE REFERMÉE NE SE RESSOUDE PAS TOUTE SEULE, et les deux joints plats qu'elle laisse
+    // restent: les retirer FUSIONNERAIT deux façades en une, ce qui change une identité que les
+    // ouvertures suivent et une épaisseur qu'elles n'ont pas choisie, et surtout ce qui rendrait
+    // l'encoche irréversible (mesuré: à 6 sommets, un glissement du milieu la rouvre telle quelle;
+    // à 4, il faut d'abord recouper la façade au « + »). Le maillon, lui, est un geste demandé.
     v5AfterGeometry(ctx, true);
     endGesture();
     ctx.crochets.dragEnd?.();
   };
   const cancel = (): void => {
     restaurer();
-    moved = false; v5ClearDims(ctx);
+    moved = false; v5ClearDims(ctx); clearStitchGuides(ctx);
   };
   window.addEventListener("pointermove", move);
   armGesture(up, null, cancel);

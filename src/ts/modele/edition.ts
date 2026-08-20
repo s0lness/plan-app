@@ -280,6 +280,14 @@ export function v5SyncOutlineWalls(P: PlanV5 | null | undefined): void {
   const old = (P.walls || []).filter((w) => w.isOutline);
   const inner = (P.walls || []).filter((w) => !w.isOutline);
   const taken = new Set<Mur>(), keep: Mur[] = [];
+  // ET LE RAMASSAGE PASSE APRÈS TOUS LES RECOUVREMENTS, JAMAIS AU MILIEU. Une arête qui n'a aucun
+  // mur sous elle prenait « le premier mur de façade libre » SUR-LE-CHAMP, donc avant que les arêtes
+  // suivantes aient pu réclamer le leur par recouvrement: refermer une encoche fait apparaître une
+  // arête neuve entre les deux moitiés hautes, et c'est la façade de DROITE qui se faisait ramasser,
+  // avec sa fenêtre, 300 cm plus à gauche (mesuré: fenD de x=740 à x=440, en silence). Les arêtes
+  // sont donc appariées en DEUX PASSES: chacune prend d'abord le mur qui la recouvre vraiment, et
+  // seuls les murs restés libres à la fin comblent les arêtes orphelines.
+  const aretes: Array<{ a: Pt; b: Pt; w?: Mur }> = [];
   for (let i = 0; i < n; i++) {
     const a = O[i]!, b = O[(i + 1) % n]!;
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) continue;
@@ -294,14 +302,19 @@ export function v5SyncOutlineWalls(P: PlanV5 | null | undefined): void {
     const ux = b[0] - a[0], uy = b[1] - a[1];
     const L = Math.hypot(ux, uy) || 1e-9;
     const proj = (q: Pt): number => ((q[0] - a[0]) * ux + (q[1] - a[1]) * uy) / L;
-    let w: Mur | undefined, meilleur = -1;
+    let w: Mur | undefined, meilleur = 0;
     for (const o of old) {
       if (taken.has(o) || !v5SameLine(v5LineKey(o.a, o.b), k, 6)) continue;
       const t0 = proj(o.a), t1 = proj(o.b);
       const recouvre = Math.max(0, Math.min(L, Math.max(t0, t1)) - Math.max(0, Math.min(t0, t1)));
       if (recouvre > meilleur) { meilleur = recouvre; w = o; }
     }
-    if (!w) w = old.find((o) => !taken.has(o));
+    if (w) taken.add(w);
+    aretes.push({ a, b, ...(w ? { w } : {}) });
+  }
+  for (const arete of aretes) {
+    const a = arete.a, b = arete.b;
+    let w = arete.w || old.find((o) => !taken.has(o));
     if (w) { taken.add(w); w.a = [a[0], a[1]]; w.b = [b[0], b[1]]; w.t = w.t || WALL; }
     // OUTLINE wall: an entity derived from the outline, recomputed identically on both sides ->
     // identifier WITHOUT a device tag (see v5DerivedId, js/51).

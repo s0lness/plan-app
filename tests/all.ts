@@ -99,6 +99,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/bouts-de-mur-geste.ts",      chrome: 1 },   // real mouse: a wall's own endpoint handle is hittable and extends it, the wall body still drags the whole wall, a clean click writes nothing
   { f: "tests/coude-mur-geste.ts",         chrome: 1 },   // real mouse: midpoint elbow handle, wall body remains reachable, clean click writes nothing
   { f: "tests/facade-glisse-geste.ts",     chrome: 1 },   // real mouse: a facade half SLIDES, the outline never bends, corner drags carry the whole straight run
+  { f: "tests/facade-colle-geste.ts",      chrome: 1 },   // real mouse: a facade lands EXACTLY on the line of a parallel facade, the guide says so, Ctrl gives the ordinary positions back
   { f: "tests/facade-controles-geste.ts",  chrome: 1 },   // real mouse: a hovered facade offers its "+" and its weld link, never a cross nor endpoint handles, and the outline's own "+" stays reachable
   { f: "tests/sol-suit-la-main-geste.ts",  chrome: 1 },   // real mouse: the painted floor follows the hand during the drag instead of jumping on release, and a typed room name survives a room being swept away and reopened
   { f: "tests/selection-visible.ts",       chrome: 1 },
