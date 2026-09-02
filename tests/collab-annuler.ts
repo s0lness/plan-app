@@ -781,6 +781,38 @@ await test("le_rejeu_d_annulation_tranche_sur_le_contour_du_moment", seedV4(REAL
         "contour rétréci d'abord : le mur n'est plus sur le contour, il part : "
         + JSON.stringify(v.retreciMur) + JSON.stringify(v.retreciOuv)));
 
+// A4. AN OPENING LOST TO A PEER'S FACADE CASCADE MUST SAY SO AT RECEIPT, NOT ON THE NEXT LOCAL
+// GESTURE. `v5SyncOutlineWalls` (called on every geometric remote op, section 11 above) shares
+// its slate (`ardoiseBorned`, modele/edition.ts) with a LOCAL gesture's own clamping: left
+// unflushed on the receive path, an opening orphaned by a peer's outline shrink sat there until
+// whatever LOCAL gesture ran next flushed it, and the banner landed on the wrong screen. Same
+// defect furniture already had (`v5NoteForeignOrphans`, section 11's neighbourhood), fixed the
+// same way: flush and say so RIGHT HERE, on receipt (`fil/reception.ts:282`).
+await test("une_facade_orphelinee_a_distance_le_dit_tout_de_suite", seedV4({
+  outline: [[0, 0], [400, 0], [400, 300], [0, 300]],
+  // `wf` LAST on purpose: `v5SyncOutlineWalls` recycles a leftover outline wall onto an
+  // unmatched edge in ARRAY order (edition.ts:317), so putting the other three first makes THEM
+  // absorb the new outline's three edges and leaves `wf` — the one carrying the window — with
+  // nowhere to go: it becomes "gone", not merely moved.
+  walls: [
+    { id: "wb", a: [0, 300], b: [400, 300], t: 10, isOutline: true },
+    { id: "wl", a: [0, 0], b: [0, 300], t: 10, isOutline: true },
+    { id: "wr", a: [400, 0], b: [400, 300], t: 10, isOutline: true },
+    { id: "wf", a: [0, 0], b: [400, 0], t: 10, isOutline: true },
+  ],
+  openings: [{ id: "of", wallId: "wf", t0: 50, w: 120, h: 140, type: "window", side: 0, name: "Fenêtre", hinge: 0, swing: 1 }],
+  pieces: [], cells: [], setupDone: true, model: "v5",
+}), `
+  ${OUVRIR}
+  window.__plan.clearToast();
+  window.__plan.wsFeed({t:"op", by:"b@example.com", rev:1, fp:"FP-1",
+    op:{kind:"outline.set", outline:[[1000,1000],[1400,1000],[1200,1300]]}});
+  return { openings: window.__plan.plan.openings.length, toast: window.__plan.toastText };
+`, (v: VerdictSonde) => expect(v.openings === 0, "la fenêtre doit être perdue avec sa façade : " + v.openings)
+     && expect(!!v.toast, "la perte doit être dite AU MOMENT de la réception, pas au geste local suivant : " + v.toast)
+     && expect(/gone|parti/i.test(v.toast || ""), "le vocabulaire doit être celui, déjà connu, d'une ouverture perdue avec son mur : " + v.toast)
+     && expect(!/—/.test(v.toast || ""), "aucun tiret cadratin dans un texte visible"));
+
 // ---- report -----------------------------------------------------------------------------------
 sonde.fermer();
 const passed = results.filter(r => r.pass).length;
