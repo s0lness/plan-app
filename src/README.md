@@ -40,7 +40,7 @@ repository and is available in the history of the private repository.
 | `panneaux/` | Setup, inspector, cell card, menu, floor plans, and inline renaming. |
 | `mesure/` | Measurements, pointer guides, and peer cursors. |
 | `historique/` | Local stack and replay of remote operations during undo/redo. |
-| `fil/` | Identity, pseudo-wire, mirrors, sending, receiving, presence, acknowledgements, REST, and latency HUD. |
+| `fil/` | Identity, pseudo-wire, mirrors, sending, receiving, presence, acknowledgements, REST. |
 | `circulation/` | Engine state, apartment context, grid, rules, fixes, and Circulation panel. |
 | `exportation/` | JSON import/export, master SVG, PNG, printing, and furniture list. |
 | `sonde*.ts` | `window.__plan` surface reserved for browser suites; every entry must have a consumer. |

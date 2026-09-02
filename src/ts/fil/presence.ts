@@ -43,7 +43,6 @@ import {
   adoptServerState, maybeOpenSetupFromServer, pollPull, serverHasPlan, setSyncChip,
   showConflitFilNotice, surPlanSupprime,
 } from "./rest.ts";
-import { hudRecordPaint } from "./hud.ts";
 
 // `o` may be a peer/message OBJECT (batch 2: `.name` preferred) or a bare email string, exactly
 // like `displayName`/`personColor`, see their header notes.
@@ -115,7 +114,6 @@ export function wsUpsertCursor(
 ): void {
   if (wsFromMe(fil, msg)) return;
   const key = wsDevKey(msg);
-  fil.curIn++;
   if (msg.room == null || msg.x == null || msg.y == null) { wsHideCursor(fil, key); return; }
   const col = personColor(msg, msg.color);
   let c = fil.cursors.get(key);
@@ -135,11 +133,9 @@ export function wsUpsertCursor(
   c.tx = s.x; c.ty = s.y;
   // DOM write IN THE SAME TICK as reception (received -> painted budget ~0): we advance
   // immediately one step toward the target and paint. The rAF loop continues the smoothing.
-  const t0 = performance.now();
   c.sx += (c.tx - c.sx) * WS_LERP;
   c.sy += (c.ty - c.sy) * WS_LERP;
   wsPaintCursor(c, false);
-  hudRecordPaint(fil, performance.now() - t0);
   c.el.style.display = "";
   wsEnsureCursorLoop(fil);
   if (c.timer) clearTimeout(c.timer);
@@ -494,7 +490,6 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
       break;
 
     case "pong":
-      if (msg["ts"]) fil.lastRtt = Date.now() - (msg["ts"] as number);
       // Continuous, free check: the `pong` carries the server plan's fingerprint. If it is not
       // the one we believe, a message slipped past us -> we request the full state again. No
       // loop possible: the `state` that answers resets `wsFp` to the server's fingerprint.
@@ -649,7 +644,6 @@ function wsFlushCursor(fil: Fil): void {
   fil.curPending = null;
   // The cursor travels in APARTMENT cm; `room` is just a label relayed as-is.
   wsSend(fil, { t: "cursor", room: WIRE_ROOM, x: p.x, y: p.y });
-  fil.curOut++;
 }
 
 export function brancherCurseursSortants(ctx: Contexte, fil: Fil): void {
@@ -681,7 +675,6 @@ export function wsEmitDrag(fil: Fil, p: { id: unknown; x: number; y: number; rot
     t: "drag", room: WIRE_ROOM, pieceId: String(p.id),
     x: Math.round(p.x), y: Math.round(p.y), rot: Math.round(p.rot || 0),
   });
-  fil.dragOut++;
 }
 
 /**
@@ -701,7 +694,6 @@ export function wsEmitDragMulti(fil: Fil, moved: { pc: { id: unknown; x: number;
       t: "drag", room: WIRE_ROOM, pieceId: String(pc.id),
       x: Math.round(pc.x), y: Math.round(pc.y), rot: Math.round(pc.rot || 0),
     });
-    fil.dragOut++;
   }
 }
 

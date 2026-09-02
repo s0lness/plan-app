@@ -28,7 +28,6 @@ import {
   brancherChat, brancherCurseursSortants, demarrerFil, wsEmitDrag, wsEmitDragMulti,
   wsReprojectCursors,
 } from "./presence.ts";
-import { brancherHud } from "./hud.ts";
 import type { Op } from "../partage/plan.ts";
 
 /**
@@ -119,7 +118,6 @@ export function brancherFil(ctx: Contexte): Fil {
   brancherRapportErreur();
   brancherChat(fil);
   brancherCurseursSortants(ctx, fil);
-  brancherHud(fil);
 
   // THE ORDER OF THESE THREE LINES IS THE ONE FROM THE OLD MANIFEST, AND IT HAD TO BE VERIFIED.
   // Intuition says "the D1 fallback first, real time second"; the manifest says the opposite.

@@ -205,18 +205,11 @@ export interface Fil {
   conflictHandled: boolean;
   errSeen: Map<string, number>;
   lastInbound: number;
-  lastRtt: number | null;
   heartbeat: ReturnType<typeof setInterval> | null;
   curPending: { x: number; y: number } | null;
   curRafId: number;
   curRafLoop: number;
   lastDrag: number;
-
-  // ---- js/45: the latency HUD --------------------------------------------------------------------
-  curIn: number;
-  curOut: number;
-  dragOut: number;
-  paintLat: { t: number; ms: number }[];
 }
 
 export function creerFil(): Fil {
@@ -273,17 +266,11 @@ export function creerFil(): Fil {
     conflictHandled: false,
     errSeen: new Map(),
     lastInbound: 0,
-    lastRtt: null,
     heartbeat: null,
     curPending: null,
     curRafId: 0,
     curRafLoop: 0,
     lastDrag: 0,
-
-    curIn: 0,
-    curOut: 0,
-    dragOut: 0,
-    paintLat: [],
   };
 }
 
