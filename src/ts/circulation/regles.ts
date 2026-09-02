@@ -8,7 +8,7 @@ import type {
 } from "./etat.ts";
 import { FL, scoreFromFindings } from "./etat.ts";
 import { escapeHtml } from "../noyau/nombres.ts";
-import { TYPEMAP, empilables } from "../catalogue/catalogue.ts";
+import { TYPEMAP, empilables, passeAuDessus } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, nearestOnPoly, pointInPoly, polyArea } from "../geometrie/polygones.ts";
 import { pieceById, v5OpeningById } from "../app/contexte.ts";
 import {
@@ -253,11 +253,17 @@ function runRules(): ResultatAnalyse {
     // fight. But an overlap that STAYS is almost always an oversight, and it wasn't visible
     // anywhere: two stacked objects read as one at working zoom.
     //
-    // THREE EXEMPTIONS, AND NONE IS ARBITRARY:
+    // FOUR EXEMPTIONS, AND NONE IS ARBITRARY:
     //   · STACKABLE pairs (the dryer on the washing machine): same floor footprint, that's the
     //     intended storage, not a mistake;
     //   · SOFT objects (rugs): they pass UNDER furniture, that's their very function;
-    //   · what isn't an obstacle (sconces, outlets, ceiling lights): they're up high.
+    //   · what isn't an obstacle (sconces, outlets, ceiling lights): they're up high;
+    //   · a RADIATOR and a WALL FIXTURE above it (window, wall light, socket, RJ45): the radiator
+    //     is low, the fixture is on the wall over it (`passeAuDessus`, catalogue.ts). In practice
+    //     `isBlocker` already keeps every wall-mounted fixture out of `solides` below, so this
+    //     exemption never has to fire here; it is kept as the ONE place that STATES the rule,
+    //     alongside `empilables`, rather than leaving it as an unstated side effect of a filter
+    //     written for an unrelated reason.
     // A graze is also tolerated: two objects touching by 3 cm are placed side by side.
     {
       const FROLEMENT = 3;   // cm: below this, it's contact, not stacking
@@ -265,7 +271,7 @@ function runRules(): ResultatAnalyse {
       for (let i = 0; i < solides.length; i++) {
         for (let j = i + 1; j < solides.length; j++) {
           const A = solides[i]!, B = solides[j]!;
-          if (empilables(A.type, B.type)) continue;
+          if (empilables(A.type, B.type) || passeAuDessus(A.type, B.type)) continue;
           const ab = pieceAABB(A), bb = pieceAABB(B);
           const ox = Math.min(ab.x1, bb.x1) - Math.max(ab.x0, bb.x0);
           const oy = Math.min(ab.y1, bb.y1) - Math.max(ab.y0, bb.y0);

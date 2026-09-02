@@ -38,6 +38,8 @@ import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
 import { radiatorWallSnap } from "../src/ts/modele/espace.ts";
+import { v5PlaceWallMount } from "../src/ts/modele/edition.ts";
+import { empilables, passeAuDessus } from "../src/ts/catalogue/catalogue.ts";
 import { PLAN_ID_RE as PLAN_ID_RE_FN } from "../functions/plan-id.ts";
 import { cleanName as cleanNameFn } from "../functions/nom.ts";
 import { porteDe } from "../functions/porte.ts";
@@ -839,6 +841,105 @@ test("radiateur_aimant_glisse_le_long_du_mur_en_suivant_le_centre", () => {
   if (!a || !b) return "expected both to snap, got " + JSON.stringify({ a, b });
   return expect(a.rot === 0 && b.rot === 0, "both stay aligned with the wall while sliding along it")
       && expect(a.x !== b.x, "sliding the center along the wall must move the snapped x, got the same " + a.x);
+});
+
+// F2. In hauteur: a radiator (LOW) and a wall-mounted fixture (window/sconce/plug/RJ45, ON the
+// wall ABOVE it) never occupy "the same floor spot" for one another; a door is the one exception
+// (you don't pass OVER a radiator to walk through a doorway).
+test("catalogue_passe_au_dessus_radiateur_et_fixations_murales", () => {
+  return expect(passeAuDessus("radiateur", "window"), "a window passes above a radiator")
+      && expect(passeAuDessus("sconce", "radiateur"), "a wall light passes above a radiator (either order)")
+      && expect(passeAuDessus("radiateur", "plug"), "a socket passes above a radiator")
+      && expect(passeAuDessus("radiateur", "rj45"), "an RJ45 passes above a radiator")
+      && expect(!passeAuDessus("radiateur", "door"), "a door does NOT pass above a radiator: it stays a floor obstacle")
+      && expect(!passeAuDessus("radiateur", "sdoor"), "a sliding door does NOT pass above a radiator either")
+      && expect(!passeAuDessus("radiateur", "dining"), "an ordinary piece of furniture is not exempted")
+      && expect(!passeAuDessus("sofa2", "window"), "the exemption is specific to the radiator, not furniture in general");
+});
+
+// F2, at the CIRCULATION engine level. A single 400x300 room, four facades.
+const PIECE_PLAN_F2 = (): PlanV5 => ({
+  outline: [[0, 0], [400, 0], [400, 300], [0, 300]],
+  walls: [
+    { id: "wN", a: [0, 0], b: [400, 0], t: 12, isOutline: true },
+    { id: "wS", a: [400, 300], b: [0, 300], t: 12, isOutline: true },
+    { id: "wE", a: [400, 0], b: [400, 300], t: 12, isOutline: true },
+    { id: "wW", a: [0, 300], b: [0, 0], t: 12, isOutline: true },
+  ],
+  openings: [], pieces: [], cells: [],
+});
+
+// NOTE ON "RED BEFORE GREEN" HERE: `isBlocker` (circulation/contexte.ts) already excludes every
+// `wallMount`/`opening` type (windows included) from `solides`, for a reason unrelated to
+// radiators. Checked BOTH ways (with `passeAuDessus` wired into Rule 6bis, and with that one line
+// reverted): this scenario reports ZERO "Two objects" findings either way, because a window on a
+// wall physically never overlaps a radiator flush on that same wall by more than a graze (a
+// window's box stays inside the wall's own thickness band; the radiator's back starts exactly at
+// the wall's face). So this case can't be driven red by this predicate: it is a CONFIRMATION, like
+// pose_fenetre below, not a regression test. The genuine red-before-green for F2's rule lives at
+// the predicate itself (`catalogue_passe_au_dessus_radiateur_et_fixations_murales`, red before
+// `passeAuDessus` existed) and at the negative control right after this test.
+test("flow_radiateur_colle_et_fenetre_au_dessus_zero_signalement", () => {
+  const P = PIECE_PLAN_F2();
+  P.pieces.push({ id: "rad1", type: "radiateur", name: "Radiateur", x: 150, y: 6, w: 80, h: 12, rot: 0, locked: false });
+  // depth exaggerated on purpose (real windows stay within the wall's own thickness): even a
+  // window whose box reaches deep into the room must not be flagged against the radiator below it.
+  P.openings.push({ id: "win1", wallId: "wN", t0: 130, w: 120, h: 40, type: "window", side: 0, name: "Fenêtre" });
+  flowPlan(P);
+  const ids = FLOW.analyzeApt().findings.map((f) => f.id);
+  return expect(!ids.some((id) => id.indexOf("overlap_") === 0),
+    "no 'Two objects' finding expected for a radiator + the window above it, got " + JSON.stringify(ids));
+});
+
+// NEGATIVE CONTROL, genuinely red/green: an overly broad predicate (or a mistake in `isBlocker`)
+// would silence this too. A radiator and a table sharing the same floor spot are NOT exempted.
+test("flow_radiateur_et_table_au_meme_endroit_reste_signale", () => {
+  const P = PIECE_PLAN_F2();
+  P.pieces.push({ id: "rad1", type: "radiateur", name: "Radiateur", x: 150, y: 100, w: 80, h: 12, rot: 0, locked: false });
+  P.pieces.push({ id: "t1", type: "dining", name: "Table", x: 150, y: 100, w: 150, h: 90, rot: 0, locked: false });
+  flowPlan(P);
+  const ids = FLOW.analyzeApt().findings.map((f) => f.id);
+  return expect(ids.indexOf("overlap_rad1_t1") >= 0,
+    "a radiator overlapping a table must still be flagged, got " + JSON.stringify(ids));
+});
+
+// A door stays a floor obstacle: a radiator in its swing is still caught, by Rule 2, which
+// `passeAuDessus` never touches (doors are excluded from the predicate on purpose).
+test("flow_radiateur_devant_porte_reste_signale", () => {
+  const P = PIECE_PLAN_F2();
+  P.openings.push({ id: "d1", wallId: "wN", t0: 150, w: 80, h: 12, type: "door", side: 0, name: "Porte", hinge: 0, swing: 1 });
+  P.pieces.push({ id: "rad1", type: "radiateur", name: "Radiateur", x: 150, y: 20, w: 80, h: 12, rot: 0, locked: false });
+  flowPlan(P);
+  const ids = FLOW.analyzeApt().findings.map((f) => f.id);
+  return expect(ids.indexOf("swing_d1_rad1") >= 0,
+    "a radiator in the doorway must still block the door swing, got " + JSON.stringify(ids));
+});
+
+// F2, bullets 2 and 3: placing/moving a wall fixture near a radiator, and sliding a radiator under
+// an existing wall fixture, are pure functions of the WALLS (`v5NearestWall`): they never read
+// `P.pieces`/`P.openings` of the OTHER kind, so neither can refuse because of the other. Proved,
+// not assumed.
+test("pose_fenetre_sur_mur_ou_un_radiateur_est_deja_colle_n_est_pas_refusee", () => {
+  const wall: Mur = { id: "wN", a: [0, 0], b: [400, 0], t: 12 };
+  const P: PlanV5 = {
+    outline: [], walls: [wall], openings: [],
+    pieces: [{ id: "rad1", type: "radiateur", name: "Radiateur", x: 150, y: 6, w: 80, h: 12, rot: 0, locked: false }],
+    cells: [],
+  };
+  const fab = { newId: (prefix: string) => prefix + "1", autoName: (base: string) => base };
+  const op = v5PlaceWallMount(P, "window", 190, 0, 60, fab);
+  return expect(!!op, "placing a window on a wall where a radiator already sits must NOT be refused, got null");
+});
+
+test("aimant_radiateur_sous_une_fenetre_existante_n_est_pas_refuse", () => {
+  const wall: Mur = { id: "wN", a: [0, 0], b: [400, 0], t: 12 };
+  const P: PlanV5 = {
+    outline: [], walls: [wall],
+    openings: [{ id: "win1", wallId: "wN", t0: 130, w: 120, h: 12, type: "window", side: 0, name: "Fenêtre" }],
+    pieces: [], cells: [],
+  };
+  const r = radiatorWallSnap(P, rectCentre(190, 4), 20);
+  return expect(!!r, "the wall magnet must not be blocked by a window already on that wall, got null");
 });
 
 // =================================================================================================

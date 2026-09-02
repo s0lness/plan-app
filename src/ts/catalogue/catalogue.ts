@@ -207,6 +207,23 @@ export function empilables(a: string, b: string): boolean {
 }
 
 /**
+ * A radiator is LOW; a window, a wall light, a socket, an RJ45 sit on the wall ABOVE it: none of
+ * them occupies the radiator's floor spot, or vice versa, so "two objects in the same place"
+ * (circulation/regles.ts) must never fire for that pair, in EITHER order, exactly like `empilables`.
+ *
+ * A DOOR IS NOT ONE OF THEM, on purpose: `isWallMount` says a door and a window are the same kind
+ * of thing (both `opening`), but a door has a floor-level swing and a passage you actually walk
+ * through, a window doesn't. You don't pass OVER a radiator to walk through a doorway, so a door
+ * (or a sliding door) in front of a radiator stays a real obstacle for this predicate; it is
+ * already caught anyway by the door-swing rule (Rule 2), which is untouched by this predicate.
+ */
+export function passeAuDessus(a: string, b: string): boolean {
+  const paire = (x: string, y: string): boolean =>
+    x === "radiateur" && isWallMount(y) && y !== "door" && y !== "sdoor";
+  return paire(a, b) || paire(b, a);
+}
+
+/**
  * `type` -> item. The construction is the SAME as in the old client (`it.color || g.color`):
  * `tests/rapide.ts` used to redo it identically on its own side, it's now done HERE, once,
  * and imported by the tests.
