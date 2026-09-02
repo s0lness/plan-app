@@ -209,6 +209,20 @@ Recovery is the file export, because D1 keeps one row and no history. Either
 accept that explicitly or keep the last N revisions server-side; this proposal
 accepts it and says so.
 
+**What makes that property TRUE, and it was false until this batch.** The replay
+journal is what keeps a peer's ops out of an undo, and `presence.ts` only filled
+it when the relayed op carried a `by`. A guest has no `by`: `functions/ws.ts`
+forwards an EMPTY `X-Plan-Email` on the invite door (there is no address to have),
+and the Durable Object only projects `by` toward a household audience. So a guest's
+ops entered nothing, and the owner's next Ctrl+Z restored a snapshot that knew
+nothing about them and republished that amputated plan by diff: undo was not
+author-scoped for a guest, it was guest-destroying. The journal is now decided on
+`tag`, the DEVICE identity the server assigns per socket and sends to everyone
+(AGENTS.md, "THE TECHNICAL IDENTITY IS THE DEVICE"), and falls back to `by` only
+for a server old enough not to send `tag` at all. Covered by
+`tests/deux-appareils.ts` (`op_d_un_invite_sans_email_entre_au_journal`,
+`annuler_du_foyer_ne_detruit_pas_le_meuble_d_un_invite`).
+
 ## Edge cases
 
 Each of these is a test case, not a note.

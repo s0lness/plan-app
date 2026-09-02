@@ -329,6 +329,9 @@ class Replique {
     // snapshot, a wall with a stale thickness when the peer's op had been refused locally by the
     // validator (measured: seed 9931426, t=17 on the client against t=18 on the server, with no
     // opening at fault).
+    // THE DECISION IS THE `tag`, never the author's e-mail, and this harness has always modelled
+    // it that way: `src/ts/fil/presence.ts` now matches it (it used to require a `by`, which a
+    // guest never carries, so a guest's ops silently stayed out of the journal).
     if (tag !== this.tag && (this.undo.length || this.redo.length)) this.histLog.push(clone(op));
     try { this.plan = applyOp(this.plan, clone(op)); }
     catch (e) {
