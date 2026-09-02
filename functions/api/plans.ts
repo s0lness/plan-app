@@ -95,14 +95,25 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (!id) return json({ error: "cannot_derive_id" }, 409);
   }
 
-  // A NEW PLAN IS BORN EMPTY, NOT COPIED. `data` is `null` in the database until someone has laid
-  // down anything: the client will see "no plan" and open its outline assistant, exactly as on
-  // first startup. Copying the current plan would be a DIFFERENT gesture ("duplicate"), and
-  // confusing it with "new" would start from an apartment that isn't the one meant to be drawn.
+  // A NEW PLAN IS BORN EMPTY, NOT COPIED. Nothing is in `data` until someone has laid something
+  // down: the client will see "no plan" and open its outline assistant, exactly as on first
+  // startup. Copying the current plan would be a DIFFERENT gesture ("duplicate"), and confusing
+  // it with "new" would start from an apartment that isn't the one meant to be drawn.
+  //
+  // WHY THE JSON LITERAL AND NOT AN SQL NULL. "No plan" wants to be an SQL NULL, and cannot be
+  // one: `plans.data` is `TEXT NOT NULL` in production (live-worker/schema.sql, an exact
+  // reproduction of the live definitions), so binding `null` here raises
+  // "NOT NULL constraint failed: plans.data" and creating a plan fails outright. Dropping that
+  // constraint means rebuilding the table on the live database, which belongs with the schema
+  // file, not with this route. So "no plan" is encoded IN the column, as the one text every
+  // reader already parses back to nothing: `functions/api/plan.ts`'s GET answers `{data:null}`
+  // for it (and for an SQL NULL, the day there is one), and the Durable Object's cold load must
+  // read it as an empty plan rather than an unreadable one.
+  const PLAN_VIDE = "null";
   const now = new Date().toISOString();
   await env.DB
     .prepare("INSERT INTO plans(id,name,data,rev,updated_at,updated_by) VALUES(?1,?2,?3,0,?4,?5)")
-    .bind(id, nom, JSON.stringify(null), now, identiteFoyer(request, porteDe(request, env)))
+    .bind(id, nom, PLAN_VIDE, now, identiteFoyer(request, porteDe(request, env)))
     .run();
   return json({ ok: true, id, name: nom });
 };

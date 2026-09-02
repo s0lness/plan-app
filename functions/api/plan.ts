@@ -99,6 +99,20 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     .bind(planId)
     .first<PlanRow>();
   if (!row) return Response.json({ data: null, rev: 0 });
+  // A ROW WITH NO PLAN IN IT READS EXACTLY LIKE AN ABSENT ROW. `functions/api/plans.ts` creates a
+  // plan EMPTY (nobody has drawn anything yet), and "empty" is `data` holding no plan at all: the
+  // JSON literal `null` today, an SQL NULL the day `plans.data` stops being `TEXT NOT NULL`
+  // (live-worker/schema.sql). Both must answer the contract's `{data:null, rev}`, because the
+  // client decides "the household has no plan yet" from that shape and nothing else. `JSON.parse`
+  // was reached with `null` as its argument in the SQL-NULL case, which coerces to the string
+  // "null" and happened to work; a column holding "" or half a document, on the other hand, threw
+  // and turned a readable row into a 500 (see the corrupt-row guard below).
+  if (row.data === null || row.data === undefined || row.data === "") {
+    return Response.json({
+      data: null, rev: row.rev, updatedAt: row.updated_at,
+      updatedBy: porte === "invite" ? auteurPourInvite(row.updated_by) : row.updated_by,
+    });
+  }
   return Response.json({
     data: JSON.parse(row.data),
     rev: row.rev,

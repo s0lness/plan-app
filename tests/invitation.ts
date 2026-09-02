@@ -15,6 +15,9 @@ import {
   onRequestDelete as invitesRevoke, onRequestGet as invitesList, onRequestPost as invitesCreate,
 } from "../functions/api/invites.ts";
 import { onRequestGet as planGet, onRequestPut as planPut } from "../functions/api/plan.ts";
+import {
+  onRequestDelete as plansDelete, onRequestPost as plansPost,
+} from "../functions/api/plans.ts";
 import { onRequest as wsUpgrade } from "../functions/ws.ts";
 import { cleanName } from "../functions/nom.ts";
 import { fakeD1 } from "./fake-d1.ts";
@@ -729,6 +732,68 @@ await test("ws_foyer_marque_guest_a_zero", async () => {
       && expect(!!vue, "le Durable Object doit avoir reçu une requête transmise")
       && expect(vue!.headers.get("X-Plan-Guest") === "0", "X-Plan-Guest doit être 0 sur la porte foyer")
       && expect(vue!.headers.get("X-Plan-Email") === "sylve@example.com", "X-Plan-Email doit rester l'identité Access sur le foyer");
+});
+
+// =================================================================================================
+//  6. UN PLAN NEUF N'A PAS DE PLAN DEDANS, et ça se lit comme une ligne absente
+// =================================================================================================
+// `functions/api/plans.ts` crée une ligne VIDE. Le contrat de `/api/plan` GET dit
+// « ligne absente = {data:null, rev:0} » : une ligne SANS plan dedans doit répondre pareil, sinon
+// le client ne reconnaît pas « le foyer n'a encore rien dessiné » et n'ouvre pas son assistant.
+
+async function planGetFoyer(env: DonneeDynamique, url: string) {
+  return planGet({
+    request: req(url, { host: HOTE_FOYER, headers: { "Cf-Access-Authenticated-User-Email": "sylve@example.com" } }),
+    env,
+  } as unknown as Parameters<typeof planGet>[0]);
+}
+
+await test("plan_neuf_se_lit_comme_une_ligne_absente", async () => {
+  const { db, env } = base();
+  const res0 = await plansPost({
+    request: req("https://plan.example.com/api/plans", { method: "POST", host: HOTE_FOYER, body: { name: "Chez nous" } }),
+    env,
+  } as unknown as Parameters<typeof plansPost>[0]);
+  const cree = await res0.json<DonneeDynamique>();
+  const ok = expect(res0.status === 200 && cree.ok === true, "la création doit réussir, vu " + res0.status + " " + JSON.stringify(cree));
+  if (!ok) return false;
+  const ligne = db.prepare("SELECT data FROM plans WHERE id=?1").get(cree.id) as DonneeDynamique;
+  const res = await planGetFoyer(env, "https://plan.example.com/api/plan?p=" + cree.id);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.data === null, "un plan neuf doit rendre data:null, vu " + JSON.stringify(corps.data))
+      && expect(corps.rev === 0, "et rev:0, vu " + JSON.stringify(corps.rev))
+      // La colonne reste lisible par tout le monde : ce qu'elle porte doit se reparser en « rien ».
+      && expect(JSON.parse(String(ligne.data)) === null, "la colonne doit porter « aucun plan », vu " + JSON.stringify(ligne.data));
+});
+
+await test("plan_colonne_data_sql_null_se_lit_comme_une_ligne_absente", async () => {
+  // `plans.data` est `TEXT NOT NULL` en production (live-worker/schema.sql), donc cette ligne-là
+  // n'existe pas aujourd'hui. On relâche la contrainte ICI, dans la base du test, pour prouver que
+  // le lecteur ne dépend pas de cette contrainte : le jour où elle tombe (c'est ce que la revue
+  // demande), `JSON.parse(null)` ne doit pas décider tout seul du contrat.
+  const { db, env } = base();
+  db.exec("ALTER TABLE plans RENAME TO plans_strict");
+  db.exec("CREATE TABLE plans(id TEXT PRIMARY KEY, data TEXT, rev INTEGER NOT NULL DEFAULT 0, updated_at TEXT, updated_by TEXT, name TEXT)");
+  db.prepare("INSERT INTO plans(id,data,rev,updated_at,updated_by,name) VALUES('vide',NULL,0,?1,'sylve@example.com','Chez nous')")
+    .run(new Date().toISOString());
+  const res = await planGetFoyer(env, "https://plan.example.com/api/plan?p=vide");
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.data === null, "une colonne SQL NULL doit rendre data:null, vu " + JSON.stringify(corps.data))
+      && expect(corps.rev === 0, "et rev:0, vu " + JSON.stringify(corps.rev));
+});
+
+await test("plan_colonne_data_vide_se_lit_comme_une_ligne_absente", async () => {
+  // La chaîne vide, elle, PASSE la contrainte NOT NULL : c'est le cas atteignable aujourd'hui, et
+  // `JSON.parse("")` jette. Une ligne sans plan dedans n'est pas une panne du serveur.
+  const { db, env } = base();
+  db.prepare("INSERT INTO plans(id,data,rev,updated_at,updated_by,name) VALUES('vide','',0,?1,'sylve@example.com','Chez nous')")
+    .run(new Date().toISOString());
+  const res = await planGetFoyer(env, "https://plan.example.com/api/plan?p=vide");
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.data === null, "une colonne vide doit rendre data:null, vu " + JSON.stringify(corps.data));
 });
 
 // =================================================================================================
