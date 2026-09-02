@@ -57,7 +57,7 @@ export function brancherTransfert(ctx: Contexte): void {
     if (mode === "export") {
       if (xferTitle) xferTitle.textContent = "Save the plan";
       xferTa.readOnly = true; xferTa.placeholder = ""; xferTa.value = exportPayload(ctx);
-      if (xferHint) xferHint.textContent = "Direct download is not available here. Copy this content and keep it in a file (flat-plan.json), or paste it straight into “Open from file…”.";
+      if (xferHint) xferHint.textContent = "Direct download is not available here. Copy this content and keep it in a file (flat-plan.json), or paste it straight into “Open from file”.";
       if (xferCopy) { xferCopy.hidden = false; xferCopy.textContent = "Copy"; }
       if (xferImport) xferImport.hidden = true;
       if (xferFile) xferFile.hidden = true;

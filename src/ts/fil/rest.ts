@@ -518,7 +518,7 @@ function afficherBanniereSuppression(): void {
   try { toast("This plan has been deleted."); } catch (_) { /* nothing */ }
   if (!ban || !txt) return;
   txt.textContent = "This plan has been deleted. Your work stays on this device and is no longer "
-    + "shared: “Save to file…” keeps it.";
+    + "shared: “Save to file” keeps it.";
   ban.hidden = false;
   if (_banniereSuppressionWiree) return;
   _banniereSuppressionWiree = true;
@@ -528,7 +528,7 @@ function afficherBanniereSuppression(): void {
   // choice `fil/invite.ts`'s local banner already makes.
   const save = document.createElement("button");
   save.type = "button"; save.className = "btn sm pri"; save.id = "supprimeSave";
-  save.textContent = "Save to file…";
+  save.textContent = "Save to file";
   save.addEventListener("click", () => { $("btnExport")?.click(); });
   ban.insertBefore(save, x || null);
 }
