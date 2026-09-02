@@ -70,7 +70,7 @@ function peindre(): void {
       <span class="pname" data-id="${escapeHtml(p.id)}" title="Double-click to rename">${escapeHtml(p.name)}</span>
       <span class="pmeta">${vide ? "empty" : quand}</span>
       <button class="btn sm pshare" data-id="${escapeHtml(p.id)}" title="Share this plan by link">Share</button>
-      ${ici ? `<span class="pcur">open</span>`
+      ${ici ? `<span class="pcur" title="This is the plan on screen">Current</span>`
             : `<button class="btn sm popen" data-id="${escapeHtml(p.id)}">Open</button>`}
       ${p.id === "main" ? "" : `<button class="flow-x pdel" data-id="${escapeHtml(p.id)}" title="Delete this plan">×</button>`}
     </div>`;

@@ -66,6 +66,9 @@
 
   /* ---------- help modal (reuses the setup overlay chrome) ---------- */
   .help-card{grid-template-columns:1fr;width:min(680px,100%)}
+  /* The plans selector: one column, sized to its rows. Must come AFTER `.setup-card`, which sets
+     760 px and two columns at the same specificity (the list is styled in 08-inspecteur-fiche.css). */
+  .plans-card{grid-template-columns:1fr;width:min(440px,100%)}
   .help-body{max-height:min(72vh,640px);overflow:auto;display:flex;flex-direction:column;gap:18px;
     -webkit-overflow-scrolling:touch}
   .help-sec h3{margin:0 0 7px;font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}

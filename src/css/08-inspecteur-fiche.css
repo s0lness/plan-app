@@ -84,9 +84,11 @@
      boxes. A box per line looks like an input field and manufactures three borders
      where one is enough. The current plan is marked by an accent RULE on the left, not by a
      solid fill: a solid fill on a list row draws the eye like an error. */
-  .plans-card{grid-template-columns:1fr;width:min(420px,100%)}
+  /* The card's own width and column rule live in 14-overlays.css, right after `.help-card`:
+     written here, `.setup-card` (760 px, two columns) comes later in the cascade and wins, and
+     the list sits in the left half of a box twice too wide. */
   .plans-list{display:flex;flex-direction:column;margin:0 0 2px}
-  .plan-row{display:flex;align-items:baseline;gap:10px;padding:7px 2px 7px 10px;
+  .plan-row{display:flex;align-items:center;gap:10px;padding:7px 2px 7px 10px;
     border-bottom:1px solid var(--line);border-left:2px solid transparent;cursor:pointer}
   .plan-row:last-child{border-bottom:0}
   .plan-row:hover{background:var(--accent-soft)}
@@ -99,6 +101,11 @@
     border:1px solid var(--accent);border-radius:3px;background:var(--room-bg);color:var(--ink)}
   .plan-row .pmeta{font-family:var(--mono);font-size:11px;color:var(--faint);
     font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+  /* The plan on screen has no Open button; a quiet tag stands in its place, same footprint as the
+     button, so the columns of every row line up. */
+  .plan-row .pcur{flex:none;font-size:11.5px;font-weight:600;letter-spacing:.2px;color:var(--accent-ink);
+    background:var(--accent-soft);border-radius:var(--radius-control);padding:3px 9px;line-height:1.35;
+    min-width:46px;text-align:center}
   /* The cross only shows on HOVER of its row: a list of plans is not a list of
      delete buttons. It stays reachable by keyboard (focus-visible). */
   .plan-row .pdel{flex:none;opacity:0;transition:opacity .12s;font-size:15px;line-height:1}
