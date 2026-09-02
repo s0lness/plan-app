@@ -25,9 +25,8 @@ import { focusEl } from "../rendu/calque.ts";
 import { render } from "../rendu/rendu.ts";
 import { screenToApt } from "../rendu/vue.ts";
 import { selReplace } from "../rendu/selection.ts";
-import { v5ClampPiece } from "../modele/edition.ts";
 import { armGesture, disarmGesture, endActiveGesture, escapeActiveGesture } from "./sortie.ts";
-import { measureMode, spaceHeld, estPrecis, pointSuivi, sansGrille } from "./etat-pointeur.ts";
+import { measureMode, spaceHeld } from "./etat-pointeur.ts";
 import { pushHistory } from "../historique/pile.ts";
 
 export function startPieceResize(ctx: Contexte, e: PointerEvent, p: Meuble, hkey: string): void {
@@ -85,9 +84,10 @@ export function startPieceResize(ctx: Contexte, e: PointerEvent, p: Meuble, hkey
     const ncx = awx + (olx * cs - oly * sn), ncy = awy + (olx * sn + oly * cs);
     p.w = nw; p.h = nh;
     p.x = Math.round(ncx - nw / 2); p.y = Math.round(ncy - nh / 2);
-    // `clampPiece` (js/19): a wall-mounted object is parametric, nothing to bound; and there is NO
-    // acquired tolerance here, unlike the drag, since this is the gesture that changes SIZE.
-    if (!isWallMount(p.type)) { v5ClampPiece(ctx.etat.plan, p); v5Touch(ctx); }
+    // NOTHING BOUNDS A RESIZE: a piece can be made bigger than the room it stands in, and it
+    // simply sticks out. The wall it grows into is Circulation's business to report, not this
+    // gesture's to prevent.
+    v5Touch(ctx);
   };
 
   // ---- live dimension + keyboard number entry ---------------------------------------------
@@ -123,9 +123,7 @@ export function startPieceResize(ctx: Contexte, e: PointerEvent, p: Meuble, hkey
       if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) { showReadout(); return; }
       moved = true; noterEdition();
     }
-    // SHIFT = precise mode, anchored on the pointer's position at the START of the gesture.
-    const sp = pointSuivi(ev, ev.clientX, ev.clientY, e.clientX, e.clientY);
-    const cm = toCm(sp.x, sp.y);
+    const cm = toCm(ev.clientX, ev.clientY);
     // pointer's offset from the anchor, expressed along the piece's LOCAL axes (rotation by -rot),
     // MINUS the pickup offset: what we track is the corner being held, not the cursor's tip.
     const rx = cm.x - awx, ry = cm.y - awy;
@@ -134,13 +132,7 @@ export function startPieceResize(ctx: Contexte, e: PointerEvent, p: Meuble, hkey
     let nw = w0, nh = h0;
     if (h.dw) nw = (dLocX - priseX) * h.ux;
     if (h.dh) nh = (dLocY - priseY) * h.uy;
-    // THE GRID SNAP IS CUT OFF IN PRECISE MODE: rounding to 5 cm what we just slowed down
-    // to reach the centimeter would exactly undo what we're in the middle of doing. Ctrl/Cmd
-    // (`sansGrille`) cuts it off outright, precise mode or not: the same "no grid" key as furniture.
-    if (ctx.etat.opts.snap && !estPrecis(ev) && !sansGrille(ev)) {
-      if (h.dw) nw = Math.round(nw / 5) * 5;
-      if (h.dh) nh = Math.round(nh / 5) * 5;
-    }
+    // NO GRID: a dimension follows the hand to the whole centimetre (`applyWH` rounds it, once).
     applyWH(nw, nh);
     lastDragW = p.w; lastDragH = p.h;
     render(ctx); ctx.crochets.syncInspector?.(); ctx.crochets.liveAnalyze?.(); showReadout();

@@ -26,7 +26,7 @@ import {
   v5WallCovering,
 } from "./modele/edition.ts";
 import { fabriqueOuverture, mk } from "./modele/creation.ts";
-import { clampCenterToApt, wallSnapReach } from "./modele/espace.ts";
+import { wallSnapReach } from "./modele/espace.ts";
 import { v5DeviceTag, v5NewId } from "./fil/identite.ts";
 import { render } from "./rendu/rendu.ts";
 import { aptBBox, aptToScreen, renderView } from "./rendu/vue.ts";
@@ -37,13 +37,12 @@ import { histInfo, pushHistory, redo, undo } from "./historique/pile.ts";
 import {
   endActiveGesture, escapeActiveGesture, gesteActif, gesteArme, fileEnAttente, vieillirGeste,
 } from "./gestes/sortie.ts";
-import { WALL_INSET, clampCenterToInset, pieceTol } from "./gestes/contraintes.ts";
+import { WALL_INSET, clampCenterToInset } from "./gestes/contraintes.ts";
 import { lassoVivant, piecesInClientRect, railOpen } from "./gestes/vue-interactions.ts";
 import { setCursorApt, lastCursorApt } from "./gestes/etat-pointeur.ts";
 import { cur, delSel, flipWallMountSide } from "./gestes/selection-actions.ts";
 import { planClipInfo, planClipReset, planCopy, planPaste, planPasteFromText } from "./gestes/clavier.ts";
 
-import { oublierAvantDernier } from "./gestes/meuble.ts";
 import {
   v5AfterGeometry, v5DeleteSelectedWall, v5SelectCell, v5SelectWall, v5SetModel,
   v5WallDragApply, v5WallDragCtx,
@@ -91,10 +90,8 @@ export interface SondeGestes {
   clampV5Piece(p: Meuble): Meuble;
   /** The clearance, in cm, a furniture piece keeps from the wall's bare face. */
   readonly WALL_INSET: number;
-  pieceTol(p: Meuble): number;
   readonly lastFit: boolean;
   clampToInset(cx: number, cy: number, w: number, h: number, rot: number, poly: Pt[]): { cx: number; cy: number; fits: boolean };
-  clampCenterToApt(ax: number, ay: number, hors?: number): { x: number; y: number };
 
   readonly v5ui: { selWall: string | null; selCell: string | null; draw: boolean };
   canDeleteWall(id: unknown): boolean;
@@ -119,7 +116,6 @@ export interface SondeGestes {
   readonly lastCursorApt: { x: number; y: number } | null;
   resizeHandle(pieceId: unknown, hkey: string, dx: number, dy: number): { w: number; h: number; x: number; y: number; rot: number } | null;
   delSel(): void;
-  oublierAvantDernier(): void;
 
   // ---- openings ----
   v5PlaceAt(type: string, x: number, y: number): { id: string; wallId: string; t0: number; side: number; type: string } | null;
@@ -229,10 +225,8 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     cellOf: (x: number, y: number) => v5CellsAt(ctx.etat.plan, x, y),
     clampV5Piece(p: Meuble) { v5ClampPiece(ctx.etat.plan, p); return p; },
     WALL_INSET,
-    pieceTol: (p: Meuble) => pieceTol(ctx.etat.plan, p),
     get lastFit() { return v5LastFit(); },
     clampToInset: (cx, cy, w, h, rot, poly) => clampCenterToInset(cx, cy, w, h, rot, poly),
-    clampCenterToApt: (ax, ay, hors) => clampCenterToApt(ctx.etat.plan, ax, ay, hors),
 
     get v5ui() {
       return { selWall: ctx.ihm.selWall, selCell: ctx.ihm.selCell, draw: ctx.ihm.draw };
@@ -343,18 +337,16 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
       let nw = w0, nh = h0;
       if (h.dw) nw = dLocX * h.ux;
       if (h.dh) nh = dLocY * h.uy;
-      if (ctx.etat.opts.snap) { if (h.dw) nw = Math.round(nw / 5) * 5; if (h.dh) nh = Math.round(nh / 5) * 5; }
       nw = Math.round(clamp(nw, RSZ_MIN, RSZ_MAX));
       nh = Math.round(clamp(nh, RSZ_MIN, RSZ_MAX));
       const olx = h.ux * nw / 2, oly = h.uy * nh / 2;
       const ncx = awx + (olx * cs - oly * sn), ncy = awy + (olx * sn + oly * cs);
       p.w = nw; p.h = nh; p.x = Math.round(ncx - nw / 2); p.y = Math.round(ncy - nh / 2);
-      if (!isWallMount(p.type)) { v5ClampPiece(ctx.etat.plan, p); v5Touch(ctx); }
+      v5Touch(ctx);
       render(ctx); ctx.crochets.syncInspector?.();
       return { w: p.w, h: p.h, x: p.x, y: p.y, rot: p.rot || 0 };
     },
     delSel: () => delSel(ctx),
-    oublierAvantDernier,
 
     v5PlaceAt(type: string, x: number, y: number) {
       const op = v5PlaceWallMount(ctx.etat.plan, type, x, y, wallSnapReach(ctx.vue.scale), fabriqueOuverture(ctx.etat.plan), ctx.etat.opts);

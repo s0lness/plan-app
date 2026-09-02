@@ -37,7 +37,7 @@ import { FL } from "../src/ts/circulation/etat.ts";
 import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
-import { radiatorWallSnap } from "../src/ts/modele/espace.ts";
+import { meubleWallSnap } from "../src/ts/modele/espace.ts";
 import { v5PlaceWallMount } from "../src/ts/modele/edition.ts";
 import { empilables, passeAuDessus } from "../src/ts/catalogue/catalogue.ts";
 import { PLAN_ID_RE as PLAN_ID_RE_FN } from "../functions/plan-id.ts";
@@ -792,20 +792,24 @@ test("v5_opening_side_survives_the_wire", () => {
 });
 
 // =================================================================================================
-//  4quinquies. F1: THE RADIATOR MAGNET (modele/espace.ts, `radiatorWallSnap`)
+//  4quinquies. THE WALL MAGNET, FOR EVERY PIECE OF FURNITURE (modele/espace.ts, `meubleWallSnap`)
 //  PURE: plan + rectangle + reach -> snapped {x,y,rot}, or null out of reach. No DOM, no gesture:
 //  the drag/drop wiring (gestes/meuble.ts, gestes/pose.ts) is exercised by the browser suites only.
 // =================================================================================================
 const RADIATEUR_WH = { w: 80, h: 12 };
-// A rectangle centered on (cx,cy), the shape `radiatorWallSnap` takes.
+// A rectangle centered on (cx,cy), the shape `meubleWallSnap` takes.
 const rectCentre = (cx: number, cy: number) =>
   ({ x: cx - RADIATEUR_WH.w / 2, y: cy - RADIATEUR_WH.h / 2, w: RADIATEUR_WH.w, h: RADIATEUR_WH.h });
+/** Any rectangle, centered on (cx,cy): a bed is 160 wide and 200 DEEP, so its center sits a full
+ *  metre from the wall its back is flush against. */
+const rectTaille = (cx: number, cy: number, w: number, h: number) =>
+  ({ x: cx - w / 2, y: cy - h / 2, w, h });
 const PLAN_MUR = (wall: Mur): PlanV5 => ({ outline: [], walls: [wall], openings: [], pieces: [], cells: [] });
 
 test("radiateur_aimant_mur_horizontal_a_portee_se_colle_dos_au_mur", () => {
   const wall: Mur = { id: "wH", a: [0, 0], b: [200, 0], t: 12 };
   // center 4cm below the wall's centerline (well within a 20cm reach): must snap.
-  const r = radiatorWallSnap(PLAN_MUR(wall), rectCentre(100, 4), 20);
+  const r = meubleWallSnap(PLAN_MUR(wall), rectCentre(100, 4), 20);
   if (!r) return "expected a snap, got null";
   const backY = r.y;   // corner y = the top edge at rot 0 = the back, flush on the wall's face
   return expect(r.rot === 0, "a horizontal wall must align rot to 0, got " + r.rot)
@@ -815,14 +819,14 @@ test("radiateur_aimant_mur_horizontal_a_portee_se_colle_dos_au_mur", () => {
 test("radiateur_hors_de_portee_du_mur_reste_inchange", () => {
   const wall: Mur = { id: "wH", a: [0, 0], b: [200, 0], t: 12 };
   // center 40cm below the wall's centerline, beyond a 20cm reach: no snap.
-  const r = radiatorWallSnap(PLAN_MUR(wall), rectCentre(100, 40), 20);
+  const r = meubleWallSnap(PLAN_MUR(wall), rectCentre(100, 40), 20);
   return expect(r === null, "40cm is out of a 20cm reach, expected null, got " + JSON.stringify(r));
 });
 
 test("radiateur_aimant_mur_vertical_rot_90", () => {
   const wall: Mur = { id: "wV", a: [0, 0], b: [0, 200], t: 12 };
   // center 4cm to the LEFT of the wall: within reach, rot must align to the vertical wall (90).
-  const r = radiatorWallSnap(PLAN_MUR(wall), rectCentre(-4, 100), 20);
+  const r = meubleWallSnap(PLAN_MUR(wall), rectCentre(-4, 100), 20);
   return expect(!!r && r.rot === 90, "a vertical wall must align rot to 90, got " + JSON.stringify(r));
 });
 
@@ -830,17 +834,70 @@ test("radiateur_aimant_mur_oblique_45_degres", () => {
   const wall: Mur = { id: "wO", a: [0, 0], b: [100, 100], t: 12 };
   // center 4cm off the wall's midpoint, along its normal (the side that resolves to `side=0`).
   const n = { x: -Math.SQRT1_2, y: Math.SQRT1_2 };
-  const r = radiatorWallSnap(PLAN_MUR(wall), rectCentre(50 + n.x * 4, 50 + n.y * 4), 20);
+  const r = meubleWallSnap(PLAN_MUR(wall), rectCentre(50 + n.x * 4, 50 + n.y * 4), 20);
   return expect(!!r && r.rot === 45, "a 45deg wall must snap rot to 45, got " + JSON.stringify(r));
 });
 
 test("radiateur_aimant_glisse_le_long_du_mur_en_suivant_le_centre", () => {
   const wall: Mur = { id: "wH", a: [0, 0], b: [200, 0], t: 12 };
-  const a = radiatorWallSnap(PLAN_MUR(wall), rectCentre(50, 4), 20);
-  const b = radiatorWallSnap(PLAN_MUR(wall), rectCentre(150, 4), 20);
+  const a = meubleWallSnap(PLAN_MUR(wall), rectCentre(50, 4), 20);
+  const b = meubleWallSnap(PLAN_MUR(wall), rectCentre(150, 4), 20);
   if (!a || !b) return "expected both to snap, got " + JSON.stringify({ a, b });
   return expect(a.rot === 0 && b.rot === 0, "both stay aligned with the wall while sliding along it")
       && expect(a.x !== b.x, "sliding the center along the wall must move the snapped x, got the same " + a.x);
+});
+
+// ---- the same magnet, on a DEEP piece of furniture: the reach is read on the BACK ---------------
+// A bed is 160 x 200: flush against a wall, its center is 100 cm away from it. Reading the reach at
+// the center (what the radiator-only version did) could never catch it, whatever the depth.
+const MUR_H: Mur = { id: "wH", a: [0, 0], b: [400, 0], t: 12 };
+/** Center of a `w x h` piece whose BACK sits `gap` cm from the horizontal wall's inner face (y=6). */
+const litDosA = (gap: number, h: number) => 6 + gap + h / 2;
+
+test("aimant_lit_dos_a_8cm_du_mur_se_colle_avec_la_rotation_du_mur", () => {
+  const r = meubleWallSnap(PLAN_MUR(MUR_H), rectTaille(200, litDosA(8, 200), 160, 200), 20);
+  if (!r) return "expected a snap for a bed whose back is 8cm from the wall, got null";
+  return expect(r.rot === 0, "a horizontal wall must align rot to 0, got " + r.rot)
+      && expect(near(r.y, 6, 0.5), "the bed's back must land on the wall's face (y=6), got " + r.y);
+});
+
+test("aimant_lit_dos_a_60cm_du_mur_ne_bouge_pas", () => {
+  const r = meubleWallSnap(PLAN_MUR(MUR_H), rectTaille(200, litDosA(60, 200), 160, 200), 20);
+  return expect(r === null, "60cm of back-to-wall gap is out of a 20cm reach, got " + JSON.stringify(r));
+});
+
+test("aimant_coupe_par_alt_ne_colle_rien", () => {
+  const rect = rectTaille(200, litDosA(8, 200), 160, 200);
+  const avec = meubleWallSnap(PLAN_MUR(MUR_H), rect, 20);
+  const sans = meubleWallSnap(PLAN_MUR(MUR_H), rect, 20, true);
+  return expect(!!avec, "control: without Alt this bed snaps")
+      && expect(sans === null, "Alt held (sansAimant) must cut the magnet outright, got " + JSON.stringify(sans));
+});
+
+test("aimant_aller_retour_revient_au_point_de_depart", () => {
+  // The drag is now: round the corner once, then the magnet. No grid, no bounds, no tolerance, so
+  // a piece pushed by +37 cm and pulled back by -37 must land on the exact same centimetre.
+  const P = PLAN_MUR(MUR_H);
+  const depart = rectTaille(200, litDosA(8, 200), 160, 200);
+  const a = meubleWallSnap(P, depart, 20);
+  if (!a) return "control: the starting position must snap";
+  // out of reach, mid-room: the hand keeps it, the magnet says nothing
+  const loin = { x: a.x + 37, y: a.y + 400, w: 160, h: 200 };
+  if (meubleWallSnap(P, loin, 20)) return "control: 400cm away nothing must snap";
+  const retour = { x: loin.x - 37, y: loin.y - 400, w: 160, h: 200 };
+  const b = meubleWallSnap(P, retour, 20);
+  return expect(!!b && b.x === a.x && b.y === a.y && b.rot === a.rot,
+    "the round trip must return to the exact starting placement, " + JSON.stringify(a) + " vs " + JSON.stringify(b));
+});
+
+test("aimant_meuble_chevauchant_le_mur_est_ressorti_jamais_repousse_ailleurs", () => {
+  // A converted plan places furniture STRADDLING the wall. Nothing pushes it home any more: the
+  // magnet alone acts, and it only brings the back onto the face, keeping the piece on its own
+  // side of the wall (the room side its center was on).
+  const r = meubleWallSnap(PLAN_MUR(MUR_H), rectTaille(200, 100, 160, 200), 20);
+  if (!r) return "a piece straddling the wall is within reach: expected a snap, got null";
+  return expect(near(r.y, 6, 0.5), "its back must come out onto the wall's face (y=6), got " + r.y)
+      && expect(r.x === 200 - 80, "it must not slide along the wall: x stays under the hand, got " + r.x);
 });
 
 // F2. In hauteur: a radiator (LOW) and a wall-mounted fixture (window/sconce/plug/RJ45, ON the
@@ -938,7 +995,7 @@ test("aimant_radiateur_sous_une_fenetre_existante_n_est_pas_refuse", () => {
     openings: [{ id: "win1", wallId: "wN", t0: 130, w: 120, h: 12, type: "window", side: 0, name: "Fenêtre" }],
     pieces: [], cells: [],
   };
-  const r = radiatorWallSnap(P, rectCentre(190, 4), 20);
+  const r = meubleWallSnap(P, rectCentre(190, 4), 20);
   return expect(!!r, "the wall magnet must not be blocked by a window already on that wall, got null");
 });
 

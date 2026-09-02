@@ -153,7 +153,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/jonction-glisser-mur.ts",    chrome: 0 },   // PURE geometry: junctions carried by a wall drag, outline left alone, one-hop chains, exact round trip, the wire diff
   { f: "tests/bouts-de-mur.ts",            chrome: 0 },   // PURE geometry: a wall endpoint's snap cascade (junction, segment, outline, then 45°, then the grid) and the `free` rule
   { f: "tests/coude-mur.ts",               chrome: 0 },   // PURE geometry: midpoint split, opening ownership and absolute positions
-  { f: "tests/sans-grille.ts",             chrome: 0 },   // PURE: the Ctrl/Cmd modifier and the relative grid math, no browser
   { f: "tests/projection.ts",              chrome: 0 },   // PURE optics: no browser
   { f: "tests/etiquettes-disposition.ts",  chrome: 0 },   // PURE placement math: room labels vs furniture obstacles, no browser
   { f: "tests/chaise-dossier.ts",          chrome: 0 },   // PURE geometry: snapChairToTable's rotation, relative to the table's OWN rot, no browser

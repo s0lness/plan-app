@@ -1,33 +1,26 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "GESTES AMIS" SUITE: REAL MOUSE + KEYBOARD (CDP), two affordances nobody could guess
+//  "GESTES AMIS" SUITE: REAL MOUSE + KEYBOARD (CDP), affordances nobody could guess
 // =============================================================================
-// Two requests from a real user of the app.
+// Requests from a real user of the app.
 //
 //   node tests/geste-ami.ts [path/to/app.html]
 //
-//   ctrl_glisse_meuble_au_centimetre   Ctrl/Cmd held during a drag: the 5 cm grid steps down to
-//                                      the whole centimeter. Negative control: the SAME drag,
-//                                      same distance, WITHOUT the modifier, lands on the grid.
 //   d_tenu_montre_les_cotes_du_choisi  D held (nothing selected): dimensions of the object under
 //                                      the pointer, ephemeral, nothing written, nothing saved.
 //   d_tenu_privilegie_la_selection     a selection wins over the pointer: guides appear even when
 //                                      the pointer sits over open floor.
 //   d_relache_efface_les_guides        release: the guides disappear, and only the guides, no
 //                                      trace in the model.
-//
-// Plus a THIRD real-user request, on the SAME modifier: holding Ctrl/Cmd BEFORE pressing (the
-// natural gesture) used to start no drag at all, only a selection toggle, because the modifier
-// was read at `pointerdown`. The decision now defers to the release, same pattern as the
-// stacked-pick rule ("a completed click moves down one step").
-//
-//   ctrl_presse_avant_glisse_deplace_sans_toggle   Ctrl/Cmd held BEFORE the press, then a real
-//                                      drag: the piece moves, grid suppressed, and the selection
-//                                      is left exactly as it was (no toggle fires).
 //   ctrl_clic_sans_glisser_bascule_la_selection    Ctrl/Cmd press-then-release with NO movement:
-//                                      the OLD behavior, unchanged, a toggle, and nothing written.
+//                                      a toggle, and nothing written.
 //   ctrl_clic_deux_fois_desactive_la_selection     the same click twice in a row toggles the
 //                                      piece back OUT of the selection.
+//
+// CTRL NO LONGER MEANS ANYTHING DURING A DRAG. It used to step the 5 cm grid down to the whole
+// centimetre; there is no grid any more, furniture moves by the centimetre and the magnets place
+// it, so the two cases that measured that modifier mid-drag are gone with the feature (decision
+// 0011).
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -126,35 +119,6 @@ const M = (type: string, x: VerdictSonde, y: VerdictSonde, extra?: Record<string
   clickCount: 1, pointerType: "mouse",
 }, extra || {}));
 const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
-async function drag(from: VerdictSonde, to: VerdictSonde, opts?: { steps?: number; modifiers?: number }) {
-  const steps = (opts && opts.steps) || 14, mods = (opts && opts.modifiers) || 0;
-  // THE PRESS ITSELF CARRIES NO MODIFIER, DELIBERATELY: this helper exercises the case where the
-  // modifier is grabbed MID-DRAG, once the gesture is already under way (the modifier is applied
-  // only on the MOVE steps and the release). `dragCtrlDown`, below, exercises the OTHER case, the
-  // modifier already held at `pointerdown`.
-  await M("mouseMoved", from.x, from.y, { button: "none", buttons: 0 });
-  await M("mousePressed", from.x, from.y);
-  for (let i = 1; i <= steps; i++) {
-    await M("mouseMoved", from.x + (to.x - from.x) * i / steps, from.y + (to.y - from.y) * i / steps, { modifiers: mods });
-    await pause(7);
-  }
-  await M("mouseReleased", to.x, to.y, { buttons: 0, modifiers: mods });
-  await pause(80);
-}
-// Ctrl/Cmd ALREADY HELD AT `pointerdown`, throughout the press, every move step, and the release:
-// `gestes/meuble.ts` defers the toggle-vs-drag decision to the release (the stacked-pick pattern),
-// so this must now arm and complete an ordinary drag, grid suppressed, instead of a no-op toggle.
-async function dragCtrlDown(from: VerdictSonde, to: VerdictSonde, opts?: { steps?: number; modifiers?: number }) {
-  const steps = (opts && opts.steps) || 14, mods = (opts && opts.modifiers) || 2;
-  await M("mouseMoved", from.x, from.y, { button: "none", buttons: 0, modifiers: mods });
-  await M("mousePressed", from.x, from.y, { modifiers: mods });
-  for (let i = 1; i <= steps; i++) {
-    await M("mouseMoved", from.x + (to.x - from.x) * i / steps, from.y + (to.y - from.y) * i / steps, { modifiers: mods });
-    await pause(7);
-  }
-  await M("mouseReleased", to.x, to.y, { buttons: 0, modifiers: mods });
-  await pause(80);
-}
 // Ctrl/Cmd held for a PLAIN CLICK: press then release at the exact same point, no movement at all.
 async function clicCtrl(p: VerdictSonde, opts?: { modifiers?: number }) {
   const mods = (opts && opts.modifiers) || 2;
@@ -214,37 +178,6 @@ const nUndo = () => evaluate(`String(__plan.histInfo().undo)`);
 const stockage = () => evaluate(`localStorage.getItem("room-planner-v4")||""`);
 
 // =============================================================================
-//  1. ctrl_glisse_meuble_au_centimetre
-// =============================================================================
-// Request: hold Ctrl (or Cmd on a Mac) during a drag, and the 5 cm grid steps down to the whole
-// centimeter. The negative control (same distance, no modifier) proves the grid was really ON,
-// and that it is really the MODIFIER, not the distance, that made the difference.
-await test("ctrl_glisse_meuble_au_centimetre", async () => {
-  await evaluate(`__plan.state.opts.snap = true; __plan.render(); true`);
-  await evaluate(`__plan.clearSel(); __plan.render(); true`);
-  const p = await parNom("Homu");
-  ok(!!p, "le plan de référence doit porter « Homu »");
-  if (!p) return;
-  const scale = await evaluate("__plan.vScale");
-  const A = await aptPoint(p.x + p.w / 2, p.y + p.h / 2);
-
-  // Negative control FIRST, on the untouched piece: 7 cm asked, no modifier, must land on 5.
-  const B0 = { x: A.x + 7 * scale, y: A.y };
-  await drag(A, B0);
-  const apresLibre = await posDe(p.id);
-  ok(apresLibre.x - p.x === 5, `témoin (sans Ctrl) : 7 cm demandés doivent tomber sur 5, vu un delta de ${apresLibre.x - p.x}`);
-
-  // Same request, Ctrl held THROUGHOUT the drag (CDP modifiers bitmask, Ctrl=2): whole centimeter.
-  const A2 = await aptPoint(apresLibre.x + apresLibre.w / 2, apresLibre.y + apresLibre.h / 2);
-  const B1 = { x: A2.x + 7 * scale, y: A2.y };
-  await drag(A2, B1, { modifiers: 2 });
-  const apresCtrl = await posDe(p.id);
-  const delta = apresCtrl.x - apresLibre.x;
-  ok(delta === 7, `Ctrl tenu : 7 cm demandés doivent tomber EXACTEMENT sur 7, vu un delta de ${delta}`);
-  ok(delta !== 5 && delta !== 10, `le résultat ne doit pas retomber sur un multiple de 5 (vu ${delta})`);
-});
-
-// =============================================================================
 //  2. d_tenu_montre_les_cotes_du_choisi
 // =============================================================================
 // Request: hold D to SEE the live dimensions without moving anything. Nothing selected: the
@@ -298,46 +231,6 @@ await test("d_tenu_privilegie_la_selection", async () => {
   ok((await nGuides()) > 0, "la sélection doit l'emporter même si le curseur est hors du plan");
   await ku("d");
   await pause(120);
-});
-
-// =============================================================================
-//  4. ctrl_presse_avant_glisse_deplace_sans_toggle
-// =============================================================================
-// Request: hold Ctrl (or Cmd) THEN press and drag, the natural order. Before this fix, holding
-// the modifier at `pointerdown` toggled the selection and armed no drag at all; a user who did
-// this got nothing but a selection flip and a piece that never moved. `gestes/meuble.ts` now
-// defers the decision to the release: a real drag moves the piece (grid suppressed) and the
-// selection is left exactly as it was, the toggle never fires.
-await test("ctrl_presse_avant_glisse_deplace_sans_toggle", async () => {
-  await evaluate(`__plan.state.opts.snap = true; __plan.render(); true`);
-  await evaluate(`__plan.clearSel(); __plan.render(); true`);
-  const p = await parNom("Homu");
-  ok(!!p, "le plan de référence doit porter « Homu »");
-  if (!p) return;
-  const scale = await evaluate("__plan.vScale");
-
-  // Select it first with an ORDINARY (unmodified) drag: this is what proves the toggle never
-  // fires below (a toggle would flip Homu back OUT of a selection it already belongs to).
-  const A0 = await aptPoint(p.x + p.w / 2, p.y + p.h / 2);
-  await drag(A0, { x: A0.x + 3 * scale, y: A0.y });
-  const apresPlain = await posDe(p.id);
-  const selAvant = await J(`__plan.selDump().modele`);
-  ok(JSON.stringify(selAvant) === JSON.stringify([String(p.id)]),
-    `précondition : Homu doit être seul sélectionné après le glissé témoin, vu ${JSON.stringify(selAvant)}`);
-
-  // Ctrl/Cmd HELD BEFORE THE PRESS (unlike test 1's "grabbed mid-drag"): must still arm and
-  // complete an ordinary drag, whole-centimeter, not a toggle.
-  const A = await aptPoint(apresPlain.x + apresPlain.w / 2, apresPlain.y + apresPlain.h / 2);
-  const B = { x: A.x + 7 * scale, y: A.y };
-  await dragCtrlDown(A, B);
-  const apres = await posDe(p.id);
-  const delta = apres.x - apresPlain.x;
-  ok(delta === 7, `Ctrl tenu AVANT le clic : 7 cm demandés doivent tomber EXACTEMENT sur 7, vu un delta de ${delta}`);
-  ok(delta !== 5 && delta !== 10, `le résultat ne doit pas retomber sur un multiple de 5 (vu ${delta})`);
-
-  const selApres = await J(`__plan.selDump().modele`);
-  ok(JSON.stringify(selApres) === JSON.stringify(selAvant),
-    `la sélection ne doit pas être touchée par le glissé (pas de toggle) : avant ${JSON.stringify(selAvant)}, après ${JSON.stringify(selApres)}`);
 });
 
 // =============================================================================

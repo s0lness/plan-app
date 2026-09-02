@@ -22,49 +22,31 @@ export const spaceHeld = (): boolean => _spaceHeld;
 export function setSpaceHeld(v: boolean): void { _spaceHeld = v; }
 
 /**
- * PRECISE MODE: SHIFT held during a drag. The hand moves ten pixels, the object one or two.
- * We do NOT change the unit (the plan stays in whole cm), we change the RATIO between the gesture
- * and the movement: the exact centimeter becomes reachable at working scale.
+ * PRECISE MODE: SHIFT held while sliding an OPENING along its wall. The hand moves ten pixels, the
+ * object one or two. We do NOT change the unit (the plan stays in whole cm), we change the RATIO
+ * between the gesture and the movement: the exact centimeter becomes reachable at working scale.
  *
- * SHIFT IS NOT FREE EVERYWHERE, hence the scope limited to moving and resizing: the
- * rotation handle already uses it to snap to 15°, outline editing to force the axis, and
- * the keyboard arrows for the 10 cm step. Taking it back from them would break three gestures to
- * gain one.
+ * FURNITURE LOST IT (decision 0011): a piece of furniture moves by the whole centimetre and the
+ * magnets place it, so there is nothing left to slow down. Shift keeps its OTHER meanings, which
+ * are all "constrain": 15° on the rotation handle, the axis when editing the outline, the 10 cm
+ * step on the keyboard arrows.
  */
 export const RATIO_PRECIS = 0.2;
-export const estPrecis = (e: { shiftKey?: boolean }): boolean => !!e.shiftKey;
+const estPrecis = (e: { shiftKey?: boolean }): boolean => !!e.shiftKey;
 
 /**
- * NO GRID: Ctrl (or Cmd) held during a drag. Where `estPrecis` slows the pointer down (the object
- * still lands on the 5 cm grid), this one SUPPRESSES the grid outright: the object follows the
- * pointer to the whole centimeter. Combined with Shift, the hand moves ten pixels, the object one,
- * and it lands off-grid: that is the real fine adjustment.
+ * NO GRID: Ctrl (or Cmd) held while drawing or dragging a WALL or an opening, which still round to
+ * a 5 cm step. Furniture has no grid at all any more (decision 0011), so this modifier no longer
+ * reaches it.
  *
  * BOTH KEYS, DELIBERATELY. On macOS, Ctrl+click is a SECONDARY click, and in this app the right
  * button already means "pan": a Mac user holding Ctrl from `pointerdown` would open the browser's
  * or OS's own context menu instead of dragging. Cmd is therefore the reliable key on a Mac; Ctrl is
  * the reliable key on Windows and Linux. Accepting either removes the need to know which OS you're
  * on. It reads `ev.ctrlKey || ev.metaKey` on a MOVE event, so it applies whether the modifier was
- * grabbed mid-drag or was already held at `pointerdown`: for furniture, Ctrl/Cmd held from the
- * press DEFERS the toggle-vs-drag decision to the release (`gestes/meuble.ts`, the same pattern as
- * the stacked-pick rule), it no longer forecloses the drag the way it used to.
+ * grabbed mid-drag or was already held at `pointerdown`.
  */
 export const sansGrille = (e: { ctrlKey?: boolean; metaKey?: boolean }): boolean => !!(e.ctrlKey || e.metaKey);
-
-/**
- * THE RELATIVE 5 CM GRID (G-5): STEPS COUNTED FROM THE START OF THE GESTURE, never the absolute
- * position. `depart` is where the gesture began (`p0x`/`p0y` in `gestes/meuble.ts`), `courant` is
- * where the hand is asking to go NOW. With the grid on, we round the OFFSET from `depart`, then add
- * it back: a piece that starts at an off-grid coordinate (a converted plan, an odd width) still
- * returns EXACTLY there on the way back, because both legs of a round trip round the SAME kind of
- * quantity (a delta), never the raw coordinate itself (which an odd start would round differently
- * each time). `snap` off, or `sansGrille` active, or the grid is out of the trip entirely and the
- * whole-centimeter position applies as-is (still integer, so idempotent both ways).
- */
-export function pasGrille(depart: number, courant: number, snap: boolean, sansGrilleActif: boolean): number {
-  if (snap && !sansGrilleActif) return depart + Math.round((courant - depart) / 5) * 5;
-  return Math.round(courant);
-}
 
 /**
  * The point to TRACK: the pointer as-is, or a slowed-down version around the starting point.

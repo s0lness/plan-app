@@ -1,5 +1,5 @@
 // src/ts/app/options.ts: THE RAIL'S PERSONAL SETTINGS, AND THE UNREADABLE-PLAN BANNER.
-// Ported from src/js/28-options.js (snap, labels, the three layers, the palette search
+// Ported from src/js/28-options.js (labels, the three layers, the palette search
 // clear button) and from src/js/46-init.js (the `#bootNotice` / `#setupNotice` banner).
 //
 // D-7. WHAT DESCRIBES THE PERSON'S SCREEN NEVER CROSSES THE NETWORK. These settings go through
@@ -20,7 +20,7 @@ import { pieceVisible } from "../catalogue/catalogue.ts";
 import { selRecomputePrimary } from "../rendu/selection.ts";
 import { render } from "../rendu/rendu.ts";
 import { applyPaletteFilter, buildPalette, setPaletteQuery } from "../rendu/palette.ts";
-import { save, saveOpts } from "./persistance.ts";
+import { saveOpts } from "./persistance.ts";
 
 const box = (id: string): HTMLInputElement | null => $(id) as HTMLInputElement | null;
 
@@ -53,12 +53,6 @@ export function brancherOptions(ctx: Contexte): void {
       syncPalBy(ctx);
       buildPalette(ctx);
     });
-  }
-  const snap = box("optSnap");
-  if (snap) {
-    snap.checked = !!ctx.etat.opts.snap;
-    // Snapping IS a work decision: it goes through `save()`, as in the old client.
-    snap.addEventListener("change", () => { ctx.etat.opts.snap = snap.checked; save(ctx); });
   }
   const lab = box("optLabels");
   if (lab) {

@@ -1,28 +1,26 @@
 // src/ts/gestes/contraintes.ts: WHAT HOLDS A PIECE OF FURNITURE BACK: the wall inset, and the chair/table snap.
 // Ported from src/js/19-contraintes.js.
 //
-// THREE INVARIANTS LIVE HERE, and every one of them was paid for by a measured incident:
+// TWO INVARIANTS LIVE HERE, and both were paid for by a measured incident:
 //   G-6 "bounds can never push farther away": each iteration of `clampCenterToInset` must
 //       REDUCE the penetration, or it is discarded. Without this guard, a sofa dropped in a
 //       too-narrow room would jump 372 cm, outside the flat.
-//   G-7 "what already overflowed keeps its overflow": `pieceTol` is the floor of the interactive
-//       bounds; it prevents going FURTHER into the wall, it does not push back what was already there.
 //   G-5 "the round trip returns to the starting point": `snapChairToTable` only attracts within a
 //       radius (`CHAIR_SNAP_MAX`), it does not TELEPORT.
 //
-// WHAT CHANGES COMPARED TO THE OLD CLIENT, and that is all: these functions used to read `state.plan`,
-// `state.pieces`, `state.opts` and `v5CellsAt` from the single closure. They now take the
-// PLAN, the LAYERS and the grid flag as ARGUMENTS. None of them render, none of them save,
-// none of them announce anything: `clampPiece` (which used to call `v5ClampPiece` then `v5Touch`) is NOT here,
-// it belongs to the gestures batch.
+// A GESTURE ON FURNITURE NEVER COMES THROUGH HERE ANY MORE. Dragging, dropping and resizing bound
+// nothing: a piece may straddle a wall, and the wall magnet (`meubleWallSnap`, modele/espace.ts) is
+// what settles it. `clampCenterToInset` survives for the paths that place furniture WITHOUT a hand
+// on it (the keyboard, the inspector, the Circulation fixes, orphan repair after a wall moves), all
+// of them through `v5ClampPiece`.
 //
-// THE `_pieceTol` SLATE STAYS A MODULE VARIABLE: "nothing is persisted: it describes what we
-// read, not a property of the plan." It really is a reading of the world, not document data.
+// WHAT CHANGES COMPARED TO THE OLD CLIENT, and that is all: these functions used to read `state.plan`,
+// `state.pieces` and `state.opts` from the single closure. They now take the PLAN and the LAYERS as
+// ARGUMENTS. None of them render, none of them save, none of them announce anything.
 
 import { clamp, WALL } from "../noyau/nombres.ts";
 import { nearestOnPoly, pointInPoly, signedDistToPoly } from "../geometrie/polygones.ts";
-import { isWallMount, pieceVisible, type CalquesVisibles } from "../catalogue/catalogue.ts";
-import { v5CellsAt } from "../modele/murs.ts";
+import { pieceVisible, type CalquesVisibles } from "../catalogue/catalogue.ts";
 import type { Meuble, PlanV5, Pt } from "../partage/plan.ts";
 
 // Keep a piece INSIDE the room, resting against the wall's inner face (not through it): the piece's
@@ -149,116 +147,6 @@ export function clampCenterToInset(
     return { cx: bx, cy: by, fits: false };
   }
   return { cx: bx, cy: by, fits: true };
-}
-
-// ---- G-14. A REQUESTED MOVE IS SHORTENED, NEVER BENT ------------------------------------------
-// `clampCenterToInset` answers "what is the NEAREST valid center", one object at a time, by
-// pushing whichever corner penetrates deepest back along ITS OWN inward normal. For an axis-aligned
-// wall that normal is a single axis, so a piece whose diagonal drag makes it graze that wall gets
-// corrected on THAT AXIS ALONE: the other axis, never having penetrated anything itself, is left
-// exactly where the hand put it. Measured: an entry bench (90x30, rotated 90 deg) dragged diagonally
-// by (+60,+40) landed at (+61,-1), X followed the pointer, Y was cancelled outright, because the
-// piece's rotated footprint (30 wide x 90 TALL) grazed a wall that only bites in Y. Mathematically
-// this is exactly the nearest point in an axis-aligned box, so nothing is "wrong" corner by corner;
-// what's wrong is that nobody asked "how much of the REQUESTED motion can survive", only "where is
-// the closest legal spot". A GROUP has the identical disease one level up: clamping each member to
-// ITS OWN nearest spot deforms the whole selection instead of moving it as one (js/17, feature
-// batch of 2026-08-11).
-//
-// THE FIX IS THE SAME SHAPE FOR ONE PIECE OR TEN: don't project onto the nearest point, SHRINK the
-// request. `deltaScaleMax` finds the LARGEST fraction `t` of the requested delta (dax,day), shared
-// by every member, for which EVERY member (its OWN cell, OWN rotation, OWN tolerated penetration)
-// still fits at `start + t*delta`. Applying that ONE `t` to the whole group keeps its shape; applied
-// to a single piece, it keeps the two axes moving TOGETHER instead of one freezing while the other
-// runs free. An orphaned member (already outside every cell before the gesture, G-7) is exempt: it
-// rides along at full `t`, exactly like `v5ClampPiece`'s `gardeOrphelin`.
-//
-// Binary search, not a closed form: `insetWorst` is piecewise (corners, nearest polygon edge, cell
-// membership can itself change mid-path), so there is no formula for "the last t that still fits".
-// We assume feasibility is monotonic in t along the requested straight line, which holds for the
-// convex-ish cells this engine builds (a straight line leaves a room through its boundary once, not
-// repeatedly), the same practical assumption `clampCenterToInset`'s own iteration already makes.
-export interface MembreDelta {
-  cx0: number;
-  cy0: number;
-  w: number;
-  h: number;
-  rot: number;
-  /** penetration already tolerated for this member before the gesture (`pieceTol`, G-7). */
-  tol: number;
-  /** this member was already outside every cell before the gesture: it moves freely (G-7). */
-  orphelin: boolean;
-}
-
-export function deltaScaleMax(
-  P: PlanV5 | null | undefined,
-  membres: readonly MembreDelta[],
-  dax: number,
-  day: number,
-): number {
-  if (!dax && !day) return 1;
-  const tient = (t: number): boolean => {
-    for (const m of membres) {
-      if (m.orphelin) continue;
-      const cx = m.cx0 + t * dax, cy = m.cy0 + t * day;
-      const cell = v5CellsAt(P, cx, cy);
-      if (!cell) return false;
-      if (insetWorst(cx, cy, m.w, m.h, m.rot, cell.poly) > Math.max(INSET_TOL, m.tol)) return false;
-    }
-    return true;
-  };
-  if (tient(1)) return 1;             // the common case: the whole request fits, nothing to shrink
-  if (!tient(0)) return 0;            // the group's OWN starting placement doesn't hold: never widen it
-  let lo = 0, hi = 1;
-  for (let i = 0; i < 24; i++) {      // 24 halvings: sub-millimeter precision on a room-scale delta
-    const mid = (lo + hi) / 2;
-    if (tient(mid)) lo = mid; else hi = mid;
-  }
-  return lo;
-}
-
-// Current penetration of a piece of furniture into ITS cell's inset (0 = it is cleanly inside).
-// Serves as a slate: it is the penetration that a gesture is allowed to PRESERVE.
-//
-// The old code kept `(typeof v5CellsAt==="function") ? v5CellsAt(cx,cy) : null`: a TEMPORAL
-// DEAD-ZONE guard, not a business guard. The import graph makes it moot; what the
-// guard was really protecting (a plan with no cells) stays covered by the `if(!cell) return 0`.
-function piecePenetration(P: PlanV5 | null | undefined, p: Meuble | null | undefined): number {
-  if (!p || isWallMount(p.type)) return 0;
-  const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
-  const cell = v5CellsAt(P, cx, cy);
-  if (!cell) return 0;
-  return insetWorst(cx, cy, p.w, p.h, p.rot || 0, cell.poly);
-}
-
-// ---- THE SLATE OF ACQUIRED PENETRATIONS ------------------------------------------------------
-// A converted plan (or imported, or drawn before this inset existed) contains furniture placed
-// FLUSH against the wall, so under the 6 cm inset. The first gesture used to "correct" it by a few
-// centimeters and the original position became UNREACHABLE: putting the furniture back exactly
-// where it was would shift it again, forever. So on first pickup, we remember
-// the penetration it ALREADY had, and we leave it that. It never increases, and it is
-// capped at the wall's centerline: no piece of furniture can cross a partition wall.
-// Nothing is persisted: this slate describes what we read, not a property of the plan.
-const _pieceTol = new Map<string, number>();
-
-export function pieceTol(P: PlanV5 | null | undefined, p: Meuble | null | undefined): number {
-  if (!p) return 0;
-  const k = String(p.id);
-  let v = _pieceTol.get(k);
-  if (v === undefined) {
-    v = Math.min(WALL_INSET, piecePenetration(P, p));
-    _pieceTol.set(k, v);
-  }
-  return v;
-}
-
-/**
- * The grid. `snap` replaces reading `state.opts.snap`: personal settings are passed
- * as an argument, they do not travel (D-7).
- */
-export function snapPos(p: Meuble, snap: boolean): void {
-  if (snap) { p.x = Math.round(p.x / 5) * 5; p.y = Math.round(p.y / 5) * 5; }
-  else { p.x = Math.round(p.x); p.y = Math.round(p.y); }
 }
 
 // Chairs snap TUCKED under tables (feature 4). Respects the table's rotation via a local-frame test.

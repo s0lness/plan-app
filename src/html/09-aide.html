@@ -29,16 +29,14 @@
           <section class="help-sec">
             <h3>Moving &amp; selecting</h3>
             <dl class="help-dl">
-              <dt>Drag</dt><dd>Grab a piece of furniture and move it. Chairs tucked under a table follow it.</dd>
+              <dt>Drag</dt><dd>Grab a piece of furniture and move it, by the centimetre. Its back sticks to a wall it comes close to and takes the wall's orientation; it also lines up with the other furniture. Chairs tucked under a table follow it.</dd>
               <dt>Marquee</dt><dd>Drag on empty space to select several pieces (rubber band).</dd>
               <dt><kbd>Ctrl</kbd>+click</dt><dd>Adds or removes a piece from the selection.</dd>
               <dt>Group</dt><dd>Drag a selected piece to move the whole group. <kbd>Del</kbd> deletes them all.</dd>
               <dt>Long press</dt><dd>Touch: hold your finger on a piece to add it to the selection.</dd>
-              <dt><kbd>Alt</kbd>+drag</dt><dd>Duplicates the piece and moves the copy.</dd>
+              <dt><kbd>Alt</kbd>+drag</dt><dd><b>No magnet.</b> Hold it and nothing attracts the piece: not the wall, not the other furniture, not the table under a chair. It goes exactly where your hand puts it, even across a wall. Use the inspector's Duplicate button to copy a piece.</dd>
               <dt>Double-click</dt><dd>Rotates the piece by 90°. On a door, flips the hinge side.</dd>
               <dt>Double-click the name</dt><dd>Renames instead of rotating, <b>on the label itself</b>: the box opens where the name is, with the text selected, so typing replaces it. <kbd>Enter</kbd> keeps it, <kbd>Esc</kbd> throws it away. A piece still carrying its catalogue name paints no label, so there is nothing to double-click until you have named it.</dd>
-              <dt><kbd>Shift</kbd>+drag</dt><dd><b>Fine mode.</b> The object follows your hand five times slower, so the exact centimetre becomes reachable at working zoom. Works for moving and resizing furniture, and for sliding a door or window along its wall.</dd>
-              <dt><kbd>Ctrl</kbd>+drag (<kbd>Cmd</kbd> on a Mac)</dt><dd><b>No grid.</b> Moves the piece by the whole centimetre instead of snapping to the 5 cm grid. Combine it with <kbd>Shift</kbd> for the real fine adjustment: the hand moves ten pixels, the object one, and it lands off-grid. On a Mac, <kbd>Ctrl</kbd>+click is a secondary click and the right button already pans here, so use <kbd>Cmd</kbd>; on Windows and Linux, <kbd>Ctrl</kbd>. Press it once the drag has already started: held from the very first click, it toggles the selection instead of moving anything.</dd>
               <dt><kbd>D</kbd> (hold)</dt><dd>Shows the live dimensions of the selected piece without moving it, or of whatever is under the pointer if nothing is selected. Release to hide them again; nothing is written or saved.</dd>
               <dt>Even spacing</dt><dd>Select <b>three or more</b> objects lined up in one direction: the inspector shows the measured gaps and a button that makes them equal. The two end objects stay put, so on a bed between two bedside tables it is the bed that centres itself. With only two objects there is a single gap and nothing to even out. To set an exact gap instead, type it in the small box and press <kbd>Enter</kbd>: that keeps the first object where it is and pushes the rest along, because the block has to change size for the gap to be the one you asked for.</dd>
             </dl>
@@ -47,7 +45,7 @@
           <section class="help-sec">
             <h3>Resizing</h3>
             <dl class="help-dl">
-              <dt>Handles</dt><dd>Pull the handles of a selected piece, or an opening's width handles; the opposite side stays put. Hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on a Mac) to size it by the whole centimetre instead of the 5 cm grid.</dd>
+              <dt>Handles</dt><dd>Pull the handles of a selected piece, or an opening's width handles; the opposite side stays put. A size follows your hand by the whole centimetre.</dd>
               <dt>By keyboard</dt><dd>While dragging, type the dimension in cm then <kbd>Enter</kbd>. <kbd>Tab</kbd> switches to the other side (corner), <kbd>Esc</kbd> cancels.</dd>
               <dt>Inspector</dt><dd>Set width and depth to the exact figure in the right-hand panel.</dd>
             </dl>
@@ -138,10 +136,10 @@
               <tr><td class="k"><kbd>Esc</kbd></td><td class="d">Deselect / leave the current mode</td></tr>
               <tr><td class="k"><kbd>?</kbd></td><td class="d">Open this help</td></tr>
               <tr><td class="k">digits, <kbd>Enter</kbd></td><td class="d">Exact dimension while resizing</td></tr>
-              <tr><td class="k"><kbd>Shift</kbd>+drag</td><td class="d">Fine mode: five times slower (also grid off while resizing)</td></tr>
-              <tr><td class="k"><kbd>Ctrl</kbd>+drag (<kbd>Cmd</kbd> on a Mac)</td><td class="d">No grid: moves or resizes by the whole centimetre. Press after the drag has started</td></tr>
+              <tr><td class="k"><kbd>Shift</kbd>+slide an opening</td><td class="d">Fine mode: five times slower along the wall</td></tr>
+              <tr><td class="k"><kbd>Ctrl</kbd>+drag a wall (<kbd>Cmd</kbd> on a Mac)</td><td class="d">No grid: moves it by the whole centimetre</td></tr>
               <tr><td class="k"><kbd>D</kbd> (hold)</td><td class="d">Show the selected (or pointed-at) piece's dimensions without moving it</td></tr>
-              <tr><td class="k"><kbd>Alt</kbd>+drag</td><td class="d">On furniture: duplicate. On a wall: draw a free partition that does not extend</td></tr>
+              <tr><td class="k"><kbd>Alt</kbd>+drag</td><td class="d">On furniture: no magnet. On a wall: draw a free partition that does not extend</td></tr>
               <tr><td class="k">double-click a label</td><td class="d">Rename, in place</td></tr>
               <tr><td class="k"><kbd>Shift</kbd>+rotate</td><td class="d">Snap the rotation to 15°</td></tr>
               <tr><td class="k"><kbd>Shift</kbd>+drag a corner</td><td class="d">Outline: lock to the horizontal or vertical axis</td></tr>

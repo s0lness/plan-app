@@ -154,7 +154,6 @@ export function applyReplacedState(
   clearGuides(ctx);
   // Reasserts the UI from the PERSONAL SETTINGS: `ctx.etat.opts` is the same object as before the
   // replacement, so these lines can never adopt the options of a received plan (D-7).
-  const cs = $("optSnap") as HTMLInputElement | null; if (cs) cs.checked = !!ns.opts.snap;
   const cl = $("optLabels") as HTMLInputElement | null; if (cl) cl.checked = !!ns.opts.labels;
   renderRoomChips(ctx, true);
   // The mirror follows the freshly adopted state, EXCEPT for an undo (see `keepShadow`).

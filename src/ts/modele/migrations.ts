@@ -262,6 +262,12 @@ export function normalizeOpeningFacing<T extends PlanV5>(plan: T | null | undefi
 // convention written as a comment.
 
 export interface Options {
+  /**
+   * The 5 cm step, WALLS AND OPENINGS ONLY. Furniture lost its grid with decision 0011 and there is
+   * no longer a switch for this in the configuration: the field is read from what is already stored
+   * (an old save keeps working) and left at its default otherwise. It disappears when the wall and
+   * opening lots take their own magnets.
+   */
   snap: boolean;
   labels: boolean;
   flow: boolean;

@@ -283,34 +283,33 @@ await test("cible_sous_le_curseur_a_300", async () => {
 //  2. aller_retour_idempotent
 // =============================================================================
 // The most common step (30 cm) was the worst case: 62 exact returns out of 122. Three families.
-//  - pure drift: "Chair" (45 cm wide) gained 1 cm PER CYCLE, snap off, without end: we rounded
+//  - pure drift: "Chair" (45 cm wide) gained 1 cm PER CYCLE, without end: we rounded
 //    the CENTER then re-derived the CORNER from it, and `Math.round` rounds .5 upward.
 //  - oscillation: "Four (colonne)" did [+2,0] [-2,0] [+2,0]... indefinitely.
 //  - entry jump: "Radiateur 3", placed straddling the facade, jumped 113 cm on the very first
 //    gesture, in response to a push of 30.
+// ONE PASS, NOT TWO: this case used to run everything twice, grid on and grid off. There is no
+// grid any more (decision 0011), so there is one behaviour to measure.
 await test("aller_retour_idempotent", async () => {
   const noms = ["Four (colonne)", "Chair", "Radiateur 3", "Homu", "Lit (160)"];
-  for (const aimant of [true, false]) {
-    await evaluate(`__plan.state.opts.snap=${aimant}; __plan.render(); true`);
-    for (const nom of noms) {
-      const p = await parNom(nom); if (!p) { ok(false, `meuble absent du plan de référence : ${nom}`); continue; }
-      const dep = await posDe(p.id);
-      let pires = null;
-      for (let i = 0; i < 6; i++) {
-        const a = await posDe(p.id);
-        const A = await aptPoint(a.x + a.w / 2, a.y + a.h / 2);
-        const B = await aptPoint(a.x + a.w / 2 + 30, a.y + a.h / 2);
-        await drag(A, B, 10);
-        const m = await posDe(p.id);
-        await drag(await aptPoint(m.x + m.w / 2, m.y + m.h / 2), A, 10);
-        const b = await posDe(p.id);
-        if (b.x !== a.x || b.y !== a.y) pires = pires || { cycle: i + 1, de: [a.x, a.y], a: [b.x, b.y] };
-      }
-      const fin = await posDe(p.id);
-      ok(!pires, `« ${nom} » (aimant ${aimant ? "on" : "off"}) ne revient pas : ${JSON.stringify(pires)}`);
-      ok(fin.x === dep.x && fin.y === dep.y,
-        `« ${nom} » (aimant ${aimant ? "on" : "off"}) a dérivé de ${dep.x},${dep.y} à ${fin.x},${fin.y}`);
+  for (const nom of noms) {
+    const p = await parNom(nom); if (!p) { ok(false, `meuble absent du plan de référence : ${nom}`); continue; }
+    const dep = await posDe(p.id);
+    let pires = null;
+    for (let i = 0; i < 6; i++) {
+      const a = await posDe(p.id);
+      const A = await aptPoint(a.x + a.w / 2, a.y + a.h / 2);
+      const B = await aptPoint(a.x + a.w / 2 + 30, a.y + a.h / 2);
+      await drag(A, B, 10);
+      const m = await posDe(p.id);
+      await drag(await aptPoint(m.x + m.w / 2, m.y + m.h / 2), A, 10);
+      const b = await posDe(p.id);
+      if (b.x !== a.x || b.y !== a.y) pires = pires || { cycle: i + 1, de: [a.x, a.y], a: [b.x, b.y] };
     }
+    const fin = await posDe(p.id);
+    ok(!pires, `« ${nom} » ne revient pas : ${JSON.stringify(pires)}`);
+    ok(fin.x === dep.x && fin.y === dep.y,
+      `« ${nom} » a dérivé de ${dep.x},${dep.y} à ${fin.x},${fin.y}`);
   }
 });
 
@@ -468,9 +467,7 @@ await test("echap_deselectionne_un_mur_sans_changer_d_outil", async () => {
 // way to see the defect, since grabbing it at the box's edge is precisely the position where it
 // does not exist.
 await test("poignee_meuble_deportee_ne_teleporte_pas_le_coin", async () => {
-  // Snap off: the 5 cm grid quantizes the ABSOLUTE dimension, which is a different question.
   // We measure ONE thing here: does the corner follow the hand, and does the round trip return.
-  await evaluate(`__plan.state.opts.snap=false; __plan.render(); true`); await pause(150);
   const S = await evaluate(`__plan.vScale`);
   const seuilCm = 64 / S;                              // below this size, the corners go outside
   const D = 12;                                        // px: a real gesture, well beyond the 3 px threshold
@@ -654,10 +651,10 @@ await test("poignee_rotation_ne_vole_pas_le_centre_meuble_mince", async () => {
 // short while the rest of the group kept going. Measured on the exact scenario replayed here:
 // forward request (+90,+60) landed as sink +90,+96 (drifted 36 cm past the group), TV unit +4,+60
 // (barely moved), everyone else +90,+60, the SHAPE of the selection broke.
-// THE RULE (`deltaScaleMax`, gestes/contraintes.ts): a group of FURNITURE moves as ONE, the
-// largest fraction of the requested delta every selected piece can accept, shared, applied to
-// ALL of them, never each piece projected to its own nearest valid spot. Openings are excluded
-// from the check: they keep their own (different, allowed) wall-sliding behaviour, already
+// THE RULE (`gestes/meuble.ts`, group branch): a group of FURNITURE moves as ONE. Nothing clamps
+// a member any more (decision 0011), and the wall magnet is read ONCE, on the piece under the
+// hand, then carried by everyone as a translation, so the shape of the selection is preserved by
+// construction. Openings keep their own (different, allowed) wall-sliding behaviour, already
 // covered by tests/run.ts:523.
 // Uses SEED_APT (the repository's demo apartment, not the household plan): this specific wall
 // geometry, fridge/worktop/sink/hob/oven/TV unit lined up against the kitchen's walls with
@@ -688,8 +685,6 @@ await test("groupe_de_meubles_bouge_d_un_seul_bloc", async () => {
   const deltas = furnitureIds.map((id) => `${after[id].x - before[id].x},${after[id].y - before[id].y}`);
   ok(new Set(deltas).size === 1,
     `le groupe doit bouger d'UN SEUL bloc, tous les meubles avec le même delta : ${JSON.stringify(furnitureIds.map((id, i) => [id, deltas[i]]))}`);
-  ok(/does not fit there/.test(await toastNow()),
-    "un geste de groupe réduit doit se DIRE (banner de geste), une seule fois pour tout le groupe : " + JSON.stringify(await toastNow()));
 
   // and the round trip: FROM wherever the group landed, back TO the original screen point (not
   // "by the same pixel delta", since the forward leg may not have moved the full ask) returns

@@ -13,10 +13,12 @@
 //   outil_arme_ne_deforme_aucun_mur    a click, tool armed, lengthened a wall 3 m away
 //   mur_supprime_se_retrace            the snap glued the new stroke onto the neighboring partition
 //   porte_garde_sa_largeur             an 80 cm door got shaved down to 43, permanently
-//   aller_retour_revient_au_depart     the 5 cm grid moved any off-grid furniture away
+//   aller_retour_revient_au_depart     furniture moved out and back lands on the same centimetre
 //   objets_superposes_atteignables     the object underneath got 0% of clicks
 //   petit_objet_se_deplace             8 handles covered a 29 px chair
 //   meme_message_pas_huit_fois         22 banners in 371 s, 8 of them the same
+//   meuble_se_colle_au_mur_par_le_dos  the wall magnet, for every piece of furniture
+//   alt_coupe_l_aimant_et_le_meuble_chevauche_le_mur   Alt suspends it, nothing pushes back
 //   facade_refuse_sa_suppression       deleting a facade said nothing at all
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
@@ -129,6 +131,19 @@ async function click(p: VerdictSonde) {
   await pause(70);
 }
 async function drag(from: VerdictSonde, to: VerdictSonde, steps = 14) { await press(from); await moveTo(to, steps, from); await release(to); }
+// ALT HELD THROUGHOUT: the one modifier a drag still understands, and it cuts every magnet (wall,
+// alignment, chair-to-table). CDP bitmask: Alt = 1.
+async function dragAlt(from: VerdictSonde, to: VerdictSonde, steps = 14) {
+  await M("mouseMoved", from.x, from.y, { button: "none", buttons: 0, modifiers: 1 });
+  await M("mousePressed", from.x, from.y, { modifiers: 1 });
+  await pause(20);
+  for (let k = 1; k <= steps; k++) {
+    await M("mouseMoved", from.x + (to.x - from.x) * k / steps, from.y + (to.y - from.y) * k / steps, { modifiers: 1 });
+    await pause(8);
+  }
+  await M("mouseReleased", to.x, to.y, { buttons: 0, modifiers: 1 });
+  await pause(90);
+}
 
 // ---- micro-harness -----------------------------------------------------------------------------
 const results: VerdictSonde[] = [];
@@ -287,8 +302,8 @@ await test("porte_garde_sa_largeur", async () => {
 //  5. aller_retour_revient_au_depart
 // =============================================================================
 // The snap rounded the ABSOLUTE position on a 5 cm grid: furniture off the grid (converted plan)
-// got shifted away on the very first gesture and its original spot became unreachable.
-// The grid now counts STEPS from the gesture's starting point.
+// got shifted away on the very first gesture and its original spot became unreachable. There is no
+// grid left: the corner follows the hand to the whole centimetre, rounded once (decision 0011).
 await test("aller_retour_revient_au_depart", async () => {
   const ids = await J(`__plan.plan.pieces.filter(function(p){return !p.locked && p.type!=="chair"
     && !__plan.isWallMount(p.type);}).slice(0,8).map(function(p){return String(p.id);})`);
@@ -415,104 +430,70 @@ await test("facade_refuse_sa_suppression", async () => {
 });
 
 // =============================================================================
-//  10. geste_sans_effet_dit_pourquoi
+//  10. meuble_se_colle_au_mur_par_le_dos
 // =============================================================================
-// The bound keeps furniture in ITS cell. Placed against the wall, a LONG drag leaves it EXACTLY
-// where it was: measured on the real plan, a 45x50 cm chair didn't move by a single centimeter,
-// four drags in a row, in total silence. Nothing said the space was missing, so the user kept
-// trying. And since the gesture is deliberate, the message comes back on EVERY attempt.
-await test("geste_sans_effet_dit_pourquoi", async () => {
+// THE MAGNET REPLACES THE RULES (decision 0011). Dropped with its back within reach of a wall, a
+// piece of furniture lands flush against the wall's face and takes the wall's orientation, exactly
+// as it already did for the radiator alone. The reach is read ON THE BACK, so a deep piece (a bed
+// is 200 cm deep) is caught too, where a reach read at the center never could.
+// WRITTEN, NOT RUN: browser suites are the owner's to run (he tests in Chrome himself).
+await test("meuble_se_colle_au_mur_par_le_dos", async () => {
   await evaluate(`__plan.fitView(); true`); await pause(150);
-  const p = await J(`__plan.addRoomPiece("chair", 200, 200)`);
-  if (!ok(p, "impossible de poser une chaise")) return;
+  // a facade of the reference plan, and a point one metre INSIDE the room from its middle
+  const m = await J(`(function(){var w=(__plan.plan.walls||[]).filter(function(q){return q.isOutline;})[0];
+    if(!w) return null;
+    var ux=w.b[0]-w.a[0], uy=w.b[1]-w.a[1], L=Math.hypot(ux,uy)||1; ux/=L; uy/=L;
+    return {id:String(w.id), mx:(w.a[0]+w.b[0])/2, my:(w.a[1]+w.b[1])/2, nx:-uy, ny:ux, t:w.t,
+            ang:((Math.round(Math.atan2(uy,ux)*180/Math.PI)%360)+360)%360};})()`);
+  if (!ok(!!m, "le plan de référence doit porter au moins une façade")) return;
+  const p = await J(`__plan.addRoomPiece("bed", ${m.mx}, ${m.my})`);
+  if (!ok(p, "impossible de poser un lit")) return;
   const id = String(p.id);
-  // we first push it AGAINST the edge, then insist: the following attempts change nothing
-  const dits = [];
-  let bloque = 0;
-  for (let k = 0; k < 6; k++) {
-    await evaluate(`__plan.selReplace(${JSON.stringify(id)}); __plan.render(); true`);
-    await pause(120);
-    const r = await pieceRect(id);
-    if (!r) break;
-    await evaluate(`__plan.clearToast(); true`);
-    const av = await pose(id);
-    await drag({ x: r.x, y: r.y }, { x: r.x - 260, y: r.y - 180 }, 14);
-    await pause(220);
-    const ap = await pose(id);
-    const fige = (ap.cx === av.cx && ap.cy === av.cy);
-    // ON ATTEND LE BANDEAU, PAS UNE DURÉE. Ce cas lisait le message juste après une pause fixe de
-    // 220 ms et voyait « » sous barrière chargée, où tout est trois fois plus lent : le geste
-    // était bien refusé, la phrase n'était simplement pas encore peinte. Allonger la pause ne
-    // ferait que déplacer le seuil (AGENTS.md, « attendre une CONDITION, jamais une durée »).
-    if (fige) {
-      bloque++;
-      let dit = "";
-      for (let i = 0; i < 60 && !dit; i++) { dit = String((await toastNow()) || ""); if (!dit) await pause(50); }
-      dits.push(dit);
-    }
-  }
-  ok(bloque >= 2, `le geste doit finir par ne plus rien changer (bloqué ${bloque} fois sur 6)`);
-  // THREE LEGITIMATE EXPLANATIONS, NOT TWO. G-13 requires that a gesture with no effect SAY WHY;
-  // it does not require which of the reasons. Since the bound places the object AGAINST the
-  // limit instead of catapulting it there, a chair dragged far outside the room comes back "as
-  // close as possible", which is the third message, and the most accurate of the three in this
-  // case. The assertion only listed two and so turned an improvement red.
-  ok(dits.length && dits.every(t => /any further|sticks out|as close as possible/i.test(t || "")),
-    "chaque geste sans effet doit dire pourquoi, messages vus : " + JSON.stringify(dits));
+  // drag it so its BACK sits ~10 cm off the wall's face: center at t/2 + h/2 + 10 along the normal
+  const dedans = await J(`(function(){var c=__plan.pieceAt(${JSON.stringify(id)});
+    return {h:c.h};})()`);
+  const off = m.t / 2 + dedans.h / 2 + 10;
+  const r = await pieceRect(id);
+  const cible = await aptPoint(m.mx + m.nx * off, m.my + m.ny * off);
+  await drag({ x: r.x, y: r.y }, cible, 16);
+  const ap = await pose(id);
+  // the back is flush: the distance from the wall's centreline to the center is EXACTLY t/2 + h/2
+  const d = Math.abs((ap.cx - m.mx) * m.nx + (ap.cy - m.my) * m.ny);
+  ok(Math.abs(d - (m.t / 2 + dedans.h / 2)) <= 1,
+    `le dos doit affleurer la face du mur (attendu ${m.t / 2 + dedans.h / 2} cm de l'axe, vu ${d.toFixed(1)})`);
+  ok(ap.rot === m.ang || ap.rot === (m.ang + 180) % 360,
+    `le meuble doit prendre l'orientation du mur (${m.ang}° ou ${(m.ang + 180) % 360}°, vu ${ap.rot}°)`);
 });
 
 // =============================================================================
-//  11. clic_net_sur_un_groupe_ne_borne_personne
+//  11. alt_coupe_l_aimant_et_le_meuble_chevauche_le_mur
 // =============================================================================
-// G-4 HAD NEVER BEEN CARRIED OVER TO THE GROUP. The solo branch of `gestes/meuble.ts` keeps its
-// end-of-gesture bound behind `moved` ("picking furniture up doesn't move it"); the GROUP branch
-// called `v5ClampPiece` on ALL its members on every `pointerup`, including on a clean click. A
-// lasso grabs 5 to 11 objects on a real plan: a single click bounded all of them at once, and
-// converted furniture (straddling a wall, overflowing a facade) is precisely what the bound moves.
-await test("clic_net_sur_un_groupe_ne_borne_personne", async () => {
-  // a lasso over a dense area, then a CLEAN click on a member: nothing must move
-  const bb = await J(`(function(){var xs=[],ys=[];(__plan.plan.outline||[]).forEach(function(p){xs.push(p[0]);ys.push(p[1]);});
-    return {minX:Math.min.apply(null,xs), maxX:Math.max.apply(null,xs), minY:Math.min.apply(null,ys), maxY:Math.max.apply(null,ys)};})()`);
-  const a = await aptPoint(bb.minX + 5, bb.minY + 5);
-  const b = await aptPoint(bb.maxX - 5, bb.maxY - 5);
-  await evaluate(`__plan.clearSel(); __plan.render(); true`); await pause(120);
-  // THE LASSO NOW LIVES UNDER SHIFT. An ordinary drag over empty space draws a wall, because
-  // drawing is no longer a mode you can be stranded in. `modifiers: 8` is Shift for CDP, and it
-  // must be on every event of the gesture, not only the press: the handler reads the modifier of
-  // the event it is given.
-  await M("mouseMoved", a.x, a.y, { button: "none", buttons: 0, modifiers: 8 });
-  await M("mousePressed", a.x, a.y, { modifiers: 8 });
-  for (let i = 1; i <= 12; i++) {
-    await M("mouseMoved", a.x + (b.x - a.x) * i / 12, a.y + (b.y - a.y) * i / 12, { modifiers: 8 });
-    await pause(8);
-  }
-  await M("mouseReleased", b.x, b.y, { buttons: 0, modifiers: 8 }); await pause(90);
-  const sel = await J(`[].slice.call(document.querySelectorAll(".piece.sel")).map(function(e){return String(e.dataset.id);})`);
-  ok(sel.length >= 3, `le lasso doit prendre plusieurs objets (${sel.length})`);
-  if (sel.length < 3) return;
-
-  const avant = await J(`(function(){var o={};__plan.plan.pieces.forEach(function(p){o[String(p.id)]=[p.x,p.y];});return o;})()`);
-  const undoAvant = await evaluate(`String(__plan.histInfo().undo)`);
-  // we click AT THE CENTER of a member, with zero movement
-  const cible = await J(`(function(){var r=null;
-    __plan.plan.pieces.forEach(function(p){ if(!r && ${JSON.stringify(sel)}.indexOf(String(p.id))>=0) r={id:String(p.id),x:p.x+p.w/2,y:p.y+p.h/2}; });
-    return r;})()`);
-  ok(!!cible, "un membre du groupe doit être cliquable");
-  if (!cible) return;
-  await click(await aptPoint(cible.x, cible.y)); await pause(150);
-
-  const apres = await J(`(function(){var o={};__plan.plan.pieces.forEach(function(p){o[String(p.id)]=[p.x,p.y];});return o;})()`);
-  const bouges = [];
-  for (const id of Object.keys(avant)) {
-    const p = avant[id], q = apres[id];
-    if (!q) continue;
-    const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
-    if (d > 0.5) bouges.push(`${id} de ${d.toFixed(1)} cm`);
-  }
-  ok(bouges.length === 0, `un clic NET sur un groupe a déplacé ${bouges.length} objet(s) : ${bouges.slice(0, 6).join(", ")}`);
-  ok((await evaluate(`String(__plan.histInfo().undo)`)) === undoAvant, "et il n'écrit rien dans l'historique (G-3)");
+// ALT IS THE ONE ESCAPE HATCH, and it is the whole modifier vocabulary for a drag now. Held, no
+// magnet fires; and since nothing bounds furniture any more, the piece stays exactly where the
+// hand left it, EVEN STRADDLING A WALL. Same drag as case 10, so the two make one another's
+// negative control. WRITTEN, NOT RUN.
+await test("alt_coupe_l_aimant_et_le_meuble_chevauche_le_mur", async () => {
+  await evaluate(`__plan.fitView(); true`); await pause(150);
+  const m = await J(`(function(){var w=(__plan.plan.walls||[]).filter(function(q){return q.isOutline;})[0];
+    if(!w) return null;
+    var ux=w.b[0]-w.a[0], uy=w.b[1]-w.a[1], L=Math.hypot(ux,uy)||1; ux/=L; uy/=L;
+    return {mx:(w.a[0]+w.b[0])/2, my:(w.a[1]+w.b[1])/2, nx:-uy, ny:ux, t:w.t};})()`);
+  if (!ok(!!m, "le plan de référence doit porter au moins une façade")) return;
+  const p = await J(`__plan.addRoomPiece("bed", ${m.mx}, ${m.my})`);
+  if (!ok(p, "impossible de poser un lit")) return;
+  const id = String(p.id);
+  const rot0 = (await pose(id)).rot;
+  const c = await J(`__plan.pieceAt(${JSON.stringify(id)})`);
+  // aim the CENTER right onto the wall's centreline: without Alt the magnet would pull it out
+  const cible = await aptPoint(m.mx, m.my);
+  const r = await pieceRect(id);
+  await dragAlt({ x: r.x, y: r.y }, cible, 16);
+  const ap = await pose(id);
+  const d = Math.abs((ap.cx - m.mx) * m.nx + (ap.cy - m.my) * m.ny);
+  ok(d <= 2, `Alt tenu : le meuble reste sous la main, à cheval sur le mur (écart à l'axe vu ${d.toFixed(1)} cm)`);
+  ok(ap.rot === rot0, `Alt tenu : aucune rotation imposée (${rot0}° attendu, vu ${ap.rot}°)`);
+  ok(c !== null, "témoin : la pièce existait bien avant le geste");
 });
-
 // =============================================================================
 //  12. applique_glissee_le_long_du_mur_revient
 // =============================================================================

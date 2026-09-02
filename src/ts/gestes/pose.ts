@@ -2,7 +2,7 @@
 // Ported from src/js/16-pose-meubles.js in its entirety, plus `wallMountPreviewApt`
 // (src/js/05-espace-appartement.js), which only has takers in this file: the placement ghost and
 // the refusal probe. Porting it here keeps the PROBE next to the PLACEMENT; `modele/espace.ts` only
-// keeps what describes the apartment (`clampCenterToApt`, `wallSnapReach`, `NO_WALL_MSG`).
+// keeps what describes the apartment (`meubleWallSnap`, `wallSnapReach`, `NO_WALL_MSG`).
 //
 // THREE INVARIANTS LIVE HERE, and none of them is visible reading the old code.
 //
@@ -44,13 +44,12 @@ import { TYPEMAP, isWallMount, layerOf } from "../catalogue/catalogue.ts";
 import { $, COARSE } from "../noyau/dom.ts";
 import { WALL, clamp, safeDim } from "../noyau/nombres.ts";
 import { v5Seg } from "../modele/murs.ts";
-import { NO_WALL_MSG, radiatorWallSnap, wallSnapReach } from "../modele/espace.ts";
+import { NO_WALL_MSG, meubleWallSnap, wallSnapReach } from "../modele/espace.ts";
 import { autoName, mk } from "../modele/creation.ts";
 import {
-  v5ClampPiece, v5FlushPlaceNarrowed, v5LastFit, v5NearestWall, v5PlaceWallMount, v5WallMountSide,
+  v5FlushPlaceNarrowed, v5NearestWall, v5PlaceWallMount, v5WallMountSide,
 } from "../modele/edition.ts";
 import { v5NewId } from "../fil/identite.ts";
-import { snapPos } from "./contraintes.ts";
 import { armGesture } from "./sortie.ts";
 import { isTouchEvt, measureMode, spaceHeld } from "./etat-pointeur.ts";
 import { pushHistory, undo } from "../historique/pile.ts";
@@ -141,8 +140,6 @@ const STACK_RING: readonly (readonly [number, number])[] = [
   [60, 60], [-60, 60], [-60, -60], [60, -60], [80, 0], [0, 80], [-80, 0],
 ];
 
-// We offset AFTER the bounding to the cell: in a narrow room the clamp pulls all
-// placements back to the same spot, and an offset decided before it wouldn't show.
 function unstackPiece(ctx: Contexte, p: Meuble, c: { x: number; y: number }): Meuble {
   const P = ctx.etat.plan;
   const taken = (): boolean =>
@@ -151,7 +148,6 @@ function unstackPiece(ctx: Contexte, p: Meuble, c: { x: number; y: number }): Me
   for (const [dx, dy] of STACK_RING) {
     if (!dx && !dy) continue;
     p.x = Math.round(c.x - p.w / 2) + dx; p.y = Math.round(c.y - p.h / 2) + dy;
-    snapPos(p, !!ctx.etat.opts.snap); v5ClampPiece(P, p);
     if (!taken()) return p;
   }
   return p;
@@ -159,12 +155,11 @@ function unstackPiece(ctx: Contexte, p: Meuble, c: { x: number; y: number }): Me
 
 // Same ring, but for a pasted GROUP: we offset the WHOLE group, never an isolated object, otherwise
 // the relative layout that pasting promises to preserve would be destroyed on the first try.
-// `pts` = each piece's wanted position BEFORE bounding (bounding is redone on each try, because
-// in a narrow room it pulls everything back to the same spot).
+// `pts` = each piece's wanted position.
 export function unstackGroup(ctx: Contexte, list: Meuble[], pts: { x: number; y: number }[]): boolean {
   const P = ctx.etat.plan;
   const pose = (ox: number, oy: number): void => list.forEach((p, i) => {
-    const q = pts[i]!; p.x = q.x + ox; p.y = q.y + oy; v5ClampPiece(P, p);
+    const q = pts[i]!; p.x = q.x + ox; p.y = q.y + oy;
   });
   const taken = (): boolean => list.some((p) => (P.pieces || []).some((q) =>
     q !== p && !isWallMount(q.type) && list.indexOf(q) < 0 && q.x === p.x && q.y === p.y));
@@ -214,21 +209,15 @@ export function placeNewPieceAt(
   const c = apt || viewCenterApt(ctx);
   const p = mk(P, type, Math.round(c.x - (t.w || 60) / 2), Math.round(c.y - (t.h || 60) / 2));
   p.id = String(p.id);
-  snapPos(p, !!ctx.etat.opts.snap); P.pieces.push(p); v5ClampPiece(P, p);
+  P.pieces.push(p);
   unstackPiece(ctx, p, c);
-  // F1. THE RADIATOR MAGNET, at drop time too (same mechanism and reach as the drag): dropped near
-  // a wall, it lands flush against it rather than a few centimeters off, and wins over the grid
-  // exactly like the alignment snap already does.
-  if (type === "radiateur") {
-    const aimante = radiatorWallSnap(P, p, wallSnapReach(ctx.vue.scale));
-    if (aimante) { p.x = aimante.x; p.y = aimante.y; p.rot = aimante.rot; }
-  }
-  const fits = v5LastFit();
+  // THE WALL MAGNET, at drop time too (same mechanism and reach as the drag): dropped with its back
+  // near a wall, a piece of furniture lands flush against it, oriented with the wall, rather than a
+  // few centimetres off.
+  const aimante = meubleWallSnap(P, p, wallSnapReach(ctx.vue.scale));
+  if (aimante) { p.x = aimante.x; p.y = aimante.y; p.rot = aimante.rot; }
   v5Touch(ctx);
   selReplace(ctx, p.id); render(ctx); ctx.crochets.openInspector?.();
-  // Not fitting in the room doesn't prevent placement (the furniture overflows, it doesn't get
-  // discarded), but that gets said: nothing should happen in silence.
-  if (!fits) toast(`${p.name || "This piece"} is bigger than the room: it sticks out.`, { geste: true });
   return p;
 }
 
