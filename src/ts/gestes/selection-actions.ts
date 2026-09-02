@@ -15,64 +15,15 @@ import { TYPEMAP, isSideable } from "../catalogue/catalogue.ts";
 import { WALL } from "../noyau/nombres.ts";
 import { v5CellsAt, v5OpeningBox, v5Seg } from "../modele/murs.ts";
 import { v5ClampPiece, v5OpeningBlockerOnSide } from "../modele/edition.ts";
-import { imposerEcart, repartirEgalement } from "../modele/repartir.ts";
-import { clearSel } from "../rendu/selection.ts";
+import { autoName } from "../modele/creation.ts";
+import { prochainUid } from "../modele/lecture-v4.ts";
+import { clearSel, selAdd } from "../rendu/selection.ts";
 import { render } from "../rendu/rendu.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { save } from "../app/persistance.ts";
 import { toast } from "../app/toast.ts";
 
 /** The PRIMARY object of the selection, furniture OR opening (openings are outside `pieces[]`). */
-/**
- * EVENLY DISTRIBUTE the selection's spacing. The computation is PURE (`modele/repartir.ts`); here
- * we only apply it, with the same rules as any other move:
- *   - ONE single undo step for the whole operation (`pushHistory` before writing);
- *   - the SAME bounds as the keyboard and the drag (`v5ClampPiece`), so no redistribution
- *     can push a piece of furniture out of its room: inventing a path that escapes the clamps is
- *     inventing a path that escapes G-13;
- *   - every refusal is STATED, never a gesture that does nothing without explanation.
- * Returns `true` if something moved.
- */
-export function repartirSelection(ctx: Contexte, ecartVoulu?: number): boolean {
-  const sel: Meuble[] = [];
-  for (const id of ctx.selection.ids) {
-    const p = pieceById(ctx, id);
-    if (p) sel.push(p);
-  }
-  // Two operations, ONE single application path: the computation changes, the bounds, the history
-  // and the publication do not. Two paths would diverge at the first fix.
-  const res = ecartVoulu === undefined ? repartirEgalement(sel) : imposerEcart(sel, ecartVoulu);
-  if (!res.ok) {
-    toast(res.refus === "moins_de_trois"
-      ? "Select at least three objects: with two there is only one gap, so there is nothing to even out."
-      : res.refus === "axe_ambigu"
-      ? "These objects are not lined up along one direction, so there is no spacing to even out."
-      : "One of the middle objects is locked: unlock it, or leave it out of the selection.",
-      { geste: true });
-    return false;
-  }
-  if (!res.r.bouges.length) {
-    toast("The spacing is already even.", { geste: true });
-    return false;
-  }
-  pushHistory(ctx);
-  for (const b of res.r.bouges) {
-    const m = pieceById(ctx, b.id);
-    if (!m) continue;
-    m.x += b.dx; m.y += b.dy;
-    v5ClampPiece(ctx.etat.plan, m);
-  }
-  v5Touch(ctx); render(ctx); ctx.crochets.persister?.();
-  for (const b of res.r.bouges) {
-    const m = pieceById(ctx, b.id);
-    if (m) ctx.crochets.emitDrag?.(m);
-  }
-  toast(ecartVoulu === undefined
-    ? `Spacing evened out to ${Math.round(res.r.ecart)} cm.`
-    : `Spacing set to ${Math.round(res.r.ecart)} cm.`, { geste: true });
-  return true;
-}
-
 export function cur(ctx: Contexte): Meuble | Ouverture | undefined {
   if (ctx.selection.primaire == null) return undefined;
   return pieceById(ctx, ctx.selection.primaire) || v5OpeningById(ctx, ctx.selection.primaire) || undefined;
@@ -126,5 +77,30 @@ export function flipWallMountSide(ctx: Contexte, p: Ouverture | Meuble | undefin
     toast("This wall faces outside: the object now looks out of the flat.", { geste: true });
   }
   render(ctx); ctx.crochets.syncInspector?.(); save(ctx);
+  return true;
+}
+
+/**
+ * DUPLICATE THE SELECTION, ONE SINGLE PATH (decision 0013): the inspector's Duplicate button and
+ * `Ctrl+D` both call this, so there is no second gesture (Alt+drag) to keep in step. Openings are
+ * skipped: they belong to their wall, and `Ctrl+C`/`Ctrl+V` already know how to re-attach a copy
+ * to the nearest wall, which a plain offset copy cannot. Returns `true` if something was
+ * duplicated.
+ */
+export function dupliquerSelection(ctx: Contexte): boolean {
+  if (!ctx.selection.ids.size) return false;
+  const src = [...ctx.selection.ids].map((id) => pieceById(ctx, id)).filter((p): p is Meuble => !!p);
+  if (!src.length) return false;   // openings-only selection: nothing here duplicates them
+  pushHistory(ctx);
+  const newIds: string[] = [];
+  src.forEach((p) => {
+    const n: Meuble = {
+      ...p, id: String(prochainUid()), x: p.x + 15, y: p.y + 15,
+      locked: false, name: autoName(ctx.etat.plan, p.name),
+    };
+    ctx.etat.plan.pieces.push(n); v5ClampPiece(ctx.etat.plan, n); newIds.push(String(n.id));
+  });
+  v5Touch(ctx); clearSel(ctx); newIds.forEach((i) => selAdd(ctx, i));
+  render(ctx); ctx.crochets.openInspector?.();
   return true;
 }

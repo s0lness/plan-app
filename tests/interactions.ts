@@ -292,13 +292,16 @@ await test("gesture_always_ends", async () => {
       await M("mouseReleased", h.x + 40, h.y); await pause(80);
       ok(!(await gestureState()).active, "saisie de cote : le geste bloque encore l'enregistrement après le relâchement");
       ok(await evaluate(`window.__saveWorks("saisie")`), "saisie de cote abandonnée : enregistrement mort");
-      // typing a name containing a digit in the inspector: the 2 must NOT be swallowed
-      const nameBox = await centerOf("#iName");
-      await click(nameBox);
-      await evaluate(`document.getElementById("iName").value=""; true`);
+      // typing text containing a digit in ANY field: the 2 must NOT be swallowed. The inspector
+      // no longer carries a name field (decision 0013), so the palette search box stands in: it
+      // is always present, and the point being proven has nothing to do with which field it is.
+      const champ = await centerOf("#palSearch");
+      await click(champ);
+      await evaluate(`document.getElementById("palSearch").value=""; true`);
       await typeText("Chambre 2");
-      const v = await evaluate(`document.getElementById("iName").value`);
-      ok(v === "Chambre 2", `le champ nom doit recevoir « Chambre 2 », il a reçu « ${v} »`);
+      const v = await evaluate(`document.getElementById("palSearch").value`);
+      ok(v === "Chambre 2", `le champ doit recevoir « Chambre 2 », il a reçu « ${v} »`);
+      await evaluate(`document.getElementById("palSearch").value=""; true`);   // leave the search untouched for what follows
       const g = await gestureState();
       ok(!g.active && !g.armed, "saisie de cote : le geste doit être refermé une fois le focus dans un champ " + JSON.stringify(g));
     }
@@ -448,9 +451,12 @@ await test("rail_chips_follow_cells", async () => {
 // =============================================================================
 //  5. opening_fields_round_trip
 // =============================================================================
-// An opening's wire shape was {id,wallId,t0,w,type,hinge,swing}: `name` and `h` weren't in it,
-// even though the inspector lets you edit them. Renaming a window emitted ZERO ops, and setDim()
-// wrote NaNs (p.x+p.w/2 on an object with neither x nor y).
+// An opening's wire shape was {id,wallId,t0,w,type,hinge,swing}: `h` wasn't in it, even though the
+// inspector lets you edit it. setDim() wrote NaNs (p.x+p.w/2 on an object with neither x nor y).
+// An opening has no name field any more (decision 0013: the final inspector for an opening is
+// Width, Depth, From the corner and its own type fields, nothing else; it never had an on-plan
+// label to double-click either, "no name written on a wall-mounted object"), so this case no
+// longer proves a rename round trip, only the depth one.
 await test("opening_fields_round_trip", async () => {
   const oid = await evaluate(`(function(){
     var o=(__plan.state.plan.openings||[]).find(function(x){return x.type==="window";})||__plan.state.plan.openings[0];
@@ -459,17 +465,7 @@ await test("opening_fields_round_trip", async () => {
   if (!ok(pt, "ouverture introuvable à l'écran")) return;
   await click(pt);                       // real click: selection + inspector
   ok(await evaluate(`String(__plan.selId)===window.__oid`), "le clic doit sélectionner l'ouverture");
-
-  // --- renaming at the keyboard, in the real field ---
-  await evaluate(`__plan.shadowSync(); __plan.opLog(true); true`);
-  await click(await centerOf("#iName"));
-  await evaluate(`(function(){var e=document.getElementById("iName"); e.value=""; e.dispatchEvent(new Event("input",{bubbles:true}));})(); true`);
-  await typeText("Fenetre cuisine");
-  await evaluate(`__plan.forceDiff(); true`);
-  const ops = await J(`__plan.opLog(false)`);
-  const setOp = ops.filter((o: VerdictSonde) => o.kind === "opening.set" && String(o.opening.id) === oid).pop();
-  ok(!!setOp, `renommer une ouverture doit émettre une op (ops vues : ${JSON.stringify(ops.map((o: VerdictSonde) => o.kind))})`);
-  ok(setOp && setOp.opening.name === "Fenetre cuisine", "l'op doit porter le nom : " + JSON.stringify(setOp && setOp.opening));
+  const nomOrigine = await evaluate(`__plan.v5OpeningById(window.__oid).name`);
 
   // --- depth (iH): neither NaN nor invented x/y ---
   // Depth is the object's thickness WITHIN its wall: it is bounded by that wall (js/21), not just
@@ -504,7 +500,7 @@ await test("opening_fields_round_trip", async () => {
     try { applied = applyOp(JSON.parse(JSON.stringify(clean)), hOp); }
     catch (e) { ok(false, "le serveur refuse l'op d'ouverture : " + (e && e.reason || e)); }
     const stored = applied && (applied.openings || []).find(o => String(o.id) === oid);
-    ok(stored && stored.name === "Fenetre cuisine" && stored.h === prof,
+    ok(stored && stored.name === nomOrigine && stored.h === prof,
       "le plan partagé doit conserver name/h : " + JSON.stringify(stored));
     ok(stored && (stored.side === 0 || stored.side === 1), "side doit être une clé dépliée côté serveur : " + JSON.stringify(stored));
   }
@@ -512,7 +508,7 @@ await test("opening_fields_round_trip", async () => {
   // --- and the edit survives a complete plan replacement ---
   await evaluate(`__plan.applyRemote({kind:"plan5.replace", plan:__plan.wire()}); true`);
   const back = await J(`(function(){var o=__plan.v5OpeningById(window.__oid); return o?{name:o.name,h:o.h}:null;})()`);
-  ok(back && back.name === "Fenetre cuisine" && back.h === prof,
+  ok(back && back.name === nomOrigine && back.h === prof,
     "l'édition doit survivre à un remplacement de plan : " + JSON.stringify(back));
 });
 

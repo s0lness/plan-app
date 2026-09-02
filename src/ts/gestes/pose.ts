@@ -424,8 +424,10 @@ export function annulerPoseArmee(ctx: Contexte, msg?: string): boolean {
 }
 
 /**
- * Entry point for a CLICK / a TAP on a palette thumbnail. (`addPaletteTapped`.)
- * Always returns null: placement is ARMED, it hasn't placed anything.
+ * Entry point for a TAP on a palette thumbnail, and for `Enter`/`Space` on a focused one
+ * (`addPaletteTapped`). A MOUSE click no longer reaches this (decision 0013: the one path for a
+ * mouse is `startPaletteDrag`, below); a finger has no drag ghost, so tap-then-tap is what
+ * remains for it. Always returns null: placement is ARMED, it hasn't placed anything.
  */
 export function armerPose(ctx: Contexte, type: string): string | null {
   if (_poseArme === type) { annulerPoseArmee(ctx, "Drop cancelled."); return null; }
@@ -435,22 +437,10 @@ export function armerPose(ctx: Contexte, type: string): string | null {
   if (drawerOpen) ctx.gestes.railOpen?.(false);   // the drawer covers the plan: you need to see where you're placing
   toast(COARSE
     ? `Tap the plan to place “${poseArmeLabel()}”.`
-    : `Click the plan to place “${poseArmeLabel()}” (Enter = centre of the view, Esc cancels).`,
+    : `Click the plan to place “${poseArmeLabel()}” (Esc cancels).`,
     { geste: true });
   if (!COARSE) ctx.crochets.showHint?.("pose");   // once, never twice: dragging remains the primary gesture
   return null;
-}
-
-/**
- * KEYBOARD path: armed then Enter, the object gets placed at the view's center. Without it, someone
- * navigating by keyboard would have no way at all to place a piece of furniture. (`posePoseArmeAuCentre`.)
- */
-export function poserAuCentre(ctx: Contexte): Meuble | Ouverture | null {
-  if (!_poseArme) return null;
-  const type = _poseArme; setPoseArme(ctx, null);
-  const p = placeNewPieceAt(ctx, type, viewCenterApt(ctx));
-  if (p) toast(`“${(TYPEMAP[type] || {}).name || type}” placed at the centre of the view.`, { geste: true });
-  return p;
 }
 
 /**
@@ -561,6 +551,10 @@ export function brancherPalette(ctx: Contexte): void {
   pal.addEventListener("click", (e) => {
     const it = vignetteDe(e.target); if (!it) return;
     if (e.detail >= 2) return;
+    // MOUSE: a plain click arms nothing (decision 0013), only a drag places an object
+    // (`startPaletteDrag`, wired on `pointerdown` below). TOUCH: a tap has no drag ghost to hold,
+    // so it stays the one way to aim without dragging.
+    if (!isTouchEvt(e as unknown as PointerEvent)) return;
     armerPose(ctx, it.dataset["type"] || "");
   });
   pal.addEventListener("keydown", (e) => {

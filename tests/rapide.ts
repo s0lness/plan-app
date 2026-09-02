@@ -39,6 +39,7 @@ import { buildAptContext } from "../src/ts/circulation/contexte.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
 import { meubleWallSnap } from "../src/ts/modele/espace.ts";
 import { outilMurALongueur, outilMurFin, outilMurNeuf, outilMurPoint } from "../src/ts/gestes/outil-mur.ts";
+import { angleVersPointeur } from "../src/ts/gestes/guides.ts";
 import { v5PlaceWallMount } from "../src/ts/modele/edition.ts";
 // Le lot « un mur va d'un point à un point » (0012) éprouve le PIPELINE, pas un helper: le module
 // entier est importé une fois, plutôt que six symboles nommés dont aucun n'a d'autre lecteur ici.
@@ -1485,6 +1486,29 @@ test("maj_ralentit_le_point_suivi", () => {
       && expect(avec.x === 100 + 200 * RATIO_PRECIS && avec.y === 100 + 100 * RATIO_PRECIS,
       "avec MAJ, l'écart est réduit d'un facteur " + RATIO_PRECIS + ", vu " + JSON.stringify(avec))
       && expect(nul.x === 100 && nul.y === 100, "au point de départ, MAJ ne décale rien, vu " + JSON.stringify(nul));
+});
+
+// =================================================================================================
+//  ROTATION HANDLE: PURE GEOMETRY (decision 0013)
+// =================================================================================================
+test("poignee_rotation_angle_depuis_le_centre_et_pas_de_15_sous_contrainte", () => {
+  // The app's zero is "up" and it turns CLOCKWISE, exactly like a clock face: a pointer straight
+  // above the center reads 0°, one straight to the right reads 90°.
+  const haut = angleVersPointeur(50, 50, 50, 0, false);
+  const droite = angleVersPointeur(50, 50, 150, 50, false);
+  const bas = angleVersPointeur(50, 50, 50, 150, false);
+  const gauche = angleVersPointeur(50, 50, -50, 50, false);
+  // 40° unconstrained; Shift snaps to the NEAREST 15° step, here 45° (closer than 30°).
+  const rad = (40 - 90) * Math.PI / 180;
+  const px = 1000 * Math.cos(rad), py = 1000 * Math.sin(rad);
+  const libre = angleVersPointeur(0, 0, px, py, false);
+  const contraint = angleVersPointeur(0, 0, px, py, true);
+  return expect(haut === 0, "tout droit au-dessus du centre = 0°, vu " + haut)
+      && expect(droite === 90, "à droite du centre = 90°, vu " + droite)
+      && expect(bas === 180, "en dessous du centre = 180°, vu " + bas)
+      && expect(gauche === 270, "à gauche du centre = 270°, vu " + gauche)
+      && expect(libre === 40, "sans contrainte, l'angle exact (40°) est gardé, vu " + libre)
+      && expect(contraint === 45, "avec Shift, l'angle se cale sur le pas de 15° le plus proche (45°), vu " + contraint);
 });
 
 // =================================================================================================

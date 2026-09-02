@@ -234,8 +234,10 @@ the fallback. The rule is written as a comment, nothing enforces it.
 never resends it, so the piece of furniture would disappear on the other end forever. And with
 `cells.replace`, **a single room name that was too long would take down the sync of all ten
 cells**.
-**Where** `cleanName()` (`live-worker/ops.ts`), `NAME_MAX = 80`; client-side `maxlength="80"` on
-`#iName`/`#rcName` and bounding in `sanitizeV5Plan` for programmatic paths (import, paste).
+**Where** `cleanName()` (`live-worker/ops.ts`), `NAME_MAX = 80`; client-side `maxLength=80` on the
+inline label field (`panneaux/renommer-en-ligne.ts`, decision 0013) and on the room sheet's
+`#rcName`, plus a `.slice(0, 80)` on both for a programmatically set value (paste), and bounding in
+`sanitizeV5Plan` for programmatic paths (import).
 **Verified** `rapide_serveur_tronque_un_nom_trop_long`, `v4 piece name truncated not rejected`,
 `name 81 truncated`, `v5 cell name truncated`.
 

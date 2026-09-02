@@ -47,8 +47,10 @@ export function brancherFicheCellule(ctx: Contexte): void {
     });
   });
 
-  // The name: history COALESCED per focus session, exactly like `#iName`. One entry per keystroke
-  // made "undo" unusable (one character per step).
+  // The name: history COALESCED per focus session, the same rule the inline label rename applies
+  // (`panneaux/renommer-en-ligne.ts`). One entry per keystroke made "undo" unusable (one character
+  // per step). `rcName` is the LAST field of this kind left in a panel (decision 0013): a piece of
+  // furniture and a plan both rename on a double-click of their own label now.
   const nom = $("rcName") as HTMLInputElement | null;
   let rcEdited = false;
   nom?.addEventListener("focus", () => { rcEdited = false; });

@@ -49,7 +49,7 @@ import {
 } from "./gestes/murs.ts";
 import { v5DrawOpeningResize } from "./gestes/ouverture.ts";
 import { orthoSnapVertex } from "./gestes/edition-murs.ts";
-import { armerPose, placeNewPieceAt, poseArme, poserAuCentre, wallMountPreviewApt } from "./gestes/pose.ts";
+import { armerPose, placeNewPieceAt, poseArme, wallMountPreviewApt } from "./gestes/pose.ts";
 
 const hDefaut = (t: string): number => (TYPEMAP[t] || { h: WALL }).h || WALL;
 
@@ -134,7 +134,6 @@ export interface SondeGestes {
   armPose(type: string): string | null;
   paletteArmed(): (string | undefined)[];
   readonly posing: boolean;
-  poseArmeAuCentre(): string | null;
 
   // ---- clipboard (G-24) ----
   clipInfo(): { n: number; verrous: number; muraux: number } | null;
@@ -442,7 +441,6 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     armPose(type: string) { armerPose(ctx, type); return poseArme(); },
     paletteArmed: () => [...document.querySelectorAll<HTMLElement>("#palette .pitem.armed")].map((e) => e.dataset["type"]),
     get posing() { const a = document.querySelector(".app"); return !!a && a.classList.contains("posing"); },
-    poseArmeAuCentre() { const p = poserAuCentre(ctx); return p ? String(p.id) : null; },
 
     clipInfo: planClipInfo,
     clipCopy: () => planCopy(ctx, false),

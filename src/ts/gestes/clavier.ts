@@ -2,9 +2,9 @@
 // Ported from src/js/33-clavier.js.
 //
 // G-24. THE CLIPBOARD: A SINGLE UNDO STEP, RELATIVE LAYOUT PRESERVED.
-// Why, on top of "Duplicate" and Alt+drag: those two place the copy RIGHT AWAY and
-// NEXT TO the original. The clipboard travels through time (copy here, paste elsewhere later) and it
-// carries a MULTIPLE SELECTION while preserving the relative layout.
+// Why, on top of "Duplicate" / `Ctrl+D` (`gestes/selection-actions.ts`): that one places the copy
+// RIGHT AWAY and NEXT TO the original. The clipboard travels through time (copy here, paste
+// elsewhere later) and it carries a MULTIPLE SELECTION while preserving the relative layout.
 //   - a piece of FURNITURE has apartment coordinates: we keep its offset from the group's anchor;
 //   - a WALL-MOUNTED OBJECT has NO coordinates, it belongs to a wall. Refusing it would make the
 //     gesture useless right where it's most useful (the same outlet in three rooms): we RE-ATTACH it
@@ -25,23 +25,22 @@ import { $ } from "../noyau/dom.ts";
 import { clamp, v5R2 } from "../noyau/nombres.ts";
 import { v5OpeningBox, v5Seg } from "../modele/murs.ts";
 import { WALL } from "../noyau/nombres.ts";
-import { v5ClampPiece, v5LastFit, v5PasteWallMount, v5ResolveOpening } from "../modele/edition.ts";
+import { v5LastFit, v5PasteWallMount, v5ResolveOpening } from "../modele/edition.ts";
 import { autoName, fabriqueOuverture, mk } from "../modele/creation.ts";
 import { wallSnapReach } from "../modele/espace.ts";
 import { v5NewId } from "../fil/identite.ts";
 import { render } from "../rendu/rendu.ts";
 import { clearSel } from "../rendu/selection.ts";
 import { aptToScreen, screenToApt } from "../rendu/vue.ts";
-import { stackedAt } from "../rendu/meubles.ts";
 import { save } from "../app/persistance.ts";
 import { toast } from "../app/toast.ts";
 import { pushHistory, redo, undo } from "../historique/pile.ts";
 import { escapeActiveGesture, gesteActif } from "./sortie.ts";
 import { lastCursorApt, measureMode } from "./etat-pointeur.ts";
-import { clearGuides, drawGuides, drawWallGuides, rotatePieceWithChairs } from "./guides.ts";
-import { cur, delSel, flipWallMountSide } from "./selection-actions.ts";
+import { clearGuides, drawGuides, drawWallGuides } from "./guides.ts";
+import { cur, delSel, dupliquerSelection, flipWallMountSide } from "./selection-actions.ts";
 import { unstackGroup } from "./pose.ts";
-import { annulerPoseArmee, poseArme, poserAuCentre } from "./pose.ts";
+import { annulerPoseArmee, poseArme } from "./pose.ts";
 import { v5DeleteSelectedWall, v5DeleteVertex, v5OutilMurTouche, v5SelectWall, v5SetDraw } from "./murs.ts";
 import { v5DrawOpeningGuides } from "./ouverture.ts";
 
@@ -83,29 +82,12 @@ function viewCenterApt(ctx: Contexte): { x: number; y: number } {
 }
 
 /**
- * D key (held): which piece of furniture to show the live dimensions of. The selection wins;
- * an opening (wall-mounted) has none to offer here, `drawGuides` already declines those. With
- * nothing selected, we hit-test the pointer's last known spot the same way a click would
- * (`stackedAt`, paint-rank order, G-9): "two different rules for one on-screen box would be one
- * more source of error."
- */
-function pieceSousD(ctx: Contexte): Meuble | null {
-  if (ctx.selection.primaire != null) return pieceById(ctx, ctx.selection.primaire) || null;
-  const c = lastCursorApt();
-  if (!c) return null;
-  const s = aptToScreen(ctx, c.x, c.y);
-  const vr = ctx.viewport.getBoundingClientRect();
-  for (const el of stackedAt({ clientX: vr.left + s.x, clientY: vr.top + s.y })) {
-    const id = el.dataset["id"]; if (!id) continue;
-    const p = pieceById(ctx, id);
-    if (p && !isWallMount(p.type)) return p;
-  }
-  return null;
-}
-
-/**
- * D key (held): same idea as `pieceSousD`, for a selected or hovered wall. Hover is geometric,
- * so wall bodies stay ordinary drawing space and no transparent hit band can cover furniture.
+ * D key (held), WALL ONLY: which wall to show the live length and clearances of. This is the
+ * remaining half of D-held (decision 0013 removed the furniture half, `pieceSousD`: a piece's
+ * dimensions now show on the selection itself, so peeking at them no longer needs a key). The
+ * wall half stays: a wall carries no such always-on readout (S2's territory, `gestes/murs.ts`,
+ * not touched here), so this is the one path left to it. Hover is geometric, so wall bodies stay
+ * ordinary drawing space and no transparent hit band can cover furniture.
  */
 function murSousD(ctx: Contexte): Mur | null {
   if (ctx.ihm.selWall) return v5WallById(ctx, ctx.ihm.selWall);
@@ -300,11 +282,11 @@ export function brancherClavier(ctx: Contexte): void {
   // previous one survived to clear the guides of a SUBSEQUENT keystroke.
   let nudgeGuideTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // D (held): a LOOK, never a WRITE. `dTenue` tracks whether THIS key is the one holding the
-  // guides open, so releasing it never claims guides it didn't paint (a live drag repaints the
-  // same `.guides` container every frame; we must not rip that out from under it, "must not fight
-  // a drag in progress"). Nothing here pushes history, calls `save`, touches the model, or changes
-  // the selection: `drawGuides`/`clearGuides` are already ephemeral DOM, exactly like a hover.
+  // D (held), WALL ONLY (decision 0013): a LOOK, never a WRITE. `dTenue` tracks whether THIS key
+  // is the one holding the guides open, so releasing it never claims guides it didn't paint (a
+  // live drag repaints the same `.guides` container every frame; we must not rip that out from
+  // under it). Nothing here pushes history, calls `save`, touches the model, or changes the
+  // selection: `drawWallGuides`/`clearGuides` are already ephemeral DOM, exactly like a hover.
   let dTenue = false;
   const finirDTenue = (): void => {
     dTenue = false;
@@ -338,34 +320,26 @@ export function brancherClavier(ctx: Contexte): void {
       render(ctx);
       return;
     }
-    // G-22. ARMED PLACEMENT: Escape abandons it, Enter places it at the center of the view. The latter is the
-    // ONLY remaining path to place something without a pointer.
-    if (!typing && poseArme()) {
-      if (e.key === "Escape") { e.preventDefault(); annulerPoseArmee(ctx, "Drop cancelled."); return; }
-      if (e.key === "Enter") { e.preventDefault(); poserAuCentre(ctx); return; }
+    // G-22. ARMED PLACEMENT (touch only, decision 0013): Escape abandons it. Placing at the view's
+    // center through a bare Enter is gone; the object is placed where it was aimed, on the plan.
+    if (!typing && poseArme() && e.key === "Escape") {
+      e.preventDefault(); annulerPoseArmee(ctx, "Drop cancelled."); return;
     }
-    // D (held): show the selected piece's dimensions, or the pointer's if nothing is selected.
-    // `!dTenue` makes the OS key-repeat a no-op (the guides are already up); `!gesteActif()` keeps
-    // this from starting while a real drag owns the guides. A selected or hovered wall gets the
-    // wall look; otherwise the piece under the pointer gets the furniture look
-    // (`murSousD`/`drawWallGuides`); `finirDTenue` below clears either kind through the SAME
-    // `clearGuides`, so nothing here needs to remember which one it drew.
+    // D (held), WALL ONLY (decision 0013): show the hovered or selected wall's live length and
+    // clearances. `!dTenue` makes the OS key-repeat a no-op (the guides are already up);
+    // `!gesteActif()` keeps this from starting while a real drag owns the guides.
     if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !measureMode() && !poseArme()
       && !dTenue && !gesteActif() && (e.key === "d" || e.key === "D")) {
       const w = murSousD(ctx);
       if (w) { dTenue = true; drawWallGuides(ctx, w); }
-      else {
-        const p = pieceSousD(ctx);
-        if (p) { dTenue = true; drawGuides(ctx, p, null); }
-      }
       return;
     }
     // CURSOR CHAT ("/", FigJam-style, `fil/dire.ts`). REUSES `typing` rather than inventing a
     // second guard (own header note in AGENTS.md): while the chat box itself has focus it IS an
     // `<input>`, so `typing` is already true and a "/" typed into it lands as an ordinary
-    // character, never reopening the box. Blocked during an armed placement or an active gesture
-    // for the same reason "D held" is above: Enter/Escape already mean something else there, and
-    // opening a second floating box on top of one already following the pointer would confuse both.
+    // character, never reopening the box. Blocked during an armed placement or an active gesture:
+    // Enter/Escape already mean something else there, and opening a second floating box on top of
+    // one already following the pointer would confuse both.
     if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !gesteActif() && !poseArme() && e.key === "/") {
       e.preventDefault();
       ctx.crochets.direOuvrir?.();
@@ -387,6 +361,9 @@ export function brancherClavier(ctx: Contexte): void {
         else clipAttendrePaste(ctx);
         return;
       }
+      // Ctrl+D: THE SAME PATH AS THE INSPECTOR'S DUPLICATE BUTTON (decision 0013,
+      // `gestes/selection-actions.ts`), never a second gesture (Alt+drag is gone).
+      if (k === "d" && !e.shiftKey && !e.altKey) { e.preventDefault(); dupliquerSelection(ctx); return; }
     }
     const p = cur(ctx);
     if (typing) return;
@@ -437,9 +414,11 @@ export function brancherClavier(ctx: Contexte): void {
       } else if (opening) {
         // wall-mounted object ORPHANED from an old plan: no supporting wall, nothing to slide
       } else {
+        // NOTHING PUSHES A NUDGED PIECE BACK (decision 0011/0013): a piece flush with a wall must
+        // not be shoved off it by an arrow key when the mouse would have left it exactly there.
         const m = p as Meuble;
         m.x += dx; m.y += dy;
-        v5ClampPiece(ctx.etat.plan, m); v5Touch(ctx);
+        v5Touch(ctx);
         render(ctx); drawGuides(ctx, m, null);
       }
       ctx.crochets.syncInspector?.();
@@ -447,15 +426,11 @@ export function brancherClavier(ctx: Contexte): void {
       nudgeGuideTimer = setTimeout(() => clearGuides(ctx), 900);
     };
     if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); delSel(ctx); }
-    // R: rotate a piece of furniture by 90°. On a wall light / outlet / RJ45 (free rotation forbidden, it
-    // is dictated by the wall) the same key flips the object to the OTHER face of the wall.
-    else if (e.key === "r" || e.key === "R") {
-      if (isSideable(p.type)) { e.preventDefault(); flipWallMountSide(ctx, p); }
-      else if (!opening) {
-        pushHistory(ctx);
-        rotatePieceWithChairs(ctx.etat.plan, p as Meuble, ((p as Meuble).rot || 0) + 90);
-        render(ctx); ctx.crochets.syncInspector?.();
-      }
+    // R: ONE MEANING LEFT (decision 0013). A free rotation now has its own path (the handle on the
+    // selection, and the Rotate 90° button): R no longer duplicates it. On a wall light / outlet /
+    // RJ45, whose rotation is dictated by the wall, R keeps flipping it to the OTHER face.
+    else if ((e.key === "r" || e.key === "R") && isSideable(p.type)) {
+      e.preventDefault(); flipWallMountSide(ctx, p);
     }
     else if (e.key === "Escape") { clearSel(ctx); ctx.crochets.hideInspector?.(); render(ctx); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); nudge(-step, 0); }

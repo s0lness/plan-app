@@ -921,12 +921,50 @@ Covered by `tests/gestes-precision.ts` (7 tests, real mouse).
   extended a partition 90 cm three meters away, split a room in two, and moved a radiator 114 cm),
   to the partition (`v5StartWallDrag`), opening (`v5StartOpeningDrag`), and furniture (js/17: bounds
   ran on every release, even motionless, and shifted furniture already flush with the wall by 11 cm).
-  `pushHistory()` is no longer pushed on `pointerdown`, only on the first real movement (exception:
-  Alt+drag, whose duplicate is born on pointerdown).
+  `pushHistory()` is no longer pushed on `pointerdown`, only on the first real movement. No
+  exception any more: Alt+drag never duplicated (decision 0011 rejected that reading of Alt, it
+  only ever suspends magnets), and Duplicate (the button, or `Ctrl+D`, decision 0013) is its own
+  gesture, not a drag.
 - **ESC PUTS THE WALL TOOL AWAY, AND SAYS SO.** Without a word, the result is indistinguishable
   from a failure: no wall can be selected by clicking. A real session clicked 16 walls in a row with
   no effect and the incident was classified as « non reproductible ». The first Esc ends the run
   being drawn, the second one disarms the tool and states it (`toast({geste:true})`).
+
+## ONE ACTION, ONE PATH
+Decision [0013](docs/decisions/0013-une-action-un-chemin.md). Placing, rotating, renaming and
+duplicating a piece of furniture used to each have two or three competing gestures, with their own
+raccourci; the cost was not the code, it was the ten sections of help it took to explain them, and
+the doubt about which one was "the real one". Each of those actions now keeps ONE path:
+- **Placing**: drag from the palette with a mouse; on a finger, tap the thumbnail then tap the
+  plan. A MOUSE click on a thumbnail no longer arms anything (`gestes/pose.ts`, gated by
+  `isTouchEvt`); `Enter`/`Space` on a focused thumbnail still arms it, for the keyboard. `Enter`
+  placing at the center of the view (`poserAuCentre`) is gone with it.
+- **Rotating**: the handle on the selection (`.rot-handle`, `angleVersPointeur` in
+  `gestes/guides.ts`, PURE, proven in `tests/rapide.ts` without a browser) or "Rotate 90°". The
+  angle slider and its readout are gone from the inspector, and so is the double-click that used to
+  rotate a piece (or flip a door's leaf) everywhere except its label. **R keeps ONE meaning**:
+  flipping a wall light / outlet / RJ45 to the other face; it no longer rotates free furniture.
+- **Renaming**: a double-click on the object's own label (meuble, cell, plan), landing the field
+  ON the label (`panneaux/renommer-en-ligne.ts`). The inspector's Name field is gone. An OPENING
+  has neither a label to double-click (R-2, no name is painted on it) nor a Name field any more: it
+  keeps whatever name it already carries, it just can no longer be retyped from the interface.
+- **Duplicating**: the inspector's Duplicate button and `Ctrl+D`, ONE function
+  (`dupliquerSelection`, `gestes/selection-actions.ts`) behind both.
+- **Multi-selecting by click**: `Shift`+click toggles a piece in or out of the selection (was
+  `Ctrl`/`Cmd`; Ctrl means nothing left in this app, decision 0011 already retired it mid-drag).
+- **Dimensions**: shown ON the selection (`showDim`, `rendu/meubles.ts`) and through every gesture
+  that moves or resizes it; holding `D` no longer shows a piece of furniture's size (it still shows
+  a WALL's, in `gestes/clavier.ts`: wall geometry is decision 0013's neighboring lot's territory,
+  not retired here).
+- **Paint order**: automatic, largest to smallest (G-9 above). "Bring to front" is gone, not
+  hidden on some object kind, gone.
+- **Even spacing**: gone from the inspector, with no replacement UI. The pure computation
+  (`modele/repartir.ts`) and its test (`tests/repartir-espacement.ts`) remain, unattached to any
+  button, should a later batch want to give it one again.
+- **NOTHING PUSHES A MEUBLE ANY MORE, FROM ANY PATH** (completing decision 0011): the arrow keys
+  (`gestes/clavier.ts`) and the inspector's Width/Depth fields (`panneaux/inspecteur.ts`) no longer
+  call `v5ClampPiece`. Only `circulation/correctifs.ts` (an explicit repair, on request) and the
+  orphan pass at load (`v5ClampPieces`, once, never mid-gesture) still bound a piece of furniture.
 
 ## Traps
 - No `wrangler` on this machine (win32-arm64): every Cloudflare API operation goes through REST

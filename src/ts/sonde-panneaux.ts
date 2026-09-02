@@ -9,9 +9,11 @@
 import type { Contexte } from "./app/contexte.ts";
 import type { Meuble, Ouverture } from "./partage/plan.ts";
 import type { Bornes } from "./noyau/champ-numerique.ts";
+import { pieceById } from "./app/contexte.ts";
 import { $ } from "./noyau/dom.ts";
 import { cur } from "./gestes/selection-actions.ts";
 import { dimBounds, openInspector, setDim, syncInspector, wallPosBounds } from "./panneaux/inspecteur.ts";
+import { renommerCelluleEnLigne, renommerMeubleEnLigne } from "./panneaux/renommer-en-ligne.ts";
 import { activeFloor } from "./panneaux/fiche-cellule-edition.ts";
 import { histInfo } from "./historique/pile.ts";
 
@@ -30,9 +32,10 @@ export interface SondePanneaux {
   wallPosBounds(): Bornes;
   /** The `min`/`max` attributes actually set on the field: they must say the same thing. */
   dimAttrs(which: string): { min: number; max: number } | null;
-  /** Inspector buttons actually offered for selection `id`. */
+  /** Inspector buttons actually offered for selection `id`. "Bring to front" is gone (decision
+   * 0013): paint order is automatic, there is no button left to probe here. */
   inspectorButtons(id?: unknown): {
-    dup: EtatBouton | null; front: EtatBouton | null; rot90: EtatBouton | null;
+    dup: EtatBouton | null; rot90: EtatBouton | null;
     side: EtatBouton | null; del: EtatBouton | null; inspHidden: boolean;
   };
   /** A REAL click on an inspector button, even a hidden one (proves it does nothing anymore). */
@@ -44,6 +47,15 @@ export interface SondePanneaux {
   /** The cell card: the active floor, and its visibility. */
   activeFloor(): string;
   readonly roomCardHidden: boolean;
+  /**
+   * Rename a PIECE OF FURNITURE through the REAL inline path (decision 0013: double-click on the
+   * label, not the inspector). Drives the actual DOM field this creates (`.label-edit`) rather
+   * than duplicating its logic, so the bound it enforces (`NAME_MAX`) is proven on the real code,
+   * not on a copy of it. The element passed for positioning plays no part in the write.
+   */
+  renameFurnitureInline(id: unknown, texte: string): string | null;
+  /** Same, for a CELL's name. */
+  renameCellInline(id: unknown, texte: string): string | null;
 }
 
 export function sondePanneaux(ctx: Contexte): SondePanneaux {
@@ -70,7 +82,7 @@ export function sondePanneaux(ctx: Contexte): SondePanneaux {
       };
       const insp = $("inspector");
       return {
-        dup: g("iDup"), front: g("iFront"), rot90: g("iRot90"), side: g("iSide"), del: g("iDel"),
+        dup: g("iDup"), rot90: g("iRot90"), side: g("iSide"), del: g("iDel"),
         inspHidden: !insp || !!insp.hidden,
       };
     },
@@ -85,5 +97,21 @@ export function sondePanneaux(ctx: Contexte): SondePanneaux {
 
     activeFloor: () => activeFloor(ctx),
     get roomCardHidden() { const c = $("roomCard"); return !c || !!c.hidden; },
+
+    renameFurnitureInline(id: unknown, texte: string) {
+      renommerMeubleEnLigne(ctx, String(id), document.body);
+      const inp = document.querySelector<HTMLInputElement>(".label-edit"); if (!inp) return null;
+      inp.value = texte;
+      inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      return pieceById(ctx, id)?.name ?? null;
+    },
+    renameCellInline(id: unknown, texte: string) {
+      renommerCelluleEnLigne(ctx, String(id), document.body);
+      const inp = document.querySelector<HTMLInputElement>(".label-edit"); if (!inp) return null;
+      inp.value = texte;
+      inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      const c = (ctx.etat.plan.cells || []).find((q) => String(q.id) === String(id));
+      return c ? c.name : null;
+    },
   };
 }

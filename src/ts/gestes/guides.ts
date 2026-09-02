@@ -90,6 +90,19 @@ export function clearGuides(ctx: Contexte): void {
   ctx.canvas.querySelectorAll(".guides").forEach((g) => g.remove());
 }
 
+/**
+ * THE ROTATION HANDLE, AS A PURE FUNCTION (decision 0013). The angle from a pivot (the piece's own
+ * center) to the pointer, "up" = 0°, clockwise, rounded to the whole degree; Shift quantizes to
+ * 15° steps. Extracted from the handle's `pointermove` (`gestes/meuble.ts`) so the geometry can be
+ * proven without a browser: `tests/rapide.ts` covers it directly.
+ */
+export function angleVersPointeur(cx: number, cy: number, px: number, py: number, pas15: boolean): number {
+  let a = Math.atan2(py - cy, px - cx) * 180 / Math.PI + 90;
+  a = (a + 360) % 360;
+  if (pas15) a = Math.round(a / 15) * 15 % 360;
+  return Math.round(a) % 360;
+}
+
 // Feature 2: magnetic alignment snap. Compare the dragged piece's AABB left/center/right (x)
 // and top/center/bottom (y) to every other visible non-wall-mounted piece's same lines.
 // Within ALIGN_TOL cm, snap the piece (alignment wins over grid) and report the nearest line
@@ -244,11 +257,14 @@ export function drawGuides(
 }
 
 /**
- * Hold-`D` ON A WALL (2026-08-14), the same LOOK-never-WRITE guide as `drawGuides` gives a piece
- * of furniture: its length, and its distance to what surrounds it. Cleared by the SAME
- * `clearGuides` (same `.guides` container class), so a running drag's own dimensions
- * (`v5DrawWallDims`/`v5ClearDims` in `gestes/murs.ts`, a DIFFERENT overlay for a DIFFERENT
- * moment: while the wall is actually moving) are never fought over.
+ * Hold-`D` ON A WALL. Wall geometry is S2's territory (`gestes/murs.ts`, `modele/edition.ts`), not
+ * this lot's (decision 0013 removed the furniture half of this feature, `pieceSousD`, because
+ * dimensions now show on the selection itself; the wall half stays wired here on purpose, so as
+ * not to reach into files this lot must not touch). The same LOOK-never-WRITE guide as
+ * `drawGuides` gives a piece of furniture: its length, and its distance to what surrounds it.
+ * Cleared by the SAME `clearGuides` (same `.guides` container class), so a running drag's own
+ * dimensions (`v5DrawWallDims`/`v5ClearDims` in `gestes/murs.ts`, a DIFFERENT overlay for a
+ * DIFFERENT moment: while the wall is actually moving) are never fought over.
  *
  * A wall can run at any angle (a diagonal drawn with Alt), so both the length and the two gap
  * lines go through `addGuideSeg` (arbitrary-angle segment + label), not `addGuideLine` (which

@@ -20,9 +20,6 @@
 //   stockage_refuse_le_dit     the write exception was swallowed: no banner, no chip
 //   profondeur_bornee_par_le_mur  "Depth" accepted 200 on a 10 cm wall, silently, and
 //                              painted a 2 m white hole through both rooms
-//   iGapSet_refuse_hors_bornes  the "even out spacing" field was the one numeric field NOT
-//                              wired through numField(): an out-of-bounds value just returned,
-//                              with no message and no visible refusal
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -402,7 +399,7 @@ await test("panneaux_jamais_superposes", URL_SEEDED, async () => {
       var ri=i.getBoundingClientRect(), rc=c.getBoundingClientRect();
       var chevauche=!(ri.right<=rc.left||rc.right<=ri.left||ri.bottom<=rc.top||rc.bottom<=ri.top);
       var bloques=[];
-      ["iName","iW","iH","iDel","iDup","iLock","iFront"].forEach(function(id){
+      ["iW","iH","iDel","iDup","iLock","iRot90"].forEach(function(id){
         var e=document.getElementById(id); if(!e||e.hidden) return;
         var b=e.getBoundingClientRect(); if(b.width<1){ bloques.push(id+":invisible"); return; }
         var top=document.elementFromPoint(b.left+b.width/2, b.top+b.height/2);
@@ -666,62 +663,6 @@ await test("profondeur_bornee_par_le_mur", URL_MURS_MINCES, async () => {
     return (P.openings||[]).filter(function(o){var w=__plan.v5WallById(o.wallId);
       return w && o.h>Math.round(w.t);}).map(function(o){return o.id+":"+o.h;});})()`);
   ok(horsBornes.length === 0, "aucune ouverture ne doit dépasser son mur : " + JSON.stringify(horsBornes));
-});
-
-// =============================================================================
-//  11. iGapSet_refuse_hors_bornes (défaut C3)
-// =============================================================================
-// `#iGapSet` ("even out the spacing to…") was the only numeric field in the inspector NOT wired
-// through `numField()`: its own hand-rolled Enter handler just `return`ed on an out-of-bounds
-// value, with no message and no visible sign anything was refused. It now goes through the SAME
-// guard as every other field in the panel (`champ_de_dimension` above), with the SAME two-sided
-// proof: the plan is untouched, AND the refusal is SAID on screen.
-await test("iGapSet_refuse_hors_bornes", URL_BLANK, async () => {
-  // Three chairs on one line: the only configuration where the "even out" row (and `#iGapSet`)
-  // appears at all (AGENTS.md, `syncInspector`: "at least three objects, aligned on an axis").
-  const ids = await J(`(function(){
-    __plan.setModel({outline:[[0,0],[600,0],[600,300],[0,300]], walls:[], openings:[], pieces:[], cells:[]});
-    var a = __plan.addV5Piece("chair", 100, 100);
-    var b = __plan.addV5Piece("chair", 250, 100);
-    var c = __plan.addV5Piece("chair", 400, 100);
-    __plan.clearSel(); __plan.selAdd(String(a.id)); __plan.selAdd(String(b.id)); __plan.selAdd(String(c.id));
-    __plan.render(); __plan.openInspector();
-    return [String(a.id), String(b.id), String(c.id)];})()`);
-  await pause(180);
-  const positions = () => J(`__plan.state.plan.pieces.map(function(p){return {id:String(p.id), x:p.x, y:p.y};})`);
-  const avant = await positions();
-
-  const champ = await centerOf("#iGapSet");
-  ok(champ, "le champ « écart » doit être visible sur trois objets alignés");
-  const lu = () => J(`({champ:document.getElementById("iGapSet").value,
-    marque:(function(){var b=document.getElementById("iGapSet").closest(".in");
-      return b && (b.classList.contains("bad")?"refus":(b.classList.contains("pending")?"attente":""));})()})`);
-  const valeurProposee = (await lu()).champ;
-
-  // 1. 999 (hors de la borne 0..500) : REFUSÉ, dit à l'écran, et le plan reste identique.
-  await click(champ); await selectAll();
-  await typeText("999", { attendu: valeurProposee, remettre: async () => { await click(champ); await selectAll(); } });
-  const e = await lu();
-  ok(String(e.champ) === String(valeurProposee),
-    `« 999 » doit rendre la main sur la valeur proposée (${valeurProposee}), écran=${e.champ}`);
-  ok(await screenSays("/between 0 and 500/i"), "le refus doit être DIT à l'écran (bornes en toutes lettres)");
-  const apres = await positions();
-  ok(ids.every((id: string) => {
-    const a0 = avant.find((p: VerdictSonde) => p.id === id), a1 = apres.find((p: VerdictSonde) => p.id === id);
-    return a0.x === a1.x && a0.y === a1.y;
-  }), `« 999 » ne doit déplacer AUCUN objet : avant=${JSON.stringify(avant)} après=${JSON.stringify(apres)}`);
-
-  // 2. une valeur valide s'applique bien (on borne, on ne fige pas).
-  await click(champ); await selectAll(); await typeText("80", { attendu: "80" });
-  await send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
-  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
-  await pause(150);
-  const finales = await positions();
-  const bouge = ids.some((id: string) => {
-    const a0 = avant.find((p: VerdictSonde) => p.id === id), a1 = finales.find((p: VerdictSonde) => p.id === id);
-    return a0.x !== a1.x || a0.y !== a1.y;
-  });
-  ok(bouge, "un écart valide (80) doit, lui, déplacer les objets");
 });
 
 // ---- verdict -----------------------------------------------------------------------------------
