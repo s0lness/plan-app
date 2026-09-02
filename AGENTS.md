@@ -612,7 +612,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 | `OPENING_LEAVES` | 0, 1, 2 | window leaf count | only the three rendered opening shapes are accepted |
 | `CELL_FLOORS` | `parquet`, `herringbone`, `tile`, `plain` | computed-cell floor | mirrors the client floor catalogue |
 | `GUEST_NAME_MAX` | 40 | guest display name | bounds untrusted identity text sent to peers |
-| `CURSOR_SAY_MAX` | 140 | cursor chat bubble | bounds untrusted transient text sent to peers |
+| `CURSOR_SAY_MAX` | 140 | cursor chat bubble | **server-side only since decision 0015**: no client build opens the bubble or emits `say` any more, but the field is still accepted (a tab left open on an older build can still send it) and still bounded |
 | `SWING_MAX` | 80 | `swing` (opening direction) | without it, `swing` accepted a 5 MB string |
 | `COORD_MAX` | 100 000 cm | every coordinate | 1 km = thirty times the largest plausible dimension (the real floor plan fits within 1418 cm): nothing legitimate is rejected, `1e308` is |
 | `POLY_MAX_PTS` | 2000 | polygon vertices | the real floor plan peaks at 11 |
@@ -642,9 +642,9 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - **The two floating panels are STACKED** in `.side-panels` (`html/04` → `html/05`), never anchored
   to the same corner: they can no longer overlap. The `.side-spacer` spacer pushes them downward and
   collapses when they no longer fit; on a short screen they sit side by side (`css/17`).
-- **The rail footer is `position:sticky`**: the "File" menu is the only access to Save to file,
-  Open from file, Furniture list, Export as PNG, Print / PDF, and Remove all furniture; it must never
-  end up at the bottom of a 3 000 px rail.
+- **The rail footer is `position:sticky`**: the "File" menu is the only access to Undo, Redo, Save
+  to file, Open from file, Furniture list, Export as PNG, Print / PDF, Remove all furniture, and
+  Feedback (decision 0015); it must never end up at the bottom of a 3 000 px rail.
 - **A resize that breaks framing reframes** (`js/46`): compare the current transform against the OLD
   viewport size (stored), so reframing happens only if the floor plan fit before and no longer fits
   afterward. The view of someone who deliberately moved closer stays intact.
@@ -952,19 +952,53 @@ the doubt about which one was "the real one". Each of those actions now keeps ON
   (`dupliquerSelection`, `gestes/selection-actions.ts`) behind both.
 - **Multi-selecting by click**: `Shift`+click toggles a piece in or out of the selection (was
   `Ctrl`/`Cmd`; Ctrl means nothing left in this app, decision 0011 already retired it mid-drag).
-- **Dimensions**: shown ON the selection (`showDim`, `rendu/meubles.ts`) and through every gesture
-  that moves or resizes it; holding `D` no longer shows a piece of furniture's size (it still shows
-  a WALL's, in `gestes/clavier.ts`: wall geometry is decision 0013's neighboring lot's territory,
-  not retired here).
+- **Dimensions**: shown ON the selection, for a piece of furniture (`showDim`, `rendu/meubles.ts`)
+  AND for a wall (its length and its two clearances, `drawWallGuides`, `gestes/guides.ts`, wired
+  from `gestes/murs.ts`'s `apresRendu` hook), and through every gesture that moves or resizes
+  either. **The `D` key is gone entirely** (decision 0015, finishing decision 0013): both halves
+  used to show a size while held, furniture first, then the wall; neither needs a key held down
+  any more, both show at selection like everything else in the app.
 - **Paint order**: automatic, largest to smallest (G-9 above). "Bring to front" is gone, not
   hidden on some object kind, gone.
-- **Even spacing**: gone from the inspector, with no replacement UI. The pure computation
-  (`modele/repartir.ts`) and its test (`tests/repartir-espacement.ts`) remain, unattached to any
-  button, should a later batch want to give it one again.
+- **Even spacing**: gone entirely (decision 0015, reversing 0013's own deferral). The pure
+  computation (`modele/repartir.ts`) and its test never gained a caller after 0013 kept them
+  "unattached, ready to be rebranched"; a lot that finds nothing pointing at a file removes the
+  file, it does not keep guessing a future for it.
 - **NOTHING PUSHES A MEUBLE ANY MORE, FROM ANY PATH** (completing decision 0011): the arrow keys
   (`gestes/clavier.ts`) and the inspector's Width/Depth fields (`panneaux/inspecteur.ts`) no longer
   call `v5ClampPiece`. Only `circulation/correctifs.ts` (an explicit repair, on request) and the
   orphan pass at load (`v5ClampPieces`, once, never mid-gesture) still bound a piece of furniture.
+
+## SEVEN BUTTONS, AND THE BUBBLE THAT NEVER SPEAKS AGAIN
+Decision [0015](docs/decisions/0015-sept-boutons-et-des-curseurs.md), lot 6 of
+`docs/simplification-2026-09-02.md`, closing the series that started at decision 0010.
+- **The toolbar carries exactly seven buttons, in this order**: Menu (☰), Wall (`btnDrawWall`),
+  Measure, Fit, Circulation (`btnFlow`), Invite, Help. The state chips (scale, area, sync, peers)
+  stay chips, never buttons. Everything else that used to sit in the bar left it for the File
+  menu or the keyboard.
+- **Undo and Redo left the bar.** `Ctrl+Z` / `Ctrl+Y` (`gestes/clavier.ts`) are unchanged; the two
+  buttons are gone, and two entries now sit at the TOP of the File menu instead, each showing its
+  shortcut on the right (`.fm-key`). There is no more disabled-state tracking on them:
+  `undo()`/`redo()` already no-op on an empty stack, and a menu entry that sometimes does nothing
+  needs no separate bookkeeping to say so up front.
+- **The "Show circulation" overlay button is gone: it is now a STATE of the Circulation button.**
+  One click opens the panel AND paints the shaded floor together; a second click closes both.
+  `Options.overlay` is gone from the client (same treatment as `snap` before it, decision
+  0011/0012: an old saved value is read and dropped, `cleanOpts`, never written back); every place
+  that read `opts.overlay` now reads `opts.flow`.
+- **Feedback (✉) left the bar for the File menu**, last entry, plain text instead of an icon
+  (`#btnFeedback` keeps its id, only its parent changed): it is reached often enough to deserve a
+  menu line, not often enough to deserve a permanent icon next to Circulation.
+- **The cursor-say bubble ("/", FigJam-style) is gone entirely.** `fil/dire.ts` (the floating box),
+  its keyboard shortcut, its CSS (`.say-box`, `.pc-say`), and the code that painted a peer's live
+  text next to their cursor are all removed; the outgoing `cursor` message no longer carries a
+  `say` field. **The server is untouched**: `live-worker/ops.ts` still accepts and bounds `say`
+  (`CURSOR_SAY_MAX`), because a tab left open on an older build can still send it, and a live
+  server must never reject a client it doesn't control. Cursors and presence themselves are
+  unchanged; the chat panel (💬) is unchanged, still collapsed by default.
+- **The wall D-held dimensions are gone with the key** (see "ONE ACTION, ONE PATH" above): a
+  selected wall shows its length and clearances the same way a selected piece of furniture shows
+  its size, no key required.
 
 ## Traps
 - No `wrangler` on this machine (win32-arm64): every Cloudflare API operation goes through REST
