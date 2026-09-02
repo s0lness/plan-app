@@ -523,8 +523,8 @@ try {
   // ---- UNE LIGNE DISPARUE N'EST PAS UN CONFLIT, C'EST UN PLAN SUPPRIMÉ ------------------------
   // La machinerie du refus suppose que la ligne existe encore et que quelqu'un est arrivé avant :
   // elle met la version de côté, arme `putConflict`, et attend une RELECTURE pour le désarmer.
-  // Rien ne relit jamais une ligne qui n'est plus là. `adoptPayload` refuse un corps `data:null`,
-  // donc `putConflict` restait armé POUR TOUJOURS : chaque `doPut` suivant sortait sur sa garde,
+  // Rien ne relit jamais une ligne qui n'est plus là, et l'adoption refuse un corps `data:null`,
+  // donc `putConflict` restait armé POUR TOUJOURS : chaque écriture suivante sortait sur sa garde,
   // la puce restait sur « non enregistré », et la bannière accusait un voisin qui n'avait rien
   // fait. La personne continuait de travailler dans un onglet qui n'écrirait plus jamais.
   db.db.prepare("DELETE FROM plans WHERE id='main'").run();
