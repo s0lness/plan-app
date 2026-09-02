@@ -535,19 +535,21 @@ bug in your own gesture".
 `un_meuble_non_selectionne_supprime_ne_dit_rien`.
 
 ### C-16. Banners are throttled by text, but never the response to a gesture
-**Guarantees** two regimes. A **system** message is throttled by its text, and beyond
-`TOAST_LASSITUDE` repetitions it demands two minutes of silence. A banner that **answers a deliberate
-gesture** goes through `toast(msg, {geste:true})` and comes back **on every gesture**.
+**Guarantees** two regimes (decision 0014, "l'app se tait", which also removed every banner that
+was a confirmation or an information rather than one of these two). A **system** message is
+throttled by its own text until it would have faded on screen (`TOAST_MS`): the same text does not
+re-show while it is on that cooldown, but a DIFFERENT text never waits on it. A banner that
+**answers a deliberate gesture** goes through `toast(msg, {geste:true})` and comes back **on every
+gesture**, with no cooldown at all.
 **Prevents** two opposite defects, both measured. Without throttling: **22 banners in 371 s, 8 of them
 the same sentence** ("Tapis 17 est plus grand que la pièce" [Rug 17 is bigger than the room]), and two
 alternating warnings kept retriggering each other indefinitely. With naive throttling: **"Cette
 cloison est déjà là." [This partition is already there.] only showed on the first of five attempts, the
 next four failed without a word**; yet repeating the gesture is exactly what someone who didn't
 understand does.
-**Where** `js/24:2` and `js/24:12`. The grouping unit is the **gesture** (`_gesteEpoch`, advanced by
-`pointerdown` and `keydown`), so a burst within one gesture doesn't repeat and a gesture message never
-accrues lassitude. **Accepted tradeoff**: repeating the same refused gesture ten times gives ten
-banners.
+**Where** `src/ts/app/toast.ts`. The grouping unit is the **gesture** (`_gesteEpoch`, advanced by
+`pointerdown` and `keydown`), so a burst within one gesture doesn't repeat. **Accepted tradeoff**:
+repeating the same refused gesture ten times gives ten banners.
 **Verified** `un_message_identique_est_etrangle`, `un_message_du_systeme_reste_etrangle`,
 `une_reponse_a_un_geste_revient_a_chaque_geste`, `un_trace_en_double_le_dit_a_chaque_essai`,
 `meme_message_pas_huit_fois`.
