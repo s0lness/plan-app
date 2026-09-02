@@ -221,6 +221,13 @@ const isStr = (v: unknown): v is string => typeof v === "string";
 const isId = (v: unknown): v is string => isStr(v) && ID_RE.test(v);
 // Readable coordinate: finite number within the physical range of a home.
 const isCoord = (v: unknown): v is number => isFiniteNum(v) && v >= -COORD_MAX && v <= COORD_MAX;
+// A v4 floor is a free material label (a number is tolerated, some old plans carry one). It was
+// the ONLY string on this side with no length bound at all: it is persisted, snapshotted to D1
+// and relayed to every peer, so `"x".repeat(1e6)` rode through the plan on the strength of being
+// a string. Bounded like every other label here. REFUSED rather than truncated, unlike a name: a
+// silently shortened material is a different material, and the refusal is numbered, so the client
+// undoes its own change instead of showing one the server never took.
+const isFloorValue = (v: unknown): boolean => isFiniteNum(v) || (isStr(v) && v.length <= NAME_MAX);
 
 // Number read from the wire: a number, or a numeric string (some client ops send "1").
 // Returns null if the value is not a readable number.
@@ -576,7 +583,7 @@ function validatePoly(poly: unknown): Point[] {
 function validateRoom(r: Partial<LegacyRoom>, prev?: Map<string, Piece> | null): LegacyRoom {
   if (!r || typeof r !== "object" || Array.isArray(r)) throw new OpError("room_obj");
   if (!isId(r.id)) throw new OpError("room_id");
-  if (r.floor !== undefined && !isStr(r.floor) && !isFiniteNum(r.floor)) throw new OpError("room_floor");
+  if (r.floor !== undefined && !isFloorValue(r.floor)) throw new OpError("room_floor");
   // ax/ay: apartment offset (cm) of the room's local origin. Optional, null = not placed.
   if (r.ax !== undefined && r.ax !== null && !isCoord(r.ax)) throw new OpError("room_ax");
   if (r.ay !== undefined && r.ay !== null && !isCoord(r.ay)) throw new OpError("room_ay");
@@ -606,7 +613,7 @@ function validateEnvelope(e: PlanState["envelope"], prev?: Map<string, Piece> | 
   if (typeof e !== "object" || Array.isArray(e)) throw new OpError("env_obj");
   if (!e.poly) throw new OpError("env_geom");
   validatePoly(e.poly);
-  if (e.floor !== undefined && !isStr(e.floor) && !isFiniteNum(e.floor)) throw new OpError("env_floor");
+  if (e.floor !== undefined && !isFloorValue(e.floor)) throw new OpError("env_floor");
   const pieces = e.pieces === undefined ? [] : e.pieces;
   if (!Array.isArray(pieces)) throw new OpError("env_pieces");
   if (pieces.length > MAX_ENTITIES) throw new OpError("pieces_max");
@@ -1002,7 +1009,7 @@ function applyOpV4(plan: PlanState, op: Operation): PlanState {
       const patch: Partial<Pick<LegacyRoom, "name" | "floor" | "ax" | "ay">> = {};
       if (op.name !== undefined) patch.name = cleanName(op.name, "room_name");
       if (op.floor !== undefined) {
-        if (!isStr(op.floor) && !isFiniteNum(op.floor)) throw new OpError("room_floor");
+        if (!isFloorValue(op.floor)) throw new OpError("room_floor");
         patch.floor = op.floor;
       }
       if (op.ax !== undefined) {
@@ -1044,7 +1051,7 @@ function applyOpV4(plan: PlanState, op: Operation): PlanState {
       };
       if (op.poly !== undefined) next.poly = validatePoly(op.poly).map((pt) => [pt[0], pt[1]]);
       if (op.floor !== undefined) {
-        if (!isStr(op.floor) && !isFiniteNum(op.floor)) throw new OpError("env_floor");
+        if (!isFloorValue(op.floor)) throw new OpError("env_floor");
         next.floor = op.floor;
       }
       // env.set must establish a valid envelope: refuses a skeleton without a poly.

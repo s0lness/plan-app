@@ -3,7 +3,7 @@
 // importing it under node has no side effect, which makes `coldLoad` testable as-is.
 // Run: node live-worker/test-local.ts
 import type { DonneeDynamique } from "../tests/_types.ts";
-import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan, cleanCursorSay, CURSOR_SAY_MAX } from "./ops.ts";
+import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan, cleanCursorSay, CURSOR_SAY_MAX, NAME_MAX } from "./ops.ts";
 import type { CursorMessage, DragMessage, Operation, Piece, PlanState, Point } from "./ops.ts";
 import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy, attachmentFromRequest, MAX_MSG_BYTES } from "./worker.ts";
 
@@ -198,6 +198,24 @@ applyOp(plan, { kind: "env.set", floor: "parquet" });
 ok(plan.envelope.floor === "parquet" && plan.envelope.poly.length === 4, "env.set floor only keeps poly");
 throws(() => applyOp(freshPlan(), { kind: "env.set", poly: [[0, 0], [1, 1]] }), "env.set bad poly");
 throws(() => applyOp(freshPlan(), { kind: "env.set", floor: "x" }), "env.set skeleton needs poly");
+// ---- LE REVETEMENT EST UN LIBELLE BORNE, PAS UNE CHAINE LIBRE --------------------------------
+// C'etait la seule chaine de ce cote sans aucune borne de longueur : persistee, snapshotee en D1
+// et relayee a chaque pair, du seul fait d'etre une chaine.
+{
+  const long = "x".repeat(NAME_MAX + 1);
+  const juste = "x".repeat(NAME_MAX);
+  throws(() => applyOp(freshPlan(), { kind: "env.set", poly: envPoly(), floor: long }), "env.set revetement trop long");
+  throws(() => applyOp(freshPlan(), { kind: "room.set", roomId: "r1", floor: long }), "room.set revetement trop long");
+  throws(() => sanitizeState({ rooms: [{ id: "r1", name: "S", floor: long, room: { poly: poly() }, pieces: [] }], setupDone: true }),
+    "sanitizeState refuse un revetement de salle trop long");
+  throws(() => sanitizeState({ rooms: [], envelope: { poly: envPoly(), floor: long, pieces: [] }, setupDone: true }),
+    "sanitizeState refuse un revetement d'enveloppe trop long");
+  const p = freshPlan();
+  applyOp(p, { kind: "room.set", roomId: "r1", floor: juste });
+  ok(p.rooms[0].floor === juste, "un revetement a la borne exacte passe");
+  applyOp(p, { kind: "room.set", roomId: "r1", floor: 2 });
+  ok(p.rooms[0].floor === 2, "un revetement numerique (vieux plans) passe toujours");
+}
 // env.del
 applyOp(plan, { kind: "env.del" });
 ok(plan.envelope === null, "env.del removes envelope");
