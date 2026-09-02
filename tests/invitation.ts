@@ -15,6 +15,10 @@ import {
   onRequestDelete as invitesRevoke, onRequestGet as invitesList, onRequestPost as invitesCreate,
 } from "../functions/api/invites.ts";
 import { onRequestGet as planGet, onRequestPut as planPut } from "../functions/api/plan.ts";
+import {
+  onRequestDelete as plansDelete, onRequestPost as plansPost,
+} from "../functions/api/plans.ts";
+import { onRequestGet as orphansGet } from "../functions/api/orphans.ts";
 import { onRequest as wsUpgrade } from "../functions/ws.ts";
 import { cleanName } from "../functions/nom.ts";
 import { fakeD1 } from "./fake-d1.ts";
@@ -729,6 +733,337 @@ await test("ws_foyer_marque_guest_a_zero", async () => {
       && expect(!!vue, "le Durable Object doit avoir reçu une requête transmise")
       && expect(vue!.headers.get("X-Plan-Guest") === "0", "X-Plan-Guest doit être 0 sur la porte foyer")
       && expect(vue!.headers.get("X-Plan-Email") === "sylve@example.com", "X-Plan-Email doit rester l'identité Access sur le foyer");
+});
+
+// =================================================================================================
+//  6. UN PLAN NEUF N'A PAS DE PLAN DEDANS, et ça se lit comme une ligne absente
+// =================================================================================================
+// `functions/api/plans.ts` crée une ligne VIDE. Le contrat de `/api/plan` GET dit
+// « ligne absente = {data:null, rev:0} » : une ligne SANS plan dedans doit répondre pareil, sinon
+// le client ne reconnaît pas « le foyer n'a encore rien dessiné » et n'ouvre pas son assistant.
+
+async function planGetFoyer(env: DonneeDynamique, url: string) {
+  return planGet({
+    request: req(url, { host: HOTE_FOYER, headers: { "Cf-Access-Authenticated-User-Email": "sylve@example.com" } }),
+    env,
+  } as unknown as Parameters<typeof planGet>[0]);
+}
+
+await test("plan_neuf_se_lit_comme_une_ligne_absente", async () => {
+  const { db, env } = base();
+  const res0 = await plansPost({
+    request: req("https://plan.example.com/api/plans", { method: "POST", host: HOTE_FOYER, body: { name: "Chez nous" } }),
+    env,
+  } as unknown as Parameters<typeof plansPost>[0]);
+  const cree = await res0.json<DonneeDynamique>();
+  const ok = expect(res0.status === 200 && cree.ok === true, "la création doit réussir, vu " + res0.status + " " + JSON.stringify(cree));
+  if (!ok) return false;
+  const ligne = db.prepare("SELECT data FROM plans WHERE id=?1").get(cree.id) as DonneeDynamique;
+  const res = await planGetFoyer(env, "https://plan.example.com/api/plan?p=" + cree.id);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.data === null, "un plan neuf doit rendre data:null, vu " + JSON.stringify(corps.data))
+      && expect(corps.rev === 0, "et rev:0, vu " + JSON.stringify(corps.rev))
+      // La colonne reste lisible par tout le monde : ce qu'elle porte doit se reparser en « rien ».
+      && expect(JSON.parse(String(ligne.data)) === null, "la colonne doit porter « aucun plan », vu " + JSON.stringify(ligne.data));
+});
+
+await test("plan_colonne_data_sql_null_se_lit_comme_une_ligne_absente", async () => {
+  // `plans.data` est `TEXT NOT NULL` en production (live-worker/schema.sql), donc cette ligne-là
+  // n'existe pas aujourd'hui. On relâche la contrainte ICI, dans la base du test, pour prouver que
+  // le lecteur ne dépend pas de cette contrainte : le jour où elle tombe (c'est ce que la revue
+  // demande), `JSON.parse(null)` ne doit pas décider tout seul du contrat.
+  const { db, env } = base();
+  db.exec("ALTER TABLE plans RENAME TO plans_strict");
+  db.exec("CREATE TABLE plans(id TEXT PRIMARY KEY, data TEXT, rev INTEGER NOT NULL DEFAULT 0, updated_at TEXT, updated_by TEXT, name TEXT)");
+  db.prepare("INSERT INTO plans(id,data,rev,updated_at,updated_by,name) VALUES('vide',NULL,0,?1,'sylve@example.com','Chez nous')")
+    .run(new Date().toISOString());
+  const res = await planGetFoyer(env, "https://plan.example.com/api/plan?p=vide");
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.data === null, "une colonne SQL NULL doit rendre data:null, vu " + JSON.stringify(corps.data))
+      && expect(corps.rev === 0, "et rev:0, vu " + JSON.stringify(corps.rev));
+});
+
+await test("plan_colonne_data_vide_se_lit_comme_une_ligne_absente", async () => {
+  // La chaîne vide, elle, PASSE la contrainte NOT NULL : c'est le cas atteignable aujourd'hui, et
+  // `JSON.parse("")` jette. Une ligne sans plan dedans n'est pas une panne du serveur.
+  const { db, env } = base();
+  db.prepare("INSERT INTO plans(id,data,rev,updated_at,updated_by,name) VALUES('vide','',0,?1,'sylve@example.com','Chez nous')")
+    .run(new Date().toISOString());
+  const res = await planGetFoyer(env, "https://plan.example.com/api/plan?p=vide");
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.data === null, "une colonne vide doit rendre data:null, vu " + JSON.stringify(corps.data));
+});
+
+// =================================================================================================
+//  7. SUPPRIMER UN PLAN SUPPRIME AUSSI SA COPIE VIVANTE
+// =================================================================================================
+// Effacer la ligne D1 ne suffit pas : le Durable Object garde le plan en mémoire ET le réécrit en
+// D1 à chaque alarme, donc le plan « supprimé » revient, et les gens connectés continuent d'éditer
+// un plan qui n'existe plus. Le DELETE appelle donc `/purge` sur le stub ROOM du plan.
+
+/** Un stub ROOM qui répond comme le DO à `/purge`, et retient la requête reçue. */
+function fauxRoomPurge(closed: number) {
+  const etat: { requete: Request | null } = { requete: null };
+  const stub = {
+    fetch: async (r: Request) => {
+      etat.requete = r;
+      return new Response(JSON.stringify({ ok: true, closed }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  };
+  return { etat, room: { idFromName: (n: string) => n, get: () => stub } };
+}
+
+async function plansDeleteVia(env: DonneeDynamique, id: string) {
+  return plansDelete({
+    request: req("https://plan.example.com/api/plans", { method: "DELETE", host: HOTE_FOYER, body: { id } }), env,
+  } as unknown as Parameters<typeof plansDelete>[0]);
+}
+
+await test("plans_delete_purge_la_copie_vivante", async () => {
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  const { etat, room } = fauxRoomPurge(3);
+  const res = await plansDeleteVia({ ...env, ROOM: room }, "appartement");
+  const corps = await res.json<DonneeDynamique>();
+  const vue = etat.requete;
+  const restante = db.prepare("SELECT id FROM plans WHERE id=?1").get("appartement");
+  return expect(res.status === 200 && corps.ok === true, "la suppression doit rester 200, vu " + res.status)
+      && expect(!restante, "la ligne D1 doit avoir disparu")
+      && expect(!!vue, "le DO doit avoir reçu un appel (par le binding ROOM, jamais le réseau)")
+      && expect(new URL(vue!.url).pathname === "/purge", "l'appel doit cibler /purge, vu " + vue!.url)
+      && expect(vue!.headers.get("X-Plan-Internal") === "1", "et porter le marqueur interne")
+      && expect(corps.live === true, "la réponse doit dire que la copie vivante a été atteinte, vu " + JSON.stringify(corps))
+      && expect(corps.closed === 3, "et combien de sockets ont été fermés, vu " + JSON.stringify(corps.closed));
+});
+
+await test("plans_delete_reste_200_et_dit_live_faux_si_le_do_echoue", async () => {
+  // Même règle que `/revoke` : la ligne est effacée quoi qu'il arrive, donc une panne du Worker ne
+  // doit jamais transformer une suppression réussie en erreur. Ce qui change, c'est ce qu'on DIT.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  const roomEnPanne = { idFromName: (n: string) => n, get: () => ({ fetch: async () => { throw new Error("DO indisponible"); } }) };
+  const res = await plansDeleteVia({ ...env, ROOM: roomEnPanne }, "appartement");
+  const corps = await res.json<DonneeDynamique>();
+  const restante = db.prepare("SELECT id FROM plans WHERE id=?1").get("appartement");
+  return expect(res.status === 200 && corps.ok === true, "doit rester 200, vu " + res.status)
+      && expect(!restante, "la ligne D1 est effacée quand même")
+      && expect(corps.live === false, "et la réponse doit dire live:false, vu " + JSON.stringify(corps));
+});
+
+await test("plans_delete_ne_purge_pas_quand_la_ligne_n_existait_pas", async () => {
+  // 404 : rien n'a été supprimé, donc rien à purger. Purger quand même fermerait les sockets d'un
+  // plan bien vivant sur un simple identifiant mal tapé.
+  const { env } = base();
+  const { etat, room } = fauxRoomPurge(0);
+  const res = await plansDeleteVia({ ...env, ROOM: room }, "fantome");
+  return expect(res.status === 404, "doit répondre 404, vu " + res.status)
+      && expect(etat.requete === null, "aucun appel au DO ne doit partir pour un plan inexistant");
+});
+
+// =================================================================================================
+//  8. EXPIRATION ET RÉVOCATION D'UN LIEN
+// =================================================================================================
+
+await test("ws_transmet_l_echeance_du_lien_au_durable_object", async () => {
+  // La porte ne vérifie la validité QU'À la bascule. Sans cette échéance, un lien qui expire à 18h
+  // laissait le socket déjà ouvert éditer le plan aussi longtemps qu'il restait connecté :
+  // l'expiration n'arrêtait que les NOUVELLES connexions.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  const echeance = new Date(Date.now() + 3 * JOUR_MS).toISOString();
+  insereInvite(db, { token: "exp1", planId: "appartement", expiresAt: echeance });
+  const { etat, room } = fakeRoom();
+  await wsUpgrade({
+    request: wsReq("https://share.example.com/ws", HOTE_INVITE, { Cookie: cookieDe("exp1") }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  return expect(etat.requete!.headers.get("X-Plan-Expires") === echeance,
+    "l'échéance ISO doit être transmise, vu " + JSON.stringify(etat.requete!.headers.get("X-Plan-Expires")));
+});
+
+await test("ws_pose_toujours_l_echeance_vide_sur_le_foyer", async () => {
+  // TOUJOURS POSÉ, jamais conditionnel, comme les cinq autres : ce que l'appelant a envoyé arrive
+  // sur la requête ENTRANTE et doit être écrasé ici, sinon il se forge une échéance.
+  const { env } = base();
+  const { etat, room } = fakeRoom();
+  await wsUpgrade({
+    request: wsReq("https://plan.example.com/ws", HOTE_FOYER, {
+      "Cf-Access-Authenticated-User-Email": "sylve@example.com",
+      "X-Plan-Expires": "2099-01-01T00:00:00.000Z",
+    }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  return expect(etat.requete!.headers.get("X-Plan-Expires") === "",
+    "sur le foyer rien n'expire, et l'en-tête envoyé par l'appelant doit être écrasé, vu "
+      + JSON.stringify(etat.requete!.headers.get("X-Plan-Expires")));
+});
+
+await test("ws_echeance_vide_quand_l_invite_n_en_a_pas", async () => {
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "sansexp1", planId: "appartement", expiresAt: null });
+  const { etat, room } = fakeRoom();
+  await wsUpgrade({
+    request: wsReq("https://share.example.com/ws", HOTE_INVITE, { Cookie: cookieDe("sansexp1") }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  return expect(etat.requete!.headers.get("X-Plan-Expires") === "",
+    "une invite sans échéance doit poser une chaîne vide, vu " + JSON.stringify(etat.requete!.headers.get("X-Plan-Expires")));
+});
+
+await test("invites_delete_dit_live_vrai_quand_le_do_a_repondu", async () => {
+  const { db, env } = CTX_FOYER();
+  insereInvite(db, { token: "live1", planId: "appartement" });
+  const { room } = fakeRoom();   // répond 200
+  const res = await invitesDelete({ ...env, ROOM: room }, HOTE_FOYER, jeton("live1"));
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200 && corps.ok === true, "doit rester 200, vu " + res.status)
+      && expect(corps.live === true, "la réponse doit dire que les sockets ont été fermés, vu " + JSON.stringify(corps));
+});
+
+await test("invites_delete_dit_live_faux_quand_le_do_echoue", async () => {
+  // « Révoqué » et « révoqué, et tous les sockets ouverts fermés » ne sont pas la même promesse.
+  // Le statut de l'appel n'était même pas lu : une panne du Worker ressemblait à une révocation
+  // propre, et l'invité continuait d'éditer.
+  const { db, env } = CTX_FOYER();
+  insereInvite(db, { token: "live2", planId: "appartement" });
+  const roomEnPanne = { idFromName: (n: string) => n, get: () => ({ fetch: async () => new Response("boom", { status: 500 }) }) };
+  const res = await invitesDelete({ ...env, ROOM: roomEnPanne }, HOTE_FOYER, jeton("live2"));
+  const corps = await res.json<DonneeDynamique>();
+  const ligne = db.prepare("SELECT revoked FROM invites WHERE token=?1").get(jeton("live2")) as DonneeDynamique;
+  return expect(res.status === 200 && corps.ok === true, "doit rester 200 (idempotent), vu " + res.status)
+      && expect(ligne.revoked === 1, "la ligne D1 est révoquée quand même")
+      && expect(corps.live === false, "mais la réponse doit dire live:false, vu " + JSON.stringify(corps));
+});
+
+await test("invite_refuse_un_corps_trop_grand_avant_de_le_lire", async () => {
+  // La SEULE route qu'un appelant non authentifié atteint avec un corps. `request.json()` met tout
+  // en mémoire avant que quoi que ce soit puisse regarder : un mégaoctet de bourrage était analysé
+  // en entier, puis jeté.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "gros1", planId: "appartement" });
+  const enorme = { token: jeton("gros1"), name: "x".repeat(20000) };
+  const res = await redeem({
+    request: req("https://share.example.com/api/invite", { method: "POST", host: HOTE_INVITE, body: enorme }),
+    env,
+  } as unknown as Parameters<typeof redeem>[0]);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 413, "doit répondre 413, vu " + res.status)
+      && expect(corps.error === "corps_trop_grand", "corps attendu corps_trop_grand, vu " + JSON.stringify(corps))
+      && expect(corps.max === 4096, "et le plafond réel, vu " + JSON.stringify(corps.max));
+});
+
+await test("invite_refuse_un_corps_trop_grand_meme_sans_content_length", async () => {
+  // `Content-Length` est une DÉCLARATION, pas un fait : absente (chunked) ou mensongère. La vraie
+  // borne s'applique au texte réellement reçu.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "gros2", planId: "appartement" });
+  const entetes = new Headers({ Host: HOTE_INVITE, "content-type": "application/json" });
+  const requete = new Request("https://share.example.com/api/invite", {
+    method: "POST", headers: entetes,
+    body: JSON.stringify({ token: jeton("gros2"), name: "y".repeat(20000) }),
+  });
+  // On EFFACE la déclaration : seul le texte reçu doit trancher.
+  const sansLongueur = new Request(requete, { headers: new Headers(entetes) });
+  const res = await redeem({ request: sansLongueur, env } as unknown as Parameters<typeof redeem>[0]);
+  return expect(sansLongueur.headers.get("Content-Length") === null, "le test doit bien partir sans Content-Length")
+      && expect(res.status === 413, "doit répondre 413 quand même, vu " + res.status);
+});
+
+await test("invite_accepte_toujours_un_corps_normal", async () => {
+  // La borne ne doit refuser RIEN de légitime : le vrai corps fait moins de 200 octets.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "petit1", planId: "appartement" });
+  const res = await redeemAvecToken(db, env, "petit1", { token: jeton("petit1"), name: "Marie", guestId: "device-marie" });
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.name === "Marie", "et rendre le nom, vu " + JSON.stringify(corps.name));
+});
+
+// =================================================================================================
+//  9. /api/orphans — LES VERSIONS QUE LE PLAN VIVANT A ÉCARTÉES, PORTE FOYER SEULEMENT
+// =================================================================================================
+// La bannière `conflict` du client disait « elles sont gardées sur le serveur » : vrai, et
+// inatteignable, puisque rien ne pouvait les demander. Cette route relaie le `GET /orphans` du
+// Durable Object. Un écarté est un morceau du plan du foyer, donc un invité n'y a rien à lire.
+
+function fauxRoomOrphelins(reponse: Response | null) {
+  const etat: { requete: Request | null } = { requete: null };
+  const stub = {
+    fetch: async (r: Request) => {
+      etat.requete = r;
+      if (!reponse) throw new Error("DO indisponible");
+      return reponse;
+    },
+  };
+  return { etat, room: { idFromName: (n: string) => n, get: () => stub } };
+}
+const jsonReponse = (o: unknown, status = 200) =>
+  new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json" } });
+
+await test("orphans_relaie_la_liste_du_durable_object", async () => {
+  const { env } = base();
+  const ecartes: DonneeDynamique[] = [
+    { at: "2026-09-01T10:00:00.000Z", by: "b@example.com", rev: 12, data: { outline: [], walls: [] } },
+  ];
+  const { etat, room } = fauxRoomOrphelins(jsonReponse({ orphans: ecartes }));
+  const res = await orphansGet({
+    request: req("https://plan.example.com/api/orphans?p=appartement", { host: HOTE_FOYER }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof orphansGet>[0]);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(new URL(etat.requete!.url).pathname === "/orphans", "l'appel doit cibler /orphans, vu " + etat.requete!.url)
+      && expect(etat.requete!.headers.get("X-Plan-Internal") === "1", "et porter le marqueur interne")
+      && expect(corps.live === true && corps.orphans.length === 1 && corps.orphans[0].rev === 12,
+        "la liste doit être relayée telle quelle, vu " + JSON.stringify(corps));
+});
+
+await test("orphans_refuse_la_porte_invitee_et_la_porte_inconnue", async () => {
+  const { env } = base();
+  const { etat, room } = fauxRoomOrphelins(jsonReponse({ orphans: [] }));
+  for (const hote of [HOTE_INVITE, "autre.example.com"]) {
+    const res = await orphansGet({
+      request: req("https://" + hote + "/api/orphans?p=appartement", { host: hote }),
+      env: { ...env, ROOM: room },
+    } as unknown as Parameters<typeof orphansGet>[0]);
+    const ok = expect(res.status === 403, hote + " doit répondre 403, vu " + res.status)
+      && expect(etat.requete === null, hote + " : le Durable Object ne doit jamais être atteint");
+    if (!ok) return false;
+  }
+  return true;
+});
+
+await test("orphans_rend_une_liste_vide_quand_le_do_est_injoignable", async () => {
+  // Cette route est demandée PENDANT qu'une bannière de conflit est déjà affichée : un second
+  // échec doit dire « rien à proposer », pas s'empiler en panne par-dessus un conflit.
+  const { env } = base();
+  const { room } = fauxRoomOrphelins(null);
+  const res = await orphansGet({
+    request: req("https://plan.example.com/api/orphans", { host: HOTE_FOYER }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof orphansGet>[0]);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit rester 200, vu " + res.status)
+      && expect(Array.isArray(corps.orphans) && corps.orphans.length === 0, "liste vide attendue, vu " + JSON.stringify(corps))
+      && expect(corps.live === false, "et live:false, vu " + JSON.stringify(corps.live));
+});
+
+await test("orphans_refuse_un_id_de_plan_mal_forme", async () => {
+  const { env } = base();
+  const { etat, room } = fauxRoomOrphelins(jsonReponse({ orphans: [] }));
+  const res = await orphansGet({
+    request: req("https://plan.example.com/api/orphans?p=MAJUSCULE%20INVALIDE", { host: HOTE_FOYER }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof orphansGet>[0]);
+  return expect(res.status === 400, "doit répondre 400, vu " + res.status)
+      && expect(etat.requete === null, "et ne jamais retomber silencieusement sur main");
 });
 
 // =================================================================================================

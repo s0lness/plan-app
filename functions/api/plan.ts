@@ -47,6 +47,7 @@
 // none to have), and never the literal `"live"` (identiteFoyer already screens that out; this
 // path never calls it at all).
 import type { Env } from "../env.ts";
+import type { Porte } from "../porte.ts";
 import { identiteFoyer, porteDe } from "../porte.ts";
 import { auteurPourInvite, cleanName } from "../nom.ts";
 import { chargerInvitation, invitationValide, tokenDuCookie } from "../invitation.ts";
@@ -82,8 +83,24 @@ const mauvaisPlan = () => new Response(JSON.stringify({ error: "bad_plan_id" }),
 const inviteInvalide = () => new Response(JSON.stringify({ error: "invite_invalide" }),
   { status: 403, headers: { "content-type": "application/json" } });
 
+const porteRefusee = () => new Response(JSON.stringify({ error: "porte_refusee" }),
+  { status: 403, headers: { "content-type": "application/json" } });
+
+/**
+ * THIS ROUTE REFUSES AN UNRECOGNIZED DOOR ITSELF, it does not lean on the choke point. Only two
+ * doors mean anything to the shared plan: `foyer` (Access vouched for the caller) and `invite` (a
+ * valid token is the credential, checked just below). `inconnue` used to fall into the SAME branch
+ * as the household: an unlisted host got `main` by default, and the GET answered with the raw
+ * `updated_by` column, an Access address, in clear. `functions/_middleware.ts` does keep that host
+ * out in production, and that is exactly why the hole was invisible — every direct-import test in
+ * this codebase calls this file with no middleware at all, which is the shape any future caller
+ * could take too. Same discipline as `functions/api/invites.ts` and `functions/api/feedback.ts`.
+ */
+const porteConnue = (porte: Porte): boolean => porte === "foyer" || porte === "invite";
+
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const porte = porteDe(request, env);
+  if (!porteConnue(porte)) return porteRefusee();
   let planId: string;
   if (porte === "invite") {
     const invit = await chargerInvitation(env, tokenDuCookie(request));
@@ -99,8 +116,35 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     .bind(planId)
     .first<PlanRow>();
   if (!row) return Response.json({ data: null, rev: 0 });
+  // A ROW WITH NO PLAN IN IT READS EXACTLY LIKE AN ABSENT ROW. `functions/api/plans.ts` creates a
+  // plan EMPTY (nobody has drawn anything yet), and "empty" is `data` holding no plan at all: the
+  // JSON literal `null` today, an SQL NULL the day `plans.data` stops being `TEXT NOT NULL`
+  // (live-worker/schema.sql). Both must answer the contract's `{data:null, rev}`, because the
+  // client decides "the household has no plan yet" from that shape and nothing else. `JSON.parse`
+  // was reached with `null` as its argument in the SQL-NULL case, which coerces to the string
+  // "null" and happened to work; a column holding "" or half a document, on the other hand, threw
+  // and turned a readable row into a 500 (see the corrupt-row guard below).
+  if (row.data === null || row.data === undefined || row.data === "") {
+    return Response.json({
+      data: null, rev: row.rev, updatedAt: row.updated_at,
+      updatedBy: porte === "invite" ? auteurPourInvite(row.updated_by) : row.updated_by,
+    });
+  }
+  // A CORRUPT ROW IS A SERVER FAULT, AND IT IS SAID AS ONE. `JSON.parse` on a half-written
+  // document used to throw out of the handler and surface as an unexplained 500. THE CONTRACT IS
+  // UNCHANGED (AGENTS.md's route table: missing row = `{data:null, rev:0}`), because answering
+  // `{data:null}` here would be worse than the crash: the client reads that as "the household has
+  // no plan yet", and a device that IS configured then bootstraps the server by overwriting the
+  // very bytes nobody has managed to read. A named 500 keeps the boot lock closed (`bootReconciled`
+  // is only released by a SUCCESSFUL read), so the row stays exactly as it is until someone looks.
+  let data: unknown;
+  try { data = JSON.parse(row.data); }
+  catch {
+    return new Response(JSON.stringify({ error: "plan_illisible", reason: "json", rev: row.rev }),
+      { status: 500, headers: { "content-type": "application/json" } });
+  }
   return Response.json({
-    data: JSON.parse(row.data),
+    data,
     rev: row.rev,
     updatedAt: row.updated_at,
     // THE LAST PLACE A HOUSEHOLD ADDRESS COULD CROSS TO A GUEST. Batch 2 stopped emails on the
@@ -140,8 +184,14 @@ const rowsChanged = (res: D1Result<unknown> & { changes?: number }) => {
   return null;
 };
 
-// The winning state, returned as-is to the loser of the swap: it rereads within the same
-// response, without a second round trip (so without a new race).
+// The winning state, returned as-is to the loser of the swap. This IS a second SELECT, and the
+// row can have moved again between the swap and this read: what that costs is bounded, and it is
+// why the reread is safe. The client uses this body to REREAD, not to write: adopting a state one
+// revision fresher than the one that actually beat it changes nothing about the outcome (its own
+// version was set aside either way, and the `rev` it adopts is the one it must quote on its next
+// compare-and-swap). The race is therefore benign in one direction only, and this is that
+// direction. What would NOT be safe is deciding the swap's VERDICT from a reread, which is why
+// the verdict comes from `meta.changes` and only falls back to a reread when D1 gives no count.
 async function currentRow(env: Env, planId: string) {
   const row = await env.DB
     .prepare("SELECT data, rev, updated_at, updated_by FROM plans WHERE id=?1")
@@ -153,8 +203,16 @@ async function currentRow(env: Env, planId: string) {
   return { data, rev: row.rev, updatedAt: row.updated_at, updatedBy: row.updated_by };
 }
 
+/** Is the row's document the very one we just serialized? `currentRow` hands back the PARSED
+ *  value, and re-serializing it is exact: it came from `JSON.parse` of a string this same
+ *  `JSON.stringify` produced, so key order and number formatting round-trip unchanged. */
+const memeDocument = (lu: unknown, ecrit: string): boolean => {
+  try { return JSON.stringify(lu) === ecrit; } catch { return false; }
+};
+
 export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
   const porte = porteDe(request, env);
+  if (!porteConnue(porte)) return porteRefusee();
   let planId: string;
   // Non-empty only when the write comes through the invite door: captured here, at the point
   // where the invite row is still in scope, so the write below never has to re-resolve it.
@@ -223,9 +281,25 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ ok: true, rev: row ? row.rev : expected + 1,
                            updatedAt: now, updatedBy: by, cas: true });
   }
+  const cur = await currentRow(env, planId);
+  // THE STATEMENT HAS ALREADY RUN. `changed === null` does not mean "the swap did not bite", it
+  // means "the executor did not say whether it did", and answering 409 there announced a refusal
+  // for a write that may well have landed: the client then sets aside a version that IS the
+  // server's, lights the "not saved" banner, and stops writing until the poll unblocks it.
+  // Reading the row is what the count refused to tell us, and the row is asked to identify our
+  // write completely, not merely plausibly: the SAME revision we would have produced
+  // (`expected + 1`), OUR author, OUR timestamp (generated for this request alone), and BYTE FOR
+  // BYTE the document we just sent. Author alone is not enough — one household member's two
+  // devices share an email — and revision alone is not either: a neighbour's write lands on
+  // `expected + 1` just as ours would. All four together leave only "someone re-sent the exact
+  // same document, in the same millisecond, under the same address, onto the same revision",
+  // which is a write we would be agreeing with anyway.
+  if (changed === null && cur.rev === expected + 1 && cur.updatedBy === by
+      && cur.updatedAt === now && memeDocument(cur.data, data)) {
+    return Response.json({ ok: true, rev: cur.rev, updatedAt: now, updatedBy: by, cas: true });
+  }
   // EXPLICIT REFUSAL, never a generic 400: the body carries the revision and the state that won,
   // so the client REREADS instead of rewriting.
-  const cur = await currentRow(env, planId);
   return Response.json(
     { ok: false, conflict: true, expected, rev: cur.rev, updatedAt: cur.updatedAt,
       updatedBy: cur.updatedBy, data: cur.data,

@@ -28,8 +28,18 @@ const GUEST_NAME_MAX = 40;
 // import from `functions/`, and the other three already each state "same shape as" rather than share code.
 const GUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
+// The whole body this route can legitimately carry is a token, a name and a device id: under 200
+// bytes. 4 KB leaves room for an unforeseen field twenty times over and still refuses a payload
+// sent only to make the edge parse it.
+const CORPS_MAX = 4096;
+
 const refuse = () => new Response(JSON.stringify({ error: "porte_refusee" }),
   { status: 403, headers: { "content-type": "application/json" } });
+// 413, not the single 404 shape: this says nothing about whether any token exists, it is a fact
+// about the REQUEST. Collapsing it into the dead end would tell a caller who sent junk that their
+// junk might have been a real token.
+const tropGros = () => new Response(JSON.stringify({ error: "corps_trop_grand", max: CORPS_MAX }),
+  { status: 413, headers: { "content-type": "application/json" } });
 const deadEnd = () => new Response(JSON.stringify({ error: "invite_invalide" }),
   { status: 404, headers: { "content-type": "application/json" } });
 
@@ -38,8 +48,21 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // account habits) gets refused rather than silently redeeming a token meant for a stranger.
   if (porteDe(request, env) !== "invite") return refuse();
 
+  // BOUNDED BEFORE IT IS READ. This is the ONE route an unauthenticated caller reaches with a
+  // body, and `request.json()` buffers whatever arrives before anything gets to look at it: a
+  // megabyte of junk was parsed in full, then thrown away. The three fields this endpoint reads
+  // (a 22-character token, a 40-character name, a 64-character device id) do not add up to 200
+  // bytes, so 4 KB is already generous by an order of magnitude.
+  // `Content-Length` is a CLAIM, not a fact: it can be absent (chunked) or lie. So it is used only
+  // to refuse EARLY, and the real bound is applied to the text actually received.
+  const annonce = Number(request.headers.get("Content-Length") || "");
+  if (Number.isFinite(annonce) && annonce > CORPS_MAX) return tropGros();
+  let brut: string;
+  try { brut = await request.text(); } catch { return deadEnd(); }
+  if (brut.length > CORPS_MAX) return tropGros();
   let body: Record<string, unknown>;
-  try { body = await request.json(); } catch { return deadEnd(); }
+  try { body = JSON.parse(brut); } catch { return deadEnd(); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return deadEnd();
   const token = typeof body.token === "string" ? body.token.trim() : "";
   if (!token) return deadEnd();
 

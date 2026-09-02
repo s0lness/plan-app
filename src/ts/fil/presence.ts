@@ -42,6 +42,7 @@ import {
 import { wsApplyRemoteDrag, wsApplyRemoteOp, wsRejouerNonAcquittees, wsRevertRefused } from "./reception.ts";
 import {
   adoptServerState, maybeOpenSetupFromServer, pollPull, serverHasPlan, setSyncChip,
+  showConflitFilNotice, surPlanSupprime,
 } from "./rest.ts";
 import { hudRecordPaint } from "./hud.ts";
 
@@ -411,7 +412,16 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
     case "op": {
       const mienne = wsFromMe(fil, msg as Pair);
       const refuse = wsApplyRemoteOp(ctx, fil, msg["op"] as Op);
-      if (msg["by"] && !mienne && !refuse) histNoteRemoteOp(msg["op"] as Op);
+      // THE JOURNAL IS DECIDED ON `tag`, NEVER ON `by`. The technical identity is the DEVICE;
+      // `by` is the HUMAN one, and a GUEST has none: `functions/ws.ts` forwards an EMPTY
+      // `X-Plan-Email` for the invite door, and the server only projects `by` toward a household
+      // audience anyway (`live-worker/worker.ts`). Gating on `by` therefore kept every op laid
+      // down by a guest out of the replay journal, so one Ctrl+Z by the household destroyed the
+      // guest's work on both screens and in the shared plan, without a banner: exactly the C-7
+      // defect, on the other door. A `tag` different from ours is all it takes to say "someone
+      // else". Without any `tag` (a server from before C-7), we fall back to `by`, as before.
+      const distante = msg["tag"] ? true : !!msg["by"];
+      if (distante && !mienne && !refuse) histNoteRemoteOp(msg["op"] as Op);
       // C-3. THE ECHO OF OUR OWN OP IS THE ACKNOWLEDGEMENT: it carries `tag` (it is ours) and `n`
       // (WHICH ONE). It proves the op WAS APPLIED, and it carries the fingerprint of the plan
       // that resulted. Without `n` (older server) we cannot point at anything: we CLEAR the
@@ -458,9 +468,12 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
     // CONFLICT: the server kept ITS version, ours (made offline) could not merge. This is NOT a
     // refused op, nothing to do with `WS_ERR_MSG` or its throttling, it is a fact about the
     // shared plan, and it only happens once per foreign write.
+    // "They are held on the server" was true and unreachable: nothing could ask for them. It is
+    // now `GET /api/orphans` (household door only), and the announcement is the PERSISTENT banner
+    // carrying the button, like every other loss of work in this codebase, instead of a message
+    // that fades away on its own.
     case "conflict":
-      toast("Some changes made while the link was down could not be merged: "
-        + "the live version was kept. They are held on the server.");
+      showConflitFilNotice();
       break;
 
     case "drag":
@@ -580,6 +593,11 @@ export function wsConnect(ctx: Contexte, fil: Fil): void {
  */
 export function wsOnDown(ctx: Contexte, fil: Fil, code?: number): void {
   if (estInvite() && code === 4001) { ctx.crochets.accesRefuseInvite?.(); return; }
+  // `4004` is `plan_deleted`, sent by `/purge` when `functions/api/plans.ts`'s DELETE removes the
+  // plan. Like 4001 it is checked BEFORE the reconnect machinery: there is nothing left to
+  // reconnect to, and retrying would reopen a socket onto a plan that no longer exists. Same
+  // reaction whichever witness arrives first, see `surPlanSupprime`.
+  if (code === 4004) { surPlanSupprime(ctx, fil); return; }
   const was = fil.wsOpen;
   fil.wsOpen = false;
   fil.ws = null;

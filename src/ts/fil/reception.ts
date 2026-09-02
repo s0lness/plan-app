@@ -284,8 +284,32 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
   // them who bounds it and republishes it. We note the orphan so as not to claim its repair on
   // the next local gesture.
   if (!fil.reverting && !fil.rebasing) v5NoteForeignOrphans(P);
-  v5Touch(ctx); render(ctx);
+  v5Touch(ctx); if (_renduGroupe) _renduDu = true; else render(ctx);
   return true;
+}
+
+// ---- ONE PAINT FOR A BATCH THAT ARRIVES AS A BATCH ----------------------------------------------
+// The surgical path repaints after EVERY op, which is right when ops arrive one by one off the
+// wire: that is the whole point, the peer's work appears as they do it. A REPLAY is not that. Its
+// ops are handed over as a list, in one call, describing ONE final state, and painting each
+// intermediate one costs a full `render()` per op for a picture nobody sees. The `state` path has
+// always done the opposite (`adoptServerState` replaces everything, then paints once), and this is
+// the same rule applied where the arrival is already grouped.
+//
+// A COUNTER, not a boolean: `wsApplyRemoteOp` is re-entrant through `save()` on a facade refusal.
+// `_renduDu` records that SOMETHING asked to paint, so a batch where every op was refused still
+// paints nothing, exactly as before.
+let _renduGroupe = 0;
+let _renduDu = false;
+
+/** Applies `corps` with a single paint at the end. The paint is REAL, never skipped: leaving the
+ *  screen on the pre-replay state would be worse than repainting too often. */
+function enUnSeulRendu(ctx: Contexte, corps: () => void): void {
+  _renduGroupe++;
+  try { corps(); } finally {
+    _renduGroupe--;
+    if (!_renduGroupe && _renduDu) { _renduDu = false; render(ctx); }
+  }
 }
 
 /**
@@ -387,7 +411,10 @@ export function wsRevertRefused(ctx: Contexte, fil: Fil, n: number | null | unde
 export function wsRejouerNonAcquittees(ctx: Contexte, fil: Fil, ops: Op[] | null | undefined): number {
   if (!ops || !ops.length || ops.length > WS_REBASE_MAX) return 0;
   fil.rebasing = true;
-  try { ops.forEach((op) => { wsApplyRemoteOp(ctx, fil, op); }); }
+  // ONE PAINT FOR THE WHOLE REPLAY. These ops arrive together and describe ONE state: up to 500 of
+  // them (`WS_REBASE_MAX`) each triggered a full `render()`, on the reconnection frame, which is
+  // exactly the moment the screen has the least room to spare.
+  try { enUnSeulRendu(ctx, () => { ops.forEach((op) => { wsApplyRemoteOp(ctx, fil, op); }); }); }
   finally { fil.rebasing = false; }
   save(ctx);                              // the diff (mirror = server state) republishes them in order
   return ops.length;

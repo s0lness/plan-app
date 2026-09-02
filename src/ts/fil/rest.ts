@@ -28,7 +28,7 @@
 import type { Contexte } from "../app/contexte.ts";
 import type { EtatPuce, Fil, RefusRevision } from "./etat.ts";
 import { wsLive } from "./etat.ts";
-import { SYNC_ON, SYNC_URL, avecPlan, estInvite } from "./drapeaux.ts";
+import { ORPHANS_URL, SYNC_ON, SYNC_URL, avecPlan, estInvite } from "./drapeaux.ts";
 import { $ } from "../noyau/dom.ts";
 import { toast } from "../app/toast.ts";
 import { displayName } from "../mesure/curseur-pair.ts";
@@ -355,17 +355,90 @@ function stashConflit(mine: unknown, info: RefusRevision): number {
 export function downloadConflits(): boolean {
   const list = conflitList();
   if (!list.length) return false;
-  const last = list[list.length - 1]!;
+  telechargerEnveloppe("plan-ma-version-ecartee.json", list[list.length - 1]!.state, list);
+  return true;
+}
+
+/** ONE exporter for both recovery paths (the versions stashed locally by a REST refusal, and the
+ *  ones the SHARED PLAN set aside): same envelope as an ordinary export, so the file goes straight
+ *  back through "Load a plan…" without anyone having to know where it came from. */
+function telechargerEnveloppe(nomFichier: string, etat: unknown, ecartes: unknown[]): void {
   const blob = new Blob([JSON.stringify({
     app: "room-planner", version: 4, savedAt: new Date().toISOString(),
-    state: last.state, ecartes: list,
+    state: etat, ecartes,
   }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "plan-ma-version-ecartee.json";
+  a.href = url; a.download = nomFichier;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
-  return true;
+}
+
+// =================================================================================================
+//  THE VERSIONS THE SHARED PLAN SET ASIDE (`conflict` on the wire)
+// =================================================================================================
+// A `conflict` says: a write made outside real time could not be merged, the live version was
+// kept, and the bytes are held ON THE SERVER. That last clause was a promise with nothing behind
+// it, because nothing could ask for them. `functions/api/orphans.ts` relays the Durable Object's
+// own `GET /orphans`, so the sentence is now something one can act on, and the banner carries the
+// button that acts on it.
+//
+// HOUSEHOLD DOOR ONLY, because the route is: a discarded version is a piece of the household's
+// plan, which a guest holding a link has no business reading back. A guest therefore gets the same
+// statement of fact WITHOUT a button that could only ever answer 403.
+
+interface OrphelinServeur { at?: string; by?: string; rev?: number; data?: unknown }
+
+/** Asks the shared plan for what it set aside and hands it back as a file. Returns WHAT HAPPENED,
+ *  so the button can say it rather than fail silently. */
+async function recupererOrphelines(): Promise<"ok" | "vide" | "echec"> {
+  try {
+    const r = await fetch(avecPlan(ORPHANS_URL), { headers: { accept: "application/json" } });
+    if (!r.ok) return "echec";
+    const corps = await r.json() as { orphans?: OrphelinServeur[] };
+    const liste = (corps && Array.isArray(corps.orphans)) ? corps.orphans : [];
+    if (!liste.length) return "vide";
+    telechargerEnveloppe("plan-version-ecartee-par-le-plan-partage.json",
+      liste[liste.length - 1]!.data, liste);
+    return "ok";
+  } catch (_) { return "echec"; }
+}
+
+let _orphelinsWires = false;
+/**
+ * THE PERSISTENT BANNER FOR A `conflict`. A transient toast was the whole announcement, and a loss
+ * of work is not told through a message that fades away on its own: that is the rule
+ * `showConflitNotice` above already follows for the REST refusal, and this is the same event on
+ * the other transport. Same banner, same button position, same vocabulary.
+ */
+export function showConflitFilNotice(): void {
+  const recuperable = !estInvite();
+  const msg = "Some changes made while the link was down could not be merged: the live version was kept. "
+    + (recuperable
+      ? "Your version was set aside on the shared plan: “Recover the discarded version” downloads it."
+      : "Your version was set aside on the shared plan; someone in the household can recover it.");
+  try { toast("Changes made while the link was down could not be merged: the live version was kept."); }
+  catch (_) { /* nothing */ }
+  const ban = $("bootNotice"), txt = $("bootNoticeText");
+  if (!ban || !txt) return;
+  txt.textContent = msg;
+  ban.hidden = false;
+  if (_orphelinsWires || !recuperable) return;
+  _orphelinsWires = true;
+  const x = $("bootNoticeX");
+  if (x) x.addEventListener("click", () => { ban.hidden = true; });
+  const dl = document.createElement("button");
+  dl.type = "button"; dl.className = "btn sm"; dl.id = "orphelinsDl";
+  dl.textContent = "Recover the discarded version";
+  dl.addEventListener("click", () => {
+    void recupererOrphelines().then((verdict) => {
+      // NEVER SILENT. A recovery button that does nothing visible is worse than no button at all:
+      // one clicks it again, and again, believing the file failed to save.
+      if (verdict === "vide") toast("The shared plan is holding no discarded version.");
+      else if (verdict === "echec") toast("The discarded version could not be read back. Try again in a moment.");
+    });
+  });
+  ban.insertBefore(dl, x || null);
 }
 
 /**
@@ -396,6 +469,70 @@ function showConflitNotice(info: RefusRevision, n: number): void {
   ban.insertBefore(dl, x || null);
 }
 
+// =================================================================================================
+//  A ROW THAT DISAPPEARED IS NOT A CONFLICT: IT IS A DELETED PLAN
+// =================================================================================================
+// The refusal machinery below assumes the row still exists and someone else got there first: it
+// sets the version aside, arms `putConflict`, and waits for a RE-READ to disarm it. Nothing ever
+// re-reads a row that is gone. `adoptPayload` refuses a `data:null` body (nothing to adopt), so
+// `putConflict` stayed armed FOREVER: every later `doPut` returned at its `if (fil.putConflict)`
+// guard, the chip stayed on "not saved", and the banner accused a neighbour who had done nothing.
+// The person kept working into a tab that would never write again, and was told the wrong reason.
+//
+// The right reading is simpler and it is the truth: the plan was DELETED. There is nowhere left to
+// write, so this tab detaches (exactly `js/41`'s "tab detached from sharing" mechanics, which every
+// network gate in this module and in `presence.ts` already respects), the chip says `local`, and a
+// persistent banner says what happened and how to keep the work.
+
+let _supprimeAffiche = false;
+/**
+ * THE ONE reaction, whichever of the three witnesses arrives first: a 409 whose body describes an
+ * absent row, a poll that finds the row gone under a revision we had already read, or the socket
+ * closed with 4004 `plan_deleted` by `/purge` (`functions/api/plans.ts`'s DELETE).
+ */
+export function surPlanSupprime(ctx: Contexte, fil: Fil): void {
+  void ctx;
+  if (_supprimeAffiche || fil.detached) return;
+  _supprimeAffiche = true;
+  // NOT A CONFLICT: nothing is pending against a winner, because there is no winner.
+  fil.putConflict = null;
+  fil.putFailed = false;
+  fil.dirtySincePut = false;
+  fil.detached = true;              // no more op, PUT or poll leaves: there is nowhere for it to go
+  fil.wsOpen = false;               // so the chip may repaint: `setSyncChip` yields to a live wire
+  try { fil.ws?.close(); } catch (_) { /* already gone, or never opened */ }
+  fil.ws = null;
+  setSyncChip(fil, "local");
+  afficherBanniereSuppression();
+}
+
+/** Does this body describe a row that no longer exists? `{data:null, rev:0}` is the shape
+ *  `functions/api/plan.ts` answers for an absent row, and the ONLY way a 409 can carry it is a row
+ *  deleted between the refused swap and the re-read inside the same response. */
+const ligneDisparue = (p: ReponsePlan | null | undefined): boolean =>
+  !!p && p.rev === 0 && (p.data === null || p.data === undefined);
+
+let _banniereSuppressionWiree = false;
+function afficherBanniereSuppression(): void {
+  const ban = $("bootNotice"), txt = $("bootNoticeText");
+  try { toast("This plan has been deleted."); } catch (_) { /* nothing */ }
+  if (!ban || !txt) return;
+  txt.textContent = "This plan has been deleted. Your work stays on this device and is no longer "
+    + "shared: “Save to file…” keeps it.";
+  ban.hidden = false;
+  if (_banniereSuppressionWiree) return;
+  _banniereSuppressionWiree = true;
+  const x = $("bootNoticeX");
+  if (x) x.addEventListener("click", () => { ban.hidden = true; });
+  // The ORDINARY export action, not a second copy of it: one exporter, one behaviour, the same
+  // choice `fil/invite.ts`'s local banner already makes.
+  const save = document.createElement("button");
+  save.type = "button"; save.className = "btn sm pri"; save.id = "supprimeSave";
+  save.textContent = "Save to file…";
+  save.addEventListener("click", () => { $("btnExport")?.click(); });
+  ban.insertBefore(save, x || null);
+}
+
 /**
  * D-9. A REFUSAL GETS RE-READ, IT NEVER GETS REWRITTEN. Three things, in this order: set aside
  * (nothing disappears), SAY IT (chip + banner), then re-read. `dirtySincePut` falls back to
@@ -403,6 +540,8 @@ function showConflitNotice(info: RefusRevision, n: number): void {
  * the same write back and forth indefinitely.
  */
 function onPutRefused(ctx: Contexte, fil: Fil, mine: unknown, p: ReponsePlan | null | undefined): void {
+  // A DISAPPEARED ROW IS NOT A REFUSAL, and treating it as one armed `putConflict` for good.
+  if (ligneDisparue(p)) { surPlanSupprime(ctx, fil); return; }
   fil.dirtySincePut = false;
   fil.putFailed = true;
   fil.putConflict = {
@@ -517,6 +656,11 @@ export function pollPull(ctx: Contexte, fil: Fil): void {
     fil.bootReconciled = true;   // a read succeeded: we know what is on the other side
     ctx.crochets.porteMenageConfirmee?.();   // self-heals a stale local-only guess, see the crochet's doc
     if (!res) return;
+    // THE ROW WE HAD ALREADY READ IS GONE. A revision never goes backwards, so "rev 0, no plan"
+    // after we have seen rev N is not an empty household, it is a deleted plan: the same reaction
+    // as a 409 whose body says the row is absent, and the poll is where a tab whose realtime link
+    // was already down learns it.
+    if (fil.serverRev > 0 && ligneDisparue(res)) { surPlanSupprime(ctx, fil); return; }
     if (res.updatedBy) fil.lastServerBy = res.updatedBy;
     if (res.updatedAt) fil.lastServerAt = res.updatedAt;
     const rev = typeof res.rev === "number" ? res.rev : -1;

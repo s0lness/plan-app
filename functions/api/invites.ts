@@ -6,11 +6,17 @@
 // This file is DISTINCT from functions/api/invite.ts (singular): that one is the guest's
 // redemption of a token, reachable only from the "invite" door; this one is management,
 // reachable only from the "foyer" door. `functions/_middleware.ts` already keeps the "invite"
-// door away from this path entirely, but each handler here checks `porteDe()` again anyway, the
-// same way functions/api/plan.ts and functions/ws.ts do not just trust the choke point: every
-// direct-import test in this codebase (tests/repli-conflit.ts, this batch's tests/invitation.ts)
+// door away from this path entirely, but each handler here checks `porteDe()` again anyway: every
+// direct-import test in this codebase (tests/repli-conflit.ts, tests/invitation.ts, tests/porte.ts)
 // calls a route file directly, bypassing the middleware, and a route that trusted it alone would
 // be unguarded under test and under any future caller that reaches it a different way.
+//
+// This paragraph used to claim functions/api/plan.ts and functions/ws.ts already did the same. They
+// did not: they distinguished only the "invite" door, and treated "inconnue" exactly like the
+// household — `/api/plan` GET handed back the raw `updated_by` column (an Access address) and `/ws`
+// forwarded the upgrade to the household's own Durable Object. Both check for themselves now, so
+// the sentence is true; it is written down because a comment that describes a discipline nobody
+// applies is worse than no comment, it stops the next reader from looking.
 
 import type { Env } from "../env.ts";
 import { hoteInviteDe, identiteFoyer, porteDe } from "../porte.ts";
@@ -126,6 +132,12 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
   // here would let a caller learn whether a guessed token ever existed — exactly what
   // functions/api/invite.ts's single 404 shape already refuses to leak on the guest side, so the
   // owner side must not reopen the same leak from the other direction.
+  // Did the LIVE half of the revocation actually happen? The row is revoked regardless, which is
+  // why this stays a 200; but "revoked" and "revoked, and every open socket was closed" are not
+  // the same promise, and the owner is the one who has to know which one they got. Saying nothing
+  // was the defect: the call's status was never even read, so a Worker outage looked exactly like
+  // a clean revoke, and the guest kept editing.
+  let live = false;
   if (token) {
     // The plan id BEFORE the write: needed to reach the right Durable Object, and reading it after
     // marking the row revoked would work just as well, but there is no reason to make the D1 write
@@ -142,13 +154,14 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
     if (ligne && ligne.plan_id && env.ROOM) {
       try {
         const stub = env.ROOM.get(env.ROOM.idFromName(ligne.plan_id));
-        await stub.fetch(new Request("https://plan-live-internal/revoke", {
+        const r = await stub.fetch(new Request("https://plan-live-internal/revoke", {
           method: "POST",
           headers: { "content-type": "application/json", "X-Plan-Internal": "1" },
           body: JSON.stringify({ token }),
         }));
+        live = !!(r && r.ok);
       } catch { /* best-effort, see above */ }
     }
   }
-  return json({ ok: true });
+  return json({ ok: true, live });
 };

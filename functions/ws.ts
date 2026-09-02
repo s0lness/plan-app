@@ -25,6 +25,11 @@
 // tell "my other tab" apart from "a different guest" on the client (see `src/ts/fil/etat.ts`).
 // `X-Plan-Token` is the invite token itself: what `/revoke` matches sockets against, and what the
 // DO's per-token rate cap is keyed on (design edges 6, 15) — always empty on the household door.
+// `X-Plan-Expires` is when this guest's link stops being valid (ISO 8601, empty for the household
+// and for a row with no expiry). The door checks validity ONCE, at upgrade: without handing the
+// deadline over, an already-open socket outlived its own link, and expiry only ever stopped NEW
+// connections. Consuming it is the Durable Object's job (`live-worker/`, batch B1), for the same
+// reason `/revoke` had to exist: it is the only side still holding the socket.
 
 import type { Env } from "./env.ts";
 import { identiteFoyer, porteDe } from "./porte.ts";
@@ -42,12 +47,30 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     return new Response("expected websocket", { status: 426 });
 
   const porte = porteDe(request, env);
+  // AN UNRECOGNIZED DOOR GETS NO SOCKET, and this route says so itself. The comment on the
+  // household branch below used to call the "anything else" case defensive, and it was not: an
+  // unlisted host fell straight into it, `?p=` was honoured, and the upgrade was forwarded to the
+  // household's own Durable Object with the identity merely downgraded to `inconnu`. A socket with
+  // no name is still a socket ON THE HOUSEHOLD PLAN, able to read it and write ops into it.
+  // `functions/_middleware.ts` carries the same check and states, in its own comment, that a zone
+  // route sending `/ws*` straight to the Worker would bypass it: this copy is what survives that.
+  if (porte !== "foyer" && porte !== "invite")
+    return new Response(JSON.stringify({ error: "porte_refusee" }),
+      { status: 403, headers: { "content-type": "application/json" } });
   let planId: string | null;
   let email = "";
   let guest = false;
   let name = "";
   let guestId = "";
   let token = "";
+  // WHEN THIS SOCKET STOPS BEING ALLOWED. The door checks `invitationValide()` at UPGRADE time and
+  // never again, so a link that expires at 18:00 leaves an already-open socket editing the plan
+  // for as long as it stays connected: expiry only stopped NEW connections, exactly the hole that
+  // `/revoke` had to close for revocation (design edge 6). The Durable Object is the only place
+  // that can act on it, because it is the only one still holding the socket, so the deadline is
+  // handed to it here. ISO 8601 as stored, empty when the row has no expiry at all and on the
+  // household door, where nothing expires.
+  let expires = "";
 
   if (porte === "invite") {
     const invit = await chargerInvitation(env, tokenDuCookie(request));
@@ -55,6 +78,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     planId = invit.plan_id;   // `?p=` IGNORED, forced from the invite row.
     guest = true;
     token = invit.token;
+    expires = invit.expires_at || "";
     const gBrut = (new URL(request.url).searchParams.get("g") || "").trim();
     if (GUEST_ID_RE.test(gBrut)) guestId = gBrut;
     // THE SAME DEVICE-MATCH RULE AS THE REDEMPTION ENDPOINT (`functions/api/invite.ts`), and for
@@ -70,9 +94,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     name = (guestId && invit.last_guest_id && guestId === invit.last_guest_id)
       ? cleanName(invit.last_name, 40) : "";
   } else {
-    // Household door (and, defensively, anything else this route is reached from: `identiteFoyer`
-    // already reads no header off a non-household door, so `email` naturally stays "inconnu" —
-    // the middleware is what actually keeps an unrecognized host from reaching this far).
+    // Household door, and only it: every other verdict was turned away above.
     email = identiteFoyer(request, porte);
     // WHICH plan: the URL's `?p=`, `main` by default. A malformed identifier is an ERROR and
     // never a fallback to `main`: editing the household's plan while believing to edit another
@@ -93,6 +115,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   fwd.headers.set("X-Plan-Name", name);
   fwd.headers.set("X-Plan-Guest-Id", guestId);
   fwd.headers.set("X-Plan-Token", token);
+  fwd.headers.set("X-Plan-Expires", expires);
   // Never legitimate on a `/ws` upgrade: strip whatever the caller sent, defence in depth on top
   // of `functions/_middleware.ts` already stripping it (see `live-worker/worker.ts`,
   // `INTERNAL_HEADER`). `new Request(url, request)` above copies every header of the original

@@ -34,6 +34,14 @@ import { cleanName as nettoieNom } from "../nom.ts";
 const json = (o: unknown, status?: number) => new Response(JSON.stringify(o),
   { status: status || 200, headers: { "content-type": "application/json" } });
 
+// HOUSEHOLD DOOR ONLY, whatever the method, and stated here rather than borrowed from the choke
+// point: listing, creating, renaming and DELETING plans is owner work. `functions/_middleware.ts`
+// already refuses every other door on this path; this is the copy that survives a direct import
+// (every route test in this codebase is one) and any future caller that arrives another way. Same
+// rule, same wording, as functions/api/invites.ts.
+const refuse = () => json({ error: "porte_refusee" }, 403);
+const horsFoyer = (request: Request, env: Env): boolean => porteDe(request, env) !== "foyer";
+
 /** Clean name: no control characters, no bidi overrides, no edge whitespace, truncated at
  * NAME_MAX. "" = no name. Now THE SAME implementation a guest's self-declared name goes through
  * (functions/nom.ts) — a plan name sits on the same screen as a guest name, so it gets the same
@@ -58,7 +66,8 @@ const idDepuisNom = (nom: string, pris: Set<string>) => {
   return null;
 };
 
-export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
+export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
+  if (horsFoyer(request, env)) return refuse();
   const r = await env.DB
     .prepare("SELECT id, name, rev, updated_at, updated_by, length(data) AS bytes FROM plans ORDER BY id")
     .all<PlanRow>();
@@ -74,6 +83,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  if (horsFoyer(request, env)) return refuse();
   let brut: unknown;
   try { brut = await request.json(); } catch { return json({ error: "bad_json" }, 400); }
   const body = brut && typeof brut === "object" && !Array.isArray(brut)
@@ -95,19 +105,31 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (!id) return json({ error: "cannot_derive_id" }, 409);
   }
 
-  // A NEW PLAN IS BORN EMPTY, NOT COPIED. `data` is `null` in the database until someone has laid
-  // down anything: the client will see "no plan" and open its outline assistant, exactly as on
-  // first startup. Copying the current plan would be a DIFFERENT gesture ("duplicate"), and
-  // confusing it with "new" would start from an apartment that isn't the one meant to be drawn.
+  // A NEW PLAN IS BORN EMPTY, NOT COPIED. Nothing is in `data` until someone has laid something
+  // down: the client will see "no plan" and open its outline assistant, exactly as on first
+  // startup. Copying the current plan would be a DIFFERENT gesture ("duplicate"), and confusing
+  // it with "new" would start from an apartment that isn't the one meant to be drawn.
+  //
+  // WHY THE JSON LITERAL AND NOT AN SQL NULL. "No plan" wants to be an SQL NULL, and cannot be
+  // one: `plans.data` is `TEXT NOT NULL` in production (live-worker/schema.sql, an exact
+  // reproduction of the live definitions), so binding `null` here raises
+  // "NOT NULL constraint failed: plans.data" and creating a plan fails outright. Dropping that
+  // constraint means rebuilding the table on the live database, which belongs with the schema
+  // file, not with this route. So "no plan" is encoded IN the column, as the one text every
+  // reader already parses back to nothing: `functions/api/plan.ts`'s GET answers `{data:null}`
+  // for it (and for an SQL NULL, the day there is one), and the Durable Object's cold load must
+  // read it as an empty plan rather than an unreadable one.
+  const PLAN_VIDE = "null";
   const now = new Date().toISOString();
   await env.DB
     .prepare("INSERT INTO plans(id,name,data,rev,updated_at,updated_by) VALUES(?1,?2,?3,0,?4,?5)")
-    .bind(id, nom, JSON.stringify(null), now, identiteFoyer(request, porteDe(request, env)))
+    .bind(id, nom, PLAN_VIDE, now, identiteFoyer(request, porteDe(request, env)))
     .run();
   return json({ ok: true, id, name: nom });
 };
 
 export const onRequestPatch: PagesFunction<Env> = async ({ request, env }) => {
+  if (horsFoyer(request, env)) return refuse();
   let brut: unknown;
   try { brut = await request.json(); } catch { return json({ error: "bad_json" }, 400); }
   const body = brut && typeof brut === "object" && !Array.isArray(brut)
@@ -125,6 +147,7 @@ export const onRequestPatch: PagesFunction<Env> = async ({ request, env }) => {
 };
 
 export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
+  if (horsFoyer(request, env)) return refuse();
   let brut: unknown;
   try { brut = await request.json(); } catch { return json({ error: "bad_json" }, 400); }
   const body = brut && typeof brut === "object" && !Array.isArray(brut)
@@ -137,5 +160,35 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
   const res = await env.DB.prepare("DELETE FROM plans WHERE id=?1").bind(id).run();
   const touche = (res && res.meta && typeof res.meta.changes === "number") ? res.meta.changes : 0;
   if (!touche) return json({ error: "plan_not_found", id }, 404);
-  return json({ ok: true, id });
+  // DELETING THE ROW IS NOT DELETING THE PLAN. The Durable Object holds the live copy AND keeps
+  // snapshotting it back into D1 on its alarm: without this call, a deleted plan reappears at the
+  // next snapshot, and whoever was connected keeps editing a plan that no longer exists, live,
+  // with no way to be told. `/purge` closes those sockets (4004 `plan_deleted`) and wipes the
+  // object's storage so nothing is ever written back.
+  //
+  // BEST-EFFORT, exactly like `/revoke` in functions/api/invites.ts: the row is gone either way,
+  // so a Worker hiccup must never turn a successful deletion into an error. What the caller gets
+  // instead is `live:false`, which says the live copy could not be reached, and `closed` when it
+  // could (how many sockets were shown the door).
+  let live = false;
+  let closed = 0;
+  if (env.ROOM) {
+    try {
+      const stub = env.ROOM.get(env.ROOM.idFromName(id));
+      const r = await stub.fetch(new Request("https://plan-live-internal/purge", {
+        method: "POST",
+        headers: { "content-type": "application/json", "X-Plan-Internal": "1" },
+        body: JSON.stringify({ id }),
+      }));
+      // A 500 from the object is NOT a purge: reading `closed` off it would report work that was
+      // never done. Only a 2xx counts, and only then is `live` true.
+      if (r && r.ok) {
+        live = true;
+        let corps: { closed?: number } | null = null;
+        try { corps = await r.json<{ closed?: number }>(); } catch { corps = null; }
+        closed = (corps && typeof corps.closed === "number") ? corps.closed : 0;
+      }
+    } catch { /* best-effort, see above */ }
+  }
+  return json({ ok: true, id, live, closed });
 };

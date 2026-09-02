@@ -27,7 +27,7 @@
 // Exit:  0 if everything passes, 1 otherwise. In `--avant` mode we MEASURE and require nothing: the goal is to
 //        show in black and white what the old code used to do.
 
-import type { VerdictSonde } from "./_types.ts";
+import type { DonneeDynamique, VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
 import http from "node:http";
@@ -170,6 +170,57 @@ const S = (n: string) => ({ setupDone: true, model: "v5", outline: [[0, 0], [400
   const nimporte = await put(d.env, { foo: 1 }, d.store.row.rev);
   mesure("et une forme inconnue reste refusée en 400 (pas en 409)",
     nimporte.status === 400, "statut " + nimporte.status);
+}
+
+// ---- UN EXÉCUTEUR QUI NE COMPTE PAS ------------------------------------------------------------
+// `meta.changes` est ce d'où le compare-and-swap tire son verdict. Quand il manque, l'instruction
+// a QUAND MÊME été exécutée : répondre 409 annonce un refus pour une écriture qui a peut-être
+// abouti, et le client met alors de côté une version qui EST celle du serveur, allume la bannière
+// « non enregistré » et cesse d'écrire. On relit la ligne au lieu de deviner.
+{
+  const d = fakeD1(null);
+  // Le MÊME SQLite, la même arbitration : seul le compte disparaît de la réponse.
+  const sansCompte: DonneeDynamique = { DB: { prepare: (sql: string) => {
+    const st = d.env.DB.prepare(sql);
+    return {
+      bind(...a: DonneeDynamique[]) { st.bind(...a); return this; },
+      first: () => st.first(),
+      all: () => st.all(),
+      run: async () => { await st.run(); return { success: true }; },
+    };
+  } } };
+
+  const amorce = await put(sansCompte, S("amorce sans compte"), 0);
+  mesure("sans meta.changes, une écriture qui A ABOUTI répond 200, pas 409",
+    amorce.status === 200 && d.store.row && d.store.row.rev === 1,
+    "statut " + amorce.status + " rev " + (d.store.row && d.store.row.rev));
+
+  const perime = await put(sansCompte, S("révision périmée"), 0);
+  mesure("sans meta.changes, une révision périmée reste refusée (la relecture tranche)",
+    perime.status === 409 && d.store.row.rev === 1,
+    "statut " + perime.status + " rev " + d.store.row.rev);
+
+  const suite = await put(sansCompte, S("suite"), 1);
+  mesure("et l'écriture suivante, légitime, passe aussi",
+    suite.status === 200 && d.store.row.rev === 2,
+    "statut " + suite.status + " rev " + d.store.row.rev);
+}
+
+// ---- UNE LIGNE ILLISIBLE EST UNE PANNE NOMMÉE, PAS UN PLAN VIDE --------------------------------
+// `JSON.parse(row.data)` sans garde remontait en 500 muet. Répondre `{data:null}` serait pire : le
+// client y lit « le foyer n'a pas encore de plan » et un appareil configuré écraserait alors les
+// octets que personne n'a réussi à lire. Un 500 nommé garde le verrou d'amorçage fermé.
+{
+  const d = fakeD1(null);
+  d.db.prepare("INSERT INTO plans(id,data,rev,updated_at,updated_by) VALUES('main','{\"outline\":[[0,0]',7,?1,'a@example.com')")
+    .run(new Date().toISOString());
+  const res = await onRequestGet({
+    request: new Request("https://plan.example.org/api/plan"), env: d.env,
+  } as unknown as Parameters<typeof onRequestGet>[0]);
+  const corps = await res.clone().json();
+  mesure("une ligne illisible répond 500 avec une raison, jamais un plan vide",
+    res.status === 500 && corps.error === "plan_illisible" && corps.reason === "json",
+    "statut " + res.status + " corps " + JSON.stringify(corps));
 }
 
 // =================================================================================================
@@ -468,6 +519,32 @@ try {
   for (let i = 0; i < 10 && recu !== APRES; i++) { await sleep(1000); recu = await A.evaluate("window.__plan.plan.cells[0].name"); }
   mesure("et Device A la reçoit", recu === APRES, "Device A voit " + JSON.stringify(recu));
   await B.shot("2-apres");
+
+  // ---- UNE LIGNE DISPARUE N'EST PAS UN CONFLIT, C'EST UN PLAN SUPPRIMÉ ------------------------
+  // La machinerie du refus suppose que la ligne existe encore et que quelqu'un est arrivé avant :
+  // elle met la version de côté, arme `putConflict`, et attend une RELECTURE pour le désarmer.
+  // Rien ne relit jamais une ligne qui n'est plus là, et l'adoption refuse un corps `data:null`,
+  // donc `putConflict` restait armé POUR TOUJOURS : chaque écriture suivante sortait sur sa garde,
+  // la puce restait sur « non enregistré », et la bannière accusait un voisin qui n'avait rien
+  // fait. La personne continuait de travailler dans un onglet qui n'écrirait plus jamais.
+  db.db.prepare("DELETE FROM plans WHERE id='main'").run();
+  const putsAvantSuppression = putLog.length;
+  let bSupp = await lire(B);
+  // ON ATTEND LA CONDITION : le prochain sondage (4 s) est ce qui découvre la disparition.
+  for (let i = 0; i < 40 && bSupp.puce !== "local"; i++) { await sleep(500); bSupp = await lire(B); }
+  mesure("un plan supprimé fait passer l'onglet en local, jamais en « non enregistré »",
+    bSupp.puce === "local", "puce = " + JSON.stringify(bSupp.puce));
+  mesure("et la bannière dit que le plan a été supprimé",
+    /deleted/i.test(String(bSupp.bandeau || "")), "bandeau = " + JSON.stringify(bSupp.bandeau));
+  // Et surtout : plus rien ne part. Un PUT sur une ligne absente RECRÉERAIT le plan (l'INSERT du
+  // compare-and-swap n'a pas de conflit à résoudre), donc un onglet qui continue d'écrire
+  // ressusciterait le plan qu'on vient de supprimer.
+  await B.evaluate(renomme("Écrit après la suppression"));
+  await sleep(4000);
+  mesure("plus rien ne part vers le serveur, donc le plan supprimé ne ressuscite pas",
+    putLog.length === putsAvantSuppression && !db.store.row,
+    "écritures après la suppression = " + JSON.stringify(putLog.slice(putsAvantSuppression))
+      + ", ligne D1 = " + JSON.stringify(db.store.row));
 
   const errs = async (b: VerdictSonde) => b.evaluate(
     'JSON.stringify((JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]).map(function(e){return e&&e.msg;}))');

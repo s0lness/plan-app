@@ -120,6 +120,43 @@ await test("serveur_sans_etiquette_retombe_sur_l_email", SEED, `
 `, (v: VerdictSonde) => expect(v.b === v.a + 1, "sans étiquette, l'op d'un AUTRE e-mail doit être journalisée")
      && expect(v.c === v.b, "sans étiquette, l'op de MON e-mail ne doit pas l'être"));
 
+// 1d. A GUEST carries NO e-mail: `functions/ws.ts` forwards an empty `X-Plan-Email` on the invite
+// door, and the server only projects `by` toward a household audience. The journal used to require
+// a `by`, so a guest's ops never entered it: this is the C-7 defect again, on the other door.
+await test("op_d_un_invite_sans_email_entre_au_journal", SEED, `
+  ${HELLO}
+  var p = window.__plan.plan.pieces[0];
+  window.__plan.pushHistory();
+  var avant = window.__plan.histInfo().log;
+  window.__plan.wsFeed({ t:"op", tag:"gggggg", guest:true, name:"Marie", fp:"y",
+    op:{ kind:"piece.set", piece:{ id:String(p.id), x:p.x+80, y:p.y } } });
+  return { avant:avant, apres: window.__plan.histInfo().log };
+`, (v: VerdictSonde) => expect(v.apres === v.avant + 1,
+  "l'op d'un invité (aucun by) doit entrer au journal, " + v.avant + " -> " + v.apres));
+
+// 1e. THE WHOLE POINT, end to end: the household undoes ITS OWN earlier gesture and the guest's
+// furniture stays where the guest put it. Before, one Ctrl+Z restored a snapshot that knew nothing
+// of the guest's op and pushed that amputated plan back out by diff, on both screens.
+await test("annuler_du_foyer_ne_detruit_pas_le_meuble_d_un_invite", SEED, `
+  ${HELLO}
+  var P0 = window.__plan.plan;
+  var idCell = String(P0.cells[0].id), idPiece = String(P0.pieces[0].id);
+  var departX = P0.pieces[0].x;
+  // 1. The household renames a room (the ordinary user path: snapshot, then mutation).
+  window.__plan.pushHistory();
+  window.__plan.setCell(idCell, "Bureau du foyer");
+  // 2. The GUEST moves a piece of furniture. No \`by\`: they have no address to have.
+  window.__plan.wsFeed({ t:"op", tag:"gggggg", guest:true, name:"Marie", fp:"y",
+    op:{ kind:"piece.set", piece:{ id:idPiece, x:departX+120, y:P0.pieces[0].y } } });
+  window.__plan.undo();
+  var P = window.__plan.plan;
+  var q = P.pieces.filter(function(e){ return String(e.id)===idPiece; })[0];
+  var c = P.cells.filter(function(e){ return String(e.id)===idCell; })[0];
+  return { xApres: q.x, xAttendu: departX+120, nom: c.name };
+`, (v: VerdictSonde) => expect(v.nom !== "Bureau du foyer", "Ctrl+Z doit bien annuler le geste de son auteur, vu " + v.nom)
+     && expect(v.xApres === v.xAttendu,
+       "le meuble posé par l'invité doit rester, vu x=" + v.xApres + " au lieu de " + v.xAttendu));
+
 // =============================================================================
 //  2. PRESENCE AND CURSORS: one dot per DEVICE
 // =============================================================================

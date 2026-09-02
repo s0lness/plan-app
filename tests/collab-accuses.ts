@@ -408,6 +408,40 @@ await test("reconnexion_le_travail_en_vol_est_repose_sur_l_etat_adopte", SEED, `
      && expect(v.srvX === 777, "et il est reparti vers le serveur, vu " + v.srvX)
      && expect(v.memeFp === true, "client et serveur convergent après la reprise"));
 
+// UN SEUL RENDU POUR UN REJEU, quel que soit le nombre d'ops reposées. Elles arrivent ENSEMBLE et
+// décrivent UN état : peindre chaque état intermédiaire coûtait un `render()` complet par op, sur
+// la trame de reconnexion, exactement le moment où l'écran a le moins de marge. Le chemin `state`
+// fait l'inverse depuis toujours (`adoptServerState` remplace tout, puis peint une fois).
+//
+// COMMENT ON COMPTE : `render()` finit par `ctx.crochets.persister?.()`, câblé sur `save()`, qui
+// écrit la clé du plan dans `localStorage`. Un `setItem` sur cette clé = un rendu (plus le `save()`
+// final du rejeu, qui n'en est pas un). On instrumente le stockage plutôt que le rendu : rien
+// n'expose `render` à la page, et une sonde ne doit pas ajouter de surface au produit pour se
+// mesurer elle-même.
+await test("le_rejeu_ne_peint_qu_une_fois_quel_que_soit_le_nombre_d_ops", SEED, `
+  var b = fabriquerBanc({});
+  await b.demarrer();
+  var ids = window.__plan.plan.pieces.slice(0,6).map(function(p){ return p.id; });
+  b.perdre = function(m){ return m.t==="op"; };          // plus rien ne passe dans ce sens
+  for (var i=0;i<ids.length;i++){ window.__plan.setPos(ids[i], 400+i*10, 400+i*10); window.__plan.save(); await b.pousser(); }
+  var enVol = window.__plan.unackedOps().length;
+  window.__plan.wsSimulerChute();
+  b.perdre = null;
+  // On compte les écritures de la clé du plan PENDANT la reconnexion, et pas avant.
+  var CLE = ${JSON.stringify(V4_KEY)};
+  var brut = localStorage.setItem.bind(localStorage);
+  var ecritures = 0;
+  localStorage.setItem = function(k, v){ if (String(k) === CLE) ecritures++; return brut(k, v); };
+  try { await b.reconnecter("ddd444"); } finally { localStorage.setItem = brut; }
+  return { enVol: enVol, ecritures: ecritures, memeFp: b.fpServeur()===b.fpClient(),
+           localX: (function(){ var p=window.__plan.pieceAt(ids[5]); return p?p.cx:null; })() };
+`, (v: VerdictSonde) => expect(v.enVol >= 6, "six ops devaient être en vol à la coupure, vu " + v.enVol)
+     // Adoption du hello (1 rendu) + rejeu (1 rendu) + le save() final : trois écritures suffisent.
+     // AVANT le correctif : une par op reposée, donc au moins huit.
+     && expect(v.ecritures <= 3, "le rejeu ne doit peindre qu'une fois, vu " + v.ecritures + " écritures de la clé du plan")
+     && expect(v.localX !== null, "et le travail reposé est bien à l'écran")
+     && expect(v.memeFp === true, "client et serveur convergent après la reprise"));
+
 // Nothing to replay -> nothing goes out: an ordinary reconnection does not republish the plan.
 await test("reconnexion_sans_travail_en_vol_ne_republie_rien", SEED, `
   var b = fabriquerBanc({});
