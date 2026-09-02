@@ -4,7 +4,7 @@
 // WebSocket Hibernation API: the DO can go to sleep, presence lives in serializeAttachment.
 
 import {
-  applyOp, sanitizeState, colorFor, isV5, OpError, sanitizeCursor, sanitizeDrag,
+  applyOp, opWire, sanitizeState, colorFor, isV5, OpError, sanitizeCursor, sanitizeDrag,
   planFp, strHash, emptyPlan, cleanPlanId, cleanGuestName, nameFromEmail,
 } from "./ops.ts";
 import type { Operation, PlanState } from "./ops.ts";
@@ -212,6 +212,11 @@ const CHAT_CAP = 50;
 //     accepted here must remain relayable by it.
 // The real plan weighs 10 KiB. Beyond the ceiling, the op is refused BEFORE any write.
 const MAX_PLAN_BYTES = 1_500_000;
+// Maximum RAW size of an inbound frame, checked BEFORE parsing it. The biggest legitimate message
+// is a `plan5.replace` carrying a whole plan, so the ceiling is the plan's plus the room an
+// envelope needs; anything beyond is refused without JSON.parse ever seeing it, because parsing is
+// exactly the work an oversized frame is trying to make us do.
+export const MAX_MSG_BYTES = MAX_PLAN_BYTES + 8_192;
 // Debounce of the D1 snapshot, carried by a storage ALARM (see markDirty).
 const SNAP_DELAY_MS = 30_000;
 // ---- TWO COUNTERS WITH THE SAME NAME IS ONE TOO MANY ------------------------------------------
@@ -253,9 +258,40 @@ const SEQ_WINDOW = 64;
 // household traffic (MAX_ENTITIES and the 1.5 MB plan ceiling already bound that side).
 const RATE_MAX_OPS = 120;
 const RATE_WINDOW_MS = 60_000;
-// Bound on the number of DISTINCT tokens tracked at once, same spirit as SEQ_MAX_ENTRIES: an
-// abandoned or revoked token's timestamp array must not linger in memory forever.
-const RATE_MAX_ENTRIES = 64;
+// Bound on the number of DISTINCT (kind, key) windows tracked at once, same spirit as
+// SEQ_MAX_ENTRIES: an abandoned or revoked token's timestamp array must not linger in memory
+// forever. Six kinds are capped now instead of one, so the bound is per-kind-per-socket.
+const RATE_MAX_ENTRIES = 512;
+// ---- EVERY KIND OF MESSAGE HAS A CEILING, NOT JUST `op` ---------------------------------------
+// The cap only covered `op`, so `cursor`, `drag`, `chat`, `ping` and `name` were unbounded on a
+// wire that broadcasts each of them to every peer: one socket in a tight loop cost N sends per
+// frame, and `chat` additionally wrote storage each time. The budgets follow measured interactive
+// use, an order of magnitude above it: a pointer moves at screen refresh but is only relayed on
+// change, a person sends a handful of chat lines a minute, and a name is chosen once.
+// A HOUSEHOLD socket gets a wider `op` budget rather than no budget at all: the point of a
+// ceiling is a runaway loop, and a household tab loops exactly like a guest tab.
+interface RateBudget { max: number; win: number; foyer?: number }
+const RATE_BUDGETS: Record<string, RateBudget> = {
+  op: { max: RATE_MAX_OPS, win: RATE_WINDOW_MS, foyer: 600 },
+  cursor: { max: 30, win: 1_000 },
+  drag: { max: 30, win: 1_000 },
+  chat: { max: 5, win: 10_000 },
+  name: { max: 3, win: 60_000 },
+  ping: { max: 60, win: 60_000 },
+};
+// An overrun is SILENT for the ephemeral kinds (a dropped cursor frame costs nothing, and saying
+// so would double the traffic being throttled) and an `err` for the ones a person watches
+// succeed or fail.
+const RATE_SILENT = new Set(["cursor", "drag", "ping"]);
+
+// ---- HOW MANY SOCKETS A ROOM, AND A LINK, MAY HOLD --------------------------------------------
+// Nothing bounded the number of open sockets: every one of them costs a send on every broadcast,
+// so the cost of a room is quadratic in the number of tabs pointed at it, and a single invite link
+// could open as many as it liked. The household is two people with a few devices; a link is one
+// person, occasionally with a phone next to the laptop. Both ceilings answer 429 BEFORE the
+// upgrade, so no socket is ever opened and then dropped.
+const MAX_SOCKETS_ROOM = 32;
+const MAX_SOCKETS_TOKEN = 4;
 
 // The internal marker `functions/api/invites.ts` sets on its OWN freshly-built request to
 // `PlanRoom`'s `/revoke` route (docs/decisions/0004-partage-par-lien.md, edge 6). It is never
@@ -673,6 +709,17 @@ export class PlanRoom {
     // Nothing routable: refuse the upgrade rather than open a socket onto an object that would
     // have to guess which row is its own.
     if (!this.planId) return new Response("bad plan id", { status: 400 });
+    // ---- CEILINGS BEFORE THE UPGRADE (see MAX_SOCKETS_ROOM) --------------------------------------
+    // Answered here, ahead of `ensureLoaded` and of the pair: a socket that will be refused must
+    // never be opened, and must cost neither a D1 read nor a reconciliation.
+    const att = attachmentFromRequest(request, this.freshTag());
+    const vivants = this.state.getWebSockets();
+    if (vivants.length >= MAX_SOCKETS_ROOM) return new Response("too many sockets", { status: 429 });
+    if (att.token) {
+      let parJeton = 0;
+      for (const ws of vivants) if (this.attOf(ws).token === att.token) parJeton++;
+      if (parJeton >= MAX_SOCKETS_TOKEN) return new Response("too many sockets", { status: 429 });
+    }
     await this.ensureLoaded();
     // The room was EMPTY: no one was in realtime, so everyone was on the REST fallback. This is
     // the exact moment when D1 can be ahead of us. Tolerant: if D1 doesn't answer, we serve
@@ -685,7 +732,7 @@ export class PlanRoom {
     const [client, server] = [pair[0], pair[1]];
     // Hibernation: the DO manages the socket via webSocketMessage/Close.
     this.state.acceptWebSocket(server);
-    server.serializeAttachment(attachmentFromRequest(request, this.freshTag()));
+    server.serializeAttachment(att);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -891,14 +938,19 @@ export class PlanRoom {
     try { ws.send(JSON.stringify(obj)); } catch (_) {}
   }
 
-  // ---- PER-TOKEN RATE CAP (design edge 15, see RATE_MAX_OPS) -------------------------------------
-  // Household sockets carry an empty token and are NEVER capped here (see the constant's header
-  // note): this only ever throttles a specific guest LINK. Returns true if `token` may proceed
-  // (and records this attempt); false if it is OVER the cap for the rolling window.
-  rateOk(token: string): boolean {
-    if (!token) return true;
+  // ---- RATE CAP PER KIND OF MESSAGE (design edge 15, see RATE_BUDGETS) ---------------------------
+  // Keyed on the ATTACHMENT'S TOKEN for a guest, because the cap must follow the LINK (several
+  // tabs can share one), and on the DEVICE LABEL for a household socket, which carries no token
+  // and would otherwise share one bucket with every other household tab.
+  // Returns true if this message may proceed (and records it); false if it is OVER the budget for
+  // its kind's rolling window. A kind with no budget is never capped (`hello`, `sync`).
+  rateOk(att: SocketAttachment, kind: string): boolean {
+    const budget = RATE_BUDGETS[kind];
+    if (!budget) return true;
+    const max = (!att.guest && budget.foyer !== undefined) ? budget.foyer : budget.max;
+    const key = kind + "|" + (att.token || ("tag:" + att.tag));
     const now = Date.now();
-    let arr = this.rateSeen.get(token);
+    let arr = this.rateSeen.get(key);
     if (!arr) {
       while (this.rateSeen.size >= RATE_MAX_ENTRIES) {
         const oldest = this.rateSeen.keys().next().value as string | undefined;
@@ -906,10 +958,10 @@ export class PlanRoom {
         this.rateSeen.delete(oldest);
       }
       arr = [];
-      this.rateSeen.set(token, arr);
+      this.rateSeen.set(key, arr);
     }
-    while (arr.length && now - arr[0]! > RATE_WINDOW_MS) arr.shift();
-    if (arr.length >= RATE_MAX_OPS) return false;
+    while (arr.length && now - arr[0]! > budget.win) arr.shift();
+    if (arr.length >= max) return false;
     arr.push(now);
     return true;
   }
@@ -1042,10 +1094,26 @@ export class PlanRoom {
       try { ws.close(PURGE_CLOSE_CODE, PURGE_CLOSE_REASON); } catch (_) { /* already gone */ }
       return;
     }
+    // RAW SIZE FIRST, before parsing: parsing is the work an oversized frame is trying to buy.
+    if (typeof raw === "string" && raw.length > MAX_MSG_BYTES) {
+      return this.send(ws, { t: "err", reason: "bad_size" });
+    }
     await this.ensureLoaded();
     let msg: WireMessage;
     try { msg = JSON.parse(raw); } catch { return this.send(ws, { t: "err", reason: "bad_json" }); }
     const att = this.attOf(ws);
+
+    // ---- EXPIRY AND THE RATE CAP ARE CHECKED ON EVERY MESSAGE, NOT ONLY AT THE DOOR -------------
+    // One budget per KIND, for every socket, guest and household alike (see RATE_BUDGETS).
+    const genre = (msg && typeof msg.t === "string") ? msg.t : "";
+    if (genre && !this.rateOk(att, genre)) {
+      if (RATE_SILENT.has(genre)) return;
+      return this.send(ws, {
+        t: "err", reason: "rate_limited",
+        n: (genre === "op" && Number.isSafeInteger(msg.n)) ? msg.n : null,
+        kind: (genre === "op" && msg.op && msg.op.kind) || null,
+      });
+    }
 
     switch (msg && msg.t) {
       case "hello": {
@@ -1134,9 +1202,6 @@ export class PlanRoom {
         // ---- GUEST-ONLY REFUSALS (design edges 15, 17; batch 2 items 4, 5, 7) --------------------
         // All three share the SAME numbered err path as an ordinary validation refusal: the client
         // must UNDO through the normal receive path, never silently swallow a rejected change.
-        if (!this.rateOk(att.token)) {
-          return this.send(ws, { t: "err", reason: "rate_limited", n: seq, kind: (msg.op && msg.op.kind) || null });
-        }
         // Item 5: the name gate is client-side in the guest onboarding UI (batch 3), a disabled
         // Join button stops a PERSON, not a script. `sync`/`hello` stay allowed (a nameless guest
         // must still be able to SEE the plan and be told what is wrong); only `op` is gated.
@@ -1183,8 +1248,12 @@ export class PlanRoom {
         // better (it proves not only receipt, but APPLICATION). Peers, for their part, ignore a
         // number that isn't theirs: they compare `tag` to their own, exactly as for the undo
         // replay log.
+        // `opWire`, NOT `msg.op`: the envelope that goes back out is rebuilt from the keys its
+        // kind is known to carry (see ops.ts), so a key the validator never looked at cannot ride
+        // the broadcast into every peer's receive path.
+        const opSortie = opWire(msg.op);
         this.broadcastFor((guestAudience) => ({
-          t: "op", op: msg.op, n: seq, opCount: this.opCount, fp: planFp(this.plan),
+          t: "op", op: opSortie, n: seq, opCount: this.opCount, fp: planFp(this.plan),
           ...this.authorWire(att, guestAudience),
         }), null);
         // A NUMBER IS MISSING. The op that just went through wasn't the expected next one: an op

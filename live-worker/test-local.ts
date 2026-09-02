@@ -5,7 +5,7 @@
 import type { DonneeDynamique } from "../tests/_types.ts";
 import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan, cleanCursorSay, CURSOR_SAY_MAX } from "./ops.ts";
 import type { CursorMessage, DragMessage, Operation, Piece, PlanState, Point } from "./ops.ts";
-import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy, attachmentFromRequest } from "./worker.ts";
+import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy, attachmentFromRequest, MAX_MSG_BYTES } from "./worker.ts";
 
 // The doubles only implement the surface actually read by PlanRoom. These two boundaries
 // concentrate the adaptation to the full Cloudflare contract, without weighing down each scenario.
@@ -1173,7 +1173,12 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false, planId = 
 {
   const f = fakeRoom({ d1Row: { data: JSON.stringify(v5State()) } });
   await f.room.ensureLoaded();
-  for (let i = 0; i < 60; i++) await messageSocket(f.room, f.ws, JSON.stringify({ t: "chat", text: "m" + i }));
+  // Le plafond de debit du chat (5 / 10 s) n'est pas le sujet ici : on remet sa fenetre a zero
+  // entre chaque envoi pour eprouver ce qui EST le sujet, le nombre de messages conserves.
+  for (let i = 0; i < 60; i++) {
+    f.room.rateSeen.clear();
+    await messageSocket(f.room, f.ws, JSON.stringify({ t: "chat", text: "m" + i }));
+  }
   f.sent.length = 0;
   await messageSocket(f.room, f.ws, JSON.stringify({ t: "hello" }));
   const hello = f.sent.find((m) => m.t === "hello");
@@ -2296,12 +2301,17 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   await messageSocket(f.room, invite2, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "autre" } }));
   ok(!invite2.sent.some((m) => m.t === "err" && m.reason === "rate_limited"), "un AUTRE jeton n'est jamais affecte par le plafond du premier");
 
-  // A HOUSEHOLD socket (empty token) is NEVER capped (see the header note on RATE_MAX_OPS).
+  // Un compte du FOYER a un budget plus large, pas un budget absent : le plafond vise une boucle
+  // folle, et un onglet du foyer boucle exactement comme un onglet d'invite.
   const menage = f.mkWs("sylve@example.com", "ttt333");
-  for (let i = 1; i <= 130; i++) {
+  for (let i = 1; i <= 600; i++) {
     await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: i, op: { kind: "cell.set", cellId: "c1", name: "f" + i } }));
   }
-  ok(!menage.sent.some((m) => m.t === "err" && m.reason === "rate_limited"), "un compte du foyer (jeton vide) n'est jamais plafonne");
+  ok(!menage.sent.some((m) => m.t === "err" && m.reason === "rate_limited"),
+    "un compte du foyer n'est pas plafonne la ou un invite l'est (budget plus large)");
+  await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: 601, op: { kind: "cell.set", cellId: "c1", name: "f601" } }));
+  ok(menage.sent.some((m) => m.t === "err" && m.reason === "rate_limited" && m.n === 601),
+    "mais il a bien un plafond : la 601e op de la fenetre est refusee");
 }
 
 // ---- 7. REVOKE CLOSES MATCHING SOCKETS ONLY (item 6) ----------------------------------------------
@@ -2340,6 +2350,85 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   const res2 = await f.room.fetch(revokeReq({ token: "tokRevoke" }));
   const corps2 = await res2.json<DonneeDynamique>();
   ok(res2.status === 200 && corps2.ok === true, "un second appel sur le meme jeton reste 200");
+}
+
+// ---- 9. PLAFONDS DE SOCKETS, DE DEBIT ET DE TAILLE, ET ENVELOPPE RECONSTRUITE ---------------------
+// L'enveloppe d'une op n'etait derriere AUCUNE liste blanche : le serveur rediffusait l'objet
+// RECU, cle inconnue comprise.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const a = f.mkWs("a@example.com", "aaa111");
+  const b = f.mkWs("b@example.com", "bbb222");
+  await messageSocket(f.room, a, JSON.stringify({
+    t: "op", n: 1, op: { kind: "wall.del", wallId: "w1", junk: "x".repeat(100_000) },
+  }));
+  const relaye = b.sent.find((m: DonneeDynamique) => m.t === "op");
+  ok(relaye && !("junk" in relaye.op), "une cle inconnue de l'enveloppe ne repart PAS sur le fil, vu " + Object.keys(relaye ? relaye.op : {}).join(","));
+  ok(relaye && relaye.op.kind === "wall.del" && relaye.op.wallId === "w1", "et l'op utile est intacte");
+  ok(f.room.plan.walls.every((w: DonneeDynamique) => w.id !== "w1"), "l'op s'applique quand meme");
+}
+// Taille brute : au-dela du plafond, refus SANS parser.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, ws, "x".repeat(MAX_MSG_BYTES + 1));
+  ok(ws.sent.some((m: DonneeDynamique) => m.t === "err" && m.reason === "bad_size"),
+    "un message trop gros est refuse bad_size, vu " + JSON.stringify(ws.sent));
+}
+// Le cap de debit ne couvrait que `op`. Un invite qui inonde de `chat` est refuse ; un curseur
+// au-dela du budget est ignore en silence (le dire doublerait le trafic qu'on freine).
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const invite = f.mkWs("", "ccc111", { guest: true, name: "Marie", guestId: "gc", token: "tokChat" });
+  for (let i = 1; i <= 5; i++) await messageSocket(f.room, invite, JSON.stringify({ t: "chat", text: "m" + i }));
+  ok(!invite.sent.some((m: DonneeDynamique) => m.t === "err"), "cinq messages de suite passent");
+  invite.sent.length = 0;
+  await messageSocket(f.room, invite, JSON.stringify({ t: "chat", text: "de trop" }));
+  ok(invite.sent.some((m: DonneeDynamique) => m.t === "err" && m.reason === "rate_limited"), "le sixieme est refuse");
+  ok(f.room.chat.length === 5, "et il n'entre pas dans l'historique, vu " + f.room.chat.length);
+
+  const pair = f.mkWs("z@example.com", "zzz999");
+  pair.sent.length = 0;
+  invite.sent.length = 0;
+  for (let i = 0; i < 40; i++) await messageSocket(f.room, invite, JSON.stringify({ t: "cursor", room: "__apt__", x: i, y: 1 }));
+  ok(pair.sent.filter((m: DonneeDynamique) => m.t === "cursor").length === 30,
+    "le curseur est plafonne a 30 par seconde, vu " + pair.sent.filter((m: DonneeDynamique) => m.t === "cursor").length);
+  ok(invite.sent.length === 0, "un depassement de curseur est ignore en SILENCE, vu " + JSON.stringify(invite.sent));
+
+  // Un `name` change trois fois par minute au plus.
+  const invite2 = f.mkWs("", "ccc222", { guest: true, name: "Leo", guestId: "gd", token: "tokName" });
+  for (let i = 1; i <= 3; i++) await messageSocket(f.room, invite2, JSON.stringify({ t: "name", name: "Leo" + i }));
+  invite2.sent.length = 0;
+  await messageSocket(f.room, invite2, JSON.stringify({ t: "name", name: "Leo4" }));
+  ok(invite2.sent.some((m: DonneeDynamique) => m.t === "err" && m.reason === "rate_limited"), "le quatrieme changement de nom d'affilee est refuse");
+}
+// Plafond de sockets : par piece, et par jeton d'invite. Le 429 tombe AVANT l'upgrade.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const upgrade = (headers: Record<string, string>) =>
+    new Request("https://plan-live-internal/ws?p=main", { headers: { Upgrade: "websocket", "X-Plan-Id": "main", ...headers } });
+  for (let i = 0; i < 4; i++) f.mkWs("", "ttt" + i, { guest: true, name: "G" + i, guestId: "g" + i, token: "tokPlein" });
+  const trop = await f.room.fetch(upgrade({ "X-Plan-Guest": "1", "X-Plan-Token": "tokPlein", "X-Plan-Name": "G5" }));
+  ok(trop.status === 429, "un cinquieme socket sur le MEME jeton est refuse, vu " + trop.status);
+  // Un AUTRE jeton passe le plafond : sous node il va jusqu'au `WebSocketPair`, qui n'existe pas.
+  // Y arriver EST la preuve qu'aucun plafond ne l'a arrete.
+  let statutAutre: number | string = "jusqu-a-l-upgrade";
+  try { statutAutre = (await f.room.fetch(upgrade({ "X-Plan-Guest": "1", "X-Plan-Token": "tokLibre", "X-Plan-Name": "H" }))).status; }
+  catch (_) { statutAutre = "jusqu-a-l-upgrade"; }
+  ok(statutAutre === "jusqu-a-l-upgrade", "un AUTRE jeton n'est pas concerne par ce plafond, vu " + statutAutre);
+}
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  for (let i = 0; i < 32; i++) f.mkWs("a@example.com", "s" + i);
+  const res = await f.room.fetch(new Request("https://plan-live-internal/ws?p=main", {
+    headers: { Upgrade: "websocket", "X-Plan-Id": "main" },
+  }));
+  ok(res.status === 429, "au-dela de 32 sockets, la piece refuse avant l'upgrade, vu " + res.status);
 }
 
 // ---- 8. SUPPRIMER UN PLAN FERME LE FIL ET NE RESSUSCITE PAS LA LIGNE ------------------------------
@@ -2381,7 +2470,7 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
 
   // Une NOUVELLE instance sur le meme storage (eviction apres la suppression) refuse aussi.
   const revenu = nouvelleRoom(
-    { storage: f.room.storage, getWebSockets: () => [], acceptWebSocket: () => {} },
+    { storage: f.room.storage, getWebSockets: (): DonneeDynamique[] => [], acceptWebSocket: () => {} },
     (f.room as unknown as { env: unknown }).env,
   );
   const up = await revenu.fetch(new Request("https://plan-live-internal/ws", { headers: { Upgrade: "websocket", "X-Plan-Id": "main" } }));

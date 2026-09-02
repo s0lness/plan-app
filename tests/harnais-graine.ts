@@ -201,12 +201,18 @@ const inconnus = (maux: string[]) => (STRICT ? maux : maux.filter((m: DonneeDyna
 // =================================================================================================
 function faireServeur(plan: DonneeDynamique) {
   const kv = new Map();
+  // WHICH plan this object holds: the key `PlanRoom.fetch` writes on first contact, and which
+  // every wake-up rereads. Without it the room refuses to touch D1 at all (`plan_id_unknown`),
+  // which is the point: an object that does not know its own row writes into none.
+  kv.set("planId", "main");
   let alarme: DonneeDynamique = null;
   const storage = {
     get: (k: string) => Promise.resolve(Array.isArray(k)
       ? new Map(k.filter((x) => kv.has(x)).map((x) => [x, kv.get(x)]))
       : kv.get(k)),
     put: (a: DonneeDynamique, b: DonneeDynamique) => { if (typeof a === "string") kv.set(a, b); else Object.keys(a).forEach((k) => kv.set(k, a[k])); return Promise.resolve(); },
+    delete: (k: string) => Promise.resolve(kv.delete(k)),
+    deleteAll: () => { kv.clear(); return Promise.resolve(); },
     getAlarm: () => Promise.resolve(alarme),
     setAlarm: (t: DonneeDynamique) => { alarme = t; return Promise.resolve(); },
     deleteAlarm: () => { alarme = null; return Promise.resolve(); },
@@ -216,7 +222,9 @@ function faireServeur(plan: DonneeDynamique) {
     args: [] as DonneeDynamique[],
     bind(...a: DonneeDynamique[]) { this.args = a; return this; },
     first: () => Promise.resolve(ligne),
-    run() { ligne = { data: this.args[0], rev: ligne.rev + 1, updated_by: "live", updated_at: this.args[1] }; return Promise.resolve({}); },
+    // `meta.changes` is the verdict of the snapshot's compare-and-swap: a double that answers
+    // nothing makes every swap look like "the executor does not say", so none of them bites.
+    run() { ligne = { data: this.args[0], rev: ligne.rev + 1, updated_by: "live", updated_at: this.args[1] }; return Promise.resolve({ meta: { changes: 1 } }); },
   }) } };
   const sockets: DonneeDynamique[] = [];
   const st = { storage, getWebSockets: () => sockets.slice(), acceptWebSocket() {} };

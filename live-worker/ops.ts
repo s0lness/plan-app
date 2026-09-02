@@ -887,6 +887,55 @@ const V5_KINDS = new Set([
   "opening.set", "opening.del", "cell.set", "cells.replace",
 ]);
 
+// ---- THE ENVELOPE OF AN OP IS REBUILT, NEVER RELAYED AS RECEIVED -------------------------------
+// The ENTITIES an op carries are already behind a whitelist (PIECE_KEYS, WALL_KEYS, OPENING_KEYS,
+// CELL_KEYS): an unknown key inside `op.piece` gets the whole op refused. Its ENVELOPE was behind
+// nothing at all, so `{kind:"wall.del", wallId:"w1", junk:"<100 KB>"}` applied cleanly and the
+// server rebroadcast THE OBJECT IT RECEIVED, junk included: any socket could push arbitrary bytes
+// through every peer's receive path, at the plan's own message ceiling.
+// The op that goes back out is therefore REBUILT from the keys its kind is known to carry. An
+// absent key stays absent ("no opinion" is a value on this wire, cf. piece.set), so this changes
+// nothing for a legitimate op.
+export const OP_KEYS: Record<string, string[]> = {
+  // v4
+  "room.add": ["room"],
+  "room.del": ["roomId"],
+  "room.set": ["roomId", "name", "floor", "ax", "ay", "poly"],
+  "plan.replace": ["state"],
+  "rooms.merge": ["rooms"],
+  "env.set": ["poly", "floor"],
+  "env.del": [],
+  "env.piece.set": ["piece"],
+  "env.piece.del": ["pieceId"],
+  // shared (`roomId` only means something on the v4 path, where furniture lives per room)
+  "piece.set": ["roomId", "piece"],
+  "piece.del": ["roomId", "pieceId"],
+  // v5
+  "outline.set": ["outline"],
+  "wall.set": ["wall"],
+  "wall.del": ["wallId"],
+  "opening.set": ["opening"],
+  "opening.del": ["openingId"],
+  "cell.set": ["cellId", "name", "floor", "poly"],
+  "cells.replace": ["cells"],
+  // switchover
+  "plan5.replace": ["plan"],
+};
+
+/** The op as it must leave the server: `kind` plus the keys that kind is known to carry, and
+ *  nothing else. An unknown kind reduces to its `kind` alone (it never reaches here: `applyOp`
+ *  refuses it first). */
+export function opWire(op: Operation): Operation {
+  const kind = op && typeof op === "object" ? String(op.kind) : "";
+  const sortie: Record<string, unknown> = { kind };
+  const permis = OP_KEYS[kind];
+  if (permis) {
+    const brut = op as unknown as Record<string, unknown>;
+    for (const k of permis) if (brut[k] !== undefined) sortie[k] = brut[k];
+  }
+  return sortie as unknown as Operation;
+}
+
 export function applyOp(plan: PlanState, op: Operation): PlanState {
   if (!op || typeof op !== "object") throw new OpError("op_obj");
   if (op.kind === "plan5.replace") {
