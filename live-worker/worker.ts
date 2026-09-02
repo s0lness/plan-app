@@ -5,7 +5,7 @@
 
 import {
   applyOp, sanitizeState, colorFor, isV5, OpError, sanitizeCursor, sanitizeDrag,
-  planFp, strHash, emptyPlan, cleanPlanId, PLAN_ID_DEFAUT, cleanGuestName, nameFromEmail,
+  planFp, strHash, emptyPlan, cleanPlanId, cleanGuestName, nameFromEmail,
 } from "./ops.ts";
 import type { Operation, PlanState } from "./ops.ts";
 
@@ -35,6 +35,10 @@ interface SocketAttachment {
   guest: boolean;
   guestId: string;
   token: string;
+  // WHICH plan this socket was opened on. Carried in the ATTACHMENT because an attachment
+  // survives hibernation and eviction: an object woken by `webSocketMessage` on a socket opened
+  // before the eviction can read back the row that is its own even if nothing else remains.
+  planId: string;
 }
 
 // Same shape as functions/ws.ts's `?g=` cleaning: a guest's OWN second tab identifier, not a
@@ -66,7 +70,12 @@ export function attachmentFromRequest(request: Request, tag: string): SocketAtta
   // own device id, then the fresh socket tag as a last resort) instead of the email: there is no
   // email, and `colorFor("")` would hand every unnamed guest the SAME hue.
   const color = guest ? colorFor(name || guestId || tag) : colorFor(email);
-  return { email, color, tag, name, guest, guestId, token };
+  // `X-Plan-Id` is set by `functions/ws.ts` (and by the dormant `fetch` below) on EVERY upgrade.
+  // ABSENT or malformed leaves "" ("this socket does not know"), never the household's `main`:
+  // a fallback here would be a silent licence to write into somebody else's row.
+  const idBrut = request.headers.get("X-Plan-Id");
+  const planId = idBrut === null ? "" : (cleanPlanId(idBrut) || "");
+  return { email, color, tag, name, guest, guestId, token, planId };
 }
 
 interface SequenceEntry {
@@ -388,7 +397,16 @@ export class PlanRoom {
   // old format is still served as-is, and switches over explicitly via the plan5.replace op.
   async ensureLoaded() {
     if (this.loaded) return;
-    const stored = await this.storage.get(["plan", "opCount", OPCOUNT_KEY_OLD, "chat", "d1seen"]);
+    const stored = await this.storage.get(["plan", "opCount", OPCOUNT_KEY_OLD, "chat", "d1seen", "planId"]);
+    // WHICH ROW IS OURS, reread here and not only in `fetch`. `adoptPlanId` used to be the only
+    // writer of `this.planId`, and it is called from `fetch` alone: an object woken by
+    // `webSocketMessage`, `alarm` or `webSocketClose` after an eviction therefore held null and
+    // fell back to `main`, so a shared plan's alarm snapshotted over the HOUSEHOLD's row.
+    // Second source, for the case where even the key is gone: a live socket's attachment, which
+    // survives hibernation with the plan it was opened on.
+    if (!this.planId) {
+      this.planId = (stored.get("planId") as string | undefined) || this.planIdFromSockets();
+    }
     this.d1Seen = (stored.get("d1seen") as string | undefined) || null;
     if (stored.get("plan")) {
       this.plan = stored.get("plan") as PlanState;
@@ -419,7 +437,7 @@ export class PlanRoom {
       // persisted, and the first modification overwrote the real D1 row: total loss.
       const row = await this.env.DB
         .prepare("SELECT data, rev, updated_by FROM plans WHERE id=?1")
-        .bind(this.planId || PLAN_ID_DEFAUT)
+        .bind(this.requirePlanId())
         .first<D1PlanRow>();
       const cold = coldLoad(row && row.data !== undefined ? row.data : null);
       this.plan = cold.plan;
@@ -443,19 +461,21 @@ export class PlanRoom {
   //   - when the room REPOPULATES after being empty (end of a REST fallback period);
   //   - before ANY snapshot (alarm, and flush on the last departure).
   // `dirty`: see d1Verdict. Returns the verdict, for tests and for the log.
-  async reconcileD1(dirty: boolean) {
+  async reconcileD1(dirty: boolean): Promise<{ kind: string; why: string; hash?: string; rev: number | null }> {
     const row = await this.env.DB
       .prepare("SELECT data, rev, updated_by, updated_at FROM plans WHERE id=?1")
-      .bind(this.planId || PLAN_ID_DEFAUT)
+      .bind(this.requirePlanId())
       .first<D1PlanRow>();
-    const v = d1Verdict(row, this.d1Seen, dirty);
+    // The revision READ, handed back so the snapshot can swap against it (see `snapshot`).
+    const revLue = row && typeof row.rev === "number" ? row.rev : null;
+    const v = { ...d1Verdict(row, this.d1Seen, dirty), rev: revLue };
     if (v.kind === "none") return v;
 
     if (v.kind === "adopt") {
       // Same policy as on cold load: an unreadable row never replaces a live plan. coldLoad
       // throws on broken JSON -> we keep what we have and report nothing more.
       let cold;
-      try { cold = coldLoad(row.data); } catch (_) { this.d1Seen = v.hash; await this.storage.put("d1seen", v.hash); return { kind: "none", why: "unreadable" }; }
+      try { cold = coldLoad(row.data); } catch (_) { this.d1Seen = v.hash; await this.storage.put("d1seen", v.hash); return { kind: "none", why: "unreadable", rev: revLue }; }
       this.plan = cold.plan;
       this.opCount++;                   // the state changed: clients must notice
       this.d1Seen = v.hash;
@@ -525,9 +545,36 @@ export class PlanRoom {
     if (this.planId) return;
     const stocke = await this.storage.get<string>("planId");
     if (stocke) { this.planId = stocke; return; }
+    // A MALFORMED identifier leaves the object without a plan rather than pointing it at `main`:
+    // `requirePlanId` then refuses every D1 access, and the upgrade fails, which is the correct
+    // end for a request nobody can route.
     const id = cleanPlanId(fromHeader);
-    this.planId = id || PLAN_ID_DEFAUT;
+    if (!id) return;
+    this.planId = id;
     await this.storage.put("planId", this.planId);
+  }
+
+  /** The plan id carried by a LIVE socket's attachment. Last-resort source for an object woken on
+   *  a hibernated socket whose `planId` storage key is somehow gone: the attachment survives both
+   *  hibernation and eviction. */
+  planIdFromSockets(): string | null {
+    for (const ws of this.state.getWebSockets()) {
+      const a = ws.deserializeAttachment() as SocketAttachment | null;
+      const id = a && a.planId ? cleanPlanId(a.planId) : null;
+      if (id) return id;
+    }
+    return null;
+  }
+
+  /**
+   * WHICH ROW, or nothing at all. An object that does not know which plan is its own touches
+   * NOTHING: it neither reads nor writes D1. The previous `|| PLAN_ID_DEFAUT` turned "I don't
+   * know" into "the household's plan", which is the one answer that silently corrupts a
+   * different document than the one being edited.
+   */
+  requirePlanId(): string {
+    if (!this.planId) throw new OpError("plan_id_unknown");
+    return this.planId;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -539,6 +586,9 @@ export class PlanRoom {
     if (url.pathname === "/revoke") return this.handleRevoke(request);
 
     await this.adoptPlanId(request.headers.get("X-Plan-Id"));
+    // Nothing routable: refuse the upgrade rather than open a socket onto an object that would
+    // have to guess which row is its own.
+    if (!this.planId) return new Response("bad plan id", { status: 400 });
     await this.ensureLoaded();
     // The room was EMPTY: no one was in realtime, so everyone was on the REST fallback. This is
     // the exact moment when D1 can be ahead of us. Tolerant: if D1 doesn't answer, we serve
@@ -602,7 +652,7 @@ export class PlanRoom {
   // ---- presence ----
   attOf(ws: WebSocket): SocketAttachment {
     return (ws.deserializeAttachment() as SocketAttachment | null)
-      || { email: "inconnu", color: colorFor("inconnu"), tag: "000000", name: "", guest: false, guestId: "", token: "" };
+      || { email: "inconnu", color: colorFor("inconnu"), tag: "000000", name: "", guest: false, guestId: "", token: "", planId: "" };
   }
 
   // ---- TECHNICAL IDENTITY IS THE DEVICE, NOT THE EMAIL ADDRESS -----------------------------------
@@ -788,7 +838,7 @@ export class PlanRoom {
         "INSERT INTO plans(id,data,rev,updated_at,updated_by) VALUES(?4,?1,1,?2,'live') " +
         "ON CONFLICT(id) DO UPDATE SET data=?1, rev=rev+1, updated_at=?2, updated_by='live'"
       )
-      .bind(data, now, null, this.planId || PLAN_ID_DEFAUT)
+      .bind(data, now, null, this.requirePlanId())
       .run();
     // We now know what the row looks like: the next reconciliation won't mistake it for a
     // foreign write (belt-and-suspenders, `updated_by='live'` already says so).

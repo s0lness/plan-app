@@ -929,10 +929,15 @@ throws(() => coldLoad(42), "coldLoad valeur non-chaine -> refus");
 // =====================================================================
 // Minimal runtime double (storage + D1 + sockets). No Cloudflare dependency: we only test
 // PlanRoom's logic, not the platform.
-function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
-  d1Row?: DonneeDynamique; d1Fail?: boolean; storageFail?: boolean;
+// `planId`: WHICH plan this object holds. Seeded into the storage, never onto the instance,
+// because that is the production shape: `PlanRoom.fetch` writes the key on first contact and an
+// object woken later (alarm, hibernated socket) has nothing else to read it back from. A double
+// that left it empty could not tell "writes into its own row" apart from "falls back to `main`".
+function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false, planId = "main" }: {
+  d1Row?: DonneeDynamique; d1Fail?: boolean; storageFail?: boolean; planId?: string;
 } = {}) {
-  const kv = new Map();
+  const kv = new Map<string, DonneeDynamique>();
+  kv.set("planId", planId);
   let alarmAt: DonneeDynamique = null;
   const sent: DonneeDynamique[] = [];
   const ws = {
@@ -954,15 +959,26 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
     async setAlarm(t: DonneeDynamique) { alarmAt = t; },
     async deleteAlarm() { alarmAt = null; },
   };
-  const d1Writes: DonneeDynamique[] = [];
+  // THE DOUBLE RECORDS THE BOUND ARGUMENTS, not just the SQL. A statement without its arguments
+  // says WHAT was written and never INTO WHICH ROW, so no test could see the Durable Object
+  // snapshotting somebody else's plan.
+  const d1Writes: { sql: string; args: DonneeDynamique[] }[] = [];
+  const d1Reads: { sql: string; args: DonneeDynamique[] }[] = [];
   const env = { DB: { prepare(sql: string) { return {
-    bind(...args: DonneeDynamique[]) { return this; },
-    async first() { if (d1Fail) throw new Error("D1 indispo"); return d1Row; },
-    async run() { d1Writes.push(sql); return {}; },
+    args: [] as DonneeDynamique[],
+    bind(...args: DonneeDynamique[]) { this.args = args; return this; },
+    async first() {
+      d1Reads.push({ sql, args: this.args });
+      if (d1Fail) throw new Error("D1 indispo");
+      return d1Row;
+    },
+    // `meta.changes` is what a compare-and-swap reads its verdict from (cf. functions/api/plan.ts):
+    // a double that answered `{}` made every swap look like "the executor doesn't say".
+    async run() { d1Writes.push({ sql, args: this.args }); return { meta: { changes: 1 } }; },
   }; } } };
   const state = { storage, getWebSockets: () => [ws], acceptWebSocket: () => {} };
   const room = nouvelleRoom(state, env);
-  return { room, ws, sent, kv, d1Writes, alarm: () => alarmAt };
+  return { room, ws, sent, kv, d1Writes, d1Reads, alarm: () => alarmAt };
 }
 
 // Cold load when D1 is UNREACHABLE: the DO refuses to serve, it installs NOTHING.
@@ -973,7 +989,7 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
   let threw = false;
   await f.room.ensureLoaded().catch(() => { threw = true; });
   if (!threw) throw new Error("FAIL: ensureLoaded doit lever quand D1 est injoignable");
-  ok(f.kv.size === 0 && f.room.plan === null, "D1 injoignable : rien n'est installe ni persiste");
+  ok(!f.kv.has("plan") && f.room.plan === null, "D1 injoignable : rien n'est installe ni persiste");
 }
 // Cold load on a valid D1 row.
 {
@@ -1115,6 +1131,32 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
   await revived.room.storage.setAlarm(Date.now());
   await revived.room.alarm();
   ok(revived.d1Writes.length === 1, "alarm() apres reveil ecrit bien le snapshot D1");
+}
+// ---- UN OBJET EVINCE SAIT ENCORE QUELLE LIGNE EST LA SIENNE ------------------------------------
+// `adoptPlanId` ne tournait que depuis `fetch`. Reveille par `alarm()` (ou par un message sur un
+// socket hiberne), l'objet avait `planId === null` et le snapshot retombait sur `main` : l'alarme
+// d'un plan partage ecrivait dans la ligne du FOYER. `ensureLoaded` relit donc la cle.
+{
+  const f = fakeRoom({ d1Row: { data: JSON.stringify(v5State()) }, planId: "annelets" });
+  // Pas d'appel a fetch : c'est exactement l'objet ressuscite par l'alarme.
+  await f.room.storage.setAlarm(Date.now());
+  await f.room.alarm();
+  ok(f.room.planId === "annelets", "le reveil relit planId depuis le storage, vu " + f.room.planId);
+  const lu = f.d1Reads.find((r) => /SELECT/.test(r.sql));
+  ok(lu && lu.args[0] === "annelets", "la relecture D1 vise la ligne du plan, vu " + JSON.stringify(lu && lu.args));
+  const ecrit = f.d1Writes.find((w) => /INSERT INTO plans/.test(w.sql));
+  ok(ecrit && ecrit.args.includes("annelets"), "le snapshot ecrit dans la ligne du plan, vu " + JSON.stringify(ecrit && ecrit.args));
+  ok(ecrit && !ecrit.args.includes("main"), "et JAMAIS dans 'main' par repli muet");
+}
+// Un objet qui ne sait PAS quelle ligne est la sienne ne touche a rien : ni lecture, ni ecriture.
+{
+  const f = fakeRoom({ d1Row: { data: JSON.stringify(v5State()) } });
+  f.kv.delete("planId");
+  n++;
+  let raison = null;
+  await f.room.alarm().catch((e) => { raison = e && e.reason; });
+  if (raison !== "plan_id_unknown") throw new Error("EXPECTED plan_id_unknown, vu " + raison);
+  ok(f.d1Writes.length === 0, "plan inconnu : aucune ecriture D1");
 }
 // `hello` serves exactly what is kept (the two numbers were out of sync: 200/50).
 {
@@ -1343,10 +1385,14 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
 // =====================================================================
 // Double with a MUTABLE D1 row and several sockets: what was needed to replay
 // "the Worker goes down, the REST fallback writes, the Worker comes back".
-function fakeD1Room({ data = null, by = "live", rev = 1 }: {
-  data?: string | null; by?: string; rev?: number;
+function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main", avantEcriture = null }: {
+  data?: string | null; by?: string; rev?: number; planId?: string;
+  /** Hook fired at the START of a D1 write: what a concurrent PUT landing between the
+   *  reconciliation's SELECT and the snapshot's INSERT does to the row. */
+  avantEcriture?: (() => void) | null;
 } = {}) {
-  const kv = new Map();
+  const kv = new Map<string, DonneeDynamique>();
+  kv.set("planId", planId);   // cf. fakeRoom: the key `PlanRoom.fetch` writes on first contact.
   let alarmAt: DonneeDynamique = null;
   const row = data === null ? null : { data, rev, updated_by: by, updated_at: "2026-08-03T10:00:00Z" };
   const world = { row, writes: [] as DonneeDynamique[] };
@@ -1384,11 +1430,19 @@ function fakeD1Room({ data = null, by = "live", rev = 1 }: {
       if (!world.row) return null;
       return { data: world.row.data, rev: world.row.rev, updated_by: world.row.updated_by, updated_at: world.row.updated_at };
     },
+    // Real compare-and-swap semantics: `ON CONFLICT … WHERE plans.rev=?` only bites if the row
+    // still carries the expected revision, and the verdict travels in `meta.changes` (the shape
+    // production D1 actually answers with, cf. functions/api/plan.ts `rowsChanged`).
     async run() {
+      if (avantEcriture) avantEcriture();
       const [data, at] = this.args;
+      const attendu = this.args[3];
+      if (/WHERE plans\.rev=/.test(sql) && world.row && world.row.rev !== attendu) {
+        return { meta: { changes: 0 } };
+      }
       world.row = { data, rev: (world.row ? world.row.rev : 0) + 1, updated_by: "live", updated_at: at };
       world.writes.push(data);
-      return {};
+      return { meta: { changes: 1 } };
     },
   }; } } };
   const st = { storage, getWebSockets: () => sockets.slice(), acceptWebSocket: () => {} };
