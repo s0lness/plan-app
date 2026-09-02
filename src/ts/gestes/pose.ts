@@ -413,7 +413,10 @@ function setPoseArme(ctx: Contexte, type: string | null): string | null {
 }
 
 /**
- * Escape (gestes/clavier.ts) and any mode change disarm; the message always says why.
+ * Escape (gestes/clavier.ts) and any mode change disarm. Only Escape's caller passes a message:
+ * it is the one deliberate "cancel" gesture, the other two disarm as a SIDE EFFECT of something
+ * else (retapping the armed thumbnail, another tool taking over) and stay silent, the thumbnail
+ * losing its `.armed` highlight already showing it (decision 0014, "l'app se tait").
  * (`cancelPoseArme` in the old client.)
  */
 export function annulerPoseArmee(ctx: Contexte, msg?: string): boolean {
@@ -430,16 +433,18 @@ export function annulerPoseArmee(ctx: Contexte, msg?: string): boolean {
  * remains for it. Always returns null: placement is ARMED, it hasn't placed anything.
  */
 export function armerPose(ctx: Contexte, type: string): string | null {
-  if (_poseArme === type) { annulerPoseArmee(ctx, "Drop cancelled."); return null; }
+  if (_poseArme === type) { annulerPoseArmee(ctx); return null; }
   const app = document.querySelector(".app");
   const drawerOpen = !!app && app.classList.contains("rail-open");
   setPoseArme(ctx, type);
   if (drawerOpen) ctx.gestes.railOpen?.(false);   // the drawer covers the plan: you need to see where you're placing
+  // A touch has no drag ghost and no hover cursor: this is the ONLY sign of the armed mode it
+  // gets, so it stays, unlike the mouse's own toast below (kept too: it names Esc, which nothing
+  // else on screen does).
   toast(COARSE
     ? `Tap the plan to place “${poseArmeLabel()}”.`
     : `Click the plan to place “${poseArmeLabel()}” (Esc cancels).`,
     { geste: true });
-  if (!COARSE) ctx.crochets.showHint?.("pose");   // once, never twice: dragging remains the primary gesture
   return null;
 }
 
@@ -451,11 +456,11 @@ function brancherPoseArmeeSurLePlan(ctx: Contexte): void {
   ctx.viewport.addEventListener("pointerdown", (e: PointerEvent) => {
     if (!_poseArme) return;
     if (e.button !== undefined && e.button !== 0) return;
-    // surfaces placed WITHIN the viewport keep their own clicks (chat, banners, hints)
+    // surfaces placed WITHIN the viewport keep their own clicks (chat, banners)
     const cible = (e.target instanceof Element) ? e.target : null;
-    if (cible && cible.closest(".chat-panel,.chat-btn,.boot-notice,.tip-hint,.app-toast")) return;
+    if (cible && cible.closest(".chat-panel,.chat-btn,.boot-notice,.app-toast")) return;
     if (measureMode() || spaceHeld()) {
-      annulerPoseArmee(ctx, "Drop cancelled: another tool has control of the plan.");
+      annulerPoseArmee(ctx);
       return;
     }
     e.preventDefault(); e.stopPropagation();
@@ -481,7 +486,7 @@ function brancherPoseArmeeSurLePlan(ctx: Contexte): void {
       }
       placeNewPieceAt(ctx, type, screenToApt(ctx, p.x - vr.left, p.y - vr.top));
     };
-    const cancel = (): void => { annule = true; toast("Drop cancelled.", { geste: true }); };
+    const cancel = (): void => { annule = true; };   // the ghost preview vanishing already shows it
     window.addEventListener("pointermove", move);
     armGesture(finish, null, cancel);       // guaranteed end (cf. gestes/sortie.ts)
   }, true);

@@ -161,8 +161,6 @@ export interface Crochets {
   openInspector?: (() => void) | undefined;
   syncInspector?: (() => void) | undefined;
   hideInspector?: (() => void) | undefined;
-  /** The first-use hint (js/31, later batch). */
-  showHint?: ((k: string) => void) | undefined;
   /** The emission mirror tracks the freshly adopted state (synchronization batch, C-6). */
   resyncMiroir?: (() => void) | undefined;
   /**
