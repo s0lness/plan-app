@@ -170,27 +170,34 @@ export function syncInspector(ctx: Contexte): void {
   if (iRotV) iRotV.textContent = (p.rot || 0) + "°";
   // Objects driven by the wall (openings + sconce/outlet): no manual rotation.
   // Locked objects: no editing at all anymore.
-  const op = isWallMount(p.type), lk = !!p.locked, isDoor = p.type === "door" || p.type === "sdoor";
+  const op = isWallMount(p.type), lk = !!p.locked;
   if (iW) { iW.disabled = lk; iW.closest(".in")?.classList.toggle("disabled", lk); }
   if (iH) { iH.disabled = lk; iH.closest(".in")?.classList.toggle("disabled", lk); }
+  // AN OPENING HAS NO ANGLE OF ITS OWN: it belongs to its wall. The slider and its readout used
+  // to stay in the row, disabled and dimmed, and squeezed the door's two real buttons into
+  // three-line labels. They leave the row instead, and the buttons that remain share it equally
+  // (`.rotrow.sans-angle`).
   if (iRot) {
+    iRot.hidden = op;
     iRot.disabled = op || lk;
     iRot.classList.toggle("disabled", op || lk);
     iRot.style.opacity = (op || lk) ? ".45" : "";
   }
-  // On a DOOR, "Rotate 90°" flips the hinge (or the swing direction): rotating a door doesn't
-  // make sense, it belongs to its wall.
+  const rotV = $("iRotV");
+  if (rotV) rotV.hidden = op;
+  iRot?.closest(".rotrow")?.classList.toggle("sans-angle", op);
+  // "Rotate 90°" is for FURNITURE. On a door it used to read "Flip the leaf" and toggle the hinge,
+  // which is exactly what "Hinge side" next to it does (and does properly: persisted, sent to the
+  // peers). Two buttons for one action, with different labels, is one button too many. Sconce /
+  // outlet / RJ45 never rotated either: "Flip side" is their only real command.
   const rot90 = $("iRot90") as HTMLButtonElement | null;
   if (rot90) {
-    rot90.textContent = !isDoor ? "Rotate 90°" : (p.type === "sdoor" ? "Flip the direction" : "Flip the leaf");
-    rot90.title = !isDoor ? "Rotate 90°" : (p.type === "sdoor" ? "Flip the swing side" : "Flip the hinge side");
-    const rot90Off = isDoor ? lk : (op || lk);
-    rot90.disabled = rot90Off;
-    rot90.classList.toggle("disabled", rot90Off);
-    rot90.style.opacity = rot90Off ? ".45" : "";
-    // Sconce / outlet / RJ45: "Rotate 90°" never did anything (their angle is dictated by the
-    // wall). It's removed from the row in favor of "Change side", their only real command.
-    rot90.hidden = isSideable(p.type);
+    rot90.textContent = "Rotate 90°";
+    rot90.title = "Rotate 90°";
+    rot90.disabled = op || lk;
+    rot90.classList.toggle("disabled", op || lk);
+    rot90.style.opacity = (op || lk) ? ".45" : "";
+    rot90.hidden = op;
   }
   // Opening direction (inward/outward): only for a hinged door (not sdoor).
   const swg = $("iSwing") as HTMLButtonElement | null;
@@ -260,7 +267,11 @@ export function syncInspector(ctx: Contexte): void {
     const leafN = p.type === "window" ? (Number((p as { leaf?: number }).leaf || 0) | 0) : 0;
     const hg = $("iHinge") as HTMLButtonElement | null;
     if (hg) {
-      hg.hidden = !(p.type === "door" || leafN === 1);
+      // A sliding door has the same single degree of freedom, called by its own name: the side
+      // it slides towards. Same field (`hinge`), same button, honest label.
+      hg.hidden = !(p.type === "door" || p.type === "sdoor" || leafN === 1);
+      hg.textContent = p.type === "sdoor" ? "Slide direction" : "Hinge side";
+      hg.title = p.type === "sdoor" ? "Slides to the left or to the right" : "Hinge on the left or on the right";
       hg.disabled = lk;
       hg.style.opacity = lk ? ".45" : "";
     }
@@ -419,10 +430,7 @@ export function brancherInspecteur(ctx: Contexte): void {
 
   $("iRot90")?.addEventListener("click", () => {
     const p = vue(cur(ctx)); if (!p || p.locked) return;
-    if (p.type === "door" || p.type === "sdoor") {
-      pushHistory(ctx); p.hinge = p.hinge ? 0 : 1; render(ctx); syncInspector(ctx); return;
-    }
-    if (isWallMount(p.type)) return;   // other wall-mounted objects don't rotate
+    if (isWallMount(p.type)) return;   // an opening or a wall-mounted object has no angle of its own
     pushHistory(ctx);
     rotatePieceWithChairs(ctx.etat.plan, p as unknown as Meuble, (p.rot || 0) + 90);
     render(ctx); syncInspector(ctx);
@@ -462,7 +470,7 @@ export function brancherInspecteur(ctx: Contexte): void {
     const p = vue(cur(ctx));
     if (!p || p.locked) return;
     const leafN = p.type === "window" ? (Number((p as unknown as { leaf?: number }).leaf || 0) | 0) : 0;
-    if (p.type !== "door" && leafN !== 1) return;
+    if (p.type !== "door" && p.type !== "sdoor" && leafN !== 1) return;
     pushHistory(ctx);
     const b = p as unknown as { hinge?: unknown };
     b.hinge = b.hinge ? 0 : 1;
