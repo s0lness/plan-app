@@ -28,7 +28,7 @@
 import type { Contexte } from "../app/contexte.ts";
 import type { EtatPuce, Fil, RefusRevision } from "./etat.ts";
 import { wsLive } from "./etat.ts";
-import { SYNC_ON, SYNC_URL, avecPlan, estInvite } from "./drapeaux.ts";
+import { ORPHANS_URL, SYNC_ON, SYNC_URL, avecPlan, estInvite } from "./drapeaux.ts";
 import { $ } from "../noyau/dom.ts";
 import { toast } from "../app/toast.ts";
 import { displayName } from "../mesure/curseur-pair.ts";
@@ -355,17 +355,90 @@ function stashConflit(mine: unknown, info: RefusRevision): number {
 export function downloadConflits(): boolean {
   const list = conflitList();
   if (!list.length) return false;
-  const last = list[list.length - 1]!;
+  telechargerEnveloppe("plan-ma-version-ecartee.json", list[list.length - 1]!.state, list);
+  return true;
+}
+
+/** ONE exporter for both recovery paths (the versions stashed locally by a REST refusal, and the
+ *  ones the SHARED PLAN set aside): same envelope as an ordinary export, so the file goes straight
+ *  back through "Load a plan…" without anyone having to know where it came from. */
+function telechargerEnveloppe(nomFichier: string, etat: unknown, ecartes: unknown[]): void {
   const blob = new Blob([JSON.stringify({
     app: "room-planner", version: 4, savedAt: new Date().toISOString(),
-    state: last.state, ecartes: list,
+    state: etat, ecartes,
   }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "plan-ma-version-ecartee.json";
+  a.href = url; a.download = nomFichier;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
-  return true;
+}
+
+// =================================================================================================
+//  THE VERSIONS THE SHARED PLAN SET ASIDE (`conflict` on the wire)
+// =================================================================================================
+// A `conflict` says: a write made outside real time could not be merged, the live version was
+// kept, and the bytes are held ON THE SERVER. That last clause was a promise with nothing behind
+// it, because nothing could ask for them. `functions/api/orphans.ts` relays the Durable Object's
+// own `GET /orphans`, so the sentence is now something one can act on, and the banner carries the
+// button that acts on it.
+//
+// HOUSEHOLD DOOR ONLY, because the route is: a discarded version is a piece of the household's
+// plan, which a guest holding a link has no business reading back. A guest therefore gets the same
+// statement of fact WITHOUT a button that could only ever answer 403.
+
+interface OrphelinServeur { at?: string; by?: string; rev?: number; data?: unknown }
+
+/** Asks the shared plan for what it set aside and hands it back as a file. Returns WHAT HAPPENED,
+ *  so the button can say it rather than fail silently. */
+async function recupererOrphelines(): Promise<"ok" | "vide" | "echec"> {
+  try {
+    const r = await fetch(avecPlan(ORPHANS_URL), { headers: { accept: "application/json" } });
+    if (!r.ok) return "echec";
+    const corps = await r.json() as { orphans?: OrphelinServeur[] };
+    const liste = (corps && Array.isArray(corps.orphans)) ? corps.orphans : [];
+    if (!liste.length) return "vide";
+    telechargerEnveloppe("plan-version-ecartee-par-le-plan-partage.json",
+      liste[liste.length - 1]!.data, liste);
+    return "ok";
+  } catch (_) { return "echec"; }
+}
+
+let _orphelinsWires = false;
+/**
+ * THE PERSISTENT BANNER FOR A `conflict`. A transient toast was the whole announcement, and a loss
+ * of work is not told through a message that fades away on its own: that is the rule
+ * `showConflitNotice` above already follows for the REST refusal, and this is the same event on
+ * the other transport. Same banner, same button position, same vocabulary.
+ */
+export function showConflitFilNotice(): void {
+  const recuperable = !estInvite();
+  const msg = "Some changes made while the link was down could not be merged: the live version was kept. "
+    + (recuperable
+      ? "Your version was set aside on the shared plan: “Recover the discarded version” downloads it."
+      : "Your version was set aside on the shared plan; someone in the household can recover it.");
+  try { toast("Changes made while the link was down could not be merged: the live version was kept."); }
+  catch (_) { /* nothing */ }
+  const ban = $("bootNotice"), txt = $("bootNoticeText");
+  if (!ban || !txt) return;
+  txt.textContent = msg;
+  ban.hidden = false;
+  if (_orphelinsWires || !recuperable) return;
+  _orphelinsWires = true;
+  const x = $("bootNoticeX");
+  if (x) x.addEventListener("click", () => { ban.hidden = true; });
+  const dl = document.createElement("button");
+  dl.type = "button"; dl.className = "btn sm"; dl.id = "orphelinsDl";
+  dl.textContent = "Recover the discarded version";
+  dl.addEventListener("click", () => {
+    void recupererOrphelines().then((verdict) => {
+      // NEVER SILENT. A recovery button that does nothing visible is worse than no button at all:
+      // one clicks it again, and again, believing the file failed to save.
+      if (verdict === "vide") toast("The shared plan is holding no discarded version.");
+      else if (verdict === "echec") toast("The discarded version could not be read back. Try again in a moment.");
+    });
+  });
+  ban.insertBefore(dl, x || null);
 }
 
 /**

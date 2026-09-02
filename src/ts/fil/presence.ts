@@ -42,6 +42,7 @@ import {
 import { wsApplyRemoteDrag, wsApplyRemoteOp, wsRejouerNonAcquittees, wsRevertRefused } from "./reception.ts";
 import {
   adoptServerState, maybeOpenSetupFromServer, pollPull, serverHasPlan, setSyncChip,
+  showConflitFilNotice,
 } from "./rest.ts";
 import { hudRecordPaint } from "./hud.ts";
 
@@ -467,9 +468,12 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
     // CONFLICT: the server kept ITS version, ours (made offline) could not merge. This is NOT a
     // refused op, nothing to do with `WS_ERR_MSG` or its throttling, it is a fact about the
     // shared plan, and it only happens once per foreign write.
+    // "They are held on the server" was true and unreachable: nothing could ask for them. It is
+    // now `GET /api/orphans` (household door only), and the announcement is the PERSISTENT banner
+    // carrying the button, like every other loss of work in this codebase, instead of a message
+    // that fades away on its own.
     case "conflict":
-      toast("Some changes made while the link was down could not be merged: "
-        + "the live version was kept. They are held on the server.");
+      showConflitFilNotice();
       break;
 
     case "drag":

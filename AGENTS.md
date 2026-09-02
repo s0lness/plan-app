@@ -407,17 +407,23 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - D1 `plan` (uuid `<d1_database_id>`, get your own from the Cloudflare dashboard), `plans` table with one `main` row
   (`data` JSON, increasing `rev`, `updated_at`, `updated_by`). Bound to the Pages project as `DB`
   (production + preview), configured through the REST API (no wrangler here).
-- **Six network entry points, not one more.** The first four are on the app origin and therefore
-  behind Access by default; the last two exist because of the guest door, and `functions/_middleware.ts`
-  is what decides which door may reach which route (`docs/decisions/0004-partage-par-lien.md`). Identity is the `Cf-Access-Authenticated-User-Email` header set by Access (fallback:
-  the `Cf-Access-Jwt-Assertion` JWT payload, already verified upstream); otherwise, `inconnu`.
+- **Eight network entry points, not one more.** Five are HOUSEHOLD-ONLY; the other three exist
+  because of the guest door, and `functions/_middleware.ts` decides which door may reach which
+  route (`docs/decisions/0004-partage-par-lien.md`). **Each route also refuses an unrecognized door
+  ITSELF**, it does not lean on that choke point: every direct-import test in this repository calls
+  a route file with no middleware at all, and `live-worker/DEPLOY.md` §2 describes a zone route that
+  would send `/ws*` straight to the Worker. Identity is the `Cf-Access-Authenticated-User-Email`
+  header set by Access (fallback: the `Cf-Access-Jwt-Assertion` JWT payload, already verified
+  upstream); otherwise, `inconnu`.
 
 | Route | Method | Purpose | Contract |
 | --- | --- | --- | --- |
 | `/api/plan` | `GET` | Read the household floor plan. | `{data, rev, updatedAt, updatedBy}` · missing row = `{data:null, rev:0}` |
 | `/api/plan` | `PUT` | Write the floor plan through FALLBACK (realtime down). | `{state, rev}` = compare-and-swap: **409** with the winning revision, author, AND state if the row moved. `{state}` alone = BLIND write, the old contract, kept for a tab opened before deployment. |
-| `/api/err` | `POST` | Collect an uncaught client JS error in D1 for remote diagnosis. | free-form body, response without useful content |
-| `/ws` | `GET` + `Upgrade` | Open the realtime wire. | Pass-through: adds `X-Plan-Email`, `X-Plan-Guest` and `X-Plan-Name` (always SET, never conditionally, so a caller cannot forge them) and forwards to the `PlanRoom` Durable Object (binding `ROOM`). **426** without an `Upgrade` header. |
+| `/api/err` | `POST` | Collect an uncaught client JS error in D1 for remote diagnosis. | HOUSEHOLD ONLY. Free-form body, response without useful content. **429** past 5 per hour and per author (the same rate limiter as `/api/feedback`, the same function: an error in a render path fires on every frame, and the retention sweep bounds only what is KEPT). |
+| `/api/orphans` | `GET` | Read back the versions the LIVE plan set aside (a `conflict`). | HOUSEHOLD ONLY. Relays the Durable Object's `GET /orphans` → `{orphans:[{at, by, rev, data}], live}`. Unreachable object = `{orphans:[], live:false}`, never an error: it is asked while a conflict banner is already up. |
+| `/api/feedback` | `POST` | A free-text note from inside the app, no account. | BOTH DOORS, deliberately: a visitor on a shared link must be able to report something too. **429** past 5 per hour and per IP. Who and which plan come from the DOOR, never from the body. |
+| `/ws` | `GET` + `Upgrade` | Open the realtime wire. | Pass-through: adds `X-Plan-Email`, `X-Plan-Id`, `X-Plan-Guest`, `X-Plan-Name`, `X-Plan-Guest-Id`, `X-Plan-Token` and `X-Plan-Expires` (always SET, never conditionally, so a caller cannot forge them) and forwards to the `PlanRoom` Durable Object (binding `ROOM`). **426** without an `Upgrade` header. **403** off a recognized door, checked here as well as in the middleware. |
 | `/api/invite` | `POST` | GUEST DOOR ONLY. Trade the link's `#k=` token for a session. | `{token, name?}` → `{planId, planName, role, name}` + an `HttpOnly; Secure; SameSite=Strict` cookie. Unknown, revoked, expired and deleted-plan all answer the SAME **404**, so a probe never learns it guessed a real token. |
 | `/api/invites` | `GET` `POST` `DELETE` | HOUSEHOLD DOOR ONLY. Create, list and revoke a plan's links. | 20 live invites per plan max (**409**), revoke is idempotent (**200** even for an unknown token, same reason as the 404 above). |
 - **`rev` IS THE LOCK, no longer mere information.** TWO writers write to the D1 row (the Durable

@@ -18,6 +18,7 @@ import { onRequestGet as planGet, onRequestPut as planPut } from "../functions/a
 import {
   onRequestDelete as plansDelete, onRequestPost as plansPost,
 } from "../functions/api/plans.ts";
+import { onRequestGet as orphansGet } from "../functions/api/orphans.ts";
 import { onRequest as wsUpgrade } from "../functions/ws.ts";
 import { cleanName } from "../functions/nom.ts";
 import { fakeD1 } from "./fake-d1.ts";
@@ -983,6 +984,86 @@ await test("invite_accepte_toujours_un_corps_normal", async () => {
   const corps = await res.json<DonneeDynamique>();
   return expect(res.status === 200, "doit répondre 200, vu " + res.status)
       && expect(corps.name === "Marie", "et rendre le nom, vu " + JSON.stringify(corps.name));
+});
+
+// =================================================================================================
+//  9. /api/orphans — LES VERSIONS QUE LE PLAN VIVANT A ÉCARTÉES, PORTE FOYER SEULEMENT
+// =================================================================================================
+// La bannière `conflict` du client disait « elles sont gardées sur le serveur » : vrai, et
+// inatteignable, puisque rien ne pouvait les demander. Cette route relaie le `GET /orphans` du
+// Durable Object. Un écarté est un morceau du plan du foyer, donc un invité n'y a rien à lire.
+
+function fauxRoomOrphelins(reponse: Response | null) {
+  const etat: { requete: Request | null } = { requete: null };
+  const stub = {
+    fetch: async (r: Request) => {
+      etat.requete = r;
+      if (!reponse) throw new Error("DO indisponible");
+      return reponse;
+    },
+  };
+  return { etat, room: { idFromName: (n: string) => n, get: () => stub } };
+}
+const jsonReponse = (o: unknown, status = 200) =>
+  new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json" } });
+
+await test("orphans_relaie_la_liste_du_durable_object", async () => {
+  const { env } = base();
+  const ecartes: DonneeDynamique[] = [
+    { at: "2026-09-01T10:00:00.000Z", by: "b@example.com", rev: 12, data: { outline: [], walls: [] } },
+  ];
+  const { etat, room } = fauxRoomOrphelins(jsonReponse({ orphans: ecartes }));
+  const res = await orphansGet({
+    request: req("https://plan.example.com/api/orphans?p=appartement", { host: HOTE_FOYER }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof orphansGet>[0]);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(new URL(etat.requete!.url).pathname === "/orphans", "l'appel doit cibler /orphans, vu " + etat.requete!.url)
+      && expect(etat.requete!.headers.get("X-Plan-Internal") === "1", "et porter le marqueur interne")
+      && expect(corps.live === true && corps.orphans.length === 1 && corps.orphans[0].rev === 12,
+        "la liste doit être relayée telle quelle, vu " + JSON.stringify(corps));
+});
+
+await test("orphans_refuse_la_porte_invitee_et_la_porte_inconnue", async () => {
+  const { env } = base();
+  const { etat, room } = fauxRoomOrphelins(jsonReponse({ orphans: [] }));
+  for (const hote of [HOTE_INVITE, "autre.example.com"]) {
+    const res = await orphansGet({
+      request: req("https://" + hote + "/api/orphans?p=appartement", { host: hote }),
+      env: { ...env, ROOM: room },
+    } as unknown as Parameters<typeof orphansGet>[0]);
+    const ok = expect(res.status === 403, hote + " doit répondre 403, vu " + res.status)
+      && expect(etat.requete === null, hote + " : le Durable Object ne doit jamais être atteint");
+    if (!ok) return false;
+  }
+  return true;
+});
+
+await test("orphans_rend_une_liste_vide_quand_le_do_est_injoignable", async () => {
+  // Cette route est demandée PENDANT qu'une bannière de conflit est déjà affichée : un second
+  // échec doit dire « rien à proposer », pas s'empiler en panne par-dessus un conflit.
+  const { env } = base();
+  const { room } = fauxRoomOrphelins(null);
+  const res = await orphansGet({
+    request: req("https://plan.example.com/api/orphans", { host: HOTE_FOYER }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof orphansGet>[0]);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit rester 200, vu " + res.status)
+      && expect(Array.isArray(corps.orphans) && corps.orphans.length === 0, "liste vide attendue, vu " + JSON.stringify(corps))
+      && expect(corps.live === false, "et live:false, vu " + JSON.stringify(corps.live));
+});
+
+await test("orphans_refuse_un_id_de_plan_mal_forme", async () => {
+  const { env } = base();
+  const { etat, room } = fauxRoomOrphelins(jsonReponse({ orphans: [] }));
+  const res = await orphansGet({
+    request: req("https://plan.example.com/api/orphans?p=MAJUSCULE%20INVALIDE", { host: HOTE_FOYER }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof orphansGet>[0]);
+  return expect(res.status === 400, "doit répondre 400, vu " + res.status)
+      && expect(etat.requete === null, "et ne jamais retomber silencieusement sur main");
 });
 
 // =================================================================================================
