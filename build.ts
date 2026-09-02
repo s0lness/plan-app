@@ -81,6 +81,38 @@ function lire(rel: string): string {
   }
 }
 
+// ---- COMPACTION DU CSS ET DU HTML SERVIS -------------------------------------------------------
+// Le JS est minifié par esbuild depuis toujours; le CSS et le HTML, eux, partaient tels quels,
+// commentaires de conception compris. Un commentaire explique la SOURCE, il ne sert à rien dans
+// le livrable téléchargé par le navigateur. On retire donc les commentaires, l'indentation et les
+// lignes vides. On ne touche à RIEN d'autre: pas de fusion de lignes, pas de réécriture de
+// sélecteurs, pas de suppression du dernier point-virgule. Une ligne reste une ligne, donc le
+// rendu (y compris les espaces entre éléments en ligne) est identique au caractère près.
+// En `--dev`, on ne compacte pas: c'est l'artefact de débogage, il se lit.
+function serrer(t: string, commentaire: RegExp): string {
+  return t
+    .replace(commentaire, "")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/^[ \t]+/gm, "")
+    .replace(/\n{2,}/g, "\n")
+    .replace(/^\n+/, "");
+}
+// Deux gardes, parce que la compaction n'est sûre que sous ces deux conditions et qu'elles
+// tiennent aujourd'hui: un `url(...)` CSS peut contenir `/*`, et un contenu où l'espace COMPTE
+// (<pre>, <textarea> non vide, <script> en ligne) serait déformé par le retrait de l'indentation.
+function garde(nom: string, t: string, interdit: RegExp, pourquoi: string): string {
+  if (!dev && interdit.test(t)) {
+    console.error(`\x1b[31mCompaction impossible\x1b[0m : src/${nom} contient ${pourquoi}.`);
+    console.error(`  => adaptez \`serrer()\` dans build.ts avant d'ajouter ce contenu.`);
+    process.exit(1);
+  }
+  return t;
+}
+const serrerCss = (nom: string, t: string) =>
+  dev ? t : serrer(garde(nom, t, /url\(/i, "un url(...) que le retrait des commentaires pourrait couper"), /\/\*[\s\S]*?\*\//g);
+const serrerHtml = (nom: string, t: string) =>
+  dev ? t : serrer(garde(nom, t, /<(pre|script)\b|<textarea\b[^>]*>[^<]/i, "du contenu où l'espace compte"), /<!--[\s\S]*?-->/g);
+
 // The envelope: these five lines don't live in src/ because they only exist in the
 // hosted file (the working copy of the Claude job lacks them).
 const PREAMBULE = [
@@ -112,7 +144,11 @@ async function bundleTs() {
       absWorkingDir: ROOT,     // metafile paths are relative to THIS folder, whatever the cwd
       bundle: true, write: false, metafile: true,
       format: "iife",          // a closure: nothing leaks into window
-      platform: "browser", target: "es2019",
+      // `es2020` et pas `es2019`: la raison écrite en 2026 pour es2019 (« la source n'utilise ni
+      // `?.` ni `??` ») valait pour l'ancien `src/js`. Le client typé en compte 1480 occurrences,
+      // qu'esbuild réécrivait donc en cascades de ternaires pour rien. `?.`, `??` et `??=` sont
+      // natifs partout où l'app tourne (Chrome 80, Safari 13.4, donc l'iPhone du foyer).
+      platform: "browser", target: "es2020",
       minify: !dev,
       sourcemap: dev ? "inline" : false,
       legalComments: "none",
@@ -144,13 +180,13 @@ const corpsJs = bundle.js;
 
 const html =
   PREAMBULE +
-  lire(manifeste.head) +
+  serrerHtml(manifeste.head, lire(manifeste.head)) +
   "<style>\n" +
-  manifeste.css.map(lire).join("") +
+  manifeste.css.map(f => serrerCss(f, lire(f))).join("") +
   "</style>\n" +
   "</head>\n" +
   "<body>\n" +
-  manifeste.html.map(lire).join("") +
+  manifeste.html.map(f => serrerHtml(f, lire(f))).join("") +
   "<script>\n" +
   corpsJs +
   "</script>\n" +
