@@ -1,6 +1,9 @@
 // Pure logic for applying/validating ops on the canonical plan (TypeScript source).
 // No Cloudflare/DO dependency: testable under node.
-// All ops are idempotent (set of whole entities), so the echo is risk-free.
+// EVERY op is idempotent (each sets a WHOLE entity), so the echo, a replay and a re-emission
+// after a `gap` are all risk-free. This was not true while `rooms.merge` existed: it APPENDED,
+// so replaying it duplicated its rooms. It has been removed (no client emitted it), and the
+// property is now the rule the wire depends on rather than an approximation of it.
 
 export type Point = [number, number];
 
@@ -221,6 +224,13 @@ const isStr = (v: unknown): v is string => typeof v === "string";
 const isId = (v: unknown): v is string => isStr(v) && ID_RE.test(v);
 // Readable coordinate: finite number within the physical range of a home.
 const isCoord = (v: unknown): v is number => isFiniteNum(v) && v >= -COORD_MAX && v <= COORD_MAX;
+// A v4 floor is a free material label (a number is tolerated, some old plans carry one). It was
+// the ONLY string on this side with no length bound at all: it is persisted, snapshotted to D1
+// and relayed to every peer, so `"x".repeat(1e6)` rode through the plan on the strength of being
+// a string. Bounded like every other label here. REFUSED rather than truncated, unlike a name: a
+// silently shortened material is a different material, and the refusal is numbered, so the client
+// undoes its own change instead of showing one the server never took.
+const isFloorValue = (v: unknown): boolean => isFiniteNum(v) || (isStr(v) && v.length <= NAME_MAX);
 
 // Number read from the wire: a number, or a numeric string (some client ops send "1").
 // Returns null if the value is not a readable number.
@@ -576,7 +586,7 @@ function validatePoly(poly: unknown): Point[] {
 function validateRoom(r: Partial<LegacyRoom>, prev?: Map<string, Piece> | null): LegacyRoom {
   if (!r || typeof r !== "object" || Array.isArray(r)) throw new OpError("room_obj");
   if (!isId(r.id)) throw new OpError("room_id");
-  if (r.floor !== undefined && !isStr(r.floor) && !isFiniteNum(r.floor)) throw new OpError("room_floor");
+  if (r.floor !== undefined && !isFloorValue(r.floor)) throw new OpError("room_floor");
   // ax/ay: apartment offset (cm) of the room's local origin. Optional, null = not placed.
   if (r.ax !== undefined && r.ax !== null && !isCoord(r.ax)) throw new OpError("room_ax");
   if (r.ay !== undefined && r.ay !== null && !isCoord(r.ay)) throw new OpError("room_ay");
@@ -606,7 +616,7 @@ function validateEnvelope(e: PlanState["envelope"], prev?: Map<string, Piece> | 
   if (typeof e !== "object" || Array.isArray(e)) throw new OpError("env_obj");
   if (!e.poly) throw new OpError("env_geom");
   validatePoly(e.poly);
-  if (e.floor !== undefined && !isStr(e.floor) && !isFiniteNum(e.floor)) throw new OpError("env_floor");
+  if (e.floor !== undefined && !isFloorValue(e.floor)) throw new OpError("env_floor");
   const pieces = e.pieces === undefined ? [] : e.pieces;
   if (!Array.isArray(pieces)) throw new OpError("env_pieces");
   if (pieces.length > MAX_ENTITIES) throw new OpError("pieces_max");
@@ -858,15 +868,6 @@ function findRoom(plan: PlanState, roomId: string): LegacyRoom {
   return r;
 }
 
-// Generates a fresh id unique within the plan (for a merge in case of collision).
-function freshId(existing: Set<string>, base: string): string {
-  let id = base;
-  let n = 1;
-  while (existing.has(id)) id = base + "-" + n++;
-  existing.add(id);
-  return id;
-}
-
 // ---- applying ops ----
 // Mutates and returns `plan` (the caller has already cloned the state before calling applyOp
 // if it wants immutability; here we mutate in place, the DO caller stores the result).
@@ -878,14 +879,67 @@ function freshId(existing: Set<string>, base: string): string {
 // `piece.front` was REMOVED from both sets and both dispatch tables: no client emits it
 // (exhaustive census of the client's `wsSend`/`wsSendOp`: op, cursor, drag, chat, ping, hello).
 // The client keeps a RECEIVE branch for it, also dead, to be removed client-side.
+// `rooms.merge` was REMOVED from this set and from the dispatch table, like `piece.front` before
+// it: no client emits it (exhaustive search of `src/ts` for the kind: not one call site), and it
+// was the ONE op on this wire that was not idempotent, since it APPENDED its rooms and renamed
+// colliding ids. Replayed by the echo, or re-emitted after a `gap`, it duplicated every room it
+// carried. Removed rather than made idempotent: an op nobody sends does not need a contract.
 const V4_KINDS = new Set([
   "piece.set", "piece.del", "room.add", "room.del", "room.set",
-  "plan.replace", "rooms.merge", "env.set", "env.del", "env.piece.set", "env.piece.del",
+  "plan.replace", "env.set", "env.del", "env.piece.set", "env.piece.del",
 ]);
 const V5_KINDS = new Set([
   "piece.set", "piece.del", "outline.set", "wall.set", "wall.del",
   "opening.set", "opening.del", "cell.set", "cells.replace",
 ]);
+
+// ---- THE ENVELOPE OF AN OP IS REBUILT, NEVER RELAYED AS RECEIVED -------------------------------
+// The ENTITIES an op carries are already behind a whitelist (PIECE_KEYS, WALL_KEYS, OPENING_KEYS,
+// CELL_KEYS): an unknown key inside `op.piece` gets the whole op refused. Its ENVELOPE was behind
+// nothing at all, so `{kind:"wall.del", wallId:"w1", junk:"<100 KB>"}` applied cleanly and the
+// server rebroadcast THE OBJECT IT RECEIVED, junk included: any socket could push arbitrary bytes
+// through every peer's receive path, at the plan's own message ceiling.
+// The op that goes back out is therefore REBUILT from the keys its kind is known to carry. An
+// absent key stays absent ("no opinion" is a value on this wire, cf. piece.set), so this changes
+// nothing for a legitimate op.
+export const OP_KEYS: Record<string, string[]> = {
+  // v4
+  "room.add": ["room"],
+  "room.del": ["roomId"],
+  "room.set": ["roomId", "name", "floor", "ax", "ay", "poly"],
+  "plan.replace": ["state"],
+  "env.set": ["poly", "floor"],
+  "env.del": [],
+  "env.piece.set": ["piece"],
+  "env.piece.del": ["pieceId"],
+  // shared (`roomId` only means something on the v4 path, where furniture lives per room)
+  "piece.set": ["roomId", "piece"],
+  "piece.del": ["roomId", "pieceId"],
+  // v5
+  "outline.set": ["outline"],
+  "wall.set": ["wall"],
+  "wall.del": ["wallId"],
+  "opening.set": ["opening"],
+  "opening.del": ["openingId"],
+  "cell.set": ["cellId", "name", "floor", "poly"],
+  "cells.replace": ["cells"],
+  // switchover
+  "plan5.replace": ["plan"],
+};
+
+/** The op as it must leave the server: `kind` plus the keys that kind is known to carry, and
+ *  nothing else. An unknown kind reduces to its `kind` alone (it never reaches here: `applyOp`
+ *  refuses it first). */
+export function opWire(op: Operation): Operation {
+  const kind = op && typeof op === "object" ? String(op.kind) : "";
+  const sortie: Record<string, unknown> = { kind };
+  const permis = OP_KEYS[kind];
+  if (permis) {
+    const brut = op as unknown as Record<string, unknown>;
+    for (const k of permis) if (brut[k] !== undefined) sortie[k] = brut[k];
+  }
+  return sortie as unknown as Operation;
+}
 
 export function applyOp(plan: PlanState, op: Operation): PlanState {
   if (!op || typeof op !== "object") throw new OpError("op_obj");
@@ -953,7 +1007,7 @@ function applyOpV4(plan: PlanState, op: Operation): PlanState {
       const patch: Partial<Pick<LegacyRoom, "name" | "floor" | "ax" | "ay">> = {};
       if (op.name !== undefined) patch.name = cleanName(op.name, "room_name");
       if (op.floor !== undefined) {
-        if (!isStr(op.floor) && !isFiniteNum(op.floor)) throw new OpError("room_floor");
+        if (!isFloorValue(op.floor)) throw new OpError("room_floor");
         patch.floor = op.floor;
       }
       if (op.ax !== undefined) {
@@ -995,7 +1049,7 @@ function applyOpV4(plan: PlanState, op: Operation): PlanState {
       };
       if (op.poly !== undefined) next.poly = validatePoly(op.poly).map((pt) => [pt[0], pt[1]]);
       if (op.floor !== undefined) {
-        if (!isStr(op.floor) && !isFiniteNum(op.floor)) throw new OpError("env_floor");
+        if (!isFloorValue(op.floor)) throw new OpError("env_floor");
         next.floor = op.floor;
       }
       // env.set must establish a valid envelope: refuses a skeleton without a poly.
@@ -1025,22 +1079,6 @@ function applyOpV4(plan: PlanState, op: Operation): PlanState {
       if (!isStr(op.pieceId)) throw new OpError("piece_id");
       if (!Array.isArray(plan.envelope.pieces)) plan.envelope.pieces = [];
       plan.envelope.pieces = plan.envelope.pieces.filter((p) => p.id !== op.pieceId);
-      return plan;
-    }
-    case "rooms.merge": {
-      if (!Array.isArray(op.rooms)) throw new OpError("merge_rooms");
-      const ids = new Set(plan.rooms.map((r) => r.id));
-      // Everything is validated and re-identified BEFORE the first insertion: an invalid room in
-      // third position must not leave the first two in the shared plan.
-      const merged = [];
-      for (const raw of op.rooms) {
-        const room = validateRoom(raw);
-        if (ids.has(room.id)) room.id = freshId(ids, room.id);
-        else ids.add(room.id);
-        merged.push(room);
-      }
-      if (plan.rooms.length + merged.length > MAX_ENTITIES) throw new OpError("rooms_max");
-      for (const room of merged) plan.rooms.push(room);
       return plan;
     }
     default:

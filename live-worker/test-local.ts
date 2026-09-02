@@ -3,9 +3,9 @@
 // importing it under node has no side effect, which makes `coldLoad` testable as-is.
 // Run: node live-worker/test-local.ts
 import type { DonneeDynamique } from "../tests/_types.ts";
-import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan, cleanCursorSay, CURSOR_SAY_MAX } from "./ops.ts";
+import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan, cleanCursorSay, CURSOR_SAY_MAX, NAME_MAX } from "./ops.ts";
 import type { CursorMessage, DragMessage, Operation, Piece, PlanState, Point } from "./ops.ts";
-import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy, attachmentFromRequest } from "./worker.ts";
+import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy, attachmentFromRequest, MAX_MSG_BYTES } from "./worker.ts";
 
 // The doubles only implement the surface actually read by PlanRoom. These two boundaries
 // concentrate the adaptation to the full Cloudflare contract, without weighing down each scenario.
@@ -150,16 +150,11 @@ ok(plan.setupDone === false, "plan.replace setupDone");
 ok(!("opts" in plan) && !("active" in plan), "plan.replace strips opts/active");
 throws(() => applyOp(freshPlan(), { kind: "plan.replace", state: { rooms: "nope" } }), "plan.replace bad shape");
 
-// ---- rooms.merge ----
-plan = freshPlan();
-applyOp(plan, { kind: "rooms.merge", rooms: [
-  { id: "r1", name: "Collision", floor: 0, room: { poly: poly() }, pieces: [] }, // collision -> fresh id
-  { id: "r5", name: "Neuf", floor: 0, room: { poly: poly() }, pieces: [] },
-] });
-ok(plan.rooms.length === 3, "rooms.merge appends both");
-ok(plan.rooms.some((r) => r.id === "r5"), "rooms.merge keeps free id");
-ok(plan.rooms.filter((r) => r.id === "r1").length === 1, "rooms.merge reids collision");
-throws(() => applyOp(freshPlan(), { kind: "rooms.merge", rooms: "nope" }), "rooms.merge bad arg");
+// ---- rooms.merge : OP RETIREE ----------------------------------------------------------------
+// Aucun client ne l'emettait (recherche exhaustive du genre dans `src/ts` : zero site d'appel), et
+// c'etait la seule op non idempotente du fil (elle AJOUTAIT ses salles et renommait les ids en
+// collision), donc rejouee par l'echo ou re-emise apres un `gap` elle dupliquait tout.
+throws(() => applyOp(freshPlan(), { kind: "rooms.merge", rooms: [] }), "rooms.merge n'existe plus (genre inconnu)");
 
 // ---- sanitizeState directly ----
 const clean = sanitizeState({ rooms: [{ id: "s1", name: "S", floor: 0, room: { poly: poly() }, pieces: [piece()] }], setupDone: true, opts: {}, active: 1 });
@@ -198,6 +193,24 @@ applyOp(plan, { kind: "env.set", floor: "parquet" });
 ok(plan.envelope.floor === "parquet" && plan.envelope.poly.length === 4, "env.set floor only keeps poly");
 throws(() => applyOp(freshPlan(), { kind: "env.set", poly: [[0, 0], [1, 1]] }), "env.set bad poly");
 throws(() => applyOp(freshPlan(), { kind: "env.set", floor: "x" }), "env.set skeleton needs poly");
+// ---- LE REVETEMENT EST UN LIBELLE BORNE, PAS UNE CHAINE LIBRE --------------------------------
+// C'etait la seule chaine de ce cote sans aucune borne de longueur : persistee, snapshotee en D1
+// et relayee a chaque pair, du seul fait d'etre une chaine.
+{
+  const long = "x".repeat(NAME_MAX + 1);
+  const juste = "x".repeat(NAME_MAX);
+  throws(() => applyOp(freshPlan(), { kind: "env.set", poly: envPoly(), floor: long }), "env.set revetement trop long");
+  throws(() => applyOp(freshPlan(), { kind: "room.set", roomId: "r1", floor: long }), "room.set revetement trop long");
+  throws(() => sanitizeState({ rooms: [{ id: "r1", name: "S", floor: long, room: { poly: poly() }, pieces: [] }], setupDone: true }),
+    "sanitizeState refuse un revetement de salle trop long");
+  throws(() => sanitizeState({ rooms: [], envelope: { poly: envPoly(), floor: long, pieces: [] }, setupDone: true }),
+    "sanitizeState refuse un revetement d'enveloppe trop long");
+  const p = freshPlan();
+  applyOp(p, { kind: "room.set", roomId: "r1", floor: juste });
+  ok(p.rooms[0].floor === juste, "un revetement a la borne exacte passe");
+  applyOp(p, { kind: "room.set", roomId: "r1", floor: 2 });
+  ok(p.rooms[0].floor === 2, "un revetement numerique (vieux plans) passe toujours");
+}
 // env.del
 applyOp(plan, { kind: "env.del" });
 ok(plan.envelope === null, "env.del removes envelope");
@@ -421,7 +434,6 @@ shapeErr(() => applyOp(freshV5(), { kind: "plan.replace", state: freshPlan() }),
 shapeErr(() => applyOp(freshV5(), { kind: "room.add", room: { id: "r9", name: "X", floor: 0, room: { poly: poly() }, pieces: [] } }), "v4 room.add on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "room.set", roomId: "r1", name: "X" }), "v4 room.set on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "room.del", roomId: "r1" }), "v4 room.del on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "rooms.merge", rooms: [] }), "v4 rooms.merge on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "env.set", poly: envPoly() }), "v4 env.set on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "env.del" }), "v4 env.del on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "env.piece.set", piece: piece() }), "v4 env.piece.set on v5");
@@ -626,9 +638,6 @@ const V4_BAD = [
   ["env.set poly invalide", { kind: "env.set", poly: [[0, 0], [1, 1]] }],
   ["env.set poly hors bornes", { kind: "env.set", poly: [[0, 0], [1e308, 0], [0, 1]] }],
   ["env.piece.set sans enveloppe", { kind: "env.piece.set", piece: piece() }],
-  ["rooms.merge argument non-tableau", { kind: "rooms.merge", rooms: "nope" }],
-  ["rooms.merge 2e salle invalide", { kind: "rooms.merge", rooms: [
-    { id: "ok1", room: { poly: poly() } }, { id: "ko", room: { poly: [[0, 0]] } }] }],
   ["op v5 sur état v4", { kind: "wall.set", wall: wall() }],
   ["kind inconnu", { kind: "nope" }],
   ["op nulle", null],
@@ -916,8 +925,17 @@ ok(planTooBig(sanitizeState(v5State({ cells: manyCells(2000) }))) === false, "20
 // Unreadable D1: we REFUSE to serve rather than installing an empty plan meant to overwrite the row.
 throws(() => coldLoad("{ pas du json"), "coldLoad JSON casse -> refus");
 throws(() => coldLoad("[1,2,3]"), "coldLoad tableau -> refus");
-throws(() => coldLoad("null"), "coldLoad literal null -> refus");
 throws(() => coldLoad(42), "coldLoad valeur non-chaine -> refus");
+// UN PLAN NEUF N'EST PAS UNE LIGNE ILLISIBLE. `functions/api/plans.ts` insere `JSON.stringify(null)`
+// a la creation : la chaine "null". Refusee, elle faisait echouer `ensureLoaded`, donc l'upgrade
+// WebSocket, donc le fil ne s'ouvrait JAMAIS sur un plan qui vient d'etre cree. C'est le meme
+// contenu que la colonne absente : aucune donnee, donc plan vide au format murs-seuls.
+{
+  const c = coldLoad("null");
+  ok(c.source === "empty" && isV5(c.plan) && c.plan.walls.length === 0,
+    "coldLoad 'null' (plan neuf) = plan vide murs-seuls, vu " + c.source);
+  ok(c.persist === true, "et il est persiste, comme une ligne absente");
+}
 // No case returns an EMPTY plan while the row carried something: that's the invariant.
 {
   const c = coldLoad(JSON.stringify(v5State()));
@@ -929,10 +947,15 @@ throws(() => coldLoad(42), "coldLoad valeur non-chaine -> refus");
 // =====================================================================
 // Minimal runtime double (storage + D1 + sockets). No Cloudflare dependency: we only test
 // PlanRoom's logic, not the platform.
-function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
-  d1Row?: DonneeDynamique; d1Fail?: boolean; storageFail?: boolean;
+// `planId`: WHICH plan this object holds. Seeded into the storage, never onto the instance,
+// because that is the production shape: `PlanRoom.fetch` writes the key on first contact and an
+// object woken later (alarm, hibernated socket) has nothing else to read it back from. A double
+// that left it empty could not tell "writes into its own row" apart from "falls back to `main`".
+function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false, planId = "main" }: {
+  d1Row?: DonneeDynamique; d1Fail?: boolean; storageFail?: boolean; planId?: string;
 } = {}) {
-  const kv = new Map();
+  const kv = new Map<string, DonneeDynamique>();
+  kv.set("planId", planId);
   let alarmAt: DonneeDynamique = null;
   const sent: DonneeDynamique[] = [];
   const ws = {
@@ -950,19 +973,32 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
       if (typeof a === "string") kv.set(a, b);
       else for (const [k, v] of Object.entries(a)) kv.set(k, v);
     },
+    async delete(k: DonneeDynamique) { return kv.delete(k); },
+    async deleteAll() { kv.clear(); },
     async getAlarm() { return alarmAt; },
     async setAlarm(t: DonneeDynamique) { alarmAt = t; },
     async deleteAlarm() { alarmAt = null; },
   };
-  const d1Writes: DonneeDynamique[] = [];
+  // THE DOUBLE RECORDS THE BOUND ARGUMENTS, not just the SQL. A statement without its arguments
+  // says WHAT was written and never INTO WHICH ROW, so no test could see the Durable Object
+  // snapshotting somebody else's plan.
+  const d1Writes: { sql: string; args: DonneeDynamique[] }[] = [];
+  const d1Reads: { sql: string; args: DonneeDynamique[] }[] = [];
   const env = { DB: { prepare(sql: string) { return {
-    bind(...args: DonneeDynamique[]) { return this; },
-    async first() { if (d1Fail) throw new Error("D1 indispo"); return d1Row; },
-    async run() { d1Writes.push(sql); return {}; },
+    args: [] as DonneeDynamique[],
+    bind(...args: DonneeDynamique[]) { this.args = args; return this; },
+    async first() {
+      d1Reads.push({ sql, args: this.args });
+      if (d1Fail) throw new Error("D1 indispo");
+      return d1Row;
+    },
+    // `meta.changes` is what a compare-and-swap reads its verdict from (cf. functions/api/plan.ts):
+    // a double that answered `{}` made every swap look like "the executor doesn't say".
+    async run() { d1Writes.push({ sql, args: this.args }); return { meta: { changes: 1 } }; },
   }; } } };
   const state = { storage, getWebSockets: () => [ws], acceptWebSocket: () => {} };
   const room = nouvelleRoom(state, env);
-  return { room, ws, sent, kv, d1Writes, alarm: () => alarmAt };
+  return { room, ws, sent, kv, d1Writes, d1Reads, alarm: () => alarmAt };
 }
 
 // Cold load when D1 is UNREACHABLE: the DO refuses to serve, it installs NOTHING.
@@ -973,7 +1009,7 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
   let threw = false;
   await f.room.ensureLoaded().catch(() => { threw = true; });
   if (!threw) throw new Error("FAIL: ensureLoaded doit lever quand D1 est injoignable");
-  ok(f.kv.size === 0 && f.room.plan === null, "D1 injoignable : rien n'est installe ni persiste");
+  ok(!f.kv.has("plan") && f.room.plan === null, "D1 injoignable : rien n'est installe ni persiste");
 }
 // Cold load on a valid D1 row.
 {
@@ -1116,11 +1152,42 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
   await revived.room.alarm();
   ok(revived.d1Writes.length === 1, "alarm() apres reveil ecrit bien le snapshot D1");
 }
+// ---- UN OBJET EVINCE SAIT ENCORE QUELLE LIGNE EST LA SIENNE ------------------------------------
+// `adoptPlanId` ne tournait que depuis `fetch`. Reveille par `alarm()` (ou par un message sur un
+// socket hiberne), l'objet avait `planId === null` et le snapshot retombait sur `main` : l'alarme
+// d'un plan partage ecrivait dans la ligne du FOYER. `ensureLoaded` relit donc la cle.
+{
+  const f = fakeRoom({ d1Row: { data: JSON.stringify(v5State()) }, planId: "annelets" });
+  // Pas d'appel a fetch : c'est exactement l'objet ressuscite par l'alarme.
+  await f.room.storage.setAlarm(Date.now());
+  await f.room.alarm();
+  ok(f.room.planId === "annelets", "le reveil relit planId depuis le storage, vu " + f.room.planId);
+  const lu = f.d1Reads.find((r) => /SELECT/.test(r.sql));
+  ok(lu && lu.args[0] === "annelets", "la relecture D1 vise la ligne du plan, vu " + JSON.stringify(lu && lu.args));
+  const ecrit = f.d1Writes.find((w) => /INSERT INTO plans/.test(w.sql));
+  ok(ecrit && ecrit.args.includes("annelets"), "le snapshot ecrit dans la ligne du plan, vu " + JSON.stringify(ecrit && ecrit.args));
+  ok(ecrit && !ecrit.args.includes("main"), "et JAMAIS dans 'main' par repli muet");
+}
+// Un objet qui ne sait PAS quelle ligne est la sienne ne touche a rien : ni lecture, ni ecriture.
+{
+  const f = fakeRoom({ d1Row: { data: JSON.stringify(v5State()) } });
+  f.kv.delete("planId");
+  n++;
+  let raison = null;
+  await f.room.alarm().catch((e) => { raison = e && e.reason; });
+  if (raison !== "plan_id_unknown") throw new Error("EXPECTED plan_id_unknown, vu " + raison);
+  ok(f.d1Writes.length === 0, "plan inconnu : aucune ecriture D1");
+}
 // `hello` serves exactly what is kept (the two numbers were out of sync: 200/50).
 {
   const f = fakeRoom({ d1Row: { data: JSON.stringify(v5State()) } });
   await f.room.ensureLoaded();
-  for (let i = 0; i < 60; i++) await messageSocket(f.room, f.ws, JSON.stringify({ t: "chat", text: "m" + i }));
+  // Le plafond de debit du chat (5 / 10 s) n'est pas le sujet ici : on remet sa fenetre a zero
+  // entre chaque envoi pour eprouver ce qui EST le sujet, le nombre de messages conserves.
+  for (let i = 0; i < 60; i++) {
+    f.room.rateSeen.clear();
+    await messageSocket(f.room, f.ws, JSON.stringify({ t: "chat", text: "m" + i }));
+  }
   f.sent.length = 0;
   await messageSocket(f.room, f.ws, JSON.stringify({ t: "hello" }));
   const hello = f.sent.find((m) => m.t === "hello");
@@ -1343,10 +1410,14 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false }: {
 // =====================================================================
 // Double with a MUTABLE D1 row and several sockets: what was needed to replay
 // "the Worker goes down, the REST fallback writes, the Worker comes back".
-function fakeD1Room({ data = null, by = "live", rev = 1 }: {
-  data?: string | null; by?: string; rev?: number;
+function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main" }: {
+  data?: string | null; by?: string; rev?: number; planId?: string;
 } = {}) {
-  const kv = new Map();
+  /** `avantEcriture` fires at the START of every D1 write: this is how a concurrent PUT lands
+   *  BETWEEN the reconciliation's SELECT and the snapshot's INSERT. */
+  const hooks = { avantEcriture: null as (() => void) | null, ecritures: 0 };
+  const kv = new Map<string, DonneeDynamique>();
+  kv.set("planId", planId);   // cf. fakeRoom: the key `PlanRoom.fetch` writes on first contact.
   let alarmAt: DonneeDynamique = null;
   const row = data === null ? null : { data, rev, updated_by: by, updated_at: "2026-08-03T10:00:00Z" };
   const world = { row, writes: [] as DonneeDynamique[] };
@@ -1373,6 +1444,8 @@ function fakeD1Room({ data = null, by = "live", rev = 1 }: {
       if (typeof a === "string") kv.set(a, b);
       else for (const [k, v] of Object.entries(a)) kv.set(k, v);
     },
+    async delete(k: DonneeDynamique) { return kv.delete(k); },
+    async deleteAll() { kv.clear(); },
     async getAlarm() { return alarmAt; },
     async setAlarm(t: DonneeDynamique) { alarmAt = t; },
     async deleteAlarm() { alarmAt = null; },
@@ -1384,11 +1457,20 @@ function fakeD1Room({ data = null, by = "live", rev = 1 }: {
       if (!world.row) return null;
       return { data: world.row.data, rev: world.row.rev, updated_by: world.row.updated_by, updated_at: world.row.updated_at };
     },
+    // Real compare-and-swap semantics: `ON CONFLICT … WHERE plans.rev=?` only bites if the row
+    // still carries the expected revision, and the verdict travels in `meta.changes` (the shape
+    // production D1 actually answers with, cf. functions/api/plan.ts `rowsChanged`).
     async run() {
+      hooks.ecritures++;
+      if (hooks.avantEcriture) hooks.avantEcriture();
       const [data, at] = this.args;
+      const attendu = this.args[3];
+      if (/WHERE plans\.rev=/.test(sql) && world.row && world.row.rev !== attendu) {
+        return { meta: { changes: 0 } };
+      }
       world.row = { data, rev: (world.row ? world.row.rev : 0) + 1, updated_by: "live", updated_at: at };
       world.writes.push(data);
-      return {};
+      return { meta: { changes: 1 } };
     },
   }; } } };
   const st = { storage, getWebSockets: () => sockets.slice(), acceptWebSocket: () => {} };
@@ -1397,7 +1479,7 @@ function fakeD1Room({ data = null, by = "live", rev = 1 }: {
   const putRest = (plan: DonneeDynamique, who = "b@example.com") => {
     world.row = { data: JSON.stringify(plan), rev: (world.row ? world.row.rev : 0) + 1, updated_by: who, updated_at: "2026-08-03T11:00:00Z" };
   };
-  return { room, kv, world, mkWs, sockets, putRest, alarm: () => alarmAt, setAlarm: (t: DonneeDynamique) => { alarmAt = t; } };
+  return { room, kv, world, mkWs, sockets, putRest, hooks, alarm: () => alarmAt, setAlarm: (t: DonneeDynamique) => { alarmAt = t; } };
 }
 
 // The complete scenario: the DO runs, everyone loses realtime, the REST fallback writes, realtime
@@ -1442,7 +1524,7 @@ function fakeD1Room({ data = null, by = "live", rev = 1 }: {
   const v = await f.room.reconcileD1(true);
   ok(v.kind === "conflict", "DO au travail + ecriture REST -> conflit");
   ok(f.room.plan.cells[0].name === "Vu par le live", "le DO garde son etat (quelqu'un edite dessus)");
-  const orphan = f.kv.get("orphan");
+  const orphan = f.kv.get("orphans").at(-1);
   ok(orphan && JSON.parse(orphan.data).cells[0].name === "Ecrit par le repli", "les octets etrangers sont CONSERVES");
   ok(orphan.by === "b@example.com" && orphan.bytes > 0, "l'orphelin sait de qui et de quand il vient");
   const dit = ws.sent.find((m) => m.t === "conflict");
@@ -1464,6 +1546,93 @@ function fakeD1Room({ data = null, by = "live", rev = 1 }: {
   ws.sent.length = 0;
   await messageSocket(f.room, ws, JSON.stringify({ t: "hello" }));
   ok(!ws.sent.some((m) => m.t === "conflict"), "le present n'est pas prevenu deux fois");
+}
+// ---- LES VERSIONS ECARTEES SONT UNE LISTE BORNEE, ET ELLES SONT JOIGNABLES ----------------------
+// `orphan` etait une cle UNIQUE : le deuxieme conflit ecrasait le premier, et le seul moyen de
+// relire une version ecartee etait d'ouvrir le storage du Durable Object a la main. Cote client,
+// un refus est deja mis de cote dans les 5 dernieres (`room-planner-v4-conflit`) : meme regle ici.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", op: { kind: "cell.set", cellId: "c1", name: "Live" } }));
+  const ecarte = async (nom: string, qui: string) => {
+    const p = sanitizeState(v5State()); p.cells[0].name = nom;
+    f.putRest(p, qui);
+    await f.room.reconcileD1(true);
+  };
+  await ecarte("Repli 1", "b@example.com");
+  await ecarte("Repli 2", "c@example.com");
+  const liste = f.kv.get("orphans");
+  ok(Array.isArray(liste) && liste.length === 2, "deux conflits successifs gardent DEUX versions, vu " + (liste && liste.length));
+  ok(liste.map((o: DonneeDynamique) => JSON.parse(o.data).cells[0].name).join("|") === "Repli 1|Repli 2",
+    "et dans l'ordre, la plus recente en dernier");
+
+  const req = (headers: Record<string, string>) =>
+    new Request("https://plan-live-internal/orphans", { method: "GET", headers });
+  const refuse = await f.room.fetch(req({}));
+  ok(refuse.status === 403, "sans l'en-tete interne, /orphans est refuse (meme garde que /revoke)");
+  const res = await f.room.fetch(req({ "X-Plan-Internal": "1" }));
+  const corps = await res.json<DonneeDynamique>();
+  ok(res.status === 200 && Array.isArray(corps.orphans) && corps.orphans.length === 2,
+    "/orphans rend les versions ecartees, vu " + JSON.stringify(corps).slice(0, 120));
+  ok(Object.keys(corps.orphans[0]).sort().join(",") === "at,by,data,rev",
+    "contrat de reponse : {orphans:[{at, by, rev, data}]}, vu " + Object.keys(corps.orphans[0]).sort().join(","));
+  ok(corps.orphans[1].by === "c@example.com" && JSON.parse(corps.orphans[1].data).cells[0].name === "Repli 2",
+    "la version rendue est bien celle qui a ete ecartee");
+
+  for (let i = 3; i <= 8; i++) await ecarte("Repli " + i, "d@example.com");
+  const bornee = f.kv.get("orphans");
+  ok(bornee.length === 5, "la liste est bornee aux 5 dernieres, vu " + bornee.length);
+  ok(JSON.parse(bornee[0].data).cells[0].name === "Repli 4", "et ce sont les DERNIERES, vu " + JSON.parse(bornee[0].data).cells[0].name);
+}
+// Un invite est prevenu comme le foyer : `told` est indexe sur l'ETIQUETTE d'appareil, pas sur
+// l'email, qui est vide pour tout invite (donc un seul invite prevenu les faisait tous passer
+// pour prevenus).
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const menage = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, menage, JSON.stringify({ t: "op", op: { kind: "cell.set", cellId: "c1", name: "Live" } }));
+  const p = sanitizeState(v5State()); p.cells[0].name = "Repli";
+  f.putRest(p, "b@example.com");
+  await f.room.reconcileD1(true);
+  const i1 = f.mkWs("", "ggg111", { guest: true, name: "Marie", guestId: "g1", token: "tokA" });
+  const i2 = f.mkWs("", "ggg222", { guest: true, name: "Leo", guestId: "g2", token: "tokB" });
+  await messageSocket(f.room, i1, JSON.stringify({ t: "hello" }));
+  ok(i1.sent.some((m: DonneeDynamique) => m.t === "conflict"), "le premier invite est prevenu");
+  await messageSocket(f.room, i2, JSON.stringify({ t: "hello" }));
+  ok(i2.sent.some((m: DonneeDynamique) => m.t === "conflict"), "le SECOND invite aussi (told est par appareil, pas par email vide)");
+  i1.sent.length = 0;
+  await messageSocket(f.room, i1, JSON.stringify({ t: "hello" }));
+  ok(!i1.sent.some((m: DonneeDynamique) => m.t === "conflict"), "et chacun une seule fois");
+}
+// ---- LE SNAPSHOT EST LUI AUSSI UN COMPARE-AND-SWAP ---------------------------------------------
+// `alarm()` faisait deux allers-retours : relire, puis ecrire SANS clause `WHERE`. Un PUT
+// compare-and-swap qui atterrit entre les deux gagnait (200 rendu au client) puis etait ecrase
+// par le snapshot, et `d1Seen` masquait la trace : le repli croyait avoir ecrit, la ligne ne
+// portait plus rien de lui, et rien ne le disait. Le snapshot swape donc sur la `rev` LUE.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", op: { kind: "cell.set", cellId: "c1", name: "Vu par le live" } }));
+  const perdu = sanitizeState(v5State());
+  perdu.cells[0].name = "Ecrit par le repli";
+  // La ligne bouge ENTRE le SELECT de la reconciliation et l'INSERT du snapshot, une seule fois.
+  let glisse = false;
+  f.hooks.avantEcriture = () => {
+    if (glisse) return;
+    glisse = true;
+    f.world.row = { data: JSON.stringify(perdu), rev: f.world.row.rev + 1, updated_by: "b@example.com", updated_at: "2026-08-03T11:30:00Z" };
+  };
+  ws.sent.length = 0;
+  await f.room.alarm();
+  ok(f.hooks.ecritures === 2, "le premier snapshot ne mord pas, un second est tente, vu " + f.hooks.ecritures);
+  ok(ws.sent.some((m) => m.t === "conflict" && m.by === "b@example.com"),
+    "l'ecriture glissee entre les deux est ANNONCEE, pas ecrasee en silence, vu " + JSON.stringify(ws.sent.map((m) => m.t)));
+  ok(JSON.parse(f.world.row.data).cells[0].name === "Vu par le live", "et le snapshot finit par passer");
+  ok(f.kv.get("d1seen") === strHash(f.world.row.data), "l'empreinte memorisee est celle qui est REELLEMENT en base");
 }
 // Adoption tells connected clients (a `state` message): no one is left on the old plan.
 {
@@ -1727,18 +1896,32 @@ function fakeD1Room({ data = null, by = "live", rev = 1 }: {
   await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 4, op: { kind: "cell.set", cellId: "c1", name: "D" } }));
   ok(!ws.sent.some((m) => m.t === "gap"), "un trou deja signale ne se re-signale pas a chaque op");
 }
-// A REFUSAL consumes the number: the client got its response (`err`), it won't re-emit it, so
-// the following number must not be mistaken for a gap.
+// UN REFUS NE FAIT PAS AVANCER LA FENETRE. Le numero etait consomme des que le serveur l'avait
+// TRAITE, refus compris : un trou etait alors avale par l'op meme qui le revelait, puisque le
+// chemin de refus rend la main avant l'envoi du `gap`.
 {
   const f = fakeD1Room({ data: JSON.stringify(v5State()) });
   await f.room.ensureLoaded();
   const ws = f.mkWs("a@example.com", "aaa111");
   await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 1, op: { kind: "wall.set", wall: wall({ id: "wz", t: 99 }) } }));
   ok(ws.sent.pop().reason === "wall_t", "op invalide refusee");
-  ok(f.room.seq.get("aaa111").vus.has(1), "le numero refuse est CONSOMME");
+  ok(!f.room.seq.get("aaa111").vus.has(1), "le numero refuse n'est PAS consomme");
+}
+// n°5 perdue en transit, n°6 refusee : le n°7 doit encore signaler le trou.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  for (let i = 1; i <= 4; i++)
+    await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: i, op: { kind: "cell.set", cellId: "c1", name: "n" + i } }));
   ws.sent.length = 0;
-  await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 2, op: { kind: "cell.set", cellId: "c1", name: "A" } }));
-  ok(!ws.sent.some((m) => m.t === "gap"), "apres un refus, le numero suivant n'est pas un trou");
+  // le n°5 n'arrive jamais ; le n°6 arrive et est REFUSE
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 6, op: { kind: "wall.set", wall: wall({ id: "wz", t: 99 }) } }));
+  ok(ws.sent.some((m) => m.t === "err" && m.reason === "wall_t"), "le n°6 est refuse");
+  ws.sent.length = 0;
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 7, op: { kind: "cell.set", cellId: "c1", name: "n7" } }));
+  const g = ws.sent.find((m) => m.t === "gap");
+  ok(g && g.need === 5, "la perte du n°5 est SIGNALEE, elle n'est pas avalee par le refus du n°6, vu " + JSON.stringify(ws.sent.map((m) => m.t + ":" + (m.need ?? ""))));
 }
 // Two devices, two sequences: one's numbers neither acknowledge nor deduplicate the other's.
 {
@@ -2141,12 +2324,17 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   await messageSocket(f.room, invite2, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "autre" } }));
   ok(!invite2.sent.some((m) => m.t === "err" && m.reason === "rate_limited"), "un AUTRE jeton n'est jamais affecte par le plafond du premier");
 
-  // A HOUSEHOLD socket (empty token) is NEVER capped (see the header note on RATE_MAX_OPS).
+  // Un compte du FOYER a un budget plus large, pas un budget absent : le plafond vise une boucle
+  // folle, et un onglet du foyer boucle exactement comme un onglet d'invite.
   const menage = f.mkWs("sylve@example.com", "ttt333");
-  for (let i = 1; i <= 130; i++) {
+  for (let i = 1; i <= 600; i++) {
     await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: i, op: { kind: "cell.set", cellId: "c1", name: "f" + i } }));
   }
-  ok(!menage.sent.some((m) => m.t === "err" && m.reason === "rate_limited"), "un compte du foyer (jeton vide) n'est jamais plafonne");
+  ok(!menage.sent.some((m) => m.t === "err" && m.reason === "rate_limited"),
+    "un compte du foyer n'est pas plafonne la ou un invite l'est (budget plus large)");
+  await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: 601, op: { kind: "cell.set", cellId: "c1", name: "f601" } }));
+  ok(menage.sent.some((m) => m.t === "err" && m.reason === "rate_limited" && m.n === 601),
+    "mais il a bien un plafond : la 601e op de la fenetre est refusee");
 }
 
 // ---- 7. REVOKE CLOSES MATCHING SOCKETS ONLY (item 6) ----------------------------------------------
@@ -2185,6 +2373,164 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   const res2 = await f.room.fetch(revokeReq({ token: "tokRevoke" }));
   const corps2 = await res2.json<DonneeDynamique>();
   ok(res2.status === 200 && corps2.ok === true, "un second appel sur le meme jeton reste 200");
+}
+
+// ---- 10. L'EXPIRATION EST VERIFIEE A CHAQUE MESSAGE, PAS SEULEMENT A L'OUVERTURE -----------------
+// `functions/ws.ts` refuse l'upgrade d'une invitation perimee, mais un socket deja ouvert ne
+// repassait plus jamais par cette porte : un lien expirait pendant la session sans que rien ne
+// l'arrete, et la revocation avait le meme trou avant `/revoke`.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const perime = f.mkWs("", "xxx111", { guest: true, name: "Marie", guestId: "gx", token: "tokExp", expiresAt: Date.now() - 1000 });
+  await messageSocket(f.room, perime, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "Apres expiration" } }));
+  ok(perime.closed && perime.closeCode === 4003 && perime.closeReason === "link_expired",
+    "un message sur un lien perime ferme le socket, vu " + perime.closeCode + " " + perime.closeReason);
+  ok(f.room.plan.cells[0].name !== "Apres expiration", "et l'op n'est PAS appliquee");
+
+  const encore = f.mkWs("", "xxx222", { guest: true, name: "Leo", guestId: "gy", token: "tokOk", expiresAt: Date.now() + 60_000 });
+  await messageSocket(f.room, encore, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "Avant expiration" } }));
+  ok(!encore.closed && f.room.plan.cells[0].name === "Avant expiration", "un lien encore valide travaille normalement");
+
+  // Compatibilite : sans en-tete d'expiration (foyer, ou forwardeur plus ancien), aucune verification.
+  const menage = f.mkWs("a@example.com", "xxx333");
+  await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "Foyer" } }));
+  ok(!menage.closed && f.room.plan.cells[0].name === "Foyer", "sans expiration connue, rien ne change");
+}
+{
+  const reqH = (headers: Record<string, string>) => new Request("https://x/ws", { headers });
+  const iso = "2027-09-03T10:00:00.000Z";
+  ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1", "X-Plan-Expires": iso }), "tagX").expiresAt === Date.parse(iso),
+    "X-Plan-Expires en ISO est lu");
+  ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1", "X-Plan-Expires": "1788000000000" }), "tagX2").expiresAt === 1788000000000,
+    "X-Plan-Expires en millisecondes est lu aussi");
+  ok(attachmentFromRequest(reqH({}), "tagY").expiresAt === 0, "en-tete absent = aucune verification (compatibilite)");
+  ok(attachmentFromRequest(reqH({ "X-Plan-Expires": "n'importe quoi" }), "tagZ").expiresAt === 0, "en-tete illisible = aucune verification");
+}
+
+// ---- 9. PLAFONDS DE SOCKETS, DE DEBIT ET DE TAILLE, ET ENVELOPPE RECONSTRUITE ---------------------
+// L'enveloppe d'une op n'etait derriere AUCUNE liste blanche : le serveur rediffusait l'objet
+// RECU, cle inconnue comprise.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const a = f.mkWs("a@example.com", "aaa111");
+  const b = f.mkWs("b@example.com", "bbb222");
+  await messageSocket(f.room, a, JSON.stringify({
+    t: "op", n: 1, op: { kind: "wall.del", wallId: "w1", junk: "x".repeat(100_000) },
+  }));
+  const relaye = b.sent.find((m: DonneeDynamique) => m.t === "op");
+  ok(relaye && !("junk" in relaye.op), "une cle inconnue de l'enveloppe ne repart PAS sur le fil, vu " + Object.keys(relaye ? relaye.op : {}).join(","));
+  ok(relaye && relaye.op.kind === "wall.del" && relaye.op.wallId === "w1", "et l'op utile est intacte");
+  ok(f.room.plan.walls.every((w: DonneeDynamique) => w.id !== "w1"), "l'op s'applique quand meme");
+}
+// Taille brute : au-dela du plafond, refus SANS parser.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, ws, "x".repeat(MAX_MSG_BYTES + 1));
+  ok(ws.sent.some((m: DonneeDynamique) => m.t === "err" && m.reason === "bad_size"),
+    "un message trop gros est refuse bad_size, vu " + JSON.stringify(ws.sent));
+}
+// Le cap de debit ne couvrait que `op`. Un invite qui inonde de `chat` est refuse ; un curseur
+// au-dela du budget est ignore en silence (le dire doublerait le trafic qu'on freine).
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const invite = f.mkWs("", "ccc111", { guest: true, name: "Marie", guestId: "gc", token: "tokChat" });
+  for (let i = 1; i <= 5; i++) await messageSocket(f.room, invite, JSON.stringify({ t: "chat", text: "m" + i }));
+  ok(!invite.sent.some((m: DonneeDynamique) => m.t === "err"), "cinq messages de suite passent");
+  invite.sent.length = 0;
+  await messageSocket(f.room, invite, JSON.stringify({ t: "chat", text: "de trop" }));
+  ok(invite.sent.some((m: DonneeDynamique) => m.t === "err" && m.reason === "rate_limited"), "le sixieme est refuse");
+  ok(f.room.chat.length === 5, "et il n'entre pas dans l'historique, vu " + f.room.chat.length);
+
+  const pair = f.mkWs("z@example.com", "zzz999");
+  pair.sent.length = 0;
+  invite.sent.length = 0;
+  for (let i = 0; i < 40; i++) await messageSocket(f.room, invite, JSON.stringify({ t: "cursor", room: "__apt__", x: i, y: 1 }));
+  ok(pair.sent.filter((m: DonneeDynamique) => m.t === "cursor").length === 30,
+    "le curseur est plafonne a 30 par seconde, vu " + pair.sent.filter((m: DonneeDynamique) => m.t === "cursor").length);
+  ok(invite.sent.length === 0, "un depassement de curseur est ignore en SILENCE, vu " + JSON.stringify(invite.sent));
+
+  // Un `name` change trois fois par minute au plus.
+  const invite2 = f.mkWs("", "ccc222", { guest: true, name: "Leo", guestId: "gd", token: "tokName" });
+  for (let i = 1; i <= 3; i++) await messageSocket(f.room, invite2, JSON.stringify({ t: "name", name: "Leo" + i }));
+  invite2.sent.length = 0;
+  await messageSocket(f.room, invite2, JSON.stringify({ t: "name", name: "Leo4" }));
+  ok(invite2.sent.some((m: DonneeDynamique) => m.t === "err" && m.reason === "rate_limited"), "le quatrieme changement de nom d'affilee est refuse");
+}
+// Plafond de sockets : par piece, et par jeton d'invite. Le 429 tombe AVANT l'upgrade.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const upgrade = (headers: Record<string, string>) =>
+    new Request("https://plan-live-internal/ws?p=main", { headers: { Upgrade: "websocket", "X-Plan-Id": "main", ...headers } });
+  for (let i = 0; i < 4; i++) f.mkWs("", "ttt" + i, { guest: true, name: "G" + i, guestId: "g" + i, token: "tokPlein" });
+  const trop = await f.room.fetch(upgrade({ "X-Plan-Guest": "1", "X-Plan-Token": "tokPlein", "X-Plan-Name": "G5" }));
+  ok(trop.status === 429, "un cinquieme socket sur le MEME jeton est refuse, vu " + trop.status);
+  // Un AUTRE jeton passe le plafond : sous node il va jusqu'au `WebSocketPair`, qui n'existe pas.
+  // Y arriver EST la preuve qu'aucun plafond ne l'a arrete.
+  let statutAutre: number | string = "jusqu-a-l-upgrade";
+  try { statutAutre = (await f.room.fetch(upgrade({ "X-Plan-Guest": "1", "X-Plan-Token": "tokLibre", "X-Plan-Name": "H" }))).status; }
+  catch (_) { statutAutre = "jusqu-a-l-upgrade"; }
+  ok(statutAutre === "jusqu-a-l-upgrade", "un AUTRE jeton n'est pas concerne par ce plafond, vu " + statutAutre);
+}
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  for (let i = 0; i < 32; i++) f.mkWs("a@example.com", "s" + i);
+  const res = await f.room.fetch(new Request("https://plan-live-internal/ws?p=main", {
+    headers: { Upgrade: "websocket", "X-Plan-Id": "main" },
+  }));
+  ok(res.status === 429, "au-dela de 32 sockets, la piece refuse avant l'upgrade, vu " + res.status);
+}
+
+// ---- 8. SUPPRIMER UN PLAN FERME LE FIL ET NE RESSUSCITE PAS LA LIGNE ------------------------------
+// Le DELETE de `functions/api/plans.ts` n'efface que D1. Le snapshot du Durable Object etant un
+// `INSERT ... ON CONFLICT`, il recreait la ligne au tour suivant, et ses sockets restaient ouverts
+// sur un plan qui n'existe plus.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", op: { kind: "cell.set", cellId: "c1", name: "Live" } }));
+  ok(f.alarm() !== null, "une alarme est armee avant la suppression");
+
+  const purgeReq = (headers: Record<string, string> = { "X-Plan-Internal": "1" }) =>
+    new Request("https://plan-live-internal/purge", { method: "POST", headers });
+  const refuse = await f.room.fetch(purgeReq({}));
+  ok(refuse.status === 403, "sans l'en-tete interne, /purge est refuse (meme garde que /revoke)");
+  ok(!ws.closed, "et rien n'est ferme");
+
+  const res = await f.room.fetch(purgeReq());
+  const corps = await res.json<DonneeDynamique>();
+  ok(res.status === 200 && corps.ok === true && corps.closed === 1,
+    "contrat de reponse {ok:true, closed:<n>}, vu " + JSON.stringify(corps));
+  ok(ws.closed && ws.closeCode === 4004 && ws.closeReason === "plan_deleted",
+    "les sockets sont fermes avec un code distinguable, vu " + ws.closeCode + " " + ws.closeReason);
+  ok(f.alarm() === null, "l'alarme est desarmee");
+  ok(!f.kv.has("plan") && !f.kv.has("chat"), "le storage du Durable Object est efface");
+
+  const ecritesAvant = f.world.writes.length;
+  await f.room.alarm();
+  ok(f.world.writes.length === ecritesAvant, "apres /purge, une alarme n'ecrit RIEN en D1");
+
+  // Un message arrive en retard sur un socket attarde ne reecrit rien.
+  ws.sent.length = 0;
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 9, op: { kind: "cell.set", cellId: "c1", name: "Zombie" } }));
+  ok(ws.sent.some((m: DonneeDynamique) => m.t === "err" && m.reason === "plan_deleted"),
+    "un message retardataire est refuse, vu " + JSON.stringify(ws.sent));
+  ok(f.world.writes.length === ecritesAvant && !f.kv.has("plan"), "et il ne reecrit ni D1 ni le storage");
+
+  // Une NOUVELLE instance sur le meme storage (eviction apres la suppression) refuse aussi.
+  const revenu = nouvelleRoom(
+    { storage: f.room.storage, getWebSockets: (): DonneeDynamique[] => [], acceptWebSocket: () => {} },
+    (f.room as unknown as { env: unknown }).env,
+  );
+  const up = await revenu.fetch(new Request("https://plan-live-internal/ws", { headers: { Upgrade: "websocket", "X-Plan-Id": "main" } }));
+  ok(up.status === 410, "un plan supprime ne rouvre pas de fil, vu " + up.status);
 }
 
 console.log("OK " + n + " assertions");

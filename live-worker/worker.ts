@@ -4,8 +4,8 @@
 // WebSocket Hibernation API: the DO can go to sleep, presence lives in serializeAttachment.
 
 import {
-  applyOp, sanitizeState, colorFor, isV5, OpError, sanitizeCursor, sanitizeDrag,
-  planFp, strHash, emptyPlan, cleanPlanId, PLAN_ID_DEFAUT, cleanGuestName, nameFromEmail,
+  applyOp, opWire, sanitizeState, colorFor, isV5, OpError, sanitizeCursor, sanitizeDrag,
+  planFp, strHash, emptyPlan, cleanPlanId, cleanGuestName, nameFromEmail,
 } from "./ops.ts";
 import type { Operation, PlanState } from "./ops.ts";
 
@@ -35,6 +35,13 @@ interface SocketAttachment {
   guest: boolean;
   guestId: string;
   token: string;
+  // WHICH plan this socket was opened on. Carried in the ATTACHMENT because an attachment
+  // survives hibernation and eviction: an object woken by `webSocketMessage` on a socket opened
+  // before the eviction can read back the row that is its own even if nothing else remains.
+  planId: string;
+  // When this GUEST's invite stops being valid, in milliseconds since the epoch. 0 = unknown, so
+  // nothing is checked (a household socket, or a forwarder that predates `X-Plan-Expires`).
+  expiresAt: number;
 }
 
 // Same shape as functions/ws.ts's `?g=` cleaning: a guest's OWN second tab identifier, not a
@@ -66,7 +73,26 @@ export function attachmentFromRequest(request: Request, tag: string): SocketAtta
   // own device id, then the fresh socket tag as a last resort) instead of the email: there is no
   // email, and `colorFor("")` would hand every unnamed guest the SAME hue.
   const color = guest ? colorFor(name || guestId || tag) : colorFor(email);
-  return { email, color, tag, name, guest, guestId, token };
+  // `X-Plan-Id` is set by `functions/ws.ts` (and by the dormant `fetch` below) on EVERY upgrade.
+  // ABSENT or malformed leaves "" ("this socket does not know"), never the household's `main`:
+  // a fallback here would be a silent licence to write into somebody else's row.
+  const idBrut = request.headers.get("X-Plan-Id");
+  const planId = idBrut === null ? "" : (cleanPlanId(idBrut) || "");
+  return { email, color, tag, name, guest, guestId, token, planId, expiresAt: expiresFromHeader(request) };
+}
+
+/**
+ * `X-Plan-Expires`: when this socket's invite stops being valid. Accepts the ISO 8601 form the
+ * `invites.expires_at` column holds (what `functions/ws.ts` has at hand) and a plain millisecond
+ * epoch. ABSENT or unreadable answers 0, which means "do not check": a socket opened by a
+ * forwarder that predates this header must keep working exactly as before, and a household socket
+ * has no expiry to have.
+ */
+function expiresFromHeader(request: Request): number {
+  const brut = (request.headers.get("X-Plan-Expires") || "").trim();
+  if (!brut) return 0;
+  const ms = /^[0-9]+$/.test(brut) ? Number(brut) : Date.parse(brut);
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
 interface SequenceEntry {
@@ -95,6 +121,9 @@ interface D1PlanRow {
   updated_at?: string;
 }
 
+// A version set aside because two sides wrote without seeing each other. `told` lists the DEVICE
+// LABELS already warned (never emails: a guest has none, so one guest told made every guest look
+// told).
 interface OrphanTrace {
   at?: string | null;
   by?: string | null;
@@ -200,6 +229,11 @@ const CHAT_CAP = 50;
 //     accepted here must remain relayable by it.
 // The real plan weighs 10 KiB. Beyond the ceiling, the op is refused BEFORE any write.
 const MAX_PLAN_BYTES = 1_500_000;
+// Maximum RAW size of an inbound frame, checked BEFORE parsing it. The biggest legitimate message
+// is a `plan5.replace` carrying a whole plan, so the ceiling is the plan's plus the room an
+// envelope needs; anything beyond is refused without JSON.parse ever seeing it, because parsing is
+// exactly the work an oversized frame is trying to make us do.
+export const MAX_MSG_BYTES = MAX_PLAN_BYTES + 8_192;
 // Debounce of the D1 snapshot, carried by a storage ALARM (see markDirty).
 const SNAP_DELAY_MS = 30_000;
 // ---- TWO COUNTERS WITH THE SAME NAME IS ONE TOO MANY ------------------------------------------
@@ -221,10 +255,13 @@ const OPCOUNT_KEY_OLD = "rev";
 //     of a missed deduplication is an op applied twice, so nothing.
 // It is therefore bounded by the number of sockets, plus a safety margin in case a `close` was missed.
 const SEQ_MAX_ENTRIES = 64;
-// Window width above the last CONTIGUOUS number. A simple "highest number seen" was not enough:
-// under reordering, a legitimate op arriving late would pass for a duplicate and be DROPPED. We
-// therefore keep the numbers seen above the contiguous one, up to this width; beyond it, we
-// consider the gap final and close the window on the highest one.
+// How many numbers a socket's "already applied" set remembers at once. It is a plain sliding set
+// of the numbers SEEN, with no notion of contiguity at all: the oldest entry drops out once the set
+// is full, whatever its value. There is no "last contiguous number" anywhere in this code, and
+// there must not be, because an unknown `tag` would then have to DECLARE that everything below
+// has been seen, which is false the moment a socket's very first frame is lost (see `seqOf`).
+// Falling out of the window costs a reapplication of an op 64 sends old, which is nothing: ops
+// are idempotent. Gaps are measured separately, on `max`, the highest number APPLIED.
 const SEQ_WINDOW = 64;
 
 // ---- PER-TOKEN RATE CAP (design edge 15) --------------------------------------------------------
@@ -241,9 +278,40 @@ const SEQ_WINDOW = 64;
 // household traffic (MAX_ENTITIES and the 1.5 MB plan ceiling already bound that side).
 const RATE_MAX_OPS = 120;
 const RATE_WINDOW_MS = 60_000;
-// Bound on the number of DISTINCT tokens tracked at once, same spirit as SEQ_MAX_ENTRIES: an
-// abandoned or revoked token's timestamp array must not linger in memory forever.
-const RATE_MAX_ENTRIES = 64;
+// Bound on the number of DISTINCT (kind, key) windows tracked at once, same spirit as
+// SEQ_MAX_ENTRIES: an abandoned or revoked token's timestamp array must not linger in memory
+// forever. Six kinds are capped now instead of one, so the bound is per-kind-per-socket.
+const RATE_MAX_ENTRIES = 512;
+// ---- EVERY KIND OF MESSAGE HAS A CEILING, NOT JUST `op` ---------------------------------------
+// The cap only covered `op`, so `cursor`, `drag`, `chat`, `ping` and `name` were unbounded on a
+// wire that broadcasts each of them to every peer: one socket in a tight loop cost N sends per
+// frame, and `chat` additionally wrote storage each time. The budgets follow measured interactive
+// use, an order of magnitude above it: a pointer moves at screen refresh but is only relayed on
+// change, a person sends a handful of chat lines a minute, and a name is chosen once.
+// A HOUSEHOLD socket gets a wider `op` budget rather than no budget at all: the point of a
+// ceiling is a runaway loop, and a household tab loops exactly like a guest tab.
+interface RateBudget { max: number; win: number; foyer?: number }
+const RATE_BUDGETS: Record<string, RateBudget> = {
+  op: { max: RATE_MAX_OPS, win: RATE_WINDOW_MS, foyer: 600 },
+  cursor: { max: 30, win: 1_000 },
+  drag: { max: 30, win: 1_000 },
+  chat: { max: 5, win: 10_000 },
+  name: { max: 3, win: 60_000 },
+  ping: { max: 60, win: 60_000 },
+};
+// An overrun is SILENT for the ephemeral kinds (a dropped cursor frame costs nothing, and saying
+// so would double the traffic being throttled) and an `err` for the ones a person watches
+// succeed or fail.
+const RATE_SILENT = new Set(["cursor", "drag", "ping"]);
+
+// ---- HOW MANY SOCKETS A ROOM, AND A LINK, MAY HOLD --------------------------------------------
+// Nothing bounded the number of open sockets: every one of them costs a send on every broadcast,
+// so the cost of a room is quadratic in the number of tabs pointed at it, and a single invite link
+// could open as many as it liked. The household is two people with a few devices; a link is one
+// person, occasionally with a phone next to the laptop. Both ceilings answer 429 BEFORE the
+// upgrade, so no socket is ever opened and then dropped.
+const MAX_SOCKETS_ROOM = 32;
+const MAX_SOCKETS_TOKEN = 4;
 
 // The internal marker `functions/api/invites.ts` sets on its OWN freshly-built request to
 // `PlanRoom`'s `/revoke` route (docs/decisions/0004-partage-par-lien.md, edge 6). It is never
@@ -253,15 +321,50 @@ const RATE_MAX_ENTRIES = 64;
 // `ROOM` binding, a call that never touches the network-facing `export default {fetch}` below (see
 // `handleRevoke`).
 const INTERNAL_HEADER = "X-Plan-Internal";
+// ---- SET-ASIDE VERSIONS ARE A LIST, NOT A SLOT ------------------------------------------------
+// `orphan` was a SINGLE storage key: a second conflict overwrote the first, so the version a
+// person lost could disappear before anyone came to look for it, and the only way to look was to
+// open the Durable Object's storage by hand. The client already keeps the last 5 rejected
+// versions (`room-planner-v4-conflit`); the server keeps the same number, and `GET /orphans`
+// (internal route, same guard as `/revoke`) is how they are read back.
+const ORPHAN_MAX = 5;
+// Historical single key, still read once so a conflict recorded before this change is not lost.
+const ORPHAN_KEY_OLD = "orphan";
 // A distinguishable WebSocket close code (RFC 6455 application range 4000-4999) and reason, so a
 // client that reconnects after a revoke can tell it apart from an ordinary drop and show the dead
 // end screen instead of quietly retrying forever.
 const REVOKE_CLOSE_CODE = 4001;
 const REVOKE_CLOSE_REASON = "invite_revoked";
+// ---- A DELETED PLAN STAYS DELETED --------------------------------------------------------------
+// The DELETE in `functions/api/plans.ts` only erases the D1 row. This object's snapshot being an
+// `INSERT … ON CONFLICT`, it recreated that row on the next alarm, and its sockets stayed open on
+// a plan that no longer exists. `POST /purge` is what the DELETE calls: sockets closed, alarm
+// disarmed, storage erased, and a marker so a message arriving late on a straggling socket is
+// refused instead of rewriting anything.
+const PURGE_CLOSE_CODE = 4004;
+const PURGE_CLOSE_REASON = "plan_deleted";
+const PURGED_KEY = "purged";
+// ---- AN EXPIRY IS CHECKED WHILE THE SOCKET LIVES, NOT ONLY WHEN IT OPENS -----------------------
+// `functions/ws.ts` refuses the upgrade of an expired invite, but an ALREADY OPEN socket never
+// passed that door again: a link could expire mid-session and keep writing, which is the very hole
+// `/revoke` was built to close for revocation. Same close-code family, same reason: the client can
+// tell this apart from an ordinary drop and stop retrying.
+const EXPIRE_CLOSE_CODE = 4003;
+const EXPIRE_CLOSE_REASON = "link_expired";
 
 // Will the plan fit into the DO's storage and into D1? Checked BEFORE any write: a mutation
 // accepted then rejected by storage.put() used to let the exception escape from
 // webSocketMessage, with no error for the client, no persistence, and no echo to peers.
+// Number of rows actually touched by the last statement, the ONLY verdict of a compare-and-swap.
+// Same contract, and same refusal to guess, as `functions/api/plan.ts`'s own `rowsChanged`: D1
+// answers `meta.changes`, some SQLite harnesses answer a flat `changes`, and `null` means "the
+// executor does not say", which is never read as a success.
+export function rowsChanged(res: (D1Result<unknown> & { changes?: number }) | null): number | null {
+  if (res && res.meta && typeof res.meta.changes === "number") return res.meta.changes;
+  if (res && typeof res.changes === "number") return res.changes;
+  return null;
+}
+
 export function planTooBig(plan: PlanState): boolean {
   return JSON.stringify(plan).length > MAX_PLAN_BYTES;
 }
@@ -285,7 +388,8 @@ export function upgradeEmptyLegacy(plan: PlanState): PlanState {
 // COLD load decision, isolated from the Cloudflare runtime to be testable.
 // `rowData` = D1's `data` column, or null/undefined if there is NO row at all.
 // Three outcomes, deliberately distinct:
-//   - "empty": D1 has no row -> legitimate new plan, we can install it and persist it.
+//   - "empty": D1 has no row, or a row whose `data` is JSON `null` (how a plan is CREATED, cf.
+//              functions/api/plans.ts) -> legitimate new plan, we install it and persist it.
 //   - "d1"   : row read AND validated -> canonical shape.
 //   - "raw"  : row read but REFUSED by the current validator (schema that has moved on) -> we
 //              keep the bytes as-is. Better an old state than an empty plan.
@@ -301,6 +405,11 @@ export function coldLoad(rowData: unknown): { plan: PlanState; source: string; p
   if (typeof rowData !== "string") throw new OpError("cold_unreadable");
   let parsed;
   try { parsed = JSON.parse(rowData); } catch (_) { throw new OpError("cold_unparsable"); }
+  // JSON `null` IS "empty", not "unreadable". `functions/api/plans.ts` writes exactly that string
+  // when a plan is created ("a new plan is born empty, not copied"), so refusing it made
+  // `ensureLoaded` throw, the WebSocket upgrade fail, and the wire never open on a brand-new
+  // plan. Same content as an absent column: no data at all.
+  if (parsed === null) return { plan: emptyPlan(), source: "empty", persist: true };
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new OpError("cold_unreadable");
   try {
     return { plan: upgradeEmptyLegacy(sanitizeState(parsed as PlanState)), source: "d1", persist: true };
@@ -353,6 +462,9 @@ export class PlanRoom {
   chat: ChatEntry[];
   seq: Map<string, SequenceEntry>;
   d1Seen: string | null;
+  // The plan this room served was DELETED (see PURGE_CLOSE_CODE). Cached in memory, but the
+  // authority is the storage marker: a fresh instance must find it there.
+  purged: boolean;
   // Per-token rate window (design edge 15): token -> timestamps of `op` messages accepted within
   // the rolling window. Memory only, same reasoning as `seq` (cf. RATE_MAX_ENTRIES): losing it on
   // an eviction just resets the counter, which is harmless.
@@ -378,7 +490,16 @@ export class PlanRoom {
     // Fingerprint of the bytes of the D1 row that this DO last wrote or adopted. Persisted:
     // without this, an eviction would re-adopt the same REST write over and over.
     this.d1Seen = null;
+    this.purged = false;
     this.rateSeen = new Map();
+  }
+
+  /** Was the plan deleted? Read from storage the first time, so a fresh instance woken on a
+   *  straggling socket refuses too. */
+  async isPurged(): Promise<boolean> {
+    if (this.purged) return true;
+    if (await this.storage.get<boolean>(PURGED_KEY)) this.purged = true;
+    return this.purged;
   }
 
   // Lazy load: DO storage first, otherwise D1, otherwise an empty plan.
@@ -388,7 +509,16 @@ export class PlanRoom {
   // old format is still served as-is, and switches over explicitly via the plan5.replace op.
   async ensureLoaded() {
     if (this.loaded) return;
-    const stored = await this.storage.get(["plan", "opCount", OPCOUNT_KEY_OLD, "chat", "d1seen"]);
+    const stored = await this.storage.get(["plan", "opCount", OPCOUNT_KEY_OLD, "chat", "d1seen", "planId"]);
+    // WHICH ROW IS OURS, reread here and not only in `fetch`. `adoptPlanId` used to be the only
+    // writer of `this.planId`, and it is called from `fetch` alone: an object woken by
+    // `webSocketMessage`, `alarm` or `webSocketClose` after an eviction therefore held null and
+    // fell back to `main`, so a shared plan's alarm snapshotted over the HOUSEHOLD's row.
+    // Second source, for the case where even the key is gone: a live socket's attachment, which
+    // survives hibernation with the plan it was opened on.
+    if (!this.planId) {
+      this.planId = (stored.get("planId") as string | undefined) || this.planIdFromSockets();
+    }
     this.d1Seen = (stored.get("d1seen") as string | undefined) || null;
     if (stored.get("plan")) {
       this.plan = stored.get("plan") as PlanState;
@@ -419,7 +549,7 @@ export class PlanRoom {
       // persisted, and the first modification overwrote the real D1 row: total loss.
       const row = await this.env.DB
         .prepare("SELECT data, rev, updated_by FROM plans WHERE id=?1")
-        .bind(this.planId || PLAN_ID_DEFAUT)
+        .bind(this.requirePlanId())
         .first<D1PlanRow>();
       const cold = coldLoad(row && row.data !== undefined ? row.data : null);
       this.plan = cold.plan;
@@ -443,19 +573,21 @@ export class PlanRoom {
   //   - when the room REPOPULATES after being empty (end of a REST fallback period);
   //   - before ANY snapshot (alarm, and flush on the last departure).
   // `dirty`: see d1Verdict. Returns the verdict, for tests and for the log.
-  async reconcileD1(dirty: boolean) {
+  async reconcileD1(dirty: boolean): Promise<{ kind: string; why: string; hash?: string; rev: number | null }> {
     const row = await this.env.DB
       .prepare("SELECT data, rev, updated_by, updated_at FROM plans WHERE id=?1")
-      .bind(this.planId || PLAN_ID_DEFAUT)
+      .bind(this.requirePlanId())
       .first<D1PlanRow>();
-    const v = d1Verdict(row, this.d1Seen, dirty);
+    // The revision READ, handed back so the snapshot can swap against it (see `snapshot`).
+    const revLue = row && typeof row.rev === "number" ? row.rev : null;
+    const v = { ...d1Verdict(row, this.d1Seen, dirty), rev: revLue };
     if (v.kind === "none") return v;
 
     if (v.kind === "adopt") {
       // Same policy as on cold load: an unreadable row never replaces a live plan. coldLoad
       // throws on broken JSON -> we keep what we have and report nothing more.
       let cold;
-      try { cold = coldLoad(row.data); } catch (_) { this.d1Seen = v.hash; await this.storage.put("d1seen", v.hash); return { kind: "none", why: "unreadable" }; }
+      try { cold = coldLoad(row.data); } catch (_) { this.d1Seen = v.hash; await this.storage.put("d1seen", v.hash); return { kind: "none", why: "unreadable", rev: revLue }; }
       this.plan = cold.plan;
       this.opCount++;                   // the state changed: clients must notice
       this.d1Seen = v.hash;
@@ -476,28 +608,59 @@ export class PlanRoom {
       // Who has ALREADY been told. The one who wrote offline is, by construction, the one who is
       // NOT connected at the moment of the conflict: without this list they would never learn of
       // it. They will be told when they come back, in their `hello`, and only once.
-      told: [] as string[],
+      // Who has ALREADY been told, by DEVICE LABEL. The one who wrote offline is, by construction,
+      // the one who is NOT connected at the moment of the conflict: without this list they would
+      // never learn of it. They will be told when they come back, in their `hello`, and only once.
+      // Those present are told right away, so they are noted here and not caught again.
+      told: [...new Set(this.state.getWebSockets().map((s) => this.attOf(s).tag).filter(Boolean))],
     };
+    const liste = await this.loadOrphans();
     let keepBytes = row.data.length <= MAX_PLAN_BYTES;
     if (keepBytes) {
       // If storage refuses the bytes, we fall back to the TRACE alone rather than letting the
       // exception block the alarm (and therefore every subsequent snapshot). Telling without
       // keeping is better than doing nothing at all.
-      try { await this.storage.put("orphan", { ...trace, data: row.data }); }
-      catch (_) { keepBytes = false; await this.storage.put("orphan", trace); }
+      try { await this.saveOrphans([...liste, { ...trace, data: row.data }]); }
+      catch (_) { keepBytes = false; await this.saveOrphans([...liste, trace]); }
     } else {
-      await this.storage.put("orphan", trace);
+      await this.saveOrphans([...liste, trace]);
     }
     this.d1Seen = v.hash;               // a single announcement per foreign write
     await this.storage.put("d1seen", this.d1Seen);
-    // Those present are told right away; we note who, so as not to catch them again in the `hello`.
-    const vus = [...new Set(this.state.getWebSockets().map((s) => this.attOf(s).email))];
-    if (vus.length) {
-      const o = await this.storage.get<OrphanTrace>("orphan");
-      if (o) await this.storage.put("orphan", { ...o, told: vus });
-    }
     this.broadcastFor((guestAudience) => this.conflictMsg({ ...trace, data: keepBytes ? "…" : null }, guestAudience), null);
     return v;
+  }
+
+  /** The versions set aside so far, oldest first. Reads the historical single key once, so a
+   *  conflict recorded before this became a list is not lost on the first deploy. */
+  async loadOrphans(): Promise<OrphanTrace[]> {
+    const liste = await this.storage.get<OrphanTrace[]>("orphans");
+    if (Array.isArray(liste)) return liste;
+    const seul = await this.storage.get<OrphanTrace>(ORPHAN_KEY_OLD);
+    return seul ? [seul] : [];
+  }
+
+  /** Keeps the last ORPHAN_MAX of them, and retires the historical single key. */
+  async saveOrphans(liste: OrphanTrace[]) {
+    await this.storage.put("orphans", liste.slice(-ORPHAN_MAX));
+    try { await this.storage.delete(ORPHAN_KEY_OLD); } catch (_) { /* nothing to retire */ }
+  }
+
+  /**
+   * `GET /orphans` (internal route, same guard and same reachability as `/revoke`): hands back
+   * the versions this room set aside, so recovering one is a request instead of an inspection of
+   * the Durable Object's storage by hand. `functions/` exposes it to the household door.
+   * Response contract: `{orphans:[{at, by, rev, data}]}`, oldest first.
+   */
+  async handleOrphans(request: Request): Promise<Response> {
+    if (request.headers.get(INTERNAL_HEADER) !== "1") return new Response("forbidden", { status: 403 });
+    if (request.method !== "GET") return new Response("method not allowed", { status: 405 });
+    const liste = await this.loadOrphans();
+    return Response.json({
+      orphans: liste.map((o) => ({
+        at: o.at ?? null, by: o.by ?? null, rev: o.rev ?? null, data: o.data ?? null,
+      })),
+    });
   }
 
   // Conflict message, built from a single place (reconciliation AND the `hello` on return).
@@ -525,9 +688,36 @@ export class PlanRoom {
     if (this.planId) return;
     const stocke = await this.storage.get<string>("planId");
     if (stocke) { this.planId = stocke; return; }
+    // A MALFORMED identifier leaves the object without a plan rather than pointing it at `main`:
+    // `requirePlanId` then refuses every D1 access, and the upgrade fails, which is the correct
+    // end for a request nobody can route.
     const id = cleanPlanId(fromHeader);
-    this.planId = id || PLAN_ID_DEFAUT;
+    if (!id) return;
+    this.planId = id;
     await this.storage.put("planId", this.planId);
+  }
+
+  /** The plan id carried by a LIVE socket's attachment. Last-resort source for an object woken on
+   *  a hibernated socket whose `planId` storage key is somehow gone: the attachment survives both
+   *  hibernation and eviction. */
+  planIdFromSockets(): string | null {
+    for (const ws of this.state.getWebSockets()) {
+      const a = ws.deserializeAttachment() as SocketAttachment | null;
+      const id = a && a.planId ? cleanPlanId(a.planId) : null;
+      if (id) return id;
+    }
+    return null;
+  }
+
+  /**
+   * WHICH ROW, or nothing at all. An object that does not know which plan is its own touches
+   * NOTHING: it neither reads nor writes D1. The previous `|| PLAN_ID_DEFAUT` turned "I don't
+   * know" into "the household's plan", which is the one answer that silently corrupts a
+   * different document than the one being edited.
+   */
+  requirePlanId(): string {
+    if (!this.planId) throw new OpError("plan_id_unknown");
+    return this.planId;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -537,8 +727,26 @@ export class PlanRoom {
     // for why this is safe to reach only from `functions/api/invites.ts`'s own trusted call.
     const url = new URL(request.url);
     if (url.pathname === "/revoke") return this.handleRevoke(request);
+    if (url.pathname === "/orphans") return this.handleOrphans(request);
+    if (url.pathname === "/purge") return this.handlePurge(request);
+    // A deleted plan does not open a wire again: 410, and the client stops retrying.
+    if (await this.isPurged()) return new Response("plan deleted", { status: 410 });
 
     await this.adoptPlanId(request.headers.get("X-Plan-Id"));
+    // Nothing routable: refuse the upgrade rather than open a socket onto an object that would
+    // have to guess which row is its own.
+    if (!this.planId) return new Response("bad plan id", { status: 400 });
+    // ---- CEILINGS BEFORE THE UPGRADE (see MAX_SOCKETS_ROOM) --------------------------------------
+    // Answered here, ahead of `ensureLoaded` and of the pair: a socket that will be refused must
+    // never be opened, and must cost neither a D1 read nor a reconciliation.
+    const att = attachmentFromRequest(request, this.freshTag());
+    const vivants = this.state.getWebSockets();
+    if (vivants.length >= MAX_SOCKETS_ROOM) return new Response("too many sockets", { status: 429 });
+    if (att.token) {
+      let parJeton = 0;
+      for (const ws of vivants) if (this.attOf(ws).token === att.token) parJeton++;
+      if (parJeton >= MAX_SOCKETS_TOKEN) return new Response("too many sockets", { status: 429 });
+    }
     await this.ensureLoaded();
     // The room was EMPTY: no one was in realtime, so everyone was on the REST fallback. This is
     // the exact moment when D1 can be ahead of us. Tolerant: if D1 doesn't answer, we serve
@@ -551,7 +759,7 @@ export class PlanRoom {
     const [client, server] = [pair[0], pair[1]];
     // Hibernation: the DO manages the socket via webSocketMessage/Close.
     this.state.acceptWebSocket(server);
-    server.serializeAttachment(attachmentFromRequest(request, this.freshTag()));
+    server.serializeAttachment(att);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -582,6 +790,36 @@ export class PlanRoom {
     return Response.json({ ok: true, closed });
   }
 
+  /**
+   * `POST /purge` (internal route, same guard and same reachability as `/revoke`): the plan this
+   * room served has been deleted. Everything this object could use to write that row again goes:
+   * the sockets (closed with a distinguishable code, so the client shows a dead end instead of
+   * retrying), the alarm, and the whole storage. The `purged` marker is written LAST, over the
+   * emptied storage, and is what makes a straggling message harmless.
+   * Response contract: `{ok:true, closed:<n>}`.
+   */
+  async handlePurge(request: Request): Promise<Response> {
+    if (request.headers.get(INTERNAL_HEADER) !== "1") return new Response("forbidden", { status: 403 });
+    if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let closed = 0;
+    for (const ws of this.state.getWebSockets()) {
+      try { ws.close(PURGE_CLOSE_CODE, PURGE_CLOSE_REASON); } catch (_) { /* already gone */ }
+      closed++;
+    }
+    try { await this.storage.deleteAlarm(); } catch (_) { /* none armed */ }
+    await this.storage.deleteAll();
+    await this.storage.put(PURGED_KEY, true);
+    this.purged = true;
+    // In memory too: `loaded` false with no plan means nothing can be snapshotted back.
+    this.loaded = false;
+    this.plan = null;
+    this.chat = [];
+    this.d1Seen = null;
+    this.seq.clear();
+    this.rateSeen.clear();
+    return Response.json({ ok: true, closed });
+  }
+
   // Device label, unique among LIVE sockets, stable for the duration of the socket. It's used by
   // the client to build entity identifiers that cannot collide: two people drawing a partition
   // at the same moment would both number from THEIR local plan (v5NewId), get the same "w20",
@@ -602,7 +840,7 @@ export class PlanRoom {
   // ---- presence ----
   attOf(ws: WebSocket): SocketAttachment {
     return (ws.deserializeAttachment() as SocketAttachment | null)
-      || { email: "inconnu", color: colorFor("inconnu"), tag: "000000", name: "", guest: false, guestId: "", token: "" };
+      || { email: "inconnu", color: colorFor("inconnu"), tag: "000000", name: "", guest: false, guestId: "", token: "", planId: "", expiresAt: 0 };
   }
 
   // ---- TECHNICAL IDENTITY IS THE DEVICE, NOT THE EMAIL ADDRESS -----------------------------------
@@ -727,14 +965,19 @@ export class PlanRoom {
     try { ws.send(JSON.stringify(obj)); } catch (_) {}
   }
 
-  // ---- PER-TOKEN RATE CAP (design edge 15, see RATE_MAX_OPS) -------------------------------------
-  // Household sockets carry an empty token and are NEVER capped here (see the constant's header
-  // note): this only ever throttles a specific guest LINK. Returns true if `token` may proceed
-  // (and records this attempt); false if it is OVER the cap for the rolling window.
-  rateOk(token: string): boolean {
-    if (!token) return true;
+  // ---- RATE CAP PER KIND OF MESSAGE (design edge 15, see RATE_BUDGETS) ---------------------------
+  // Keyed on the ATTACHMENT'S TOKEN for a guest, because the cap must follow the LINK (several
+  // tabs can share one), and on the DEVICE LABEL for a household socket, which carries no token
+  // and would otherwise share one bucket with every other household tab.
+  // Returns true if this message may proceed (and records it); false if it is OVER the budget for
+  // its kind's rolling window. A kind with no budget is never capped (`hello`, `sync`).
+  rateOk(att: SocketAttachment, kind: string): boolean {
+    const budget = RATE_BUDGETS[kind];
+    if (!budget) return true;
+    const max = (!att.guest && budget.foyer !== undefined) ? budget.foyer : budget.max;
+    const key = kind + "|" + (att.token || ("tag:" + att.tag));
     const now = Date.now();
-    let arr = this.rateSeen.get(token);
+    let arr = this.rateSeen.get(key);
     if (!arr) {
       while (this.rateSeen.size >= RATE_MAX_ENTRIES) {
         const oldest = this.rateSeen.keys().next().value as string | undefined;
@@ -742,10 +985,10 @@ export class PlanRoom {
         this.rateSeen.delete(oldest);
       }
       arr = [];
-      this.rateSeen.set(token, arr);
+      this.rateSeen.set(key, arr);
     }
-    while (arr.length && now - arr[0]! > RATE_WINDOW_MS) arr.shift();
-    if (arr.length >= RATE_MAX_OPS) return false;
+    while (arr.length && now - arr[0]! > budget.win) arr.shift();
+    if (arr.length >= max) return false;
     arr.push(now);
     return true;
   }
@@ -774,26 +1017,58 @@ export class PlanRoom {
   // has unsnapshotted work (dirty = true). We RECONCILE before writing: without this, the
   // snapshot silently overwrites everything the REST fallback deposited during the outage.
   async alarm() {
+    // A deleted plan is never snapshotted back into existence.
+    if (await this.isPurged()) { try { await this.storage.deleteAlarm(); } catch (_) {} return; }
     await this.ensureLoaded();
-    await this.reconcileD1(true);
-    await this.snapshot();
+    const v = await this.reconcileD1(true);
+    await this.snapshot(v.rev);
   }
 
-  async snapshot() {
+  /**
+   * ---- THE SNAPSHOT IS A COMPARE-AND-SWAP TOO ---------------------------------------------------
+   * There were TWO round trips here (reread, then write) and the write carried no `WHERE`. A PUT
+   * compare-and-swap (`functions/api/plan.ts`) landing BETWEEN the two won its swap, answered 200
+   * to its client, and was then overwritten by this blind write; `d1Seen` recorded our own bytes,
+   * so the next reconciliation saw nothing foreign and no one was ever told. The fallback believed
+   * it had written, the row held none of it, and the wire said everything was fine.
+   *
+   * `expectedRev` is the revision READ by the reconciliation that precedes this call. The write
+   * uses the SAME statement shape as the REST Function: insert if the row is absent, update only
+   * if the revision is still that one, nothing otherwise. The verdict is read from `meta.changes`,
+   * never from a re-read. Zero rows touched = the row moved under us: we reconcile ONCE more
+   * (which adopts it, or sets it aside as an orphan and tells the clients, the existing path) and
+   * retry exactly once. A second failure lets a D1 error propagate: the alarm replays it.
+   *
+   * `expectedRev === null` (no row at read time) is not a hole: the INSERT branch fires when the
+   * row is genuinely absent, and if a row appeared meanwhile `plans.rev = NULL` is never true, so
+   * the swap correctly refuses instead of overwriting it.
+   */
+  async snapshot(expectedRev: number | null = null, secondeChance = true): Promise<void> {
+    const planId = this.requirePlanId();
     const data = JSON.stringify(this.plan);
     const now = new Date().toISOString();
     // A D1 error propagates up: the alarm will be replayed automatically (up to 6 times).
-    await this.env.DB
+    const res = await this.env.DB
       .prepare(
-        "INSERT INTO plans(id,data,rev,updated_at,updated_by) VALUES(?4,?1,1,?2,'live') " +
-        "ON CONFLICT(id) DO UPDATE SET data=?1, rev=rev+1, updated_at=?2, updated_by='live'"
+        "INSERT INTO plans(id,data,rev,updated_at,updated_by) VALUES(?3,?1,1,?2,'live') " +
+        "ON CONFLICT(id) DO UPDATE SET data=?1, rev=rev+1, updated_at=?2, updated_by='live' " +
+        "WHERE plans.rev=?4"
       )
-      .bind(data, now, null, this.planId || PLAN_ID_DEFAUT)
+      .bind(data, now, planId, expectedRev)
       .run();
-    // We now know what the row looks like: the next reconciliation won't mistake it for a
-    // foreign write (belt-and-suspenders, `updated_by='live'` already says so).
-    this.d1Seen = strHash(data);
-    await this.storage.put("d1seen", this.d1Seen);
+    if (rowsChanged(res) === 1) {
+      // We now know what the row looks like: the next reconciliation won't mistake it for a
+      // foreign write (belt-and-suspenders, `updated_by='live'` already says so).
+      this.d1Seen = strHash(data);
+      await this.storage.put("d1seen", this.d1Seen);
+      return;
+    }
+    // The row moved (or the executor won't say how many rows it touched, which is the same thing
+    // here: a swap whose bite we don't know about is not a swap). `d1Seen` is deliberately NOT
+    // updated: whatever is in that row is not ours.
+    if (!secondeChance) throw new OpError("snapshot_conflict");
+    const v = await this.reconcileD1(true);
+    await this.snapshot(v.rev, false);
   }
 
   // The alarm is armed BEFORE the write: if `put` fails, the caller can roll back without
@@ -839,10 +1114,40 @@ export class PlanRoom {
 
   // ---- Hibernation handlers ----
   async webSocketMessage(ws: WebSocket, raw: string) {
+    // The plan was DELETED: a message arriving on a socket that has not noticed yet is refused
+    // BEFORE `ensureLoaded`, which would otherwise cold-load from D1 and reinstall the row.
+    if (await this.isPurged()) {
+      this.send(ws, { t: "err", reason: PURGE_CLOSE_REASON });
+      try { ws.close(PURGE_CLOSE_CODE, PURGE_CLOSE_REASON); } catch (_) { /* already gone */ }
+      return;
+    }
+    // RAW SIZE FIRST, before parsing: parsing is the work an oversized frame is trying to buy.
+    if (typeof raw === "string" && raw.length > MAX_MSG_BYTES) {
+      return this.send(ws, { t: "err", reason: "bad_size" });
+    }
     await this.ensureLoaded();
     let msg: WireMessage;
     try { msg = JSON.parse(raw); } catch { return this.send(ws, { t: "err", reason: "bad_json" }); }
     const att = this.attOf(ws);
+
+    // ---- EXPIRY AND THE RATE CAP ARE CHECKED ON EVERY MESSAGE, NOT ONLY AT THE DOOR -------------
+    // An invite that expires while its socket is open stops here. `expiresAt === 0` means the
+    // forwarder said nothing, so nothing is checked (compatibility).
+    if (att.guest && att.expiresAt > 0 && Date.now() > att.expiresAt) {
+      this.send(ws, { t: "err", reason: EXPIRE_CLOSE_REASON });
+      try { ws.close(EXPIRE_CLOSE_CODE, EXPIRE_CLOSE_REASON); } catch (_) { /* already gone */ }
+      return;
+    }
+    // One budget per KIND, for every socket, guest and household alike (see RATE_BUDGETS).
+    const genre = (msg && typeof msg.t === "string") ? msg.t : "";
+    if (genre && !this.rateOk(att, genre)) {
+      if (RATE_SILENT.has(genre)) return;
+      return this.send(ws, {
+        t: "err", reason: "rate_limited",
+        n: (genre === "op" && Number.isSafeInteger(msg.n)) ? msg.n : null,
+        kind: (genre === "op" && msg.op && msg.op.kind) || null,
+      });
+    }
 
     switch (msg && msg.t) {
       case "hello": {
@@ -873,10 +1178,17 @@ export class PlanRoom {
         // A write made offline couldn't be merged while this person was away? It's THEM who lost
         // work, and they weren't there to hear about it. We tell them when they come back, only
         // once (the `told` list remembers who has already been notified).
-        const orphan = await this.storage.get<OrphanTrace>("orphan");
-        if (orphan && !(orphan.told || []).includes(att.email)) {
-          this.send(ws, this.conflictMsg(orphan, att.guest));
-          await this.storage.put("orphan", { ...orphan, told: [...(orphan.told || []), att.email] });
+        // Indexed on the DEVICE LABEL, not the email: a guest's email is always empty, so one
+        // guest told marked every guest as told and the others never heard of it.
+        // ONE message for the whole list (the most recent set-aside version): the banner says
+        // that something was kept, `GET /orphans` is what enumerates them.
+        const orphans = await this.loadOrphans();
+        const dernier = orphans.length ? orphans[orphans.length - 1] : null;
+        if (dernier && att.tag && !(dernier.told || []).includes(att.tag)) {
+          this.send(ws, this.conflictMsg(dernier, att.guest));
+          await this.saveOrphans(orphans.map((o) => ({
+            ...o, told: [...new Set([...(o.told || []), att.tag])],
+          })));
         }
         break;
       }
@@ -917,16 +1229,19 @@ export class PlanRoom {
         // On the contiguous one, a gap never filled would mask all the following ones: every new
         // loss must be announced once, and only once.
         const gapNeed = (sq && seq > sq.max + 1) ? sq.max + 1 : null;
-        // The number is CONSUMED as soon as the server has processed it, refusal included: in
-        // both cases the client got its response (the echo or the `err`), so it won't re-emit it.
-        if (sq) this.seqNote(sq, seq);
+        // ---- A REFUSAL DOES NOT MOVE THE WINDOW -------------------------------------------------
+        // The number used to be consumed as soon as the server had PROCESSED it, refusal included.
+        // A gap was then swallowed by the very op that revealed it: n°5 lost, n°6 refused (the
+        // refusal returns before the `gap` is sent) but noted anyway, so n°7 looked contiguous and
+        // the loss of n°5 was never announced. And a refusal is not always the client's fault:
+        // `rate_limited` and `persist_fail` are changes the client SHOULD re-emit. The number is
+        // therefore noted below, once the op is APPLIED. The price is one gap announced after a
+        // genuine validation refusal, and one is the right side to err on: a gap costs a single
+        // idempotent re-emission, a swallowed loss costs the change.
 
         // ---- GUEST-ONLY REFUSALS (design edges 15, 17; batch 2 items 4, 5, 7) --------------------
         // All three share the SAME numbered err path as an ordinary validation refusal: the client
         // must UNDO through the normal receive path, never silently swallow a rejected change.
-        if (!this.rateOk(att.token)) {
-          return this.send(ws, { t: "err", reason: "rate_limited", n: seq, kind: (msg.op && msg.op.kind) || null });
-        }
         // Item 5: the name gate is client-side in the guest onboarding UI (batch 3), a disabled
         // Join button stops a PERSON, not a script. `sync`/`hello` stay allowed (a nameless guest
         // must still be able to SEE the plan and be told what is wrong); only `op` is gated.
@@ -960,6 +1275,8 @@ export class PlanRoom {
           this.opCount--;
           return this.send(ws, { t: "err", reason: "persist_fail", n: seq, kind: (msg.op && msg.op.kind) || null });
         }
+        // APPLIED and persisted: only now does the window move past this number.
+        if (sq) this.seqNote(sq, seq);
         // Echo to EVERYONE (sender included): ops are idempotent, it consumes the op.
         // `fp` accompanies every echo: this way the client knows, without recomputing anything,
         // which content identity the server holds after this op, and a later `hello` that
@@ -973,8 +1290,12 @@ export class PlanRoom {
         // better (it proves not only receipt, but APPLICATION). Peers, for their part, ignore a
         // number that isn't theirs: they compare `tag` to their own, exactly as for the undo
         // replay log.
+        // `opWire`, NOT `msg.op`: the envelope that goes back out is rebuilt from the keys its
+        // kind is known to carry (see ops.ts), so a key the validator never looked at cannot ride
+        // the broadcast into every peer's receive path.
+        const opSortie = opWire(msg.op);
         this.broadcastFor((guestAudience) => ({
-          t: "op", op: msg.op, n: seq, opCount: this.opCount, fp: planFp(this.plan),
+          t: "op", op: opSortie, n: seq, opCount: this.opCount, fp: planFp(this.plan),
           ...this.authorWire(att, guestAudience),
         }), null);
         // A NUMBER IS MISSING. The op that just went through wasn't the expected next one: an op
@@ -1073,6 +1394,8 @@ export class PlanRoom {
 
   async webSocketClose(ws: WebSocket) {
     try { ws.close(); } catch (_) {}
+    // A purge closed every socket at once: the departure flush would only rewrite the deleted row.
+    if (await this.isPurged()) return;
     // The deduplication window dies with the socket: it's indexed by the device label, which is
     // unique per socket and never reused. Nothing to purge later.
     const att = this.attOf(ws);
@@ -1085,8 +1408,8 @@ export class PlanRoom {
       try {
         if (await this.storage.getAlarm() !== null) {
           await this.ensureLoaded();
-          await this.reconcileD1(true);   // never overwrite a REST write without saying so
-          await this.snapshot();
+          const v = await this.reconcileD1(true);   // never overwrite a REST write without saying so
+          await this.snapshot(v.rev);
           await this.storage.deleteAlarm();
         }
       } catch (_) { /* the alarm stays armed and will retry */ }
