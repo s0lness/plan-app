@@ -29,7 +29,7 @@ import { TYPEMAP, isWallMount } from "../catalogue/catalogue.ts";
 import { cssId } from "../noyau/dom.ts";
 import { nearestOnPoly, pointInPoly } from "../geometrie/polygones.ts";
 import { v5CellsAt, v5OpeningBox } from "../modele/murs.ts";
-import { clampCenterToApt, wallSnapReach } from "../modele/espace.ts";
+import { clampCenterToApt, radiatorWallSnap, wallSnapReach } from "../modele/espace.ts";
 import { autoName } from "../modele/creation.ts";
 import { prochainUid } from "../modele/lecture-v4.ts";
 import { v5ClampPiece, v5LastFit, v5MoveOpeningTo } from "../modele/edition.ts";
@@ -452,7 +452,15 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     rawX = cl.x; rawY = cl.y;      // where the HAND let go, before any snap
     const snapped = snapChairToTable(ctx.etat.plan, ctx.etat.opts, p);
     lastSnap = snapped;
-    const al = snapped ? null : alignSnap(ctx.etat.plan, ctx.etat.opts, p, riderIds);
+    // F1. THE RADIATOR MAGNET: a radiator is a MEUBLE, not a wall-mounted opening, but whenever a
+    // wall comes within reach (same reach as an opening, `wallSnapReach`) it snaps to it, back
+    // flush against the face, oriented with the wall. Out of reach it stays an ordinary piece of
+    // furniture (a mobile radiator exists): no new modifier, it just wins over `alignSnap` the
+    // same way `alignSnap` already wins over the grid.
+    const aimante = (!snapped && p.type === "radiateur")
+      ? radiatorWallSnap(ctx.etat.plan, p, wallSnapReach(ctx.vue.scale)) : null;
+    if (aimante) { p.x = aimante.x; p.y = aimante.y; p.rot = aimante.rot; }
+    const al = (snapped || aimante) ? null : alignSnap(ctx.etat.plan, ctx.etat.opts, p, riderIds);
     const dx = p.x - lastX, dy = p.y - lastY;
     if ((dx || dy) && riders.length) riders.forEach((ch) => { ch.x += dx; ch.y += dy; });
     lastX = p.x; lastY = p.y;

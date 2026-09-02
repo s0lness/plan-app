@@ -37,6 +37,7 @@ import { FL } from "../src/ts/circulation/etat.ts";
 import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
+import { radiatorWallSnap } from "../src/ts/modele/espace.ts";
 import { PLAN_ID_RE as PLAN_ID_RE_FN } from "../functions/plan-id.ts";
 import { cleanName as cleanNameFn } from "../functions/nom.ts";
 import { porteDe } from "../functions/porte.ts";
@@ -786,6 +787,58 @@ test("v5_opening_side_survives_the_wire", () => {
       && expect(v.back[0].h > 0 && v.back[0].name.length > 0, "h/name must survive the round-trip")
       && expect(v.packed.side === 1 && v.packed.hinge === 1 && v.packed.h > 0 && v.packed.name.length > 0,
           "the PACKED legacy form must still be readable: " + JSON.stringify(v.packed));
+});
+
+// =================================================================================================
+//  4quinquies. F1: THE RADIATOR MAGNET (modele/espace.ts, `radiatorWallSnap`)
+//  PURE: plan + rectangle + reach -> snapped {x,y,rot}, or null out of reach. No DOM, no gesture:
+//  the drag/drop wiring (gestes/meuble.ts, gestes/pose.ts) is exercised by the browser suites only.
+// =================================================================================================
+const RADIATEUR_WH = { w: 80, h: 12 };
+// A rectangle centered on (cx,cy), the shape `radiatorWallSnap` takes.
+const rectCentre = (cx: number, cy: number) =>
+  ({ x: cx - RADIATEUR_WH.w / 2, y: cy - RADIATEUR_WH.h / 2, w: RADIATEUR_WH.w, h: RADIATEUR_WH.h });
+const PLAN_MUR = (wall: Mur): PlanV5 => ({ outline: [], walls: [wall], openings: [], pieces: [], cells: [] });
+
+test("radiateur_aimant_mur_horizontal_a_portee_se_colle_dos_au_mur", () => {
+  const wall: Mur = { id: "wH", a: [0, 0], b: [200, 0], t: 12 };
+  // center 4cm below the wall's centerline (well within a 20cm reach): must snap.
+  const r = radiatorWallSnap(PLAN_MUR(wall), rectCentre(100, 4), 20);
+  if (!r) return "expected a snap, got null";
+  const backY = r.y;   // corner y = the top edge at rot 0 = the back, flush on the wall's face
+  return expect(r.rot === 0, "a horizontal wall must align rot to 0, got " + r.rot)
+      && expect(near(backY, 6, 0.5), "the back must land exactly on the wall's face (y=6), got " + backY);
+});
+
+test("radiateur_hors_de_portee_du_mur_reste_inchange", () => {
+  const wall: Mur = { id: "wH", a: [0, 0], b: [200, 0], t: 12 };
+  // center 40cm below the wall's centerline, beyond a 20cm reach: no snap.
+  const r = radiatorWallSnap(PLAN_MUR(wall), rectCentre(100, 40), 20);
+  return expect(r === null, "40cm is out of a 20cm reach, expected null, got " + JSON.stringify(r));
+});
+
+test("radiateur_aimant_mur_vertical_rot_90", () => {
+  const wall: Mur = { id: "wV", a: [0, 0], b: [0, 200], t: 12 };
+  // center 4cm to the LEFT of the wall: within reach, rot must align to the vertical wall (90).
+  const r = radiatorWallSnap(PLAN_MUR(wall), rectCentre(-4, 100), 20);
+  return expect(!!r && r.rot === 90, "a vertical wall must align rot to 90, got " + JSON.stringify(r));
+});
+
+test("radiateur_aimant_mur_oblique_45_degres", () => {
+  const wall: Mur = { id: "wO", a: [0, 0], b: [100, 100], t: 12 };
+  // center 4cm off the wall's midpoint, along its normal (the side that resolves to `side=0`).
+  const n = { x: -Math.SQRT1_2, y: Math.SQRT1_2 };
+  const r = radiatorWallSnap(PLAN_MUR(wall), rectCentre(50 + n.x * 4, 50 + n.y * 4), 20);
+  return expect(!!r && r.rot === 45, "a 45deg wall must snap rot to 45, got " + JSON.stringify(r));
+});
+
+test("radiateur_aimant_glisse_le_long_du_mur_en_suivant_le_centre", () => {
+  const wall: Mur = { id: "wH", a: [0, 0], b: [200, 0], t: 12 };
+  const a = radiatorWallSnap(PLAN_MUR(wall), rectCentre(50, 4), 20);
+  const b = radiatorWallSnap(PLAN_MUR(wall), rectCentre(150, 4), 20);
+  if (!a || !b) return "expected both to snap, got " + JSON.stringify({ a, b });
+  return expect(a.rot === 0 && b.rot === 0, "both stay aligned with the wall while sliding along it")
+      && expect(a.x !== b.x, "sliding the center along the wall must move the snapped x, got the same " + a.x);
 });
 
 // =================================================================================================

@@ -44,7 +44,7 @@ import { TYPEMAP, isWallMount, layerOf } from "../catalogue/catalogue.ts";
 import { $, COARSE } from "../noyau/dom.ts";
 import { WALL, clamp, safeDim } from "../noyau/nombres.ts";
 import { v5Seg } from "../modele/murs.ts";
-import { NO_WALL_MSG, wallSnapReach } from "../modele/espace.ts";
+import { NO_WALL_MSG, radiatorWallSnap, wallSnapReach } from "../modele/espace.ts";
 import { autoName, mk } from "../modele/creation.ts";
 import {
   v5ClampPiece, v5FlushPlaceNarrowed, v5LastFit, v5NearestWall, v5PlaceWallMount, v5WallMountSide,
@@ -216,6 +216,13 @@ export function placeNewPieceAt(
   p.id = String(p.id);
   snapPos(p, !!ctx.etat.opts.snap); P.pieces.push(p); v5ClampPiece(P, p);
   unstackPiece(ctx, p, c);
+  // F1. THE RADIATOR MAGNET, at drop time too (same mechanism and reach as the drag): dropped near
+  // a wall, it lands flush against it rather than a few centimeters off, and wins over the grid
+  // exactly like the alignment snap already does.
+  if (type === "radiateur") {
+    const aimante = radiatorWallSnap(P, p, wallSnapReach(ctx.vue.scale));
+    if (aimante) { p.x = aimante.x; p.y = aimante.y; p.rot = aimante.rot; }
+  }
   const fits = v5LastFit();
   v5Touch(ctx);
   selReplace(ctx, p.id); render(ctx); ctx.crochets.openInspector?.();
