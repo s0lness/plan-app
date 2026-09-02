@@ -104,6 +104,9 @@ interface D1PlanRow {
   updated_at?: string;
 }
 
+// A version set aside because two sides wrote without seeing each other. `told` lists the DEVICE
+// LABELS already warned (never emails: a guest has none, so one guest told made every guest look
+// told).
 interface OrphanTrace {
   at?: string | null;
   by?: string | null;
@@ -262,6 +265,15 @@ const RATE_MAX_ENTRIES = 64;
 // `ROOM` binding, a call that never touches the network-facing `export default {fetch}` below (see
 // `handleRevoke`).
 const INTERNAL_HEADER = "X-Plan-Internal";
+// ---- SET-ASIDE VERSIONS ARE A LIST, NOT A SLOT ------------------------------------------------
+// `orphan` was a SINGLE storage key: a second conflict overwrote the first, so the version a
+// person lost could disappear before anyone came to look for it, and the only way to look was to
+// open the Durable Object's storage by hand. The client already keeps the last 5 rejected
+// versions (`room-planner-v4-conflit`); the server keeps the same number, and `GET /orphans`
+// (internal route, same guard as `/revoke`) is how they are read back.
+const ORPHAN_MAX = 5;
+// Historical single key, still read once so a conflict recorded before this change is not lost.
+const ORPHAN_KEY_OLD = "orphan";
 // A distinguishable WebSocket close code (RFC 6455 application range 4000-4999) and reason, so a
 // client that reconnects after a revoke can tell it apart from an ordinary drop and show the dead
 // end screen instead of quietly retrying forever.
@@ -512,28 +524,59 @@ export class PlanRoom {
       // Who has ALREADY been told. The one who wrote offline is, by construction, the one who is
       // NOT connected at the moment of the conflict: without this list they would never learn of
       // it. They will be told when they come back, in their `hello`, and only once.
-      told: [] as string[],
+      // Who has ALREADY been told, by DEVICE LABEL. The one who wrote offline is, by construction,
+      // the one who is NOT connected at the moment of the conflict: without this list they would
+      // never learn of it. They will be told when they come back, in their `hello`, and only once.
+      // Those present are told right away, so they are noted here and not caught again.
+      told: [...new Set(this.state.getWebSockets().map((s) => this.attOf(s).tag).filter(Boolean))],
     };
+    const liste = await this.loadOrphans();
     let keepBytes = row.data.length <= MAX_PLAN_BYTES;
     if (keepBytes) {
       // If storage refuses the bytes, we fall back to the TRACE alone rather than letting the
       // exception block the alarm (and therefore every subsequent snapshot). Telling without
       // keeping is better than doing nothing at all.
-      try { await this.storage.put("orphan", { ...trace, data: row.data }); }
-      catch (_) { keepBytes = false; await this.storage.put("orphan", trace); }
+      try { await this.saveOrphans([...liste, { ...trace, data: row.data }]); }
+      catch (_) { keepBytes = false; await this.saveOrphans([...liste, trace]); }
     } else {
-      await this.storage.put("orphan", trace);
+      await this.saveOrphans([...liste, trace]);
     }
     this.d1Seen = v.hash;               // a single announcement per foreign write
     await this.storage.put("d1seen", this.d1Seen);
-    // Those present are told right away; we note who, so as not to catch them again in the `hello`.
-    const vus = [...new Set(this.state.getWebSockets().map((s) => this.attOf(s).email))];
-    if (vus.length) {
-      const o = await this.storage.get<OrphanTrace>("orphan");
-      if (o) await this.storage.put("orphan", { ...o, told: vus });
-    }
     this.broadcastFor((guestAudience) => this.conflictMsg({ ...trace, data: keepBytes ? "…" : null }, guestAudience), null);
     return v;
+  }
+
+  /** The versions set aside so far, oldest first. Reads the historical single key once, so a
+   *  conflict recorded before this became a list is not lost on the first deploy. */
+  async loadOrphans(): Promise<OrphanTrace[]> {
+    const liste = await this.storage.get<OrphanTrace[]>("orphans");
+    if (Array.isArray(liste)) return liste;
+    const seul = await this.storage.get<OrphanTrace>(ORPHAN_KEY_OLD);
+    return seul ? [seul] : [];
+  }
+
+  /** Keeps the last ORPHAN_MAX of them, and retires the historical single key. */
+  async saveOrphans(liste: OrphanTrace[]) {
+    await this.storage.put("orphans", liste.slice(-ORPHAN_MAX));
+    try { await this.storage.delete(ORPHAN_KEY_OLD); } catch (_) { /* nothing to retire */ }
+  }
+
+  /**
+   * `GET /orphans` (internal route, same guard and same reachability as `/revoke`): hands back
+   * the versions this room set aside, so recovering one is a request instead of an inspection of
+   * the Durable Object's storage by hand. `functions/` exposes it to the household door.
+   * Response contract: `{orphans:[{at, by, rev, data}]}`, oldest first.
+   */
+  async handleOrphans(request: Request): Promise<Response> {
+    if (request.headers.get(INTERNAL_HEADER) !== "1") return new Response("forbidden", { status: 403 });
+    if (request.method !== "GET") return new Response("method not allowed", { status: 405 });
+    const liste = await this.loadOrphans();
+    return Response.json({
+      orphans: liste.map((o) => ({
+        at: o.at ?? null, by: o.by ?? null, rev: o.rev ?? null, data: o.data ?? null,
+      })),
+    });
   }
 
   // Conflict message, built from a single place (reconciliation AND the `hello` on return).
@@ -600,6 +643,7 @@ export class PlanRoom {
     // for why this is safe to reach only from `functions/api/invites.ts`'s own trusted call.
     const url = new URL(request.url);
     if (url.pathname === "/revoke") return this.handleRevoke(request);
+    if (url.pathname === "/orphans") return this.handleOrphans(request);
 
     await this.adoptPlanId(request.headers.get("X-Plan-Id"));
     // Nothing routable: refuse the upgrade rather than open a socket onto an object that would
@@ -969,10 +1013,17 @@ export class PlanRoom {
         // A write made offline couldn't be merged while this person was away? It's THEM who lost
         // work, and they weren't there to hear about it. We tell them when they come back, only
         // once (the `told` list remembers who has already been notified).
-        const orphan = await this.storage.get<OrphanTrace>("orphan");
-        if (orphan && !(orphan.told || []).includes(att.email)) {
-          this.send(ws, this.conflictMsg(orphan, att.guest));
-          await this.storage.put("orphan", { ...orphan, told: [...(orphan.told || []), att.email] });
+        // Indexed on the DEVICE LABEL, not the email: a guest's email is always empty, so one
+        // guest told marked every guest as told and the others never heard of it.
+        // ONE message for the whole list (the most recent set-aside version): the banner says
+        // that something was kept, `GET /orphans` is what enumerates them.
+        const orphans = await this.loadOrphans();
+        const dernier = orphans.length ? orphans[orphans.length - 1] : null;
+        if (dernier && att.tag && !(dernier.told || []).includes(att.tag)) {
+          this.send(ws, this.conflictMsg(dernier, att.guest));
+          await this.saveOrphans(orphans.map((o) => ({
+            ...o, told: [...new Set([...(o.told || []), att.tag])],
+          })));
         }
         break;
       }

@@ -267,18 +267,40 @@ persisted, never sent to peers, and is `null` if the client did not provide it.
 
 ### Reconciliation with D1
 
-The DO rereads the `main` row only when it could otherwise destroy a write it did not make: when
-the room becomes occupied after being empty, and before every snapshot (alarm, flush after the last
-departure). The discriminator is `updated_by`: the DO never writes anything other than `live`, and
-the REST Function never writes `live`.
+The DO rereads ITS OWN row (`planId`, reread from storage on every wake-up, never assumed to be
+`main`) only when it could otherwise destroy a write it did not make: when the room becomes
+occupied after being empty, and before every snapshot (alarm, flush after the last departure). The
+discriminator is `updated_by`: the DO never writes anything other than `live`, and the REST
+Function never writes `live`.
 
 - foreign row + idle DO -> **adoption**, plus a `state` message (`reason:"d1_adopt"`);
 - foreign row + active DO (alarm armed) -> **conflict**: realtime state is kept, the foreign bytes
-  are preserved under the `orphan` storage key, and a `conflict` message is sent to all connected
-  clients. Recover an orphan manually from DO storage.
+  are appended to the `orphans` list, and a `conflict` message is sent to all connected clients.
 
-DO storage keys: `plan`, `rev`, `chat`, `d1seen` (fingerprint of D1 bytes already written or
-adopted), `orphan` (last unmerged REST write).
+The snapshot itself is a **compare-and-swap**: it writes
+`INSERT … ON CONFLICT(id) DO UPDATE … WHERE plans.rev=?`, with the revision the reconciliation just
+read, and reads its verdict from `meta.changes`. Zero rows touched means a PUT landed between the
+two round trips: the DO reconciles once more (adopting it, or setting it aside as an orphan and
+telling the clients) and retries exactly once. It no longer overwrites a fallback write it never saw.
+
+### Recovering a version set aside (`orphans`)
+
+The last **5** discarded versions are kept, oldest first, and are read back over the DO's internal
+route rather than by opening its storage by hand:
+
+```
+GET /orphans   on the PlanRoom stub, header X-Plan-Internal: 1
+-> {"orphans":[{"at":…,"by":…,"rev":…,"data":"<the JSON state>"}]}
+```
+
+Same guard and same reachability as `/revoke`: it is called over the `ROOM` binding from a Pages
+Function, never from the network-facing `fetch` (which serves `/ws` only). The Function side that
+exposes it to the household door is `/api/orphans`. A version whose bytes exceeded the storage
+ceiling is listed with `data: null`: the trace is kept even when the content could not be.
+
+DO storage keys: `planId` (WHICH row is this object's own), `plan`, `rev`/`opCount`, `chat`,
+`d1seen` (fingerprint of D1 bytes already written or adopted), `orphans` (the last 5 unmerged REST
+writes).
 
 ### Client/server deployment order
 

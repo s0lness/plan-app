@@ -964,6 +964,8 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false, planId = 
       if (typeof a === "string") kv.set(a, b);
       else for (const [k, v] of Object.entries(a)) kv.set(k, v);
     },
+    async delete(k: DonneeDynamique) { return kv.delete(k); },
+    async deleteAll() { kv.clear(); },
     async getAlarm() { return alarmAt; },
     async setAlarm(t: DonneeDynamique) { alarmAt = t; },
     async deleteAlarm() { alarmAt = null; },
@@ -1428,6 +1430,8 @@ function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main" }: {
       if (typeof a === "string") kv.set(a, b);
       else for (const [k, v] of Object.entries(a)) kv.set(k, v);
     },
+    async delete(k: DonneeDynamique) { return kv.delete(k); },
+    async deleteAll() { kv.clear(); },
     async getAlarm() { return alarmAt; },
     async setAlarm(t: DonneeDynamique) { alarmAt = t; },
     async deleteAlarm() { alarmAt = null; },
@@ -1506,7 +1510,7 @@ function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main" }: {
   const v = await f.room.reconcileD1(true);
   ok(v.kind === "conflict", "DO au travail + ecriture REST -> conflit");
   ok(f.room.plan.cells[0].name === "Vu par le live", "le DO garde son etat (quelqu'un edite dessus)");
-  const orphan = f.kv.get("orphan");
+  const orphan = f.kv.get("orphans").at(-1);
   ok(orphan && JSON.parse(orphan.data).cells[0].name === "Ecrit par le repli", "les octets etrangers sont CONSERVES");
   ok(orphan.by === "b@example.com" && orphan.bytes > 0, "l'orphelin sait de qui et de quand il vient");
   const dit = ws.sent.find((m) => m.t === "conflict");
@@ -1528,6 +1532,66 @@ function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main" }: {
   ws.sent.length = 0;
   await messageSocket(f.room, ws, JSON.stringify({ t: "hello" }));
   ok(!ws.sent.some((m) => m.t === "conflict"), "le present n'est pas prevenu deux fois");
+}
+// ---- LES VERSIONS ECARTEES SONT UNE LISTE BORNEE, ET ELLES SONT JOIGNABLES ----------------------
+// `orphan` etait une cle UNIQUE : le deuxieme conflit ecrasait le premier, et le seul moyen de
+// relire une version ecartee etait d'ouvrir le storage du Durable Object a la main. Cote client,
+// un refus est deja mis de cote dans les 5 dernieres (`room-planner-v4-conflit`) : meme regle ici.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", op: { kind: "cell.set", cellId: "c1", name: "Live" } }));
+  const ecarte = async (nom: string, qui: string) => {
+    const p = sanitizeState(v5State()); p.cells[0].name = nom;
+    f.putRest(p, qui);
+    await f.room.reconcileD1(true);
+  };
+  await ecarte("Repli 1", "b@example.com");
+  await ecarte("Repli 2", "c@example.com");
+  const liste = f.kv.get("orphans");
+  ok(Array.isArray(liste) && liste.length === 2, "deux conflits successifs gardent DEUX versions, vu " + (liste && liste.length));
+  ok(liste.map((o: DonneeDynamique) => JSON.parse(o.data).cells[0].name).join("|") === "Repli 1|Repli 2",
+    "et dans l'ordre, la plus recente en dernier");
+
+  const req = (headers: Record<string, string>) =>
+    new Request("https://plan-live-internal/orphans", { method: "GET", headers });
+  const refuse = await f.room.fetch(req({}));
+  ok(refuse.status === 403, "sans l'en-tete interne, /orphans est refuse (meme garde que /revoke)");
+  const res = await f.room.fetch(req({ "X-Plan-Internal": "1" }));
+  const corps = await res.json<DonneeDynamique>();
+  ok(res.status === 200 && Array.isArray(corps.orphans) && corps.orphans.length === 2,
+    "/orphans rend les versions ecartees, vu " + JSON.stringify(corps).slice(0, 120));
+  ok(Object.keys(corps.orphans[0]).sort().join(",") === "at,by,data,rev",
+    "contrat de reponse : {orphans:[{at, by, rev, data}]}, vu " + Object.keys(corps.orphans[0]).sort().join(","));
+  ok(corps.orphans[1].by === "c@example.com" && JSON.parse(corps.orphans[1].data).cells[0].name === "Repli 2",
+    "la version rendue est bien celle qui a ete ecartee");
+
+  for (let i = 3; i <= 8; i++) await ecarte("Repli " + i, "d@example.com");
+  const bornee = f.kv.get("orphans");
+  ok(bornee.length === 5, "la liste est bornee aux 5 dernieres, vu " + bornee.length);
+  ok(JSON.parse(bornee[0].data).cells[0].name === "Repli 4", "et ce sont les DERNIERES, vu " + JSON.parse(bornee[0].data).cells[0].name);
+}
+// Un invite est prevenu comme le foyer : `told` est indexe sur l'ETIQUETTE d'appareil, pas sur
+// l'email, qui est vide pour tout invite (donc un seul invite prevenu les faisait tous passer
+// pour prevenus).
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const menage = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, menage, JSON.stringify({ t: "op", op: { kind: "cell.set", cellId: "c1", name: "Live" } }));
+  const p = sanitizeState(v5State()); p.cells[0].name = "Repli";
+  f.putRest(p, "b@example.com");
+  await f.room.reconcileD1(true);
+  const i1 = f.mkWs("", "ggg111", { guest: true, name: "Marie", guestId: "g1", token: "tokA" });
+  const i2 = f.mkWs("", "ggg222", { guest: true, name: "Leo", guestId: "g2", token: "tokB" });
+  await messageSocket(f.room, i1, JSON.stringify({ t: "hello" }));
+  ok(i1.sent.some((m: DonneeDynamique) => m.t === "conflict"), "le premier invite est prevenu");
+  await messageSocket(f.room, i2, JSON.stringify({ t: "hello" }));
+  ok(i2.sent.some((m: DonneeDynamique) => m.t === "conflict"), "le SECOND invite aussi (told est par appareil, pas par email vide)");
+  i1.sent.length = 0;
+  await messageSocket(f.room, i1, JSON.stringify({ t: "hello" }));
+  ok(!i1.sent.some((m: DonneeDynamique) => m.t === "conflict"), "et chacun une seule fois");
 }
 // ---- LE SNAPSHOT EST LUI AUSSI UN COMPARE-AND-SWAP ---------------------------------------------
 // `alarm()` faisait deux allers-retours : relire, puis ecrire SANS clause `WHERE`. Un PUT
