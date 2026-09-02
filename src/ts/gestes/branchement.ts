@@ -1,13 +1,9 @@
-// src/ts/gestes/branchement.ts: WHERE GESTURES LAND ON THE RENDER.
+// src/ts/gestes/branchement.ts: WHERE GESTURES LAND ON THE RENDER. The render creates the nodes
+// and calls `ctx.gestes.*`, knowing NOTHING about gestures; this module is the only place that
+// fills in that table, so touching a gesture never reopens the render crossroads.
 //
-// The render (batch E3a) creates the nodes and calls `ctx.gestes.*`: it knows NOTHING about
-// gestures. This module is the only place that fills in that table, and it is deliberate: in the
-// old client, a furniture item's `pointerdown` was written IN THE MIDDLE of `renderPieces` (js/12),
-// so touching a gesture reopened the render crossroads (coupling #1 in `src/README.md`).
-//
-// G-9 / G-10. PRESS TAKES WHAT IS SELECTED, THE COMPLETED CLICK STEPS DOWN ONE LEVEL. The two
-// families (furniture and openings) share the SAME arbiter, `pickStacked`, and each must know how
-// to redirect to the other: `dataset.op === "1"` marks an opening.
+// G-9/G-10: the two families (furniture and openings) share the SAME arbiter, `pickStacked`, and
+// each must know how to redirect to the other: `dataset.op === "1"` marks an opening.
 
 import type { Contexte } from "../app/contexte.ts";
 import { pieceById, v5OpeningById, v5Touch } from "../app/contexte.ts";
@@ -58,14 +54,9 @@ export function brancherGestes(ctx: Contexte): void {
   };
 
   /**
-   * THE LABEL UNDER THE POINTER, VIA A REAL COLLISION TEST, AND ABOVE ALL NOT VIA `e.target`.
-   *
-   * Measured: `e.target` is UNUSABLE here. The first click starts a drag, which takes
-   * POINTER CAPTURE on the `.piece` node; from then on Chrome re-targets every subsequent mouse
-   * event, including `click` and `dblclick`, to that node. A listener placed on `.plabel` therefore
-   * NEVER fires on the second click, and the spy proved it: three events, three times the
-   * `.piece` target, while `elementFromPoint` was correctly returning `.plabel` at the same instant.
-   * A collision test redone on the fly ignores the capture.
+   * THE LABEL UNDER THE POINTER, VIA A REAL COLLISION TEST, NEVER VIA `e.target`: the first click
+   * takes POINTER CAPTURE on the `.piece` node, so Chrome re-targets every later mouse event
+   * (including `dblclick`) to that node, and a listener on `.plabel` never fires again.
    */
   const etiquetteSous = (e: MouseEvent, sel: string): HTMLElement | null => {
     if (!document.elementsFromPoint) return null;

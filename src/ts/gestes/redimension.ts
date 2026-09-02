@@ -1,18 +1,10 @@
-// src/ts/gestes/redimension.ts: RESIZING A PIECE OF FURNITURE BY ITS HANDLES.
-// Ported from src/js/18-redimension.js.
+// src/ts/gestes/redimension.ts: RESIZING A PIECE OF FURNITURE BY ITS HANDLES. Works in the
+// piece's LOCAL frame: the ANCHOR (opposite corner/edge) is fixed in world space once at pickup,
+// then every frame re-derives w/h from the pointer's offset along local axes (same rule as G-19).
 //
-// The gesture works in the piece's LOCAL frame, so a rotated piece resizes along
-// ITS OWN axes. The ANCHOR (the OPPOSITE corner or edge) is fixed in world space: it is computed
-// once at pickup, then every frame re-derives w/h from the pointer's offset measured along the
-// local axes from that anchor, and repositions the center so the anchor doesn't move. This is the
-// same rule as G-19 for openings: "what is under the cursor is what moves."
-//
-// G-1, AND THIS IS WHERE THE DEFECT WAS FOUND. A digit typed during a resize used to
-// leave the gesture OPEN: keyboard listening must survive the release (you're still typing your
-// number), but the GESTURE itself must end right away. Without this separation, `gestureActive`
-// stayed true forever, `save()` bailed out on every call, and the whole session
-// would disappear on reload, without a single message. Hence `releaseWsDrag()`, deliberately SEPARATE from
-// `finish()`.
+// G-1: a digit typed during a resize must not leave the gesture OPEN (keyboard listening survives
+// the release, but the GESTURE itself must end right away, or `gestureActive` never clears and
+// the whole session disappears on reload). Hence `releaseWsDrag()`, deliberately separate from `finish()`.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Meuble } from "../partage/plan.ts";

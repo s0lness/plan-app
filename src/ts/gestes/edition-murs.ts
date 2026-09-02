@@ -1,15 +1,8 @@
-// src/ts/gestes/edition-murs.ts: THE OUTLINE'S ORTHOGONAL SNAP AND ITS GUIDES.
-// Ported from src/js/15-edition-murs.js (`orthoTol`, `orthoSnapAxis`, `orthoSnapVertex`,
-// `clearStitchGuides`, `drawOrthoGuides`, `checkShapeWarn`).
-//
-// The snap pulls the moved vertex so its incident edges become AXIAL as soon as another
-// vertex of the SAME polygon shares an X/Y within tolerance. Both axes can snap, which
-// gives a 90° corner. ORDER: the caller applies the GRID first, then this.
-//
-// THE OUTLINE MUST NOT SELF-INTERSECT, AND ONLY ONE PLACE SAYS SO: the wall card (`#rcWarn`,
-// `#wallCard` since 2026-09-02), which follows a selected facade or corner. The old `#shapeWarn`
-// banner used to live INSIDE the config modal, hidden as soon as you edit the outline: it could
-// never display.
+// src/ts/gestes/edition-murs.ts: THE OUTLINE'S ORTHOGONAL SNAP AND ITS GUIDES. The snap pulls the
+// moved vertex so its incident edges become AXIAL as soon as another vertex of the SAME polygon
+// shares an X/Y within tolerance. Both axes can snap, giving a 90° corner. Order: the caller
+// applies the GRID first, then this. The outline must not self-intersect, said by only one place,
+// the wall card (`#rcWarn`), which follows a selected facade or corner.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Pt } from "../partage/plan.ts";

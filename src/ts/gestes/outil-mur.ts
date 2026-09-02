@@ -1,14 +1,8 @@
-// src/ts/gestes/outil-mur.ts: THE WALL TOOL'S CHAIN, PURE.
-//
-// A wall is drawn CLICK-CLICK, the way every comparable planner draws one: a click sets the start,
-// the wall follows the pointer, the next click sets the arrival AND becomes the start of the
-// following segment. A double-click, Enter or Escape ends the chain; Escape on a start that was
-// never laid leaves the tool. That is the whole grammar, and it is three functions.
-//
-// PURE, and that is the point: no `Contexte`, no DOM, no plan, no snapping (the caller decides
-// WHERE a point lands, this module decides only WHAT a click means). `tests/rapide.ts` drives it
-// without a browser, so the rule that used to live inside a `pointerdown` closure is now something
-// a test can state.
+// src/ts/gestes/outil-mur.ts: THE WALL TOOL'S CHAIN, PURE. A wall is drawn CLICK-CLICK: a click
+// sets the start, the next click sets the arrival AND becomes the start of the next segment. A
+// double-click, Enter or Escape ends the chain; Escape on a start never laid leaves the tool.
+// PURE (no `Contexte`, no DOM, no plan, no snapping): the caller decides WHERE a point lands,
+// this module decides only WHAT a click means, so `tests/rapide.ts` drives it without a browser.
 
 import type { Pt } from "../partage/plan.ts";
 

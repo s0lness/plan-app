@@ -1,40 +1,15 @@
 // src/ts/gestes/pose.ts: PLACEMENT: ARM, AIM, PLACE.
-// Ported from src/js/16-pose-meubles.js in its entirety, plus `wallMountPreviewApt`
-// (src/js/05-espace-appartement.js), which only has takers in this file: the placement ghost and
-// the refusal probe. Porting it here keeps the PROBE next to the PLACEMENT; `modele/espace.ts` only
-// keeps what describes the apartment (`meubleWallSnap`, `wallSnapReach`, `NO_WALL_MSG`).
 //
-// THREE INVARIANTS LIVE HERE, and none of them is visible reading the old code.
+// G-21 (you see what you're placing during the gesture: `resolveColor`/`withAlpha` read the CSS
+// variable before appending alpha, one implementation `makePlacePreview` for hover/drag/palette),
+// G-22 (placement is drag-and-drop, the click arms it; anti-stacking `STACK_RING`, 24 offsets,
+// after bounding to the cell), G-1 (armed placement arms through `armGesture`; INHERITED,
+// FLAGGED, NOT FIXED: `startPaletteDrag`'s own mouse listeners on `window` don't raise
+// `gestureActive`, so a focus loss during that specific drag leaves the ghost on screen), G-16
+// (depth follows the wall downward, via `v5PlaceWallMount`).
 //
-//  G-21 YOU SEE WHAT YOU'RE PLACING, DURING THE GESTURE. The ghost used to be a plain rectangle whose
-//       background was `t.color + "55"`, but `t.color` is `var(--seat)`: the string `var(--seat)55` is
-//       NOT a valid CSS color, so it was ignored. Measured headless, the rendered ghost's `backgroundColor`
-//       = `rgba(0,0,0,0)`: entirely transparent background ON ALL FOUR PATHS. On
-//       screen you literally saw nothing until you let go. Hence `resolveColor` /
-//       `withAlpha` (rendu/couleurs.ts), which READ the CSS variable before appending the alpha, and
-//       hence the object's REAL icon rather than a box. A SINGLE IMPLEMENTATION
-//       (`makePlacePreview`), served to armed hover, armed drag AND dragging from the
-//       palette: "three copies would have diverged at the first fix."
-//
-//  G-22 PLACEMENT IS A DRAG-AND-DROP, AND THE CLICK ARMS IT. A click on a thumbnail used to make
-//       the object APPEAR at the cursor's last known position, so somewhere other than under the
-//       hand: "you didn't know what you were about to place until it was placed," and ten quick clicks
-//       gave ten objects at the same pixel (the screen showed one, the furniture list
-//       counted ten). Fallback anti-stacking: `STACK_RING`, 24 offsets, applied AFTER the
-//       bounding to the cell. And a double-click is ONE gesture, not two (`detail >= 2`).
-//
-//  G-1  EVERY GESTURE HAS A SINGLE EXIT POINT. Armed placement arms through `armGesture` and never
-//       listens to `pointerup` itself. INHERITED EXCEPTION, FLAGGED AND NOT FIXED: dragging
-//       from the palette with the mouse (`startPaletteDrag`) installs its own `pointermove` /
-//       `pointerup` on `window`, exactly like the old client. It doesn't raise `gestureActive`,
-//       so it can't make the application go mute; but a window focus loss during
-//       this drag leaves the ghost on screen. This is a defect of the original, not of the port.
-//
-//  G-16 the DEPTH of a placed opening follows its wall, downward, without a word: the rule is
-//       held by `v5PlaceWallMount` (modele/edition.ts), placement only calls it.
-//
-// NO IMPLICIT GLOBAL STATE: the plan, the view and the viewport arrive through `ctx`. What stays
-// private to the module is the only state that belongs to no one else: THE ARMED PLACEMENT.
+// NO IMPLICIT GLOBAL STATE: plan/view/viewport arrive through `ctx`. What stays private to the
+// module is THE ARMED PLACEMENT.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Meuble, Ouverture, PlanV5 } from "../partage/plan.ts";

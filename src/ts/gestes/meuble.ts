@@ -1,25 +1,11 @@
-// src/ts/gestes/meuble.ts: DRAG, ROTATE, DRAG A GROUP.
-// Ported from src/js/17-drag-meubles.js, verbatim in its arithmetic.
+// src/ts/gestes/meuble.ts: DRAG, ROTATE, DRAG A GROUP. THE APPLICATION'S CENTRAL GESTURE.
 //
-// THIS IS THE APPLICATION'S CENTRAL GESTURE, and six invariants live here. None of them is a
-// logic error visible on a read-through: all were found by measurement, on the real floor plan.
+// G-3 (selecting never writes, `pushHistory()` on FIRST MOVEMENT not `pointerdown`), G-4 (picking
+// up doesn't move it), G-5 (round trip returns exactly: the corner is rounded ONCE, never the
+// center then re-derived), G-12 (Escape restores exactly).
 //
-//  G-3  SELECTING NEVER WRITES. `pushHistory()` is pushed on the FIRST MOVEMENT, not on
-//       `pointerdown`.
-//  G-4  PICKING UP A PIECE OF FURNITURE DOES NOT MOVE IT.
-//  G-5  THE ROUND TRIP RETURNS TO THE STARTING POINT. The corner follows the hand to the whole
-//       centimetre, rounded ONCE (rounding the center then re-deriving the corner would gain 1 cm
-//       per cycle on an odd width), and every magnet is a pure function of that position, so the
-//       same hand position always gives back the same placement.
-//  G-12 ESCAPE PUTS THE OBJECT BACK EXACTLY IN PLACE: each variant supplies its own restoration to
-//       `armGesture`.
-//
-// NOTHING PUSHES FURNITURE ANY MORE. A piece may straddle a wall: it is never repelled, never
-// brought home, never bounded. What places it is a MAGNET (the wall, an aligned neighbour, a table
-// for a chair), and Alt suspends every one of them for the length of one gesture.
-//
-// A SINGLE FRAME OF REFERENCE: the pointer is read in the viewport and converted to APARTMENT cm. No
-// container bbox, no re-hosting: a piece of furniture has apartment coordinates, period.
+// NOTHING PUSHES FURNITURE ANY MORE (G-7): what places it is a MAGNET, and Alt suspends every one
+// for the gesture. A single frame of reference: the pointer converts to APARTMENT cm, no bbox re-hosting.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Meuble, Ouverture } from "../partage/plan.ts";

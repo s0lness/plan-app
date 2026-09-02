@@ -1,43 +1,14 @@
-// src/ts/gestes/ouverture.ts: OPENINGS THAT GET DRAGGED AND RESIZED.
-// Ported from src/js/53-v5-outils.js (`v5DrawOpeningGuides`, `v5StartOpeningDrag`) and from
-// src/js/56-ouverture-redim.js (EVERYTHING: handles, the width gesture, the bound slate).
+// src/ts/gestes/ouverture.ts: OPENINGS THAT GET DRAGGED AND RESIZED. An opening has NO
+// coordinates of its own: it belongs to its wall (`wallId`, `t0`, `side`), depth `h` is its
+// thickness within that wall, so neither gesture ever touches x/y.
 //
-// An opening has NO coordinates of its own: it belongs to its wall (`wallId`, `t0`, `side`)
-// and its depth `h` is the thickness of the object WITHIN that wall. So the two gestures here never
-// touch an x/y: the drag only changes the supporting wall and `t0`, resizing only
-// changes `w` (and `t0` when it's the edge on the corner-A side being pulled).
+// G-1 (both gestures arm through `armGesture`, never listen to `pointerup` themselves), G-3
+// (`pushHistory()` falls on the first 3px movement, never `pointerdown`), G-12 (Escape restores
+// exactly), G-16 (depth follows the wall DOWNWARD only, `v5FlushOpeningThinned` says so), G-19
+// (an opening resizes at its handles, opposite edge fixed, every bound stated).
 //
-// FOUR INVARIANTS LIVE HERE.
-//
-//  G-1  Both gestures arm through `armGesture(finish, null, cancel)` and NEVER listen to
-//       `pointerup` themselves: focus loss, `pointercancel` and the watchdog count
-//       just as much as the release.
-//  G-3  SELECTING NEVER WRITES. `pushHistory()` falls on the FIRST 3 px movement, never on
-//       `pointerdown`: a clean click on a window (or on one of its handles) selects it,
-//       period.
-//  G-12 ESCAPE restores EXACTLY the prior state: the supporting wall, `t0`, the face, the width and
-//       the depth for the drag; the width and the position for the handle.
-//  G-16 DEPTH IS BOUNDED BY THE WALL'S THICKNESS. Dragging can change the supporting wall:
-//       `v5MoveOpeningTo` makes the depth follow DOWNWARD, never upward, Escape
-//       restores it, and `v5FlushOpeningThinned` SAYS SO on release.
-//  G-19 AN OPENING RESIZES AT ITS HANDLES, OPPOSITE EDGE FIXED, AND EVERY BOUND IS STATED.
-//       The three arbitration rules are copied at the top of the "resize" block, right where they apply.
-//
-// WHAT THE PORT CHANGES, AND IT IS THE ONLY DELIBERATE DEPARTURE: THE `renderV5` WRAPPER DISAPPEARS.
-// The old js/56 used to end with `const base=renderV5; renderV5=function(){ base(...); …}`, a
-// wrapper installed at runtime, solely because js/50 and js/54 were owned by another
-// workstream, which forced the manifest to keep js/56 AFTER js/50 (wrapping a function not
-// yet defined under that name would have broken startup). Its own comment already said that
-// "a direct call, added at the end of renderV5(), remains the definitive place for this line."
-// With real ES modules there is no longer a concatenation order to respect: this module EXPOSES
-// `v5DrawOpeningResize(ctx)` and wraps nothing. Bootstrap wires it once
-// (`main.ts`: `ctx.crochets.apresRendu = () => v5DrawOpeningResize(ctx)`), so it is called at the
-// end of EVERY `render()`, which the wrapper achieved by attaching to the end of `renderV5()`, and
-// `rendu/` still imports no gesture module. A function called by its name, instead of
-// a variable reassigned after the fact: it's the same line, but it is READABLE from
-// bootstrap, and the wrapper's `try/catch` no longer has a reason to exist since it no longer inserts
-// itself behind anyone's back. The only point of caution is that `apresRendu` is a SINGLE slot:
-// the batch that adds ghosts and cursors to it will have to CHAIN, not replace.
+// Bootstrap wires `v5DrawOpeningResize(ctx)` once (`main.ts`: `ctx.crochets.apresRendu`), called
+// at the end of EVERY `render()`. `apresRendu` is a SINGLE slot: a future addition must CHAIN, not replace.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Ouverture } from "../partage/plan.ts";

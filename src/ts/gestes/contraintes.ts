@@ -1,22 +1,11 @@
-// src/ts/gestes/contraintes.ts: WHAT HOLDS A PIECE OF FURNITURE BACK: the wall inset, and the chair/table snap.
-// Ported from src/js/19-contraintes.js.
+// src/ts/gestes/contraintes.ts: WHAT HOLDS A PIECE OF FURNITURE BACK: the wall inset, and the
+// chair/table snap. Two invariants: G-6 (each iteration of `clampCenterToInset` must REDUCE the
+// penetration, or it's discarded) and G-5 (`snapChairToTable` only attracts within a radius, it
+// does not teleport).
 //
-// TWO INVARIANTS LIVE HERE, and both were paid for by a measured incident:
-//   G-6 "bounds can never push farther away": each iteration of `clampCenterToInset` must
-//       REDUCE the penetration, or it is discarded. Without this guard, a sofa dropped in a
-//       too-narrow room would jump 372 cm, outside the flat.
-//   G-5 "the round trip returns to the starting point": `snapChairToTable` only attracts within a
-//       radius (`CHAIR_SNAP_MAX`), it does not TELEPORT.
-//
-// A GESTURE ON FURNITURE NEVER COMES THROUGH HERE ANY MORE. Dragging, dropping and resizing bound
-// nothing: a piece may straddle a wall, and the wall magnet (`meubleWallSnap`, modele/espace.ts) is
-// what settles it. `clampCenterToInset` survives for the paths that place furniture WITHOUT a hand
-// on it (the keyboard, the inspector, the Circulation fixes, orphan repair after a wall moves), all
-// of them through `v5ClampPiece`.
-//
-// WHAT CHANGES COMPARED TO THE OLD CLIENT, and that is all: these functions used to read `state.plan`,
-// `state.pieces` and `state.opts` from the single closure. They now take the PLAN and the LAYERS as
-// ARGUMENTS. None of them render, none of them save, none of them announce anything.
+// A GESTURE ON FURNITURE NEVER COMES THROUGH HERE ANY MORE (G-7): dragging bounds nothing, the
+// wall magnet settles it. `clampCenterToInset` survives for paths that place furniture WITHOUT a
+// hand on it (keyboard, inspector, Circulation fixes, orphan repair), through `v5ClampPiece`.
 
 import { clamp, WALL } from "../noyau/nombres.ts";
 import { nearestOnPoly, pointInPoly, signedDistToPoly } from "../geometrie/polygones.ts";
@@ -64,18 +53,11 @@ export interface CentreBorne {
 
 // Push (cx,cy) inward so every rotated corner is >= WALL_INSET inside poly.
 // Returns {cx,cy,fits}; `fits:false` = the object does NOT FIT inside the polygon, it overflows.
-// RULE: a clamp can NEVER move an object farther from its arrival position. Each iteration
-// must REDUCE the penetration, or it is discarded and we stop there. Without this guard, a
-// piece of furniture bigger than the cell would receive four opposing pushes that ADDED UP: the
-// sofa dropped in a too-narrow room would jump 372 cm on release, outside the flat,
-// where it wasn't even reachable anymore. A tolerated (and announced) overflow beats a
-// catapulted object; it is also what makes a bed too big for its room movable again,
-// where every drag used to snap it back to its origin.
-// `tolIn` (cm): penetration ALREADY TOLERATED before the gesture. We don't correct what was accepted.
-// Without it, putting a piece of furniture back EXACTLY where it was would shift it a few centimeters
-// (converted plans have furniture placed flush against the wall, under the inset): the round trip
-// never returned to the starting point, and the drift would freeze in on the first cycle. We now
-// only prevent going FURTHER into the wall, we no longer push back what was already there.
+// RULE (G-6): a clamp can NEVER move an object farther from its arrival position; each iteration
+// must REDUCE the penetration, or it's discarded and we stop there. A tolerated (and announced)
+// overflow beats a catapulted object.
+// `tolIn` (cm): penetration ALREADY TOLERATED before the gesture, so putting a piece back exactly
+// where it was (flush against the wall, under the inset) doesn't drift on the round trip (G-5).
 export function clampCenterToInset(
   cx: number, cy: number, w: number, h: number, rotDeg: number,
   poly: readonly Pt[] | null | undefined, tolIn?: number,
@@ -88,21 +70,11 @@ export function clampCenterToInset(
   const IRREDUCTIBLE = 5;
   let bx = cx, by = cy, bw = insetWorst(cx, cy, w, h, rotDeg, poly);
   if (bw <= TOL) return { cx: bx, cy: by, fits: true };
-  // THE CORRECTION IS AN AVERAGE, NOT A SUM, and this is a fix, not a detail.
-  // Each corner that bites produces the vector that is ENOUGH to bring it back in. Adding them up
-  // applied the correction ONCE PER CORNER: two corners out, twice too far; four corners,
-  // four times. Measured before the fix: a 45×40 object overflowing 10 cm to the right was moved
-  // 67 cm instead of 33, and a bed dropped into a corner would fly 203 cm from the hand. That is what
-  // "it sends it way too far" means: the object didn't settle AGAINST the wall, it
-  // shot across the room. The iteration count goes from 4 to 16: an average converges in small
-  // steps where a sum used to overshoot (and swing back the other way on the next iteration).
+  // Summing the four corners' corrections applies the correction once PER CORNER (twice too far
+  // with two out, four times with four), so we correct the MOST DEEPLY PENETRATING corner alone,
+  // at full correction, and let the others catch up on subsequent passes (16 iterations).
   for (let iter = 0; iter < 16; iter++) {
     const corners = pieceCorners(bx, by, w, h, rotDeg);
-    // WE CORRECT THE MOST DEEPLY PENETRATING CORNER, AND IT ALONE. Adding up the four corrections
-    // applied the correction once PER CORNER (two corners out = twice too far, four
-    // corners = four times); averaging them stops overshooting but no longer quite gets there.
-    // The worst corner, at full correction, takes exactly the step needed, and the others catch up
-    // on subsequent passes.
     let mvx = 0, mvy = 0, pire = -Infinity;
     for (const [px, py] of corners) {
       const sd = signedDistToPoly(px, py, poly);   // >0 inside, distance to nearest edge
@@ -125,24 +97,11 @@ export function clampCenterToInset(
     bx = nx; by = ny; bw = nw;
     if (bw <= TOL) break;
   }
-  // WHAT DOESN'T FIT DOESN'T MOVE. An object bigger than its cell has its four corners
-  // pushing in OPPOSITE directions: no position satisfies them all, and "the least
-  // bad one" makes no sense, which is how a 220 cm sofa dropped in a 170 cm corridor
-  // used to fly 372 cm away, outside the flat, neither reachable nor recoverable via "Fit". So we
-  // leave it UNDER THE HAND and we SAY SO (`fits:false`, which the caller turns into a banner).
-  // This is not at odds with "as close to the limit as possible": settling against the wall only
-  // makes sense for what CAN settle there.
+  // WHAT DOESN'T FIT DOESN'T MOVE: an object bigger than its cell has its four corners pushing in
+  // opposite directions, so "the least bad position" makes no sense; leave it under the hand and
+  // say so (`fits:false`). Distinguish that from small residual penetration (not yet converged,
+  // where the best position found is genuinely "as close to the limit as possible").
   if (bw > TOL) {
-    // TWO DIFFERENT FAILURES, AND THEY DON'T CALL FOR THE SAME RESPONSE.
-    //
-    // HUGE residual penetration = the object is bigger than its cell: its corners push
-    // in opposite directions, no position satisfies them, and "the least bad one" doesn't
-    // exist. We leave it UNDER THE HAND (this is the 220 cm sofa in the 170 cm corridor, which used
-    // to fly 372 cm outside the flat).
-    //
-    // SMALL residual penetration = we simply haven't finished converging. Here, the best
-    // position found really is "as close to the limit as possible," and returning it is exactly
-    // what we want: keeping it frozen would lock in place an object that just needs one more centimeter.
     if (bw > TOL + IRREDUCTIBLE) return { cx: cx0, cy: cy0, fits: false };
     return { cx: bx, cy: by, fits: false };
   }
@@ -228,22 +187,16 @@ export function snapChairToTable(
   else                 { ly = clamp(c.ly, -c.extent + cw, c.extent - cw); }
   // back to world
   const wx = tcx + lx * ca - ly * sa, wy = tcy + lx * sa + ly * ca;
-  // A SNAP ATTRACTS, IT DOES NOT TELEPORT. A chair dropped on the top of a large table
-  // used to be shot to the nearest edge: measured, 168 cm of jump plus a rotation thrown in,
-  // at the exact moment you thought you were putting it back where it was. Beyond CHAIR_SNAP_MAX, we
-  // leave the chair wherever the hand put it.
+  // A SNAP ATTRACTS, IT DOES NOT TELEPORT (G-5): beyond CHAIR_SNAP_MAX, leave the chair wherever
+  // the hand put it.
   if (Math.hypot(wx - ccx, wy - ccy) > CHAIR_SNAP_MAX) return null;
   p.x = Math.round(wx - p.w / 2); p.y = Math.round(wy - p.h / 2);
   // chair front (+y local) must face the table: front = -edge-normal (in table local), then to world
   const fnx = -c.nrm.x, fny = -c.nrm.y;                       // local front dir (toward table)
   const wfx = fnx * ca - fny * sa, wfy = fnx * sa + fny * ca; // world front dir
-  // rot such that rotating the chair's own front (0,1) by `rot`, THE SAME WAY THE RENDERER
-  // ROTATES IT (pieceCorners/CSS `rotate(deg)`: world=(lx*ca'-ly*sa', lx*sa'+ly*ca')), lands on
-  // (wfx,wfy). For lx=0,ly=1 that world vector is (-sin(rot), cos(rot)), so
-  // wfx=-sin(rot) and wfy=cos(rot) => rot = atan2(-wfx, wfy), NOT atan2(wfx, wfy).
-  // MEASURED BUG: atan2(wfx,wfy) mirrors left/right (a chair docked on either side of the table
-  // came out rotated 180deg from the other side's correct answer, backrest toward the table
-  // instead of away from it; top/bottom were accidentally right because wfx=0 there).
+  // rot such that rotating the chair's own front (0,1) the SAME WAY THE RENDERER does (CSS
+  // `rotate(deg)`) lands on (wfx,wfy): rot = atan2(-wfx, wfy), NOT atan2(wfx, wfy) (which mirrors
+  // left/right, backrest toward the table instead of away from it).
   p.rot = ((Math.round(Math.atan2(-wfx, wfy) * 180 / Math.PI) % 360) + 360) % 360;
   return { x: wfx, y: wfy };
 }

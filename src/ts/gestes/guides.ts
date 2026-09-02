@@ -1,19 +1,11 @@
 // src/ts/gestes/guides.ts: THE LIVE DIMENSIONS OF THE DRAG, and the alignment snap.
-// Ported from src/js/20-guides.js, plus `aptToLayerPx` (src/js/07-pieces-persistance.js) and
-// `pieceAABB` (src/js/34-flow-contexte.js), which had no port yet and for which this module is
-// the first taker.
 //
-// G-5 IS HELD HERE, and it is the most expensive line in the file: `alignSnap` TRUNCATES its
-// delta toward zero. We used to apply `Math.round(p.x + delta)`; an odd width puts the center on a
-// half-centimeter, the rounding used to OVERSHOOT the targeted line, and the furniture would
-// oscillate by ±2 cm forever.
+// G-5 is held here: `alignSnap` TRUNCATES its delta toward zero (`Math.round` used to overshoot
+// on an odd width, oscillating the furniture by ±2cm forever).
 //
-// TWO FAMILIES IN THE SAME FILE, and the boundary is sharp:
-//   - PURE: `rayToPoly`, `alignSnap`, `openingWallInfo`, `pieceAABB`, `rotatePieceWithChairs`.
-//     They take the PLAN, never the context, and touch no node.
-//   - EPHEMERAL DOM: `clearGuides`, `drawAlignLines`, `drawGuides`, `addGuideLine`, `addGuideSeg`.
-//     They take the CONTEXT, because they need the layer (`focusEl`) and the scale.
-// None of them render, none of them save, none of them announce anything.
+// Two families, sharp boundary: PURE (`rayToPoly`, `alignSnap`, `openingWallInfo`, `pieceAABB`,
+// `rotatePieceWithChairs`), which take the PLAN and touch no node; EPHEMERAL DOM (`clearGuides`,
+// `drawAlignLines`, `drawGuides`, `addGuideLine`, `addGuideSeg`), which take the CONTEXT.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Meuble, Mur, Ouverture, PlanV5, Pt } from "../partage/plan.ts";
@@ -30,10 +22,8 @@ export interface PointCm {
   y: number;
 }
 
-/**
- * APARTMENT cm -> LOCAL px of the layer (src/js/07). The layer is positioned on the outline's
- * bbox: these px are therefore already relative to its corner, without going through the viewport.
- */
+/** APARTMENT cm -> LOCAL px of the layer, positioned on the outline's bbox: these px are already
+ * relative to its corner, without going through the viewport. */
 export function aptToLayerPx(ctx: Contexte, x: number, y: number): PointCm {
   const bb = aptBBox(ctx);
   return { x: (x - bb.minX) * ctx.vue.scale, y: (y - bb.minY) * ctx.vue.scale };
@@ -48,7 +38,7 @@ export interface AABB {
   cy: number;
 }
 
-/** AXIS-ALIGNED bounding box of a ROTATED piece of furniture, in cm (src/js/34). */
+/** AXIS-ALIGNED bounding box of a ROTATED piece of furniture, in cm. */
 export function pieceAABB(p: Pick<Meuble, "x" | "y" | "w" | "h" | "rot">): AABB {
   const cx = p.x + p.w / 2, cy = p.y + p.h / 2, a = (p.rot || 0) * Math.PI / 180;
   const ca = Math.cos(a), sa = Math.sin(a);

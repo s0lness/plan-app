@@ -1,25 +1,11 @@
-// src/ts/gestes/pile.ts: TWO OBJECTS AT THE SAME SPOT: THE ONE UNDERNEATH STAYS REACHABLE.
-// Ported from src/js/12-rendu.js (`pickStacked`, `STACK_TOL`, `STACK_MS`).
+// src/ts/gestes/pile.ts: TWO OBJECTS AT THE SAME SPOT: THE ONE UNDERNEATH STAYS REACHABLE (G-9/
+// G-10). Sole arbiter of the stack, called by the `pointerdown` of both FURNITURE and OPENINGS.
 //
-// G-9 / G-10, and it is the sole arbiter of the stack: it is called by the `pointerdown` of
-// FURNITURE and by that of OPENINGS, and it returns the NODE to act on.
-//
-// The real floor plan contains two wall lights exactly overlapping, and stacking is normal (a
-// hob on a worktop, a rug under a sofa). The node on top took 100% of the
-// clicks: "thinking you were grabbing one handle, you'd move the washing machine 74 cm without seeing it".
-//
-// TWO RULES, AND THEY ARE DISTINCT:
-//  · PRESS acts on whatever is SELECTED in the stack, otherwise on the top one;
-//  · it is the COMPLETED CLICK (press + release without movement, at the same spot) that steps down
-//    one level. Stepping down as soon as press fired made the object you'd just reached
-//    UNMOVABLE: the next drag, starting from the same pixel, would grab the next one in the stack.
-//
-// AND THE CYCLE KEY DOES NOT DEPEND ON SELECTION. `elementsFromPoint` gives the REAL paint
-// order, but `.piece.sel` raises the selected item to `z-index:50`: the stack would reorder on
-// every click, the key would change, and the cycle would restart from zero. Measured on five
-// stacked objects: twelve clicks only reached two of them, the three underneath stayed
-// UNREACHABLE. `stackedAt` therefore re-sorts on `data-paint`, the paint rank, and the key is the
-// sorted SET of identifiers.
+// Two distinct rules: PRESS acts on whatever is SELECTED in the stack, otherwise the top one; the
+// COMPLETED CLICK (press + release without movement) steps down one level (stepping down on press
+// would make the object just reached unmovable). The cycle key does NOT depend on selection:
+// `elementsFromPoint`'s real paint order is reordered by `.piece.sel`'s `z-index:50`, so
+// `stackedAt` re-sorts on `data-paint`, and the key is the sorted SET of identifiers.
 
 import type { Contexte } from "../app/contexte.ts";
 import { pieceById, v5OpeningById } from "../app/contexte.ts";
@@ -75,8 +61,8 @@ export function pickStacked(
         selReplace(ctx, nx.dataset["id"]); render(ctx); ctx.crochets.openInspector?.();
         _stkT = Date.now();
         const p = pieceById(ctx, nx.dataset["id"]) || v5OpeningById(ctx, nx.dataset["id"]);
-        // We only speak up WHEN STEPPING DOWN the stack: announcing every overlap (a rug
-        // under a sofa, a hob on a worktop) would pop a banner on every single grab.
+        // We only speak up WHEN STEPPING DOWN the stack: announcing every overlap would pop a
+        // banner on every single grab.
         toast(`${st.length} objects here: ${(p && p.name) || "object"} (${j + 1}/${st.length}). Click again for the next one.`, { geste: true });
       }, 0);
     };
