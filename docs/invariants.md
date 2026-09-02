@@ -680,14 +680,14 @@ laver" (Washing machine) by 8 cm**, because they were already encroaching on the
 3. **Alignment snapping overshot the targeted line.** `Math.round(p.x + delta)`: a delta of 1.5
    became 2, the next calculation found 0.5, rounded it back to 1, and **the furniture oscillated
    endlessly by ±2 cm**. It is now truncated **toward zero**; snapping becomes idempotent.
-**Plus a fourth**, priority given to the original position: a **long** gesture that puts a piece
-of furniture back within 6 cm of where it was placed by the second-to-last drag puts it back
-exactly there (`_avantDernier`, `js/17:243`). The condition applies to the **previous** gesture,
-not this one: it required a path of more than 50 cm, so the most common step (30 cm) never
-qualified, and the furniture oscillated endlessly (**62 exact returns out of 122 at 30 cm**).
+**Since decision 0011, there is no grid and nothing bounds furniture**: the corner is
+`Math.round(pointer − grab)`, rounded once, and every magnet is a pure function of that position,
+so the round trip is exact by construction. The fourth cause (`_avantDernier`, a memory of the
+placement before the previous drag) existed only to undo the bounding of the outbound leg: it went
+with the bounding.
 **Result** 6 exact out of 19 → 20 out of 20; 23 pieces of furniture out of 47 that didn't return →
 3 out of 47, no drift; **537 exact round trips out of 549, versus 468.**
-**Where** `js/17:172`, `js/17:202`, `js/20:54`.
+**Where** `gestes/meuble.ts`, `gestes/guides.ts` (`alignSnap`).
 **Verified** `gestes-precision.ts`: `aller_retour_idempotent`; `gestes-usage-reel.ts`:
 `aller_retour_revient_au_depart`.
 
@@ -701,18 +701,19 @@ worth more than a catapulted object."
 **Where** `js/19:26`.
 **Verified** `gestes-perte-de-travail.ts`: `meuble_trop_grand_ne_saute_pas`.
 
-### G-7. What was already overflowing keeps its overflow, and pushing further is refused outright
-**Guarantees** the **already acquired** penetration of a piece of furniture serves as a floor for
-interactive bounds correction; we prevent it from going **further** into the wall, we don't push
-back what was already there. Pushing further is refused, **never projected**.
-**Prevents** a converted plan places furniture straddling a wall, or even the outline wall.
-Measured: "Radiateur 3" (Radiator 3) started from **113 cm** in response to a push of 30,
-without a word, and its original spot became unreachable. And why refuse rather than project:
-**a projection slides along the outline wall, so the round trip never returns to the same
-spot** (1 cm per cycle, measured).
-**Where** `pieceTol` (`js/19:80`, in-memory scratchpad, "nothing is persisted: it describes what
-was read, not a property of the plan"), `hors0` (`js/17`), `clampCenterToApt` (`js/05:56`),
-`{gardeOrphelin}` (`js/52:287`).
+### G-7. A piece of furniture is never pushed back: the magnet places it
+**Guarantees** a gesture on furniture bounds nothing. A piece may straddle a wall, or the outline
+wall, and it stays exactly where the hand left it. What settles it is the wall magnet
+(`meubleWallSnap`, `modele/espace.ts`): its BACK within reach of a wall, it lands flush on the
+face, oriented with the wall. **Alt held suspends every magnet** for the length of the gesture.
+**Prevents** a converted plan places furniture straddling a wall. Measured: "Radiateur 3"
+(Radiator 3) started from **113 cm** in response to a push of 30, without a word, and its original
+spot became unreachable. Six rules used to hold that line together (`pieceTol`, `hors0`,
+`clampCenterToApt`, `{gardeOrphelin}`, `deltaScaleMax`, `_avantDernier`), each born from a bug in
+the previous one. Removing the pushing removes the need for all six: nothing to correct, nothing to
+remember.
+**Where** `meubleWallSnap` (`modele/espace.ts`), `gestes/meuble.ts`. Decision
+`docs/decisions/0011-l-aimant-remplace-les-regles.md`.
 
 ### G-8. No mass renormalization, and the banner belongs to whoever made the gesture
 **Guarantees** `v5ClampPieces()` only repositions **orphaned** furniture (center in no cell) and
@@ -779,13 +780,12 @@ as "not reproducible."**
 
 ### G-13. A gesture that produces nothing says why
 **Prevents** measured on the real plan: **a 45 × 50 cm chair didn't move a single centimeter,
-four drags in a row, in total silence.**
-**And its counterpart, G-13bis**: dropped here, put down there, it gets said. Measured: **an oven
-pushed 30 cm to the right ended up 28 cm to the left, without a word, and the user started
-over.** Threshold: 15 cm of gap between what the hand asked for and what the bounds correction
-delivered.
-**Where** `js/17:269`, `js/17:279`.
-**Verified** `gestes-usage-reel.ts`: `geste_sans_effet_dit_pourquoi`.
+four drags in a row, in total silence.** Its counterpart, G-13bis, said "dropped here, put down
+there" when the bounds moved a piece more than 15 cm from where the hand asked.
+**Since decision 0011 neither can happen to FURNITURE**: a drag always lands where the hand puts
+it, and the only thing that moves it afterwards is a magnet, which is wanted and visible. Both
+messages are gone with the bounding they explained. The invariant still holds for the gestures that
+CAN be refused (an opening on a wall too short, a facade that cannot be deleted).
 
 ### G-14. An armed tool wins, during the capture phase, over all handles
 **Prevents** a partition trace started **on** a wall (exactly what the tooltip asks for,

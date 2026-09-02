@@ -743,14 +743,15 @@ Four rules born from a real-use session where a simple click rewrote the floor p
   selects it. The corner-insertion "+" is **offset 18 px OUTSIDE the outline** (`v5OutlineOutward`,
   js/53 + js/54): on the outline wall it stole the click, and its global recomputation split the
   wall in two and moved 16 pieces of furniture.
-- **NO MASS RENORMALIZATION.** `v5ClampPieces()` (js/52) now adjusts ONLY ORPHAN furniture (center in
-  no cell) and announces it. `v5ClampPiece(p, tol)` remains the interactive bounding operation, with
-  the furniture's **already acquired penetration** (`pieceTol`, js/19) as its floor: prevent it from
-  entering FURTHER into the wall, do not push back what was already there.
-- **A ROUND TRIP RETURNS TO THE STARTING POINT.** The 5 cm grid counts STEPS from the start of the
-  gesture (never absolute position), and a LONG gesture that puts furniture within 6 cm of its
-  position before the previous drag returns it EXACTLY there (`_avantDernier`, js/17). Measured on
-  the real floor plan: 6 exact returns out of 19 before, 20 out of 20 after.
+- **NO MASS RENORMALIZATION.** `v5ClampPieces()` (js/52) adjusts ONLY ORPHAN furniture (center in
+  no cell) and announces it, once. `v5ClampPiece` remains for the paths that place furniture with no
+  hand on it (the keyboard, the inspector, the Circulation fixes); a GESTURE never calls it.
+- **NOTHING PUSHES FURNITURE BACK** (decision 0011). A piece may straddle a wall: dragging, dropping
+  and resizing bound nothing. What places it is a MAGNET, and Alt suspends every one of them for the
+  length of one gesture. Circulation reports the overlap; the gesture does not prevent it.
+- **A ROUND TRIP RETURNS TO THE STARTING POINT.** There is no grid: the corner is
+  `Math.round(pointer − grab)`, rounded ONCE, and every magnet is a pure function of that position,
+  so the same hand position always gives back the same placement.
 - **AN OBJECT HIDDEN UNDER ANOTHER REMAINS REACHABLE.** Clicking the same spot again moves down one
   step in the stack (`pickStacked`, js/12, shared with openings from js/54), and says so.
 Covered by `tests/gestes-usage-reel.ts` (9 tests, real mouse).
@@ -836,19 +837,18 @@ Covered by `tests/gestes-precision.ts` (7 tests, real mouse).
   (`pickStacked`, js/12). Moving down on `pointerdown` made the object just reached IMPOSSIBLE TO
   MOVE: the next drag, starting from the same pixel, picked the next item in the stack. The next step
   is therefore chosen on release, only if the pointer did not move.
-- **ROUND THE CORNER, ONCE** (js/17). The CENTER was rounded and the corner derived from it: with an
-  ODD width (a 45 cm chair), the center falls on a half centimeter and `Math.round` rounds upward,
-  so every round trip gained 1 cm forever. Same requirement for alignment snapping (`alignSnap`,
-  js/20): the delta is TRUNCATED TOWARD ZERO, otherwise it overshot the target line and the object
-  oscillated indefinitely by ±2 cm.
-- **WHAT ALREADY OVERFLOWED KEEPS ITS OVERFLOW** (`pieceTol` js/19, `hors0` js/17,
-  `clampCenterToApt` js/05, `v5ClampPiece(..., {gardeOrphelin})` js/52). A converted floor plan places
-  furniture across a wall or even an outline wall: the center of an 80×12 radiator lies outside
-  every cell, and bounds "brought it home" by 113 cm on the FIRST gesture, silently. Three
-  consequences: it keeps its penetration, it keeps its overflow, and pushing BEYOND is rejected
-  cleanly (never projected: a projection slides along the outline wall, so the round trip no longer
-  returns). And if bounding still puts the furniture more than 15 cm from where the hand requested,
-  **it says so** (js/17).
+- **ROUND THE CORNER, ONCE** (`gestes/meuble.ts`). The CENTER was rounded and the corner derived
+  from it: with an ODD width (a 45 cm chair), the center falls on a half centimeter and `Math.round`
+  rounds upward, so every round trip gained 1 cm forever. Same requirement for alignment snapping
+  (`alignSnap`, gestes/guides.ts): the delta is TRUNCATED TOWARD ZERO, otherwise it overshot the
+  target line and the object oscillated indefinitely by ±2 cm.
+- **THE MAGNET PLACES FURNITURE, NO RULE HOLDS IT BACK** (`meubleWallSnap`, modele/espace.ts;
+  decision 0011). Every non-wall-mounted piece whose BACK comes within `wallSnapReach` of a wall
+  snaps to it, back flush against the face, oriented with the wall. The reach is read on the back,
+  not the center: a 200 cm deep bed flush against a wall has its center a metre away from it. Out
+  of reach, the piece stays exactly where the hand put it, wall or no wall. **Alt held suspends
+  every magnet** (wall, alignment, chair-to-table) for the length of the gesture, and it is the only
+  modifier a furniture drag understands: there is no grid, no fine mode, no no-grid key.
 - **A PRESS-RELEASE WITHOUT MOVEMENT NEVER WRITES, ANYWHERE.** The rule applied to the outline wall;
   it now applies to the outline VERTEX (`v5StartVertexDrag`, js/53: a click on the top-left corner
   extended a partition 90 cm three meters away, split a room in two, and moved a radiator 114 cm),
