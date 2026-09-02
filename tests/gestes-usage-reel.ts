@@ -551,6 +551,48 @@ await test("applique_glissee_le_long_du_mur_revient", async () => {
   ok(mauvais.length === 0, mauvais.join(" | "));
 });
 
+// =============================================================================
+//  13. detache_du_mur_reprend_son_orientation_d_avant_l_aimant
+// =============================================================================
+// LOT S7. Owner, word for word: "si je le fais 'stick' à un mur par inadvertance qu'il puisse
+// reprendre son orientation originale si je le détache du mur." Same setup as case 10 (the wall
+// magnet), but the SAME drag continues past the snap and back out of reach: the rotation must
+// come back to what the piece had before the magnet ever touched it (`modele/aimant-memoire.ts`),
+// not stay stuck at the wall's angle. WRITTEN, NOT RUN: browser suites are the owner's to run.
+await test("detache_du_mur_reprend_son_orientation_d_avant_l_aimant", async () => {
+  await evaluate(`__plan.fitView(); true`); await pause(150);
+  const m = await J(`(function(){var w=(__plan.plan.walls||[]).filter(function(q){return q.isOutline;})[0];
+    if(!w) return null;
+    var ux=w.b[0]-w.a[0], uy=w.b[1]-w.a[1], L=Math.hypot(ux,uy)||1; ux/=L; uy/=L;
+    return {mx:(w.a[0]+w.b[0])/2, my:(w.a[1]+w.b[1])/2, nx:-uy, ny:ux, t:w.t};})()`);
+  if (!ok(!!m, "le plan de référence doit porter au moins une façade")) return;
+  // placed 300 cm inward, well past any magnet reach (capped at 150 cm), then given a rotation
+  // that is NOT the wall's, by hand: an arbitrary "before" the test controls, not whatever the
+  // drop itself happened to pick.
+  const loin = { x: m.mx + m.nx * 300, y: m.my + m.ny * 300 };
+  const p = await J(`__plan.addRoomPiece("bed", ${loin.x}, ${loin.y})`);
+  if (!ok(p, "impossible de poser un lit")) return;
+  const id = String(p.id);
+  await evaluate(`(function(){var pc=__plan.pieceAt(${JSON.stringify(id)}); pc.rot=37; return true;})()`);
+  const rot0 = (await pose(id)).rot;
+  ok(rot0 === 37, `témoin : la rotation de départ doit être celle qu'on a posée (37°), vue ${rot0}°`);
+  const dedans = await J(`(function(){var c=__plan.pieceAt(${JSON.stringify(id)}); return {h:c.h};})()`);
+  const off = m.t / 2 + dedans.h / 2 + 10;   // back 10 cm off the wall's face: well within reach
+  const pres = await pieceRect(id);
+  const surLeMur = await aptPoint(m.mx + m.nx * off, m.my + m.ny * off);
+  const horsDePortee = await aptPoint(loin.x, loin.y);
+  // ONE gesture: press, drag onto the wall (must snap), keep going back out to `loin` (must
+  // revert), release there.
+  await press(pres);
+  await moveTo(surLeMur, 10, pres);
+  const collee = await pose(id);
+  ok(collee.rot !== rot0, `au passage sur le mur, la rotation doit être celle du mur (pas ${rot0}°), vue ${collee.rot}°`);
+  await moveTo(horsDePortee, 10, surLeMur);
+  await release(horsDePortee);
+  const ap = await pose(id);
+  ok(ap.rot === rot0, `détaché dans le même geste, la rotation doit revenir à ${rot0}°, vue ${ap.rot}°`);
+});
+
 // ---- verdict -----------------------------------------------------------------------------------
 const bad = results.filter(r => r.fails.length);
 console.log("");

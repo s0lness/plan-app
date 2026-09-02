@@ -38,6 +38,7 @@ import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
 import { meubleWallSnap } from "../src/ts/modele/espace.ts";
+import { oublierAvantAimant, rotationAimantee } from "../src/ts/modele/aimant-memoire.ts";
 import { outilMurALongueur, outilMurFin, outilMurNeuf, outilMurPoint } from "../src/ts/gestes/outil-mur.ts";
 import { angleVersPointeur } from "../src/ts/gestes/guides.ts";
 import { v5PlaceWallMount } from "../src/ts/modele/edition.ts";
@@ -1009,6 +1010,54 @@ test("aimant_radiateur_sous_une_fenetre_existante_n_est_pas_refuse", () => {
   };
   const r = meubleWallSnap(P, rectCentre(190, 4), 20);
   return expect(!!r, "the wall magnet must not be blocked by a window already on that wall, got null");
+});
+
+// =================================================================================================
+//  4sexies. DETACHING FROM A WALL RESTORES THE ROTATION FROM BEFORE THE MAGNET
+//  (modele/aimant-memoire.ts, `rotationAimantee`). Lot S7: "si je le fais 'stick' à un mur par
+//  inadvertance qu'il puisse reprendre son orientation originale si je le détache du mur." PURE:
+//  (rot at pointerdown, the magnet's verdict this instant or null) -> rot to apply, with a session
+//  Map as its only side effect (`oublierAvantAimant` resets it between cases).
+// =================================================================================================
+test("aimant_memoire_meme_geste_hors_de_portee_reprend_l_origine", () => {
+  oublierAvantAimant("m1");
+  const depart = 30;
+  const collee = rotationAimantee("m1", depart, 0);          // the back enters reach, mid-drag
+  const hors = rotationAimantee("m1", depart, null);          // same drag, hand keeps moving, out of reach
+  return expect(collee === 0, "snapped: rot must be the wall's, got " + collee)
+      && expect(hors === depart, "pulled away in the SAME gesture: must return to " + depart + ", got " + hors);
+});
+
+test("aimant_memoire_nouveau_geste_hors_de_portee_reprend_l_origine", () => {
+  oublierAvantAimant("m2");
+  const depart = 45;
+  rotationAimantee("m2", depart, 90);   // gesture 1: snaps, released with rot=90 (untested here)
+  // gesture 2 starts: pointerdown reads the CURRENT rot (90, what the piece was left at), then
+  // the hand carries it out of reach with no wall ever entering range again.
+  const hors = rotationAimantee("m2", 90, null);
+  return expect(hors === depart, "a later gesture that only leaves the wall must still return to "
+    + depart + ", got " + hors);
+});
+
+test("aimant_memoire_tournee_a_la_main_puis_detachee_garde_le_choix", () => {
+  oublierAvantAimant("m3");
+  rotationAimantee("m3", 0, 90);         // snaps once, memory holds 0
+  oublierAvantAimant("m3");              // the PERSON rotates it by hand: the hint is gone
+  const choisie = 135;                   // the rotation they picked
+  const hors = rotationAimantee("m3", choisie, null);   // next gesture starts there, leaves the wall
+  return expect(hors === choisie, "a manual rotation must survive a later detach, expected "
+    + choisie + ", got " + hors);
+});
+
+test("aimant_memoire_glissee_le_long_du_mur_reste_collee", () => {
+  oublierAvantAimant("m4");
+  rotationAimantee("m4", 10, 0);   // gesture 1: snaps
+  // gesture 2: the piece never leaves reach (slides along the wall), so the magnet keeps firing
+  // on every tick; it must keep answering the wall's rotation, never the remembered original.
+  const t1 = rotationAimantee("m4", 0, 0);
+  const t2 = rotationAimantee("m4", 0, 0);
+  return expect(t1 === 0 && t2 === 0, "still snapped while sliding: rot must stay the wall's (0), got "
+    + JSON.stringify({ t1, t2 }));
 });
 
 // =================================================================================================
