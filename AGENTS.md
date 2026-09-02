@@ -913,6 +913,14 @@ Covered by `tests/gestes-precision.ts` (7 tests, real mouse).
   of reach, the piece stays exactly where the hand put it, wall or no wall. **Alt held suspends
   every magnet** (wall, alignment, chair-to-table) for the length of the gesture, and it is the only
   modifier a furniture drag understands: there is no grid, no fine mode, no no-grid key.
+- **DETACHING FROM A WALL RESTORES THE ROTATION FROM BEFORE THE MAGNET** (`rotationAimantee`,
+  `modele/aimant-memoire.ts`; decision 0016, lot S7). The wall magnet overwrites `rot`; a SESSION
+  Map (never the plan, never the wire) remembers the rotation a piece had the first time the magnet
+  took it, and hands it back the moment the back leaves reach, in the same drag or a later one.
+  Cleared the instant the person rotates that piece herself (the rotation handle, `Rotate 90°`) or
+  deletes it; lost on reload, which is deliberate (switching plans already reloads the page). A
+  group drag never touches rotation at all (translation only, see below), so this has nothing to do
+  there.
 - **A PRESS-RELEASE WITHOUT MOVEMENT NEVER WRITES, ANYWHERE.** The rule applied to the outline wall;
   it now applies to the outline VERTEX (`v5StartVertexDrag`, js/53: a click on the top-left corner
   extended a partition 90 cm three meters away, split a room in two, and moved a radiator 114 cm),
