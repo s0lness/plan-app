@@ -40,14 +40,48 @@ const lire = (dir: string, ext: DonneeDynamique) => {
 
 const cssFiles = lire("css", ".css");
 const useFiles = [...lire("ts", ".ts"), ...lire("html", ".html")];
-const haystack = useFiles.map((f) => f.text).join("\n");
 
-const stripComments = (s: DonneeDynamique) => s.replace(/\/\*[\s\S]*?\*\//g, "");
+const stripCssComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "");
+function stripUseComments(s: string): string {
+  let out = "";
+  let quote = "";
+  for (let i = 0; i < s.length;) {
+    if (quote) {
+      const ch = s[i];
+      out += ch;
+      i++;
+      if (ch === "\\" && i < s.length) { out += s[i]; i++; continue; }
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (s.startsWith("<!--", i)) {
+      const fin = s.indexOf("-->", i + 4);
+      i = fin < 0 ? s.length : fin + 3;
+      continue;
+    }
+    if (s.startsWith("/*", i)) {
+      const fin = s.indexOf("*/", i + 2);
+      i = fin < 0 ? s.length : fin + 2;
+      continue;
+    }
+    if (s.startsWith("//", i)) {
+      const fin = s.indexOf("\n", i + 2);
+      i = fin < 0 ? s.length : fin;
+      continue;
+    }
+    const ch = s[i];
+    if (ch === "\"" || ch === "'" || ch === "`") quote = ch;
+    out += ch;
+    i++;
+  }
+  return out;
+}
+const haystack = useFiles.map((f) => stripUseComments(f.text)).join("\n");
 const CLASS_RE = /\.(-?[A-Za-z_][\w-]*)/g;
 
 const found = new Map();
 for (const { file, text } of cssFiles) {
-  const body = stripComments(text);
+  const body = stripCssComments(text);
   for (const chunk of body.split("}")) {
     const sel = chunk.split("{")[0];
     if (!sel) continue;
