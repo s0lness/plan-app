@@ -1226,9 +1226,15 @@ export class PlanRoom {
         // On the contiguous one, a gap never filled would mask all the following ones: every new
         // loss must be announced once, and only once.
         const gapNeed = (sq && seq > sq.max + 1) ? sq.max + 1 : null;
-        // The number is CONSUMED as soon as the server has processed it, refusal included: in
-        // both cases the client got its response (the echo or the `err`), so it won't re-emit it.
-        if (sq) this.seqNote(sq, seq);
+        // ---- A REFUSAL DOES NOT MOVE THE WINDOW -------------------------------------------------
+        // The number used to be consumed as soon as the server had PROCESSED it, refusal included.
+        // A gap was then swallowed by the very op that revealed it: n°5 lost, n°6 refused (the
+        // refusal returns before the `gap` is sent) but noted anyway, so n°7 looked contiguous and
+        // the loss of n°5 was never announced. And a refusal is not always the client's fault:
+        // `rate_limited` and `persist_fail` are changes the client SHOULD re-emit. The number is
+        // therefore noted below, once the op is APPLIED. The price is one gap announced after a
+        // genuine validation refusal, and one is the right side to err on: a gap costs a single
+        // idempotent re-emission, a swallowed loss costs the change.
 
         // ---- GUEST-ONLY REFUSALS (design edges 15, 17; batch 2 items 4, 5, 7) --------------------
         // All three share the SAME numbered err path as an ordinary validation refusal: the client
@@ -1266,6 +1272,8 @@ export class PlanRoom {
           this.opCount--;
           return this.send(ws, { t: "err", reason: "persist_fail", n: seq, kind: (msg.op && msg.op.kind) || null });
         }
+        // APPLIED and persisted: only now does the window move past this number.
+        if (sq) this.seqNote(sq, seq);
         // Echo to EVERYONE (sender included): ops are idempotent, it consumes the op.
         // `fp` accompanies every echo: this way the client knows, without recomputing anything,
         // which content identity the server holds after this op, and a later `hello` that

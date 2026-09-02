@@ -1887,18 +1887,32 @@ function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main" }: {
   await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 4, op: { kind: "cell.set", cellId: "c1", name: "D" } }));
   ok(!ws.sent.some((m) => m.t === "gap"), "un trou deja signale ne se re-signale pas a chaque op");
 }
-// A REFUSAL consumes the number: the client got its response (`err`), it won't re-emit it, so
-// the following number must not be mistaken for a gap.
+// UN REFUS NE FAIT PAS AVANCER LA FENETRE. Le numero etait consomme des que le serveur l'avait
+// TRAITE, refus compris : un trou etait alors avale par l'op meme qui le revelait, puisque le
+// chemin de refus rend la main avant l'envoi du `gap`.
 {
   const f = fakeD1Room({ data: JSON.stringify(v5State()) });
   await f.room.ensureLoaded();
   const ws = f.mkWs("a@example.com", "aaa111");
   await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 1, op: { kind: "wall.set", wall: wall({ id: "wz", t: 99 }) } }));
   ok(ws.sent.pop().reason === "wall_t", "op invalide refusee");
-  ok(f.room.seq.get("aaa111").vus.has(1), "le numero refuse est CONSOMME");
+  ok(!f.room.seq.get("aaa111").vus.has(1), "le numero refuse n'est PAS consomme");
+}
+// n°5 perdue en transit, n°6 refusee : le n°7 doit encore signaler le trou.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  for (let i = 1; i <= 4; i++)
+    await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: i, op: { kind: "cell.set", cellId: "c1", name: "n" + i } }));
   ws.sent.length = 0;
-  await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 2, op: { kind: "cell.set", cellId: "c1", name: "A" } }));
-  ok(!ws.sent.some((m) => m.t === "gap"), "apres un refus, le numero suivant n'est pas un trou");
+  // le n°5 n'arrive jamais ; le n°6 arrive et est REFUSE
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 6, op: { kind: "wall.set", wall: wall({ id: "wz", t: 99 }) } }));
+  ok(ws.sent.some((m) => m.t === "err" && m.reason === "wall_t"), "le n°6 est refuse");
+  ws.sent.length = 0;
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 7, op: { kind: "cell.set", cellId: "c1", name: "n7" } }));
+  const g = ws.sent.find((m) => m.t === "gap");
+  ok(g && g.need === 5, "la perte du n°5 est SIGNALEE, elle n'est pas avalee par le refus du n°6, vu " + JSON.stringify(ws.sent.map((m) => m.t + ":" + (m.need ?? ""))));
 }
 // Two devices, two sequences: one's numbers neither acknowledge nor deduplicate the other's.
 {
