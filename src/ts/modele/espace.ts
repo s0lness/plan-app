@@ -14,6 +14,15 @@ import { v5Seg } from "./murs.ts";
  */
 export const wallSnapReach = (scale: number): number => Math.min(150, Math.max(60, 45 / (scale || 1)));
 
+/**
+ * THE FURNITURE MAGNET HAS ITS OWN, SHORT REACH. `wallSnapReach` is sized for an opening, whose
+ * CENTER must land on a wall from wherever the hand lets go (60 to 150 cm). Applied to a bed or a
+ * table it pulled a piece left 60 cm from the wall all the way to it: "too aggressive", the
+ * owner's words. A piece of furniture is attracted only when its back is a dozen screen pixels
+ * from the face, 6 to 20 cm depending on zoom: close enough that the hand meant it.
+ */
+export const meubleSnapReach = (scale: number): number => Math.min(20, Math.max(6, 12 / (scale || 1)));
+
 export const NO_WALL_MSG = "No wall nearby: bring the cursor closer to a wall to place this fitting.";
 
 /**

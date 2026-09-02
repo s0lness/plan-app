@@ -35,7 +35,7 @@ import { v5Touch, v5On, v5WallById } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
 import { closestOnSeg } from "../geometrie/polygones.ts";
-import { v5DedupeWalls, v5Seg } from "../modele/murs.ts";
+import { v5CellsAt, v5DedupeWalls, v5Seg } from "../modele/murs.ts";
 import { v5RebuildCells } from "../modele/cellules.ts";
 import { photoCellules } from "../modele/photo-cellules.ts";
 import {
@@ -103,6 +103,24 @@ export function v5SelectWall(ctx: Contexte, id: unknown): void {
   ctx.ihm.selWall = (id == null ? null : String(id));
   v5Touch(ctx);
   const card = $("roomCard");
+  // SELECTING A WALL OPENS ITS CARD (decision 0010): Split, Square up, Delete and the length live
+  // there and nowhere else since the hover buttons went, so a card that stays closed hides every
+  // command the wall has. The hover disc used to open it; the click on the wall's body must too.
+  if (card && id != null) {
+    // The card is the ROOM's card with a wall section: it needs a room, and the honest one is a
+    // room this wall borders, not the first cell of the plan. Probe one step off the wall's
+    // midpoint on either side; a room already selected that borders the wall is kept.
+    const w = v5WallById(ctx, id);
+    if (w) {
+      const s = v5Seg(w), mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
+      const d = (w.t || WALL) / 2 + 1;
+      const cotes = [v5CellsAt(ctx.etat.plan, mx - s.uy * d, my + s.ux * d), v5CellsAt(ctx.etat.plan, mx + s.uy * d, my - s.ux * d)];
+      const deja = cotes.find((c) => c && String(c.id) === String(ctx.ihm.selCell));
+      const choix = deja || cotes.find((c) => !!c);
+      if (choix) ctx.ihm.selCell = String(choix.id);
+    }
+    card.hidden = false;
+  }
   if (card && !card.hidden) syncCellCard(ctx);
 }
 
