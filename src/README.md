@@ -4,6 +4,11 @@
 the order defined in `manifest.json`, then produces a minified, self-contained IIFE from
 `src/ts/main.ts`. `index.html` is the committed output: never edit it by hand.
 
+Write the comments and the indentation you need here: the build strips them out of the deliverable
+(decision 0017). It keeps one source line per line, so no rendering depends on how a fragment is
+laid out; it refuses to build if a fragment gains a `url(...)` or content where whitespace matters
+(`<pre>`, an inline `<script>`, a non-empty `<textarea>`).
+
 The historical client no longer has source files in the repository. It was archived separately as
 a self-contained artifact, which is not part of this published repository. Comments that say
 `Porté de src/js/…` refer to the source from before the cutover. It was removed from the

@@ -5,7 +5,7 @@
   // src/js (the old client) is NOT included: it isn't typed, and staying that way is intended
   // until the switchover happens.
   "compilerOptions": {
-    "target": "es2019",           // §2: the source uses neither ?. nor ??; the household's iPhone is a real client
+    "target": "es2020",           // the same target esbuild emits (decision 0018): ?. and ?? stay as written; iOS 13.4+ runs them
     "lib": ["es2020", "dom", "dom.iterable"],
     "module": "preserve",         // esbuild bundles; tsc doesn't have to rewrite the modules
     "moduleResolution": "bundler",

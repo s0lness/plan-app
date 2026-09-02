@@ -1298,8 +1298,12 @@ export class PlanRoom {
         // kind is known to carry (see ops.ts), so a key the validator never looked at cannot ride
         // the broadcast into every peer's receive path.
         const opSortie = opWire(msg.op);
+        // `fp` is computed HERE and not inside the builder: the builder runs once per AUDIENCE
+        // (household, guest), and the fingerprint of a plan does not depend on who reads it.
+        // Inside, a mixed audience paid for the same traversal of the plan twice.
+        const fpApres = planFp(this.plan);
         this.broadcastFor((guestAudience) => ({
-          t: "op", op: opSortie, n: seq, opCount: this.opCount, fp: planFp(this.plan),
+          t: "op", op: opSortie, n: seq, opCount: this.opCount, fp: fpApres,
           ...this.authorWire(att, guestAudience),
         }), null);
         // A NUMBER IS MISSING. The op that just went through wasn't the expected next one: an op
