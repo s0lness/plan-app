@@ -4,50 +4,34 @@
 //
 // TRAP PAID FOR BY THE PREVIOUS BATCH: `Object.assign` COPIES an accessor's VALUE. Anything
 // that must stay LIVE is written as `get x()` here, and `sonde.ts` carries the DESCRIPTORS.
-// `findings`, `flowCounts`, and `flowTotal` are REASSIGNED on every analysis (`analyze()`
-// replaces `FL`'s three fields): so these are three ACCESSORS, never three frozen values.
+// `findings` is REASSIGNED on every analysis (`analyze()` replaces `FL`'s field): so it is an
+// ACCESSOR, never a frozen value.
 import type { Contexte } from "./app/contexte.ts";
-import type { Comptes, Constat, ContexteFlow, Gravite, Grille, ResultatAnalyse } from "./circulation/etat.ts";
+import type { Constat, ContexteFlow, Gravite, ResultatAnalyse } from "./circulation/etat.ts";
 import { FL } from "./circulation/etat.ts";
-import { buildAptContext, isBlocker } from "./circulation/contexte.ts";
-import { buildGrid } from "./circulation/grille.ts";
+import { buildAptContext } from "./circulation/contexte.ts";
 import { analyzeApt } from "./circulation/regles.ts";
 import {
-  analyze, analyzeNow, drawOverlay, renderFlow, scheduleAnalysis, setFlowOpen,
+  analyzeNow, drawOverlay, renderFlow, scheduleAnalysis, setFlowOpen,
 } from "./circulation/circulation.ts";
-import { $ } from "./noyau/dom.ts";
-
-/** What the toolbar badge ACTUALLY shows at this instant. */
-export interface EtatPastille {
-  hidden: boolean;
-  txt: string;
-  cls: string;
-  title: string;
-}
 
 export interface SondeFlow {
   // ---- the engine, called directly (no debounce, no painting) ----
   analyzeApt(): ResultatAnalyse;
   buildAptContext(): ContexteFlow;
-  buildGrid(): Grille;
-  /** passthrough: check that a bathroom's furniture really counts as obstacles. */
-  isBlocker(type: string): boolean;
 
   // ---- the engine, through the application's path ----
+  // `scheduleAnalysis`, `drawOverlay` and `setFlowOpen` have no consumer among the suites
+  // today; they stay exposed because the probe is their only caller and `circulation/` is
+  // not this batch's to trim.
   analyzeNow(): void;
   scheduleAnalysis(): void;
-  analyze(force?: boolean): void;
   renderFlow(): void;
   drawOverlay(): void;
   setFlowOpen(on: boolean): void;
 
   /** THE DISPLAYED FINDINGS (14 at most). LIVE: `analyze()` replaces the list. */
   readonly findings: Constat[];
-  /** The counts for the WHOLE list, before the display cap. LIVE. */
-  readonly flowCounts: Comptes;
-  /** The number of findings PRODUCED (`findings.length` is the number shown). LIVE. */
-  readonly flowTotal: number;
-  flowPill(): EtatPastille;
 
   /** TOOL 8: Circulation. Analyzes WITHOUT painting, and sets the current list. */
   analyzeV5(): Array<{ id: string; title: string; severity: Gravite }>;
@@ -57,28 +41,14 @@ export function sondeFlow(_ctx: Contexte): SondeFlow {
   return {
     analyzeApt,
     buildAptContext,
-    buildGrid,
-    isBlocker: (type: string) => isBlocker({ type }),
 
     analyzeNow,
     scheduleAnalysis,
-    analyze,
     renderFlow,
     drawOverlay,
     setFlowOpen,
 
     get findings() { return FL.findings; },
-    // Circulation: the counts for the WHOLE list (before the display cap) and what the
-    // toolbar badge ACTUALLY shows at this instant.
-    get flowCounts() { return FL.findingCounts; },
-    get flowTotal() { return FL.findingTotal; },
-    flowPill(): EtatPastille {
-      const p = $("flowPill") as HTMLElement;
-      return {
-        hidden: !!p.hidden, txt: String(p.textContent || ""), cls: p.className,
-        title: ($("btnFlow") as HTMLElement).title,
-      };
-    },
 
     analyzeV5() {
       const r = analyzeApt(); FL.findings = r.findings;

@@ -39,7 +39,6 @@ const PORTES = new Map([
   ["src/ts/sonde.ts", "surface de test exposée sur `window.__plan` : lue par les suites, pas importée"],
   ["src/ts/sonde-fil.ts", "idem, partie fil"],
   ["src/ts/sonde-gestes.ts", "idem, partie gestes"],
-  ["src/ts/sonde-config.ts", "idem, partie configuration"],
   ["src/ts/sonde-donnees.ts", "idem, partie données"],
   ["src/ts/sonde-export.ts", "idem, partie export"],
   ["src/ts/sonde-flow.ts", "idem, partie circulation"],

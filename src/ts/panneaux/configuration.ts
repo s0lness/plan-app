@@ -67,20 +67,16 @@ const SETUP_MIN = 100, SETUP_MAX = 3000;
 type CleDimension = "w" | "l" | "nw" | "nl";
 
 /**
- * What the PROBE of this sub-batch can call (`sonde-config.ts`), filled in by
- * `brancherConfiguration`. The functions live in the wiring's closure (they read the
- * draft), and this small registry is the only way to name them from another module without
- * widening `ctx.crochets`, which describes what RENDERING calls.
+ * The wizard, named from another module. `fil/` opens it (an empty household, an invitation
+ * landing on nothing) and closes it (the hello brought rooms); the functions live in the
+ * wiring's closure, because they read the draft. This small registry is the only way to name
+ * them without widening `ctx.crochets`, which describes what RENDERING calls.
  */
 export const assistant: {
   ouvrir?: () => void;
   fermer?: () => void;
-  pickShape?: (s: "rect" | "l") => void;
   estOuvert?: () => boolean;
 } = {};
-
-/** The wizard's bounds, READ by the probe: the form cannot contradict them. */
-export const SETUP_BORNES = { min: SETUP_MIN, max: SETUP_MAX } as const;
 
 // THE CURRENT CELL'S FLOOR (js/03) HAS TWO CONSUMERS, AND ONE DEFINITION. The cell sheet
 // and the wizard both call it: it lives in `fiche-cellule-edition.ts` and gets imported.
@@ -341,10 +337,10 @@ export function brancherConfiguration(ctx: Contexte): void {
   //    a single definition for the whole client.
   if (!SYNC_ON && !ctx.etat.setupDone) openSetup();
 
-  // This sub-batch's probe reads these functions (`sonde-config.ts`). `ctx.crochets` is NOT
-  // the right vehicle: it describes what RENDERING calls, and the wizard is called by nobody.
+  // `fil/` calls these two (an empty household or an invitation opens the wizard, a hello that
+  // brought rooms closes it). `ctx.crochets` is NOT the right vehicle: it describes what
+  // RENDERING calls, and the wizard is not called by rendering.
   assistant.ouvrir = openSetup;
   assistant.fermer = closeSetup;
-  assistant.pickShape = pickShape;
   assistant.estOuvert = () => !setupEl.hidden;
 }

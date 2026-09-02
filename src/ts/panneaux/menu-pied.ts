@@ -16,9 +16,6 @@
 import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 
-/** What this sub-batch's probe reads (`sonde-config.ts`). */
-export const menuPied: { ouvrir?: (on: boolean) => void; estOuvert?: () => boolean } = {};
-
 export function brancherMenuPied(_ctx: Contexte): void {
   const footMenu = $("footMenu"), btnMenu = $("btnMenu");
   if (!footMenu || !btnMenu) return;
@@ -50,7 +47,4 @@ export function brancherMenuPied(_ctx: Contexte): void {
       e.stopPropagation();
     }
   }, true);
-
-  menuPied.ouvrir = setMenuOpen;
-  menuPied.estOuvert = () => !footMenu.hidden;
 }

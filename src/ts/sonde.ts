@@ -42,8 +42,6 @@ import type { SondeGestes } from "./sonde-gestes.ts";
 import { sondeGestes } from "./sonde-gestes.ts";
 import type { SondePanneaux } from "./sonde-panneaux.ts";
 import { sondePanneaux } from "./sonde-panneaux.ts";
-import type { SondeConfig } from "./sonde-config.ts";
-import { sondeConfig } from "./sonde-config.ts";
 import type { SondeExport } from "./sonde-export.ts";
 import { sondeExport } from "./sonde-export.ts";
 import type { SondeFlow } from "./sonde-flow.ts";
@@ -420,7 +418,6 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
   Object.defineProperties(sonde, Object.getOwnPropertyDescriptors(sondeGestes(ctx)));
   // Batch E3c: one probe slice per sub-batch, carried by DESCRIPTOR for the same reason.
   Object.defineProperties(sonde, Object.getOwnPropertyDescriptors(sondePanneaux(ctx)));
-  Object.defineProperties(sonde, Object.getOwnPropertyDescriptors(sondeConfig(ctx)));
   Object.defineProperties(sonde, Object.getOwnPropertyDescriptors(sondeExport(ctx)));
   Object.defineProperties(sonde, Object.getOwnPropertyDescriptors(sondeFlow(ctx)));
   Object.defineProperties(sonde, Object.getOwnPropertyDescriptors(sondeDonnees(ctx)));
@@ -428,7 +425,7 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
   // `acksOn`, `retransmits`, `syncDetached`): carrying by DESCRIPTOR is not an elegance,
   // it is the condition for them to read the CURRENT value and not an install-time snapshot.
   Object.defineProperties(sonde, Object.getOwnPropertyDescriptors(sondeFil(ctx, fil)));
-  w.__plan = sonde as SondePlan & SondeGestes & SondePanneaux & SondeConfig
+  w.__plan = sonde as SondePlan & SondeGestes & SondePanneaux
     & SondeExport & SondeFlow & SondeDonnees & SondeFil;
 
   // ---- THE TWO GHOST EMITTERS, ON `window`, AND ONLY UNDER THE TEST FLAG --------
