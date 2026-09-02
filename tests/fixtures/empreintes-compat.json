@@ -1,9 +1,9 @@
 {
  "quoi": "Empreintes de lecture du corpus de compatibilité. Écrites par `node tests/compat-donnees.ts --figer`. Une empreinte qui bouge sans qu'on l'ait voulu EST une perte de données : ne jamais refiger pour faire taire l'oracle.",
- "fige": "2026-09-02T12:58:29.110Z",
+ "fige": "2026-09-02T20:40:13.102Z",
  "documents": {
   "fixture-plan-reel-77": {
-   "quoi": "v4 rooms[]+envelope+opts : le plan du foyer AVANT la conversion murs-seuls (8 salles, 77 objets, D-3)",
+   "quoi": "le plan du foyer, 22 murs / 30 ouvertures / 47 meubles / 10 cellules (converti depuis le v4 d'avant la bascule)",
    "lu": true,
    "fp": "3034c332f9336344",
    "octets": "e305f98a79eb3ab0",
@@ -14,7 +14,7 @@
    "sansOpts": true
   },
   "fixture-plan-rev177": {
-   "quoi": "v4 rooms[]+envelope, révision 177",
+   "quoi": "le plan du foyer à la révision 177 (converti depuis son v4)",
    "lu": true,
    "fp": "5214c0a94fe271d5",
    "octets": "0c7d3df000af0e12",
@@ -43,28 +43,6 @@
    "local": "7e25e94da9e10405",
    "setupDone": true,
    "n": "4/5/1/2/2",
-   "pointFixe": true,
-   "sansOpts": true
-  },
-  "backup-rev246": {
-   "quoi": "v4 rooms[]+envelope, révision 246",
-   "lu": true,
-   "fp": "c8e637406a200356",
-   "octets": "9bb46460afa98962",
-   "local": "d60f8fbc57f24cae",
-   "setupDone": true,
-   "n": "6/22/30/47/10",
-   "pointFixe": true,
-   "sansOpts": true
-  },
-  "backup-prev5-rev242": {
-   "quoi": "v4 + opts + active, révision 242",
-   "lu": true,
-   "fp": "8bfdb0b606f66754",
-   "octets": "371c1046a9cbb320",
-   "local": "d1ddee5e09d05a6c",
-   "setupDone": true,
-   "n": "6/22/30/47/10",
    "pointFixe": true,
    "sansOpts": true
   },
@@ -123,28 +101,6 @@
    "pointFixe": true,
    "sansOpts": true
   },
-  "v3-mono-piece": {
-   "quoi": "v1/v2/v3 mono-pièce {room,pieces,opts} (aucun document réel ne survit)",
-   "lu": true,
-   "fp": "fe2a4b674e53d03d",
-   "octets": "0673b08e7d46c6a4",
-   "local": "4e86d814b934e468",
-   "setupDone": false,
-   "n": "4/4/3/0/1",
-   "pointFixe": true,
-   "sansOpts": true
-  },
-  "v2-pieces-seules": {
-   "quoi": "v1/v2 sans `room` : `pieces[]` seul, contour reconstruit",
-   "lu": true,
-   "fp": "53a708ddd31ecc89",
-   "octets": "fbdfba27c14ded65",
-   "local": "ec5c0667de735349",
-   "setupDone": false,
-   "n": "4/4/0/1/1",
-   "pointFixe": true,
-   "sansOpts": true
-  },
   "__defaut__": {
    "quoi": "`defaultState()` : appartement neuf 420×360, VIDE (D-17)",
    "lu": true,
@@ -164,16 +120,17 @@
    "quoi": "`rooms: []` : `migrate()` refuse (null)",
    "lu": false
   },
+  "refus-v4-salles": {
+   "quoi": "v4 `rooms[]`+`envelope` : `migrate()` refuse (null), les octets vont au filet",
+   "lu": false
+  },
+  "refus-v3-mono-piece": {
+   "quoi": "v1/v2/v3 mono-pièce {room,pieces,opts} : `migrate()` refuse (null)",
+   "lu": false
+  },
   "abime-outline-court": {
-   "quoi": "v5 abîmé (contour de 2 points) : retombe sur le chemin ancien format",
-   "lu": true,
-   "fp": "10657ba7b98aae55",
-   "octets": "c6480f273b1b14db",
-   "local": "4b69d7a506270597",
-   "setupDone": false,
-   "n": "4/4/0/0/1",
-   "pointFixe": true,
-   "sansOpts": true
+   "quoi": "v5 abîmé (contour de 2 points) : `migrate()` refuse (null)",
+   "lu": false
   }
  }
 }

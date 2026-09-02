@@ -3,9 +3,9 @@
 // importing it under node has no side effect, which makes `coldLoad` testable as-is.
 // Run: node live-worker/test-local.ts
 import type { DonneeDynamique } from "../tests/_types.ts";
-import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan, cleanCursorSay, CURSOR_SAY_MAX, NAME_MAX } from "./ops.ts";
+import { applyOp as applyOpReel, sanitizeState as sanitizeStateReel, colorFor, OpError, sanitizeCursor as sanitizeCursorReel, sanitizeDrag as sanitizeDragReel, isV5, planFp, strHash, emptyPlan, cleanCursorSay, CURSOR_SAY_MAX, NAME_MAX, OP_KEYS } from "./ops.ts";
 import type { CursorMessage, DragMessage, Operation, Piece, PlanState, Point } from "./ops.ts";
-import { coldLoad, planTooBig, PlanRoom, d1Verdict, upgradeEmptyLegacy, attachmentFromRequest, MAX_MSG_BYTES } from "./worker.ts";
+import { coldLoad, planTooBig, PlanRoom, d1Verdict, attachmentFromRequest, MAX_MSG_BYTES } from "./worker.ts";
 
 // The doubles only implement the surface actually read by PlanRoom. These two boundaries
 // concentrate the adaptation to the full Cloudflare contract, without weighing down each scenario.
@@ -43,209 +43,17 @@ const sanitizeState = (state: unknown) => sanitizeStateReel(state as PlanState);
 const sanitizeCursor = (message: unknown) => sanitizeCursorReel(message as CursorMessage);
 const sanitizeDrag = (message: unknown) => sanitizeDragReel(message as DragMessage);
 const poly = (): Point[] => [[0, 0], [100, 0], [100, 100], [0, 100]];
-const freshPlan = (): PlanState => ({
-  rooms: [
-    { id: "r1", name: "Salon", floor: 0, room: { poly: poly() }, pieces: [] },
-  ],
-  setupDone: true,
-});
 const piece = (over: Record<string, unknown> = {}): Piece => ({
   id: "p1", type: "sofa", name: "Canapé", x: 10, y: 20, w: 200, h: 90, rot: 0, ...over,
 } as Piece);
-
-// ---- piece.set: upsert ----
-let plan = freshPlan();
-applyOp(plan, { kind: "piece.set", roomId: "r1", piece: piece() });
-ok(plan.rooms[0].pieces.length === 1, "piece.set insert");
-applyOp(plan, { kind: "piece.set", roomId: "r1", piece: piece({ x: 55 }) });
-ok(plan.rooms[0].pieces.length === 1, "piece.set upsert no dup");
-ok(plan.rooms[0].pieces[0].x === 55, "piece.set upsert value");
-
-// idempotence: replaying the same set leaves the state identical
-applyOp(plan, { kind: "piece.set", roomId: "r1", piece: piece({ x: 55 }) });
-ok(plan.rooms[0].pieces.length === 1 && plan.rooms[0].pieces[0].x === 55, "piece.set idempotent");
-
-// ---- piece.set validations ----
-throws(() => applyOp(freshPlan(), { kind: "piece.set", roomId: "r1", piece: piece({ x: NaN }) }), "NaN coord");
-throws(() => applyOp(freshPlan(), { kind: "piece.set", roomId: "r1", piece: piece({ w: 0 }) }), "w below 1");
-throws(() => applyOp(freshPlan(), { kind: "piece.set", roomId: "r1", piece: piece({ w: 4000 }) }), "w above 3000");
-// A NAME that's too long is TRUNCATED, never refused (a refusal made the furniture item disappear for the peer).
-{
-  const pt = freshPlan();
-  applyOp(pt, { kind: "piece.set", roomId: "r1", piece: piece({ name: "x".repeat(200) }) });
-  ok(pt.rooms[0].pieces[0].name.length === 80, "v4 piece name truncated not rejected");
-}
-throws(() => applyOp(freshPlan(), { kind: "piece.set", roomId: "r1", piece: piece({ evil: 1 }) }), "unknown key");
-throws(() => applyOp(freshPlan(), { kind: "piece.set", roomId: "nope", piece: piece() }), "no such room");
-
-// ---- piece.del ----
-plan = freshPlan();
-applyOp(plan, { kind: "piece.set", roomId: "r1", piece: piece() });
-applyOp(plan, { kind: "piece.set", roomId: "r1", piece: piece({ id: "p2" }) });
-applyOp(plan, { kind: "piece.del", roomId: "r1", pieceId: "p1" });
-ok(plan.rooms[0].pieces.length === 1 && plan.rooms[0].pieces[0].id === "p2", "piece.del removes");
-// del of an absent id = idempotent no-op
-applyOp(plan, { kind: "piece.del", roomId: "r1", pieceId: "p1" });
-ok(plan.rooms[0].pieces.length === 1, "piece.del absent no-op");
-
-// ---- piece.front: REMOVED op (no client emits it, exhaustive census) ----
-throws(() => applyOp(freshPlan(), { kind: "piece.front", roomId: "r1", pieceId: "p1" }), "v4 piece.front removed");
-throws(() => applyOp(freshPlan(), { kind: "piece.front", pieceId: "p1" }), "piece.front removed everywhere");
-
-// ---- room.add ----
-plan = freshPlan();
-applyOp(plan, { kind: "room.add", room: { id: "r2", name: "Cuisine", floor: 0, room: { poly: poly() }, pieces: [] } });
-ok(plan.rooms.length === 2, "room.add appends");
-throws(() => applyOp(plan, { kind: "room.add", room: { id: "r2", name: "x", floor: 0, room: { poly: poly() }, pieces: [] } }), "room.add dup id");
-throws(() => applyOp(freshPlan(), { kind: "room.add", room: { id: "r9", room: { poly: [[0, 0], [1, 1]] } } }), "poly 2 points");
-throws(() => applyOp(freshPlan(), { kind: "room.add", room: { id: "r9", room: { poly: [[0, 0], [1, 1], ["a", 2]] } } }), "poly non-number");
-
-// ---- room.set ----
-plan = freshPlan();
-applyOp(plan, { kind: "room.set", roomId: "r1", name: "Séjour", floor: 1 });
-ok(plan.rooms[0].name === "Séjour" && plan.rooms[0].floor === 1, "room.set meta");
-applyOp(plan, { kind: "room.set", roomId: "r1", poly: [[0, 0], [50, 0], [50, 50]] });
-ok(plan.rooms[0].room.poly.length === 3, "room.set poly");
-throws(() => applyOp(plan, { kind: "room.set", roomId: "r1", poly: [[0, 0], [1, 1]] }), "room.set bad poly");
-applyOp(plan, { kind: "room.set", roomId: "r1", name: "x".repeat(200) });
-ok(plan.rooms[0].name.length === 80, "room.set name truncated not rejected");
-
-// ---- room.set ax/ay (apartment offset) ----
-plan = freshPlan();
-applyOp(plan, { kind: "room.set", roomId: "r1", ax: 300, ay: 0 });
-ok(plan.rooms[0].ax === 300 && plan.rooms[0].ay === 0, "room.set ax/ay");
-applyOp(plan, { kind: "room.set", roomId: "r1", ax: null, ay: null });
-ok(plan.rooms[0].ax === null && plan.rooms[0].ay === null, "room.set ax/ay null");
-throws(() => applyOp(freshPlan(), { kind: "room.set", roomId: "r1", ax: "nope" }), "room.set bad ax");
-// ax/ay survive validateRoom (room.add) and sanitizeState
-plan = freshPlan();
-applyOp(plan, { kind: "room.add", room: { id: "r2", name: "C", floor: 0, ax: 520, ay: 40, room: { poly: poly() }, pieces: [] } });
-ok(plan.rooms[1].ax === 520 && plan.rooms[1].ay === 40, "room.add keeps ax/ay");
-const cleanAx = sanitizeState({ rooms: [{ id: "s1", name: "S", floor: 0, ax: 100, ay: 200, room: { poly: poly() }, pieces: [] }], setupDone: true });
-ok(cleanAx.rooms[0].ax === 100 && cleanAx.rooms[0].ay === 200, "sanitizeState keeps ax/ay");
-const cleanNoAx = sanitizeState({ rooms: [{ id: "s2", name: "S", floor: 0, room: { poly: poly() }, pieces: [] }], setupDone: true });
-ok(cleanNoAx.rooms[0].ax === null && cleanNoAx.rooms[0].ay === null, "sanitizeState defaults ax/ay null");
-
-// ---- room.del ----
-plan = freshPlan();
-applyOp(plan, { kind: "room.add", room: { id: "r2", name: "C", floor: 0, room: { poly: poly() }, pieces: [] } });
-applyOp(plan, { kind: "room.del", roomId: "r1" });
-ok(plan.rooms.length === 1 && plan.rooms[0].id === "r2", "room.del removes");
-throws(() => applyOp(plan, { kind: "room.del", roomId: "r2" }), "room.del refuse last");
-throws(() => applyOp(freshPlan(), { kind: "room.del", roomId: "nope" }), "room.del no such");
-
-// ---- plan.replace ----
-plan = freshPlan();
-applyOp(plan, {
-  kind: "plan.replace",
-  state: {
-    rooms: [{ id: "z1", name: "New", floor: 2, room: { poly: poly() }, pieces: [piece()] }],
-    setupDone: false,
-    opts: { foo: 1 },   // must be stripped
-    active: "z1",       // must be stripped
-  },
-});
-ok(plan.rooms.length === 1 && plan.rooms[0].id === "z1", "plan.replace rooms");
-ok(plan.setupDone === false, "plan.replace setupDone");
-ok(!("opts" in plan) && !("active" in plan), "plan.replace strips opts/active");
-throws(() => applyOp(freshPlan(), { kind: "plan.replace", state: { rooms: "nope" } }), "plan.replace bad shape");
-
-// ---- rooms.merge : OP RETIREE ----------------------------------------------------------------
-// Aucun client ne l'emettait (recherche exhaustive du genre dans `src/ts` : zero site d'appel), et
-// c'etait la seule op non idempotente du fil (elle AJOUTAIT ses salles et renommait les ids en
-// collision), donc rejouee par l'echo ou re-emise apres un `gap` elle dupliquait tout.
-throws(() => applyOp(freshPlan(), { kind: "rooms.merge", rooms: [] }), "rooms.merge n'existe plus (genre inconnu)");
-
-// ---- sanitizeState directly ----
-const clean = sanitizeState({ rooms: [{ id: "s1", name: "S", floor: 0, room: { poly: poly() }, pieces: [piece()] }], setupDone: true, opts: {}, active: 1 });
-ok(!("opts" in clean) && !("active" in clean), "sanitizeState strips");
-throws(() => sanitizeState({ rooms: [{ id: "s1", room: { poly: poly() }, pieces: [piece({ id: 123 })] }] }), "sanitize bad piece id");
-
-// ---- envelope: sanitizeState ----
-const envPoly = () => [[0, 0], [600, 0], [600, 400], [0, 400]];
-// null tolerated everywhere
-const cleanNoEnv = sanitizeState({ rooms: [{ id: "s1", name: "S", floor: 0, room: { poly: poly() }, pieces: [] }], setupDone: true });
-ok(cleanNoEnv.envelope === null, "sanitizeState envelope null default");
-// complete envelope survives
-const cleanEnv = sanitizeState({
-  rooms: [{ id: "s1", name: "S", floor: 0, room: { poly: poly() }, pieces: [] }],
-  envelope: { poly: envPoly(), floor: "parquet", pieces: [piece({ id: "e1", type: "door" })] },
+const envPoly = (): Point[] => [[0, 0], [600, 0], [600, 400], [0, 400]];
+// Un etat ecrit dans une forme d'AVANT la bascule murs-seuls. Plus aucun type ne le decrit
+// (decision 0021) : il n'existe plus que comme charge a refuser.
+const ancienEtat = (): DonneeDynamique => ({
+  rooms: [{ id: "r1", name: "Salon", floor: "parquet", ax: 0, ay: 0, room: { poly: poly() }, pieces: [piece()] }],
+  envelope: { poly: envPoly(), floor: "parquet", pieces: [] },
   setupDone: true,
 });
-ok(cleanEnv.envelope && cleanEnv.envelope.poly.length === 4, "sanitizeState keeps envelope poly");
-ok(cleanEnv.envelope.floor === "parquet", "sanitizeState keeps envelope floor");
-ok(cleanEnv.envelope.pieces.length === 1 && cleanEnv.envelope.pieces[0].id === "e1", "sanitizeState keeps envelope pieces");
-ok(cleanEnv.envelope.pieces[0].type === "door", "envelope piece type kept");
-throws(() => sanitizeState({ rooms: [], envelope: { poly: [[0, 0], [1, 1]] } }), "envelope bad poly");
-throws(() => sanitizeState({ rooms: [], envelope: { poly: envPoly(), pieces: [piece({ evil: 1 })] } }), "envelope bad piece");
-
-// ---- env.set / env.del ----
-plan = freshPlan();
-ok(plan.envelope === undefined || plan.envelope === null, "fresh plan no envelope");
-applyOp(plan, { kind: "env.set", poly: envPoly(), floor: "tile" });
-ok(plan.envelope && plan.envelope.poly.length === 4 && plan.envelope.floor === "tile", "env.set creates envelope");
-ok(Array.isArray(plan.envelope.pieces) && plan.envelope.pieces.length === 0, "env.set inits pieces");
-// idempotence: replaying the same env.set leaves the state identical
-applyOp(plan, { kind: "env.set", poly: envPoly(), floor: "tile" });
-ok(plan.envelope.poly.length === 4 && plan.envelope.floor === "tile", "env.set idempotent");
-// change just the floor
-applyOp(plan, { kind: "env.set", floor: "parquet" });
-ok(plan.envelope.floor === "parquet" && plan.envelope.poly.length === 4, "env.set floor only keeps poly");
-throws(() => applyOp(freshPlan(), { kind: "env.set", poly: [[0, 0], [1, 1]] }), "env.set bad poly");
-throws(() => applyOp(freshPlan(), { kind: "env.set", floor: "x" }), "env.set skeleton needs poly");
-// ---- LE REVETEMENT EST UN LIBELLE BORNE, PAS UNE CHAINE LIBRE --------------------------------
-// C'etait la seule chaine de ce cote sans aucune borne de longueur : persistee, snapshotee en D1
-// et relayee a chaque pair, du seul fait d'etre une chaine.
-{
-  const long = "x".repeat(NAME_MAX + 1);
-  const juste = "x".repeat(NAME_MAX);
-  throws(() => applyOp(freshPlan(), { kind: "env.set", poly: envPoly(), floor: long }), "env.set revetement trop long");
-  throws(() => applyOp(freshPlan(), { kind: "room.set", roomId: "r1", floor: long }), "room.set revetement trop long");
-  throws(() => sanitizeState({ rooms: [{ id: "r1", name: "S", floor: long, room: { poly: poly() }, pieces: [] }], setupDone: true }),
-    "sanitizeState refuse un revetement de salle trop long");
-  throws(() => sanitizeState({ rooms: [], envelope: { poly: envPoly(), floor: long, pieces: [] }, setupDone: true }),
-    "sanitizeState refuse un revetement d'enveloppe trop long");
-  const p = freshPlan();
-  applyOp(p, { kind: "room.set", roomId: "r1", floor: juste });
-  ok(p.rooms[0].floor === juste, "un revetement a la borne exacte passe");
-  applyOp(p, { kind: "room.set", roomId: "r1", floor: 2 });
-  ok(p.rooms[0].floor === 2, "un revetement numerique (vieux plans) passe toujours");
-}
-// env.del
-applyOp(plan, { kind: "env.del" });
-ok(plan.envelope === null, "env.del removes envelope");
-applyOp(plan, { kind: "env.del" });
-ok(plan.envelope === null, "env.del idempotent");
-
-// ---- env.piece.set / env.piece.del ----
-plan = freshPlan();
-applyOp(plan, { kind: "env.set", poly: envPoly() });
-applyOp(plan, { kind: "env.piece.set", piece: piece({ id: "ep1", type: "door" }) });
-ok(plan.envelope.pieces.length === 1, "env.piece.set insert");
-applyOp(plan, { kind: "env.piece.set", piece: piece({ id: "ep1", type: "door", x: 99 }) });
-ok(plan.envelope.pieces.length === 1 && plan.envelope.pieces[0].x === 99, "env.piece.set upsert");
-applyOp(plan, { kind: "env.piece.set", piece: piece({ id: "ep2", type: "plant" }) });
-applyOp(plan, { kind: "env.piece.del", pieceId: "ep1" });
-ok(plan.envelope.pieces.length === 1 && plan.envelope.pieces[0].id === "ep2", "env.piece.del removes");
-applyOp(plan, { kind: "env.piece.del", pieceId: "nope" });
-ok(plan.envelope.pieces.length === 1, "env.piece.del absent no-op");
-throws(() => applyOp(freshPlan(), { kind: "env.piece.set", piece: piece() }), "env.piece.set no envelope");
-throws(() => applyOp(plan, { kind: "env.piece.set", piece: piece({ evil: 1 }) }), "env.piece.set bad piece");
-// del without envelope: idempotent no-op
-plan = freshPlan();
-applyOp(plan, { kind: "env.piece.del", pieceId: "x" });
-ok(plan.envelope === undefined || plan.envelope === null, "env.piece.del no env no-op");
-
-// ---- plan.replace carries envelope ----
-plan = freshPlan();
-applyOp(plan, { kind: "env.set", poly: envPoly() });
-applyOp(plan, {
-  kind: "plan.replace",
-  state: { rooms: [{ id: "z1", name: "N", floor: 0, room: { poly: poly() }, pieces: [] }], envelope: { poly: envPoly(), floor: "tile", pieces: [] }, setupDone: true },
-});
-ok(plan.envelope && plan.envelope.floor === "tile", "plan.replace carries envelope");
-applyOp(plan, { kind: "plan.replace", state: { rooms: [{ id: "z2", name: "N", floor: 0, room: { poly: poly() }, pieces: [] }], setupDone: true } });
-ok(plan.envelope === null, "plan.replace null envelope clears it");
 
 // =====================================================================
 // ---- v5 "wall-partition": {outline, walls, openings, pieces, cells} ----
@@ -413,49 +221,43 @@ ok(p5.pieces.length === 2, "v5 piece.del absent no-op");
 throws(() => applyOp(freshV5(), { kind: "piece.set", piece: piece({ evil: 1 }) }), "v5 piece.set unknown key");
 throws(() => applyOp(freshV5(), { kind: "piece.set", piece: piece({ w: 5000 }) }), "v5 piece.set w out of range");
 
-// ---- plan5.replace: switchover + round-trip ----
-p5 = freshPlan();                     // v4 state at the start
+// ---- plan5.replace: complete replacement + round-trip ----
+p5 = freshV5();
 applyOp(p5, { kind: "plan5.replace", plan: v5State() });
-ok(!("rooms" in p5) && !("envelope" in p5), "plan5.replace drops v4 keys");
-ok(p5.walls.length === 1 && p5.openings.length === 1 && p5.cells.length === 1, "plan5.replace installs v5");
+ok(p5.walls.length === 1 && p5.openings.length === 1 && p5.cells.length === 1, "plan5.replace installe le plan");
 ok(JSON.stringify(sanitizeState(p5)) === JSON.stringify(sanitizeState(v5State())), "plan5.replace round-trip");
 applyOp(p5, { kind: "plan5.replace", plan: v5State() });
 ok(JSON.stringify(sanitizeState(p5)) === JSON.stringify(sanitizeState(v5State())), "plan5.replace idempotent");
-throws(() => applyOp(freshPlan(), { kind: "plan5.replace", plan: { walls: "nope" } }), "plan5.replace bad shape");
-throws(() => applyOp(freshPlan(), { kind: "plan5.replace", plan: v5State({ openings: [opening({ wallId: "ghost" })] }) }), "plan5.replace dangling opening");
-// v4 payload sent to plan5.replace: refused (otherwise we'd install an empty v5 plan)
-throws(() => applyOp(freshPlan(), { kind: "plan5.replace", plan: freshPlan() }), "plan5.replace refuses v4 payload");
-// v5 payload sent to v4's plan.replace: refused too (the switchover goes through plan5.replace)
-shapeErr(() => applyOp(freshPlan(), { kind: "plan.replace", state: v5State() }), "plan.replace refuses v5 payload");
+throws(() => applyOp(freshV5(), { kind: "plan5.replace", plan: { walls: "nope" } }), "plan5.replace bad shape");
+throws(() => applyOp(freshV5(), { kind: "plan5.replace", plan: v5State({ openings: [opening({ wallId: "ghost" })] }) }), "plan5.replace dangling opening");
+// Une charge a l'ancien format envoyee a plan5.replace : refusee (sinon on installe un plan vide).
+throws(() => applyOp(freshV5(), { kind: "plan5.replace", plan: { rooms: [], envelope: null, setupDone: true } }),
+  "plan5.replace refuse une charge d'un ancien format");
+// C'est la SEULE op qu'une ligne servie brute accepte : c'est sa sortie de secours.
+{
+  const brut = coldLoad(JSON.stringify({ rooms: [], envelope: null, setupDone: true })).plan;
+  applyOp(brut, { kind: "plan5.replace", plan: v5State() });
+  ok(isV5(brut) && !("rooms" in brut) && !("envelope" in brut), "plan5.replace nettoie les cles d'un ancien format");
+  ok(brut.walls.length === 1 && brut.cells.length === 1, "et installe le plan murs-seuls");
+}
 
-// ---- shape tightness: op_shape both ways ----
-// v4 ops refused on a v5 state (a v4 client left open cannot overwrite the v5 plan)
-shapeErr(() => applyOp(freshV5(), { kind: "plan.replace", state: freshPlan() }), "v4 plan.replace on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "room.add", room: { id: "r9", name: "X", floor: 0, room: { poly: poly() }, pieces: [] } }), "v4 room.add on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "room.set", roomId: "r1", name: "X" }), "v4 room.set on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "room.del", roomId: "r1" }), "v4 room.del on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "env.set", poly: envPoly() }), "v4 env.set on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "env.del" }), "v4 env.del on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "env.piece.set", piece: piece() }), "v4 env.piece.set on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "env.piece.del", pieceId: "p1" }), "v4 env.piece.del on v5");
-// v5 ops refused on a v4 state
-shapeErr(() => applyOp(freshPlan(), { kind: "wall.set", wall: wall() }), "v5 wall.set on v4");
-shapeErr(() => applyOp(freshPlan(), { kind: "wall.del", wallId: "w1" }), "v5 wall.del on v4");
-shapeErr(() => applyOp(freshPlan(), { kind: "outline.set", outline: outline() }), "v5 outline.set on v4");
-shapeErr(() => applyOp(freshPlan(), { kind: "opening.set", opening: opening() }), "v5 opening.set on v4");
-shapeErr(() => applyOp(freshPlan(), { kind: "opening.del", openingId: "o1" }), "v5 opening.del on v4");
-shapeErr(() => applyOp(freshPlan(), { kind: "cell.set", cellId: "c1", name: "X" }), "v5 cell.set on v4");
-shapeErr(() => applyOp(freshPlan(), { kind: "cells.replace", cells: [] }), "v5 cells.replace on v4");
-// a genuinely unknown op: unknown_kind in both shapes
-throws(() => applyOp(freshV5(), { kind: "nope" }), "v5 unknown kind");
-throws(() => applyOp(freshV5(), null), "v5 null op");
-// piece.set in v4 always requires a valid roomId (unchanged behavior)
-throws(() => applyOp(freshPlan(), { kind: "piece.set", piece: piece() }), "v4 piece.set still needs roomId");
+// ---- LES GENRES QUI N'EXISTENT PLUS ------------------------------------------------------------
+// Les ops propres aux formats v1 a v4 (`room.add`, `env.set`, `plan.replace`...) ont ete retirees
+// (decision 0021). Un vieil onglet qui en emet une est refuse, et le client lit ce refus comme il
+// lit `op_shape` : il annonce le conflit de modele et recharge.
+for (const genre of ["room.add", "room.set", "room.del", "env.set", "env.del",
+  "env.piece.set", "env.piece.del", "plan.replace", "rooms.merge", "piece.front"]) {
+  throws(() => applyOp(freshV5(), { kind: genre }), "genre retire refuse : " + genre);
+  ok(OP_KEYS[genre] === undefined, "genre retire absent de OP_KEYS : " + genre);
+}
+// a genuinely unknown op
+throws(() => applyOp(freshV5(), { kind: "nope" }), "unknown kind");
+throws(() => applyOp(freshV5(), null), "null op");
 
-// ---- a v4 state is never mistaken for a v5 (and vice versa) ----
-ok(!("outline" in sanitizeState({ rooms: [], setupDone: true })), "v4 stays v4");
-ok(Array.isArray(sanitizeState(v5State()).walls), "v5 stays v5");
-throws(() => sanitizeState({ nope: 1 }), "neither shape rejected");
+// ---- UNE SEULE FORME EST VALIDEE ---------------------------------------------------------------
+ok(Array.isArray(sanitizeState(v5State()).walls), "la forme murs-seuls passe");
+throws(() => sanitizeState({ rooms: [], setupDone: true }), "un etat a l'ancien format est refuse");
+throws(() => sanitizeState({ nope: 1 }), "une forme inconnue est refusee");
 
 // =====================================================================
 // ---- openings: side / h / name as first-class fields, and compatibility ----
@@ -590,10 +392,6 @@ ok(p5.openings.length === 0, "wall.del still cascades rich openings");
 ok(colorFor("a@b.com") === colorFor("a@b.com"), "colorFor deterministic");
 ok(/^#[0-9a-f]{6}$/.test(colorFor("x@y.z")), "colorFor palette");
 
-// ---- unknown / malformed op ----
-throws(() => applyOp(freshPlan(), { kind: "nope" }), "unknown kind");
-throws(() => applyOp(freshPlan(), null), "null op");
-
 // =====================================================================
 // ---- ATOMICITY: a REFUSED op leaves NO trace in the plan ----
 // =====================================================================
@@ -613,49 +411,7 @@ function atomic(makePlan: DonneeDynamique, op: DonneeDynamique, label: string) {
   }
 }
 
-// v4 corpus: every refusable op, including those touching MULTIPLE fields.
-const V4_BAD = [
-  ["piece.set piece invalide", { kind: "piece.set", roomId: "r1", piece: piece({ evil: 1 }) }],
-  ["piece.set coord NaN", { kind: "piece.set", roomId: "r1", piece: piece({ x: NaN }) }],
-  ["piece.set coord 1e308", { kind: "piece.set", roomId: "r1", piece: piece({ x: 1e308 }) }],
-  ["piece.set w hors bornes", { kind: "piece.set", roomId: "r1", piece: piece({ w: 5000 }) }],
-  ["piece.set type forgé", { kind: "piece.set", roomId: "r1", piece: piece({ type: "<img src=x>" }) }],
-  ["piece.set id forgé", { kind: "piece.set", roomId: "r1", piece: piece({ id: 'a"]' }) }],
-  ["piece.set salle absente", { kind: "piece.set", roomId: "nope", piece: piece() }],
-  ["piece.del salle absente", { kind: "piece.del", roomId: "nope", pieceId: "p1" }],
-  ["piece.del pieceId non-chaîne", { kind: "piece.del", roomId: "r1", pieceId: 12 }],
-  ["room.add id déjà pris", { kind: "room.add", room: { id: "r1", room: { poly: poly() } } }],
-  ["room.add poly trop court", { kind: "room.add", room: { id: "r9", room: { poly: [[0, 0], [1, 1]] } } }],
-  ["room.set poly invalide APRÈS un nom valide", { kind: "room.set", roomId: "r1", name: "Bureau", poly: [[0, 0]] }],
-  ["room.set floor invalide après nom", { kind: "room.set", roomId: "r1", name: "Bureau", floor: {} }],
-  ["room.set ax invalide après nom", { kind: "room.set", roomId: "r1", name: "Bureau", ax: "nope" }],
-  ["room.set ay hors bornes après nom", { kind: "room.set", roomId: "r1", name: "Bureau", ay: 1e308 }],
-  ["room.del dernière salle", { kind: "room.del", roomId: "r1" }],
-  ["room.del salle absente", { kind: "room.del", roomId: "nope" }],
-  ["plan.replace state cassé", { kind: "plan.replace", state: { rooms: "nope" } }],
-  ["plan.replace payload v5", { kind: "plan.replace", state: v5State() }],
-  ["env.set floor seul sans enveloppe", { kind: "env.set", floor: "tile" }],
-  ["env.set poly invalide", { kind: "env.set", poly: [[0, 0], [1, 1]] }],
-  ["env.set poly hors bornes", { kind: "env.set", poly: [[0, 0], [1e308, 0], [0, 1]] }],
-  ["env.piece.set sans enveloppe", { kind: "env.piece.set", piece: piece() }],
-  ["op v5 sur état v4", { kind: "wall.set", wall: wall() }],
-  ["kind inconnu", { kind: "nope" }],
-  ["op nulle", null],
-];
-for (const [label, op] of V4_BAD) atomic(freshPlan, op, "v4 " + label);
-
-// A v4 plan that ALREADY has an envelope: env.set must stay atomic on it too.
-const v4WithEnv = () => {
-  const p = freshPlan();
-  applyOp(p, { kind: "env.set", poly: envPoly(), floor: "tile" });
-  applyOp(p, { kind: "env.piece.set", piece: piece({ id: "ep1", type: "door" }) });
-  return p;
-};
-atomic(v4WithEnv, { kind: "env.set", poly: [[0, 0]] }, "v4 env.set poly invalide sur enveloppe existante");
-atomic(v4WithEnv, { kind: "env.set", floor: {} }, "v4 env.set floor invalide sur enveloppe existante");
-atomic(v4WithEnv, { kind: "env.piece.set", piece: piece({ evil: 1 }) }, "v4 env.piece.set meuble invalide");
-
-// v5 corpus.
+// The corpus of refusable ops, including those touching MULTIPLE fields.
 const V5_BAD = [
   ["outline.set poly trop court", { kind: "outline.set", outline: [[0, 0], [1, 1]] }],
   ["outline.set coord 1e308", { kind: "outline.set", outline: [[0, 0], [1e308, 0], [0, 1]] }],
@@ -685,9 +441,9 @@ const V5_BAD = [
   ["piece.set hinge null", { kind: "piece.set", piece: piece({ id: "pz", hinge: null }) }],
   ["piece.set swing 5 Mo", { kind: "piece.set", piece: piece({ id: "pz", swing: "z".repeat(200) }) }],
   ["piece.del pieceId non-chaîne", { kind: "piece.del", pieceId: {} }],
-  ["plan5.replace payload v4", { kind: "plan5.replace", plan: freshPlan() }],
+  ["plan5.replace charge d'un ancien format", { kind: "plan5.replace", plan: ancienEtat() }],
   ["plan5.replace ouverture pendante", { kind: "plan5.replace", plan: v5State({ openings: [opening({ wallId: "ghost" })] }) }],
-  ["op v4 sur état v5", { kind: "room.add", room: { id: "r9", room: { poly: poly() } } }],
+  ["genre retire (room.add)", { kind: "room.add", room: { id: "r9", room: { poly: poly() } } }],
   ["kind inconnu", { kind: "nope" }],
   ["op nulle", null],
 ];
@@ -725,24 +481,8 @@ function roundTrip(plan: DonneeDynamique, label: string) {
   ok(p.cells.find((c) => c.id === "cA").name.length === 80, "nom de cellule tronque conserve");
   ok(p.cells.length === 2 && p.walls.length === 2, "aucune entite fantome apres le corpus refuse");
 }
-// Same thing on the v4 side.
-{
-  const p = freshPlan();
-  applyOp(p, { kind: "room.add", room: { id: "r2", name: "Cuisine", floor: 0, room: { poly: poly() }, pieces: [] } });
-  applyOp(p, { kind: "env.set", poly: envPoly(), floor: "tile" });
-  applyOp(p, { kind: "env.piece.set", piece: piece({ id: "ep1", type: "door" }) });
-  applyOp(p, { kind: "piece.set", roomId: "r2", piece: piece({ id: "pz", name: "z".repeat(300) }) });
-  for (const [, op] of V4_BAD) { try { applyOp(p, op); } catch (_) {} }
-  roundTrip(p, "v4 apres suite mixte reussies+refusees");
-  // Some ops from the corpus become LEGITIMATE on this enriched plan (room.del is no longer the
-  // last room): so we only check what must hold in every case.
-  ok(p.rooms.length >= 1, "v4 garde au moins une salle");
-  ok(p.envelope && p.envelope.poly.length === 4, "v4 enveloppe intacte apres le corpus refuse");
-  ok(!p.rooms.some((r) => !r.room || !Array.isArray(r.room.poly) || r.room.poly.length < 3), "aucune salle fantome");
-}
-// A freshly sanitized state is a fixed point in both shapes.
+// A freshly sanitized state is a fixed point.
 roundTrip(freshV5(), "v5 frais");
-roundTrip(freshPlan(), "v4 frais");
 roundTrip(sanitizeState(v5State({ openings: [opening({ hinge: 3 })] })), "v5 ouverture depaquetee");
 
 // =====================================================================
@@ -858,13 +598,11 @@ ok(planTooBig(sanitizeState(v5State({ cells: manyCells(2000) }))) === false, "20
 // =====================================================================
 // ---- COLD LOAD (logic extracted from the DO, testable without a Cloudflare stub) ----
 // =====================================================================
-// D1 with no row = legitimate new plan: we install it and persist it. The new plan is in the
-// WALLS-ONLY format (v5), not the old one: otherwise a new household saw ALL live-client ops
-// refused (no_room / op_shape), and the two people each configured their own apartment.
+// D1 with no row = legitimate new plan: we install it and persist it, in the walls-only shape.
 {
   const c = coldLoad(null);
   ok(c.source === "empty" && c.persist === true, "coldLoad D1 vide -> plan neuf");
-  ok(c.plan.rooms === undefined && c.plan.envelope === undefined, "coldLoad plan neuf : plus d'ancien format");
+  ok(!("rooms" in c.plan) && !("envelope" in c.plan), "coldLoad plan neuf : plus d'ancien format");
   ok(Array.isArray(c.plan.walls) && c.plan.walls.length === 0, "coldLoad plan neuf : walls");
   ok(Array.isArray(c.plan.openings) && Array.isArray(c.plan.pieces) && Array.isArray(c.plan.cells),
     "coldLoad plan neuf : les 4 listes v5");
@@ -879,26 +617,10 @@ ok(planTooBig(sanitizeState(v5State({ cells: manyCells(2000) }))) === false, "20
   applyOp(p, { kind: "wall.set", wall: wall() });
   applyOp(p, { kind: "piece.set", piece: piece() });
   ok(p.walls.length === 1 && p.pieces.length === 1 && p.outline.length === 4, "foyer neuf : outline/wall/piece acceptes");
-  shapeErr(() => applyOp(coldLoad(null).plan, { kind: "room.add", room: { id: "r1", name: "S", room: { poly: poly() }, pieces: [] } }),
-    "foyer neuf : une op propre a l'ancien modele est refusee en op_shape");
+  throws(() => applyOp(coldLoad(null).plan, { kind: "room.add", room: { id: "r1", name: "S", room: { poly: poly() }, pieces: [] } }),
+    "foyer neuf : une op propre a un ancien modele est refusee");
 }
-// A new plan in the OLD format, already installed by an earlier version, is caught up.
-// An old plan that carries ANYTHING is NOT: its conversion belongs to the client.
-{
-  const rattrape = upgradeEmptyLegacy({ rooms: [], envelope: null, setupDone: false });
-  ok(isV5(rattrape) && rattrape.rooms === undefined, "plan neuf a l'ancien format : rattrape en v5");
-  ok(upgradeEmptyLegacy({ rooms: [], envelope: null, setupDone: true }).setupDone === true, "rattrapage : setupDone conserve");
-  const vrai = { rooms: [{ id: "r1", name: "S", floor: 0, ax: null as DonneeDynamique, ay: null as DonneeDynamique, room: { poly: poly() }, pieces: [] as DonneeDynamique[] }], envelope: null as DonneeDynamique, setupDone: true };
-  ok(upgradeEmptyLegacy(vrai) === vrai, "un ancien plan qui porte une salle n'est PAS touche");
-  const avecEnv = sanitizeState({ rooms: [], envelope: { poly: envPoly() }, setupDone: true });
-  ok(upgradeEmptyLegacy(avecEnv) === avecEnv, "un ancien plan qui porte une enveloppe n'est PAS touche");
-  const v5 = freshV5();
-  ok(upgradeEmptyLegacy(v5) === v5, "un plan v5 n'est jamais touche");
-  // and via the real path: a D1 row containing the old version's new plan
-  const c = coldLoad(JSON.stringify({ rooms: [], setupDone: false }));
-  ok(isV5(c.plan) && c.plan.walls.length === 0, "coldLoad : une ligne D1 '{rooms:[]}' est rattrapee");
-}
-// A new household's first complete plan goes through plan5.replace: that's the expected switchover.
+// A new household's first complete plan goes through plan5.replace.
 {
   const p = coldLoad(null).plan;
   applyOp(p, { kind: "plan5.replace", plan: v5State() });
@@ -922,6 +644,29 @@ ok(planTooBig(sanitizeState(v5State({ cells: manyCells(2000) }))) === false, "20
   ok(c.plan.walls.length === 1 && c.plan.openings.length === 1, "coldLoad ne vide PAS un plan refuse");
   ok((c.plan.openings[0] as unknown as Record<string, unknown>).cadre === "chene", "coldLoad conserve les champs inconnus du brut");
 }
+// UNE LIGNE D1 A L'ANCIEN FORMAT (v1 a v4) PREND CE MEME CHEMIN (decision 0021). Le validateur ne
+// connait plus `rooms`/`envelope` : la ligne est REFUSEE, donc servie BRUTE, octet pour octet.
+// Rien ne se convertit et rien ne se jette ; aucune op ne peut ecrire par-dessus (voir juste
+// apres), donc la ligne reste intacte en base jusqu'a une intervention humaine.
+{
+  const ancien = ancienEtat();
+  throws(() => sanitizeState(ancien), "un etat v4 est refuse par le validateur courant");
+  const c = coldLoad(JSON.stringify(ancien));
+  ok(c.source === "raw", "coldLoad ligne v4 -> brut, vu " + c.source);
+  const brut = c.plan as DonneeDynamique;
+  ok(brut.rooms.length === 1 && brut.rooms[0].pieces.length === 1 && brut.envelope,
+    "coldLoad garde les octets v4 tels quels");
+  ok(isV5(c.plan) === false, "une ligne v4 brute n'est pas prise pour un plan v5");
+  // Un vieil onglet qui emet encore une op v4 est REFUSE, il n'ecrit rien.
+  throws(() => applyOp(c.plan, { kind: "room.set", roomId: "r1", name: "Chambre" }),
+    "une op v4 (room.set) est refusee");
+  throws(() => applyOp(c.plan, { kind: "env.del" }), "une op v4 (env.del) est refusee");
+  throws(() => applyOp(c.plan, { kind: "plan.replace", state: ancien }), "une op v4 (plan.replace) est refusee");
+  // Et une op v5 ne convertit pas la ligne en douce non plus.
+  shapeErr(() => applyOp(c.plan, { kind: "wall.set", wall: wall() }),
+    "une op v5 sur une ligne v4 brute est refusee en op_shape");
+  ok(brut.rooms.length === 1, "apres tous ces refus, les octets v4 sont toujours la");
+}
 // Unreadable D1: we REFUSE to serve rather than installing an empty plan meant to overwrite the row.
 throws(() => coldLoad("{ pas du json"), "coldLoad JSON casse -> refus");
 throws(() => coldLoad("[1,2,3]"), "coldLoad tableau -> refus");
@@ -939,7 +684,7 @@ throws(() => coldLoad(42), "coldLoad valeur non-chaine -> refus");
 // No case returns an EMPTY plan while the row carried something: that's the invariant.
 {
   const c = coldLoad(JSON.stringify(v5State()));
-  ok(!(Array.isArray(c.plan.rooms) && c.plan.rooms.length === 0), "coldLoad ne substitue jamais un plan vide a une ligne pleine");
+  ok(c.plan.walls.length === 1, "coldLoad ne substitue jamais un plan vide a une ligne pleine");
 }
 
 // =====================================================================
@@ -1237,8 +982,6 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false, planId = 
   const melange = structuredClone(deux);
   melange.walls.reverse(); melange.cells.reverse(); melange.pieces.reverse();
   ok(planFp(melange) === planFp(deux), "l'ordre des listes ne change pas l'empreinte");
-  // A v4 plan and a v5 plan are never confused.
-  ok(planFp(sanitizeState(freshPlan())) !== planFp(a), "v4 et v5 ont des empreintes distinctes");
   ok(planFp(emptyPlan()) !== planFp(a), "le plan neuf a sa propre empreinte");
 }
 // The fingerprint survives a JSON round-trip (which is what the DO's storage does).

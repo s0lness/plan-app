@@ -15,7 +15,7 @@ import { isSideable } from "../catalogue/catalogue.ts";
 import { oublierAvantAimant } from "../modele/aimant-memoire.ts";
 import { v5ClampPiece, v5OpeningBlockerOnSide } from "../modele/edition.ts";
 import { autoName } from "../modele/creation.ts";
-import { prochainUid } from "../modele/lecture-v4.ts";
+import { prochainUid } from "../modele/creation.ts";
 import { clearSel, selAdd } from "../rendu/selection.ts";
 import { render } from "../rendu/rendu.ts";
 import { pushHistory } from "../historique/pile.ts";

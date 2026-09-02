@@ -19,12 +19,14 @@ Why it is built this way, not just how to work in it: `docs/decisions/`.
 - An **opening** (door, window, wall light, outlet, RJ45) belongs to the WALL: `{wallId, t0, side}`.
 - A **piece of furniture** has apartment coordinates, period. No re-homing, no notion of a
   "current room", no local coordinate system.
-- **Old formats remain READABLE** (v1/v2/v3 single-room, v4 `rooms[]`+`envelope`):
-  `migrate()` rebuilds them in memory (`readLegacyRooms`), then converts them (`buildV5FromV4`)
-  and discards the scaffolding. Nothing in the live application edits this format. The blob from
-  before conversion is copied verbatim into `localStorage` (key `room-planner-v4-backup`). The menu
-  entry that reloaded it was REMOVED (conversion is done, the converted floor plan is in service):
-  the data remains, `v5RestoreBackup()` remains, the entry point does not.
+- **There is ONE model, and no other is read** (decision 0021). `migrate()` accepts the walls-only
+  plan, nested (`st.plan`, the complete local copy, which wins) or flat (the server shape), and
+  REFUSES everything else, the shapes that came before it included. A refused blob is not converted
+  and not thrown away: it takes the "unreadable plan" path, its bytes are set aside verbatim under
+  `room-planner-v4-backup-illisible`, `setupDone` falls back to false so nothing is published, and a
+  banner offers it for download. Same net on the server: `sanitizeState` refuses such a row,
+  `coldLoad` serves its bytes as they are (`source:"raw"`), and `applyOp` accepts nothing but
+  `plan5.replace` on that state, so no op can half-overwrite it.
 
 ## Architecture
 - **The deliverable remains ONE file**: `index.html`, self-contained (CSS + HTML + a JS IIFE),
@@ -37,10 +39,9 @@ Why it is built this way, not just how to work in it: `docs/decisions/`.
 | --- | --- | --- | --- |
 | `room-planner-v4` | **THE FLOOR PLAN.** It is the D1 PUT body and the contents of an export. | `save()` | **yes**, it is the shared data |
 | `room-planner-opts` | PERSONAL SETTINGS: layers, labels, snapping, Circulation panel, overlay, collapsed categories, television inches. | the options | **no**, in EITHER direction: `serialize()` does not include them and `makeState()` ignores the `opts` of every received payload (neither realtime nor D1 fallback) |
-| `room-planner-v4-backup` (+ `-at`) | The blob from BEFORE conversion, copied VERBATIM on the first conversion. | `migrate()`, once | no |
-| `room-planner-v4-backup-illisible` (+ `-at`) | The blob that could NOT be read again (interrupted write, truncated JSON, unknown version), set aside BEFORE anything replaces it. | the read that fails | no (downloadable from the banner) |
+| `room-planner-v4-backup-illisible` (+ `-at`) | The blob that could NOT be read again (interrupted write, truncated JSON, a shape older than the walls-only model), set aside BEFORE anything replaces it. | the read that fails | no (downloadable from the banner) |
 | `room-planner-v4-conflit` | The last 5 versions rejected by a 409, so nothing is lost during a concurrent fallback. | `js/41` | no (can be reimported through "Load a plan…") |
-| `room-planner`, `room-planner-v1..v3` | Old formats. **Read only**, never rewritten. | nobody | no |
+| `room-planner`, `room-planner-v1..v3` | Shapes older than the walls-only model. **Neither read nor written** since decision 0021: their bytes stay where they are, untouched. | nobody | no |
 
 - **An unreadable floor plan does not pretend to be a floor plan.** When the rescue blob is written,
   `setupDone` falls back to false: the application SAYS SO (banner + wizard) and **can no longer
@@ -268,17 +269,16 @@ CDP, a case is a `Page.navigate`, and the verdict is awaited as a CONDITION unde
 calibrates itself on the suite's median. Why, and what was rejected:
 `docs/decisions/0006-un-navigateur-par-suite.md`.
 
-Same machine, same parallelism (8 tasks), same priority setting, the six converted suites INSIDE
-the barrier:
+Same machine, same parallelism (8 tasks), same priority setting, the converted suites INSIDE the
+barrier (two others, `model-v5-ancien-plan` and `model-v5-conversion-rendu`, have since been
+retired along with the read path they measured, decision 0021):
 
 | suite | before | after |
 |---|---|---|
 | `model-v5-modele-defaut` | 542,7 s | 8,6 s |
-| `model-v5-ancien-plan` | 379,9 s | 3,0 s |
 | `model-v5-fil-serveur` | 334,4 s | 3,8 s |
 | `collab-accuses` | 301,1 s | 2,4 s |
 | `model-v5-edition` | 274,5 s | 5,9 s |
-| `model-v5-conversion-rendu` | 257,5 s | 5,1 s |
 
 Whole barrier, `PLAN_TESTS_PRIORITE=normale`, machine otherwise idle: **before, it had NOT finished
 after 600 s**; **after, 421,8 s, every registered suite and check was green**. See
@@ -473,9 +473,9 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   write was rejected, so "not saved" (with its own title) during the rejection, then back to
   "slow sync" as soon as it is read again.
 - **This REST FALLBACK is the only safety net when the Worker goes down**: its PUT must accept BOTH
-  forms (old `rooms[]`, walls-only `outline`/`walls`/`plan`). A guard that accepts only `rooms`
-  rejects 100% of writes from the live model, the chip says "slow sync", and the two people
-  silently diverge. Covered by `tests/repli-d1-live.ts`.
+  the walls-only form (`outline`/`walls`/`plan`). The guard it once carried accepted only `rooms`,
+  so it rejected 100% of the writes from the live model, the chip said "slow sync", and the two
+  people silently diverged. Covered by `tests/repli-d1-live.ts`.
 - **The synchronization chip must never lie.** States: `live ✓` (WS), `slow sync` (D1 fallback),
   `not saved` (reads work, WRITES do not), `offline`, `local` (detached tab). A successful
   GET probe does not prove that writing works: `putFailed` prevents the chip from repainting

@@ -6,24 +6,15 @@
 // TRAP PAID FOR BY THE PREVIOUS BATCH: `Object.assign` COPIES an accessor's VALUE. Anything
 // that must stay LIVE is written as `get x()` here, and `sonde.ts` carries the DESCRIPTORS.
 //
-// What this slice covers, and nothing else: the two SAFETY NETS of boot (pre-conversion backup,
-// unreadable blob), READING a plan in the old format, the `serialize`/`migrate` round trip, the
-// outline's axiality, and the two palette-THUMBNAIL measurements. The rules they probe are all
-// ported elsewhere: here we only reach out a hand.
+// What this slice covers, and nothing else: the `serialize`/`migrate` round trip, the outline's
+// axiality, and the two palette-THUMBNAIL measurements. The rules they probe are all ported
+// elsewhere: here we only reach out a hand.
 
 import type { Contexte } from "./app/contexte.ts";
 import type { Etat } from "./modele/etat.ts";
-import type { PlanAncien } from "./modele/salles-anciennes.ts";
 import { migrate } from "./modele/etat.ts";
-import { buildV5FromV4 } from "./modele/conversion-v4.ts";
 import { sanitizeV5Plan } from "./modele/migrations.ts";
-import { readLegacyRooms } from "./modele/lecture-v4.ts";
-import { roomAptPoly, roomLocalBBox } from "./modele/salles-anciennes.ts";
-import { v5BackupInfo } from "./modele/filets.ts";
 import { pieceIconViewH, wallMountMarkerMetrics } from "./rendu/icones.ts";
-
-/** What the pre-conversion backup says about itself (without its blob, useless to tests). */
-export interface SondeInfoSauvegarde { at: string; rooms: number; pieces: number; names: string[] }
 
 /**
  * The overflow, in px, of ONE palette thumbnail outside its `.prev` slot (44 x 30). Positive =
@@ -37,12 +28,7 @@ export interface DebordementVignette {
 }
 
 export interface SondeDonnees {
-  backupInfo(): SondeInfoSauvegarde | null;
-  readLegacy(brut: unknown): PlanAncien | null;
-  roomAptPoly: typeof roomAptPoly;
-  roomLocalBBox: typeof roomLocalBBox;
   migrate(brut: unknown): Etat | null;
-  buildV5FromV4: typeof buildV5FromV4;
   sanitizeV5Plan: typeof sanitizeV5Plan;
   allEdgesAxisAligned(tolCm?: number | null): boolean;
   pieceIconViewH: typeof pieceIconViewH;
@@ -52,28 +38,8 @@ export interface SondeDonnees {
 
 export function sondeDonnees(ctx: Contexte): SondeDonnees {
   return {
-    // ---- the two boot safety nets ----------------------------------------------------------
-    backupInfo(): SondeInfoSauvegarde | null {
-      const i = v5BackupInfo();
-      return i ? { at: i.at, rooms: i.rooms, pieces: i.pieces, names: i.names } : null;
-    },
-
-    // ---- reading old formats ------------------------------------------------------------
-    // The ONLY thing that still manufactures "rooms", and they never leave the conversion. The
-    // wrapped export (`{app:"room-planner", state}`) is unwrapped here, just like in the old
-    // hook.
-    readLegacy(brut: unknown): PlanAncien | null {
-      const e = brut as { app?: string; state?: unknown } | null;
-      const st = (e && e.app === "room-planner" && e.state) ? e.state : brut;
-      return readLegacyRooms(st);
-    },
-    roomAptPoly,
-    roomLocalBBox,
+    // ---- reading a plan ----------------------------------------------------------------------
     migrate: (brut: unknown): Etat | null => migrate(brut),
-    // THE CONVERSION, EXPOSED SEPARATELY FROM READING, and this is not a convenience: the
-    // MODEL suites replay it on TWO clients to prove that the same old plan gives exactly the
-    // same walls, cells, and openings on both sides. Without it, this comparison does not exist.
-    buildV5FromV4,
     sanitizeV5Plan,
 
     // ---- outline geometry -------------------------------------------------------------------

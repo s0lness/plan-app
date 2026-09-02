@@ -5,7 +5,23 @@
 // `bboxOfPoly(outline)`, called with the outline. It's the same function, but its dependency is
 // now STATED by its signature instead of being invisible.
 
+import { clamp } from "../noyau/nombres.ts";
 import type { Pt } from "../partage/plan.ts";
+
+// ---- THE TWO OUTLINE SHAPES THE APPLICATION DRAWS BY ITSELF ------------------------------------
+// Pure builders: dimensions in, polygon out. The preset buttons, the setup wizard and the blank
+// plan all go through them, so none of the three can drift away from the other two.
+
+/** A `w` x `l` rectangle, from the origin. */
+export const rectPoly = (w: number, l: number): Pt[] => [[0, 0], [w, 0], [w, l], [0, l]];
+
+/** L-shape: a w x l rectangle with a notch (nw wide, nl deep) taken out of the TOP-RIGHT corner. */
+export function lShapePoly(w: number, l: number, nw: number, nl: number): Pt[] {
+  nw = clamp(Math.round(nw), 10, w - 10);
+  nl = clamp(Math.round(nl), 10, l - 10);
+  return ([[0, 0], [w - nw, 0], [w - nw, nl], [w, nl], [w, l], [0, l]] as Pt[])
+    .map((p) => [Math.round(p[0]), Math.round(p[1])] as Pt);
+}
 
 export interface BBox {
   minX: number;
@@ -221,23 +237,6 @@ export function poleOfInaccessibility(poly: readonly Pt[] | null | undefined): {
   const res = { x: bestX, y: bestY };
   memoriserPole(poly, sig, res);
   return res;
-}
-
-/**
- * WORLD direction (cm frame, y pointing DOWN) of an object's LOCAL +y, rotated by `angRad`.
- * An earlier version wrote (+sinθ, cosθ): identical on a HORIZONTAL wall, opposite on a
- * VERTICAL wall, hence every wall-mounted object landing at 180° on vertical walls.
- */
-export function wallInwardNormal(angRad: number): { x: number; y: number } {
-  return { x: -Math.sin(angRad), y: Math.cos(angRad) };
-}
-
-/** Rotation (deg) placing a wall-mounted object along a wall, LOCAL +y turned toward the INSIDE. */
-export function wallFacingRot(angRad: number, px: number, py: number, facePoly: readonly Pt[]): number {
-  let rot = angRad * 180 / Math.PI;
-  const n = wallInwardNormal(angRad);
-  if (!pointInPoly(px + n.x * 8, py + n.y * 8, facePoly)) rot += 180;
-  return rot;
 }
 
 function segsIntersect(a: Pt, b: Pt, c: Pt, d: Pt): boolean {

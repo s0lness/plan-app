@@ -26,7 +26,6 @@ import type { Contexte } from "./app/contexte.ts";
 import type { Fil } from "./fil/etat.ts";
 import type { Cellule, EtatFil, Op, OuvertureFil, PlanV5, Pt } from "./partage/plan.ts";
 import type { Options } from "./modele/migrations.ts";
-import type { ResultatRestauration } from "./modele/restauration.ts";
 import { $ } from "./noyau/dom.ts";
 import { OPTS_KEY } from "./noyau/nombres.ts";
 import { estSolConnu } from "./partage/contrat-serveur.ts";
@@ -39,7 +38,6 @@ import { v5OpeningWire } from "./fil/pseudo-fil.ts";
 import { ws5DiffOps } from "./fil/miroir.ts";
 import { v5RebuildCells } from "./modele/cellules.ts";
 import { bornerLesMeubles, v5TryCreateWall } from "./gestes/murs.ts";
-import { v5RestoreBackup } from "./modele/restauration.ts";
 import {
   WS_ACK_RTO, etatFilCourant, wsAckTick, wsOnSave, wsShadowSync,
 } from "./fil/emission.ts";
@@ -106,7 +104,6 @@ export interface SondeFil {
   histApplyOp(plan: PlanV5, op: Op): PlanV5;
   drawWall(a: Pt, b: Pt, opts?: unknown): { id: string | null; toast: string | null };
   nouveauGeste(): true;
-  restoreBackup(): ResultatRestauration;
 
   // ---- D-7: the personal settings NEVER cross over --------------------------------------
   setLayer(which: "light" | "plug" | "furn", on: boolean): { light: boolean; plug: boolean; furn: boolean };
@@ -260,7 +257,6 @@ export function sondeFil(ctx: Contexte, fil: Fil): SondeFil {
       document.dispatchEvent(new Event("pointerdown", { bubbles: true }));
       return true;
     },
-    restoreBackup: () => v5RestoreBackup(ctx),
 
     // D-7. THE PERSONAL SETTINGS NEVER CROSS OVER, IN EITHER DIRECTION. `setLayer` goes through
     // the REAL checkbox: this is the only way to prove that the user's path really writes to

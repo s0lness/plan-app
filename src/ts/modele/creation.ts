@@ -8,8 +8,29 @@
 
 import type { Meuble, PlanV5 } from "../partage/plan.ts";
 import { TYPEMAP, baseName } from "../catalogue/catalogue.ts";
-import { prochainUid } from "./lecture-v4.ts";
 import { v5NewId } from "../fil/identite.ts";
+
+// THE OBJECT COUNTER, AND WHY IT IS A MODULE-LEVEL COUNTER.
+// It numbers the furniture this client creates. It starts from `Date.now()` so an identifier
+// drawn today cannot collide with one drawn yesterday and already recorded in the household's
+// plan: resetting it to zero between two sessions would hand out identifiers that already exist.
+let uid = Date.now();
+
+/**
+ * RESETS THE COUNTER TO A KNOWN VALUE. The only consumer is the compatibility oracle
+ * (`tests/compat-donnees.ts`), which reads back dozens of documents in a single process and
+ * requires that a read owe NOTHING to the previous one: without this, the corpus's order would
+ * change the identifiers drawn, hence the fingerprints, and the oracle would become a coin toss.
+ * THE APPLICATION NEVER CALLS THIS, and must never call it.
+ */
+export function reglerCompteurs(nouvelUid: number): void {
+  uid = nouvelUid;
+}
+
+/** The next OBJECT identifier. */
+export function prochainUid(): number {
+  return ++uid;
+}
 
 /**
  * If the name's base already exists, returns "Base 2", "Base 3"... NEVER renumbers an existing

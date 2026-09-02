@@ -95,39 +95,26 @@ copy and not a word said.
 **Verified** `plan-abime.ts` #1 to #3.
 **Robustness**: by construction.
 
-### D-3. The pre-conversion blob is copied verbatim before the first write
-**Guarantees** a backup copy of the old format exists, taken exactly once, during boot.
-**Where** `v5BackupLegacy()` (`js/55`), key `room-planner-v4-backup`, called from `js/02:352-360`.
-**Verified** `v5_backup_is_taken_once_and_kept`, `v5_restore_returns_the_plan_from_before_la_conversion`.
-**Robustness**: **by accident**. The menu entry was removed on 2026-08-05 (`d7350c2`): the data
-remains, `v5RestoreBackup()` remains, but **nothing in the application knows how to reach it
-anymore**. Only `window.__plan.restoreBackup()` accesses it, that is, a test hook. A safety net
-you can no longer grab is not a safety net.
+### D-3, D-5 and D-6. WITHDRAWN (decision 0021)
+These three invariants described the READING of the shapes that came before the walls-only model:
+the verbatim copy of the pre-conversion blob, the determinism of the conversion, and the
+renumbering of duplicate room identifiers. That read path is gone, and there is only one model
+left. What remains is D-2: such a plan is neither converted nor discarded, its bytes are set aside
+as they are and the banner makes them downloadable.
 
-### D-4. Old formats stay readable, and `migrate()` is the sole entry point
-**Guarantees** five input shapes are accepted and converted in memory: v1/v2/v3 single-room
-(`{room, pieces}`), v4 (`rooms[]` + `envelope`), wrapped export (`{app:"room-planner", state}`),
-nested v5 (`{plan:{…}}`), flat v5 (the server shape, `outline`/`walls`/… at the root).
-**Non-negotiable precedence**: `st.plan` (nested) **wins** over the flat shape, "it is the
+### D-4. `migrate()` is the sole entry point for a payload
+**Guarantees** two input shapes are accepted: nested (`{plan:{…}}`, plus the wrapped export
+`{app:"room-planner", state}`) and flat (the server shape, `outline`/`walls`/… at the root).
+Anything else is REFUSED, and a refusal is a verdict, not a loss (D-2).
+**Non-negotiable precedence**: `st.plan` (nested) **wins** over the flat shape, it is the
 complete local copy, which additionally carries the openings' `h`/`side`/`name`, lost over the
-wire (strict server keys)" (`js/02:302`).
+wire (strict server keys).
 **Prevents** adopting the flat shape erased the depth, side, and name of every opening.
-**Where** `migrate()` (`js/02:297`), `readLegacyRooms()` (l. 86), `sanitizeV5Plan()` (l. 170),
-`buildV5FromV4()` (`js/49`).
-**Verified** `run.ts`: `migrate_v3_is_read_and_converted`, `boot_reads_and_converts_v4`,
-`serialize_migrate_roundtrip`; `model-v5-conversion-rendu.ts` on the **real plan** (8 rooms →
-10 cells, 21 openings, 21 pieces of furniture); fixtures `plan-reel-77.json`, `plan-rev177.json`.
+**Where** `migrate()` and `sanitizeV5Plan()` (`src/ts/modele/etat.ts`, `modele/migrations.ts`).
+**Verified** `run.ts`: `boot_reads_the_saved_plan`, `serialize_migrate_roundtrip`; `rapide.ts`:
+`un_plan_v1_a_v4_n_est_plus_lu_et_part_au_filet_illisible`; `compat-donnees.ts` freezes the whole
+corpus, refusals included.
 **Robustness**: by construction.
-
-### D-5. Conversion is deterministic, hence idempotent
-**Guarantees** two clients converting at the same instant converge; a second conversion changes
-nothing.
-**Prevents** a tab left on the old format overwrote the converted plan.
-**Verified** `v5_two_clients_converge_on_the_same_conversion`, `v5_boot_does_not_reconvert`,
-`rapide_detection_est_deterministe`, `v5_stale_tab_reacts_to_a_model_conflict`.
-
-### D-6. Duplicate room identifiers are renumbered on read
-**Prevents** "old data has multiple rooms with the SAME id" (`js/02:90`).
 
 ### D-7. Personal settings never cross over, in either direction, on either of the two paths
 **Guarantees** layers, labels, the Circulation panel, overlay, collapsed categories, and
@@ -1268,7 +1255,6 @@ first unrelated change, and a rewrite will not reproduce them on its own.
 
 | # | Guarantee | Why it holds by accident |
 |---|---|---|
-| D-3 | The pre-conversion backup is recoverable | The menu entry was removed. Only `window.__plan.restoreBackup()`, a **test** hook, still accesses it. |
 | V-3 | "Missing field = no opinion" on the v4 path | `pieces.map(validatePiece)` passes the **array index** as `prev`. `prevOf` rejects it by chance. |
 | C-8 | Identifiers do not collide | **None of the 109 production identifiers** carries a device tag yet. The protection only covers new ones. |
 | R-19 | No dead selector | The sweep only covers **classes**, not identifiers. |

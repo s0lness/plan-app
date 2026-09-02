@@ -30,24 +30,6 @@ export function v5SameLine(A: DroiteSupport, B: DroiteSupport, tol: number): boo
   return Math.abs(A.dx * B.dy - A.dy * B.dx) < 0.02 && Math.abs(A.c - B.c) <= tol;
 }
 
-/** Snaps a point onto the outline (vertex takes priority, else edge) if within `tol`. */
-export function v5SnapToOutline(p: Pt, outline: readonly Pt[], tol: number): Pt {
-  let bv: Pt | null = null, bd = tol;
-  for (const q of outline) {
-    const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
-    if (d <= bd) { bd = d; bv = [q[0], q[1]]; }
-  }
-  if (bv) return bv;
-  let be: Pt | null = null;
-  bd = tol;
-  for (let i = 0; i < outline.length; i++) {
-    const a = outline[i]!, b = outline[(i + 1) % outline.length]!;
-    const c = closestOnSeg(p[0], p[1], a[0], a[1], b[0], b[1]);
-    if (c.dist <= bd) { bd = c.dist; be = [c.x, c.y]; }
-  }
-  return be || p;
-}
-
 /**
  * Does this segment run along an edge of the OUTLINE? This is the rule that decides a wall is an
  * OUTLINE WALL. The outline is authoritative, the `isOutline` flag is only a cache (C-13).

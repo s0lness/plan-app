@@ -88,9 +88,9 @@ async function construireLecteur(dir: string) {
   }
 
   const mod = (p: DonneeDynamique) => import(pathToFileURL(path.join(abs, p)).href);
-  const [ETAT, PERSIST, FIL, CAT, CONTRAT, LECTURE]: DonneeDynamique[] = await Promise.all([
+  const [ETAT, PERSIST, FIL, CAT, CONTRAT, CREATION]: DonneeDynamique[] = await Promise.all([
     mod("modele/etat.ts"), mod("app/persistance.ts"), mod("fil/pseudo-fil.ts"),
-    mod("catalogue/catalogue.ts"), mod("partage/contrat-serveur.ts"), mod("modele/lecture-v4.ts"),
+    mod("catalogue/catalogue.ts"), mod("partage/contrat-serveur.ts"), mod("modele/creation.ts"),
   ]);
   for (const [nom, m, cles] of [
     ["modele/etat.ts", ETAT, ["migrate", "defaultState"]],
@@ -98,7 +98,7 @@ async function construireLecteur(dir: string) {
     ["fil/pseudo-fil.ts", FIL, ["v5StateWire", "v5OpeningWire"]],
     ["catalogue/catalogue.ts", CAT, ["TYPEMAP", "isWallMount"]],
     ["partage/contrat-serveur.ts", CONTRAT, ["FLOORS"]],
-    ["modele/lecture-v4.ts", LECTURE, ["reglerCompteurs"]],
+    ["modele/creation.ts", CREATION, ["reglerCompteurs"]],
   ]) {
     const absents = cles.filter((k: string) => m[k] === undefined);
     if (absents.length) throw new Error(`export introuvable dans ${nom} : ${absents.join(", ")}`);
@@ -116,7 +116,7 @@ async function construireLecteur(dir: string) {
   let etat: DonneeDynamique = null;
   const ctx = { get etat() { return etat; } };
   function _reset() {
-    LECTURE.reglerCompteurs(1000, 0);
+    CREATION.reglerCompteurs(1000);
     for (const k of Object.keys(MEM)) delete MEM[k];
     etat = null;
   }
@@ -228,12 +228,16 @@ function ajouterFichier(nom: string, quoi: string, p: DonneeDynamique, transform
 }
 
 // ---- 3a. the repo's VERSIONED fixtures ----
-// VERIFIED byte for byte: `plan-reel-77.json` IS the blob from before the walls-only conversion
-// found in the working folder (`backup-avant-bascule-v5.json`). One document, not two.
+// LE CORPUS NE MESURE QUE LE MODÈLE VIVANT (décision 0021). Les deux plans du foyer ci-dessous
+// étaient stockés au format v4 ; ils ont été CONVERTIS une fois, dans le dépôt, par le convertisseur
+// juste avant qu'il ne soit retiré, et leurs trois empreintes sont restées identiques au caractère
+// près : c'est la preuve que la conversion figée ici est exactement celle que l'application faisait
+// à chaque ouverture. Ce qui reste des anciens formats est mesuré une fois, dans `tests/rapide.ts` :
+// `migrate()` les refuse, et le filet « illisible » garde leurs octets.
 ajouterFichier("fixture-plan-reel-77",
-  "v4 rooms[]+envelope+opts : le plan du foyer AVANT la conversion murs-seuls (8 salles, 77 objets, D-3)",
+  "le plan du foyer, 22 murs / 30 ouvertures / 47 meubles / 10 cellules (converti depuis le v4 d'avant la bascule)",
   path.join(FIXTURES, "plan-reel-77.json"));
-ajouterFichier("fixture-plan-rev177", "v4 rooms[]+envelope, révision 177",
+ajouterFichier("fixture-plan-rev177", "le plan du foyer à la révision 177 (converti depuis son v4)",
   path.join(FIXTURES, "plan-rev177.json"));
 ajouterFichier("export-appartement", "export ENVELOPPÉ {app,version,savedAt,note,state} (v5 murs-seuls, appartement de démonstration)",
   path.join(RACINE, "exemple-appartement.json"));
@@ -249,8 +253,6 @@ ajouterFichier("fixture-plan-champs-recents",
 // They are recopied into `tests/fixtures/` on the first run: a proof that depends on a
 // temporary working folder is not a proof.
 const DEPUIS_JOB: [string, string, string, ((objet: ReturnType<typeof JSON.parse>) => ReturnType<typeof JSON.parse>) | null][] = [
-  ["backup-rev246", "v4 rooms[]+envelope, révision 246", "backup-rev246.json", null],
-  ["backup-prev5-rev242", "v4 + opts + active, révision 242", "plan-backup-prev5-rev242.json", null],
   ["prod-main-v5-plat", "v5 À PLAT tel que le GET /api/plan le rend (forme serveur)", "prod-main.json", null],
   ["export-u7", "export ENVELOPPÉ d'une session de travail", "u7-export.json", null],
   ["d1-rev283", "la ligne D1 de production figée (rev 283, écrite par le snapshot du Worker)",
@@ -306,35 +308,31 @@ for (const [nom, quoi, fichier, transformer] of DEPUIS_JOB) {
   }
 }
 
-// v1/v2/v3 single-room: `{room:{poly,w,l,h}, pieces[], opts}`. No document from that era
-// lingers on the machine; the shape, though, is still read (D-4) and must remain so.
-ajouter("v3-mono-piece", "v1/v2/v3 mono-pièce {room,pieces,opts} (aucun document réel ne survit)", {
-  room: { poly: [[0, 0], [500, 0], [500, 380], [0, 380]], w: 500, l: 380, h: 250 },
-  pieces: [
-    { id: 1, type: "sofa", name: "Canapé", x: 20, y: 40, w: 200, h: 90, rot: 0 },
-    { id: 2, type: "table", name: "Table", x: 260, y: 200, w: 120, h: 80, rot: 0 },
-    { id: 3, type: "door", name: "Porte", x: 200, y: 374, w: 80, h: 12, rot: 0, hinge: 0, swing: 1 },
-    { id: 4, type: "window", name: "Fenêtre", x: 60, y: -6, w: 120, h: 12, rot: 180 },
-    { id: 5, type: "sconce", name: "Applique", x: 494, y: 150, w: 20, h: 6, rot: 90 },
-  ],
-  opts: { snap: false, labels: false, layLight: false, floor: "tile", collapsedCats: ["Kitchen"] },
-});
-// v2 without any `room` at all: just `pieces`. The `st.room || st.pieces` branch of `readLegacyRooms`.
-ajouter("v2-pieces-seules", "v1/v2 sans `room` : `pieces[]` seul, contour reconstruit", {
-  pieces: [{ id: 7, type: "bed", name: "Lit", x: 0, y: 0, w: 160, h: 200, rot: 0 }],
-});
-// The NEW plan: `defaultState()`, converted through the same path as a loaded plan (D-17).
+// The NEW plan: `defaultState()`, read through the same path as a loaded plan (D-17).
 ajouter("__defaut__", "`defaultState()` : appartement neuf 420×360, VIDE (D-17)", null);
 
 // Documents that are NOT plans: `migrate()` must return `null`, and this verdict gets frozen too.
 ajouter("refus-vide", "objet vide : `migrate()` refuse (null)", {});
 ajouter("refus-rooms-vide", "`rooms: []` : `migrate()` refuse (null)", { rooms: [], envelope: null });
-// AN OBSERVATION, not a wish: a DAMAGED v5 whose outline no longer holds together (a cut-off
-// write) is not rejected. `sanitizeV5Plan` returns null, then `readLegacyRooms` sees the `pieces`
-// key and rebuilds a default 420x360 apartment. The oracle FREEZES this behavior: if it changes,
-// deliberately or not, the fingerprint says so. (At startup, that same path is backed up by
-// `rescueUnreadable`, D-2.)
-ajouter("abime-outline-court", "v5 abîmé (contour de 2 points) : retombe sur le chemin ancien format",
+// Décision 0021 : un plan écrit dans une forme d'AVANT le modèle murs-seuls est un REFUS, et ce
+// refus est figé ici comme le reste. Il n'est pas perdu pour autant : l'amorçage met ses octets de
+// côté tels quels (`rescueUnreadable`, D-2), et `tests/rapide.ts` le prouve.
+ajouter("refus-v4-salles", "v4 `rooms[]`+`envelope` : `migrate()` refuse (null), les octets vont au filet", {
+  rooms: [{ id: 1, name: "Salon", floor: "parquet", ax: 0, ay: 0,
+    room: { poly: [[0, 0], [500, 0], [500, 380], [0, 380]] },
+    pieces: [{ id: 1, type: "sofa", name: "Canapé", x: 20, y: 40, w: 200, h: 90, rot: 0 }] }],
+  envelope: { poly: [[0, 0], [500, 0], [500, 380], [0, 380]], floor: "parquet", pieces: [] },
+  setupDone: true,
+});
+ajouter("refus-v3-mono-piece", "v1/v2/v3 mono-pièce {room,pieces,opts} : `migrate()` refuse (null)", {
+  room: { poly: [[0, 0], [500, 0], [500, 380], [0, 380]], w: 500, l: 380, h: 250 },
+  pieces: [{ id: 1, type: "sofa", name: "Canapé", x: 20, y: 40, w: 200, h: 90, rot: 0 }],
+  opts: { labels: false, layLight: false, floor: "tile", collapsedCats: ["Kitchen"] },
+});
+// Un v5 ABÎMÉ (contour de 2 points, écriture coupée) : il tombait sur le chemin ancien format et
+// revenait en appartement 420×360 par défaut. Il est maintenant refusé comme le reste, donc mis de
+// côté au lieu d'être remplacé par un plan qui n'a jamais existé. C'est un GAIN, et il est figé ici.
+ajouter("abime-outline-court", "v5 abîmé (contour de 2 points) : `migrate()` refuse (null)",
   { outline: [[0, 0], [10, 10]], walls: [], openings: [], pieces: [], cells: [] });
 
 // ---- 3d. today's PRODUCTION D1 row (--prod) ----

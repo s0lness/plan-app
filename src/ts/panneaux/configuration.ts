@@ -32,7 +32,7 @@ import { $ } from "../noyau/dom.ts";
 import { clamp, fmtM2 } from "../noyau/nombres.ts";
 import { numField, syncBounds } from "../noyau/champ-numerique.ts";
 import { polyArea, selfIntersects } from "../geometrie/polygones.ts";
-import { lShapePoly, rectPoly } from "../modele/lecture-v4.ts";
+import { lShapePoly, rectPoly } from "../geometrie/polygones.ts";
 import { aptBBox } from "../rendu/vue.ts";
 import { render } from "../rendu/rendu.ts";
 import { renderRoomChips } from "../rendu/puces-rail.ts";

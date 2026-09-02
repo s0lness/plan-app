@@ -53,25 +53,18 @@ export interface Cell {
   floor: string;
 }
 
-export interface LegacyRoom {
-  id: string;
-  name?: string;
-  floor?: string | number;
-  ax?: number | null;
-  ay?: number | null;
-  room: { poly: Point[] };
-  pieces: Piece[];
-}
-
-/** Canonical shape of storage and the wire; the v4 and v5 keys are mutually exclusive in use. */
+/**
+ * Canonical shape of storage and the wire. ONE model: the walls-only plan (decision 0021). A row
+ * still written in one of the formats that came before it is no longer READ: `sanitizeState`
+ * refuses it, so `coldLoad` serves its bytes verbatim (`source:"raw"`) and no op can write over
+ * them.
+ */
 export interface PlanState {
   outline?: Point[] | null;
   walls?: Wall[];
   openings?: Opening[];
   pieces?: Piece[];
   cells?: Cell[];
-  rooms?: LegacyRoom[];
-  envelope?: { poly: Point[]; floor?: string | number; pieces: Piece[] } | null;
   setupDone: boolean;
 }
 
@@ -79,12 +72,8 @@ export interface PlanState {
 export interface Operation {
   kind: string;
   plan?: PlanState;
-  state?: PlanState;
   piece?: Piece;
   pieceId?: string;
-  room?: LegacyRoom;
-  roomId?: string;
-  rooms?: LegacyRoom[];
   outline?: Point[];
   wall?: Wall;
   wallId?: string;
@@ -95,8 +84,6 @@ export interface Operation {
   poly?: Point[];
   name?: string;
   floor?: string | number;
-  ax?: number | null;
-  ay?: number | null;
 }
 
 export interface CursorMessage {
@@ -131,8 +118,8 @@ export const PIECE_KEYS = new Set([
   "tr", "dmin", "pair",
 ]);
 
-// ---- v5 "wall-partition" model (additive: v4 stays alive until the switchover) ----
-// Allowed keys of v5 entities. Same severity as PIECE_KEYS: everything else is rejected.
+// ---- the "wall-partition" model, the only one ----
+// Allowed keys of its entities. Same severity as PIECE_KEYS: everything else is rejected.
 export const WALL_KEYS = new Set(["id", "a", "b", "t",
   // `free`: this partition does NOT extend until it meets something. A v5 wall reaches through
   // by default (each end is pushed to the first geometry beyond it, and to the outline failing
@@ -171,7 +158,7 @@ export const OPENING_W_MIN = 1, OPENING_W_MAX = 600;
 // mirror the client clamp (sanitizeV5Plan: clamp(h,1,200)): any tighter, we would reject
 // legitimate values, and a wrongly refused op makes an edit vanish in silence.
 export const OPENING_H_MIN = 1, OPENING_H_MAX = 200;
-// Max length of a name, aligned with piece.name / cell.name / room.name.
+// Max length of a name, aligned with piece.name / cell.name.
 export const NAME_MAX = 80;
 
 // ---- VOLUME and RANGE bounds (defense against a crazed client or a forged wire) ----
@@ -180,9 +167,9 @@ export const NAME_MAX = 80;
 // is refused, but 1e308 / 1e12 are. Without a bound, a single absurd coordinate is enough to
 // make the client render unusable and bloat the snapshot.
 export const COORD_MAX = 100_000;
-// Number of vertices of a polygon (outline, cell, v4 room). The real plan caps at 11.
+// Number of vertices of a polygon (outline, cell). The real plan caps at 11.
 export const POLY_MAX_PTS = 2000;
-// Number of entities per family (walls / openings / furniture / cells / rooms). The real plan
+// Number of entities per family (walls / openings / furniture / cells). The real plan
 // fits in 22 / 30 / 47 / 10. 2000 leaves two orders of magnitude of margin and bounds the snapshot.
 export const MAX_ENTITIES = 2000;
 // Bounds of a piece of furniture (cm). Unchanged, extracted into constants.
@@ -224,14 +211,6 @@ const isStr = (v: unknown): v is string => typeof v === "string";
 const isId = (v: unknown): v is string => isStr(v) && ID_RE.test(v);
 // Readable coordinate: finite number within the physical range of a home.
 const isCoord = (v: unknown): v is number => isFiniteNum(v) && v >= -COORD_MAX && v <= COORD_MAX;
-// A v4 floor is a free material label (a number is tolerated, some old plans carry one). It was
-// the ONLY string on this side with no length bound at all: it is persisted, snapshotted to D1
-// and relayed to every peer, so `"x".repeat(1e6)` rode through the plan on the strength of being
-// a string. Bounded like every other label here. REFUSED rather than truncated, unlike a name: a
-// silently shortened material is a different material, and the refusal is numbered, so the client
-// undoes its own change instead of showing one the server never took.
-const isFloorValue = (v: unknown): boolean => isFiniteNum(v) || (isStr(v) && v.length <= NAME_MAX);
-
 // Number read from the wire: a number, or a numeric string (some client ops send "1").
 // Returns null if the value is not a readable number.
 function numOf(v: unknown): number | null {
@@ -324,28 +303,19 @@ function canonPlan(plan: PlanState): string {
   const pc = (p: Piece) => [String(p.id), p.type ?? null, p.name ?? null, p.x ?? null, p.y ?? null,
     p.w ?? null, p.h ?? null, p.rot ?? null, p.locked ?? null, p.hinge ?? null, p.swing ?? null,
     p.tr ?? null, p.dmin ?? null, p.pair ?? null];
-  if (isV5(plan)) {
-    return JSON.stringify(["v5",
-      plan.outline == null ? null : plan.outline,
-      byId(plan.walls, (w) => [String(w.id), w.a ?? null, w.b ?? null, w.t ?? null, w.free ?? null]),
-      byId(plan.openings, (o) => [String(o.id), String(o.wallId), o.t0 ?? null, o.w ?? null,
-        o.type ?? null, o.side ?? null, o.h ?? null, o.name ?? null, o.hinge ?? null, o.swing ?? null,
-        o.leaf ?? null]),
-      byId(plan.pieces, pc),
-      byId(plan.cells, (c) => [String(c.id), c.poly ?? null, c.name ?? null, c.floor ?? null]),
-      !!plan.setupDone,
-    ]);
-  }
-  return JSON.stringify(["v4",
-    byId(plan.rooms, (r) => [String(r.id), r.name ?? null, r.floor ?? null, r.ax ?? null, r.ay ?? null,
-      (r.room && r.room.poly) ?? null, byId(r.pieces, pc)]),
-    plan.envelope == null ? null
-      : [plan.envelope.poly ?? null, plan.envelope.floor ?? null, byId(plan.envelope.pieces, pc)],
+  return JSON.stringify(["v5",
+    plan.outline == null ? null : plan.outline,
+    byId(plan.walls, (w) => [String(w.id), w.a ?? null, w.b ?? null, w.t ?? null, w.free ?? null]),
+    byId(plan.openings, (o) => [String(o.id), String(o.wallId), o.t0 ?? null, o.w ?? null,
+      o.type ?? null, o.side ?? null, o.h ?? null, o.name ?? null, o.hinge ?? null, o.swing ?? null,
+      o.leaf ?? null]),
+    byId(plan.pieces, pc),
+    byId(plan.cells, (c) => [String(c.id), c.poly ?? null, c.name ?? null, c.floor ?? null]),
     !!plan.setupDone,
   ]);
 }
 
-// Content fingerprint of a plan (v4 or v5). This is what `hello`, the op echo and `pong` carry:
+// Content fingerprint of a plan. This is what `hello`, the op echo and `pong` carry:
 // the client compares TWO fingerprints that both came from the server, never a fingerprint
 // against a counter. It doesn't need to know how to recompute it.
 export function planFp(plan: PlanState): string { return strHash(canonPlan(plan)); }
@@ -559,64 +529,6 @@ function validatePoly(poly: unknown): Point[] {
   return poly as Point[];
 }
 
-// Validates a complete room (structure {id,name,floor,room:{poly},pieces:[]}).
-// ASYMMETRY ACCEPTED, and written down here because it wasn't before: `validateRoom` and
-// `validateEnvelope` do NOT have an allow-list of keys, unlike the four v5 entities
-// (PIECE_KEYS / WALL_KEYS / OPENING_KEYS / CELL_KEYS), which reject any unknown field. An
-// unknown key on a room is therefore IGNORED (it does not come back out of validation), not
-// refused. We leave it that way: v4 is now only a READ path (no live client emits a v4 op), and
-// hardening a read path protects nothing while it could refuse an old document.
-// `prev` (optional) = the furniture ALREADY in the database for THIS room, indexed by id (cf.
-// idMap): this is what "absent field = no opinion" consults. It used to be, before, the array
-// INDEX, because `pieces.map(validatePiece)` passes (element, index, array): `prevOf` received
-// 0, 1, 2... and rejected them by chance (`String(e.id)` on a number can never equal any id).
-// The bug was therefore harmless, but the rule did NOT apply on the v4 path (invariant V-3), and
-// a port would have frozen it as-is. The correct site is `sanitizeV5`'s:
-// `map((p) => validatePiece(p, prev))`.
-function validateRoom(r: Partial<LegacyRoom>, prev?: Map<string, Piece> | null): LegacyRoom {
-  if (!r || typeof r !== "object" || Array.isArray(r)) throw new OpError("room_obj");
-  if (!isId(r.id)) throw new OpError("room_id");
-  if (r.floor !== undefined && !isFloorValue(r.floor)) throw new OpError("room_floor");
-  // ax/ay: apartment offset (cm) of the room's local origin. Optional, null = not placed.
-  if (r.ax !== undefined && r.ax !== null && !isCoord(r.ax)) throw new OpError("room_ax");
-  if (r.ay !== undefined && r.ay !== null && !isCoord(r.ay)) throw new OpError("room_ay");
-  if (!r.room || typeof r.room !== "object") throw new OpError("room_geom");
-  validatePoly(r.room.poly);
-  const pieces = r.pieces === undefined ? [] : r.pieces;
-  if (!Array.isArray(pieces)) throw new OpError("room_pieces");
-  if (pieces.length > MAX_ENTITIES) throw new OpError("pieces_max");
-  const cleanPieces = pieces.map((p) => validatePiece(p, prev || null));
-  return {
-    id: r.id,
-    name: r.name === undefined ? "" : cleanName(r.name, "room_name"),
-    floor: r.floor !== undefined ? r.floor : 0,
-    ax: (r.ax === undefined || r.ax === null) ? null : r.ax,
-    ay: (r.ay === undefined || r.ay === null) ? null : r.ay,
-    room: { poly: r.room.poly.map((pt) => [pt[0], pt[1]]) },
-    pieces: cleanPieces,
-  };
-}
-
-// Validates the ENVELOPE (the apartment): {poly:[...], floor?, pieces:[...]}.
-// Same validation as a room but without id/name/ax/ay (origin = apartment origin).
-// null is tolerated everywhere (plans without an envelope).
-// `prev`: same role and same fix as in `validateRoom` above.
-function validateEnvelope(e: PlanState["envelope"], prev?: Map<string, Piece> | null): NonNullable<PlanState["envelope"]> | null {
-  if (e == null) return null;
-  if (typeof e !== "object" || Array.isArray(e)) throw new OpError("env_obj");
-  if (!e.poly) throw new OpError("env_geom");
-  validatePoly(e.poly);
-  if (e.floor !== undefined && !isFloorValue(e.floor)) throw new OpError("env_floor");
-  const pieces = e.pieces === undefined ? [] : e.pieces;
-  if (!Array.isArray(pieces)) throw new OpError("env_pieces");
-  if (pieces.length > MAX_ENTITIES) throw new OpError("pieces_max");
-  return {
-    poly: e.poly.map((pt) => [pt[0], pt[1]]),
-    floor: e.floor !== undefined ? e.floor : "parquet",
-    pieces: pieces.map((p) => validatePiece(p, prev || null)),
-  };
-}
-
 // ---- v5 validations ----
 
 // A point [x,y]: a pair of finite numbers WITHIN the physical range. `code` qualifies the error.
@@ -825,63 +737,43 @@ function sanitizeV5(st: PlanState, prev: ReturnType<typeof prevMaps>): PlanState
   return { outline, walls, openings, pieces, cells, setupDone: !!st.setupDone };
 }
 
-// Shape of a state ALREADY stored (post-sanitize): v5 as soon as it carries walls/outline as an array.
+/**
+ * Shape of a state ALREADY stored (post-sanitize): the walls-only plan carries `walls` or
+ * `outline` as an array. A row still written in a format from before the switchover carries
+ * neither, and is no longer readable (decision 0021): it is served verbatim and refuses every op.
+ */
 export function isV5(plan: PlanState): boolean {
   return !!plan && typeof plan === "object" && (Array.isArray(plan.walls) || Array.isArray(plan.outline));
 }
 
-// Cleans a complete state, v4 OR v5. The shape is detected from the presence of outline/walls
-// (a v4 state has neither). Each shape is validated with its own grid.
-// `prev` (optional) = the plan ALREADY in the database. It gives v4 what `plan5.replace` already
-// gives v5: a complete replacement coming from an old client must not erase fields it doesn't
-// know how to carry ("absent field = no opinion", V-3). Absent, the validation is that of a new plan.
+/**
+ * Cleans a complete state. ONE shape, the walls-only plan: a payload carrying neither `outline`
+ * nor `walls` is REFUSED (`state_shape`) instead of being read as one of the formats that came
+ * before it. `coldLoad` turns that refusal into "keep the bytes as they are", so nothing is
+ * converted and nothing is thrown away.
+ * `prev` (optional) = the plan ALREADY in the database, so a complete replacement coming from an
+ * older client does not erase the fields it does not know how to carry ("absent field = no
+ * opinion", V-3). Absent, the validation is that of a new plan.
+ */
 export function sanitizeState(st: PlanState, prev?: PlanState): PlanState {
   if (!st || typeof st !== "object" || Array.isArray(st)) throw new OpError("state_shape");
-  if (st.outline !== undefined || st.walls !== undefined) return sanitizeV5(st, prev ? prevMaps(prev) : null);
-  if (!Array.isArray(st.rooms)) throw new OpError("state_shape");
-  if (st.rooms.length > MAX_ENTITIES) throw new OpError("rooms_max");
-  // The `prev` of a room's piece of furniture is the piece of furniture with the SAME id in the
-  // room with the SAME id: two distinct entities, or two distinct rooms, are never merged.
-  const salles = prev && Array.isArray(prev.rooms) ? idMap(prev.rooms) : null;
-  const rooms = st.rooms.map((r) => {
-    const av = salles && r && r.id !== undefined ? salles.get(r.id) : null;
-    return validateRoom(r, av ? idMap(av.pieces) : null);
-  });
-  const envAv = prev && prev.envelope && Array.isArray(prev.envelope.pieces) ? idMap(prev.envelope.pieces) : null;
-  const envelope = validateEnvelope(st.envelope == null ? null : st.envelope, envAv);
-  return { rooms, envelope, setupDone: !!st.setupDone };
-}
-
-function findRoom(plan: PlanState, roomId: string): LegacyRoom {
-  const r = plan.rooms.find((x) => x.id === roomId);
-  if (!r) throw new OpError("no_room");
-  return r;
+  if (st.outline === undefined && st.walls === undefined) throw new OpError("state_shape");
+  return sanitizeV5(st, prev ? prevMaps(prev) : null);
 }
 
 // ---- applying ops ----
 // Mutates and returns `plan` (the caller has already cloned the state before calling applyOp
 // if it wants immutability; here we mutate in place, the DO caller stores the result).
 //
-// Dispatch by state SHAPE: a v4 state only accepts v4 ops, a v5 state only v5 ops. An op
-// addressed to the other shape -> OpError("op_shape"): a v4 client left open therefore cannot
-// overwrite a v5 plan (its plan.replace is refused, not applied). One exception: plan5.replace,
-// the SWITCHOVER op, accepted regardless of the current shape.
-// `piece.front` was REMOVED from both sets and both dispatch tables: no client emits it
-// (exhaustive census of the client's `wsSend`/`wsSendOp`: op, cursor, drag, chat, ping, hello).
-// The client keeps a RECEIVE branch for it, also dead, to be removed client-side.
-// `rooms.merge` was REMOVED from this set and from the dispatch table, like `piece.front` before
-// it: no client emits it (exhaustive search of `src/ts` for the kind: not one call site), and it
-// was the ONE op on this wire that was not idempotent, since it APPENDED its rooms and renamed
-// colliding ids. Replayed by the echo, or re-emitted after a `gap`, it duplicated every room it
-// carried. Removed rather than made idempotent: an op nobody sends does not need a contract.
-const V4_KINDS = new Set([
-  "piece.set", "piece.del", "room.add", "room.del", "room.set",
-  "plan.replace", "env.set", "env.del", "env.piece.set", "env.piece.del",
-]);
-const V5_KINDS = new Set([
-  "piece.set", "piece.del", "outline.set", "wall.set", "wall.del",
-  "opening.set", "opening.del", "cell.set", "cells.replace",
-]);
+// ONE MODEL, so no dispatch by shape any more (decision 0021): every op is a walls-only op. The
+// one guard left is the state's own shape: a row served VERBATIM because the validator refused it
+// (a format from before the switchover) accepts nothing but `plan5.replace`, the complete
+// replacement. Without that guard, the first `wall.set` from a live client would quietly graft a
+// walls-only plan onto bytes it cannot read, and the row would then hold both at once.
+// `piece.front` and `rooms.merge` were removed before, on the same grounds: no client emits them
+// (exhaustive census of the client's `wsSend`/`wsSendOp`: op, cursor, drag, chat, ping, hello),
+// and `rooms.merge` was the ONE op on this wire that was not idempotent, since it APPENDED its
+// rooms. An op nobody sends does not need a contract.
 
 // ---- THE ENVELOPE OF AN OP IS REBUILT, NEVER RELAYED AS RECEIVED -------------------------------
 // The ENTITIES an op carries are already behind a whitelist (PIECE_KEYS, WALL_KEYS, OPENING_KEYS,
@@ -893,19 +785,8 @@ const V5_KINDS = new Set([
 // absent key stays absent ("no opinion" is a value on this wire, cf. piece.set), so this changes
 // nothing for a legitimate op.
 export const OP_KEYS: Record<string, string[]> = {
-  // v4
-  "room.add": ["room"],
-  "room.del": ["roomId"],
-  "room.set": ["roomId", "name", "floor", "ax", "ay", "poly"],
-  "plan.replace": ["state"],
-  "env.set": ["poly", "floor"],
-  "env.del": [],
-  "env.piece.set": ["piece"],
-  "env.piece.del": ["pieceId"],
-  // shared (`roomId` only means something on the v4 path, where furniture lives per room)
-  "piece.set": ["roomId", "piece"],
-  "piece.del": ["roomId", "pieceId"],
-  // v5
+  "piece.set": ["piece"],
+  "piece.del": ["pieceId"],
   "outline.set": ["outline"],
   "wall.set": ["wall"],
   "wall.del": ["wallId"],
@@ -913,7 +794,7 @@ export const OP_KEYS: Record<string, string[]> = {
   "opening.del": ["openingId"],
   "cell.set": ["cellId", "name", "floor", "poly"],
   "cells.replace": ["cells"],
-  // switchover
+  /** COMPLETE replacement: conversion, import, undo of a whole snapshot. */
   "plan5.replace": ["plan"],
 };
 
@@ -934,8 +815,10 @@ export function opWire(op: Operation): Operation {
 export function applyOp(plan: PlanState, op: Operation): PlanState {
   if (!op || typeof op !== "object") throw new OpError("op_obj");
   if (op.kind === "plan5.replace") {
-    // v4 -> v5 switchover (or complete v5 replacement: conversion, import).
-    // The payload MUST be v5-shaped: otherwise we would silently install an empty plan.
+    // COMPLETE replacement: conversion, import, undo of a whole snapshot. It is also the ONLY op
+    // a row served verbatim (a shape the validator refuses) accepts, so a household still on such
+    // a row has a way out.
+    // The payload MUST be walls-only: otherwise we would silently install an empty plan.
     if (!op.plan || typeof op.plan !== "object" || Array.isArray(op.plan)
       || (op.plan.outline === undefined && op.plan.walls === undefined)) {
       throw new OpError("state_shape");
@@ -945,8 +828,10 @@ export function applyOp(plan: PlanState, op: Operation): PlanState {
     // already in the database so as not to lose them along the way (absent field = no opinion,
     // cf. prevOf).
     const clean = sanitizeV5(op.plan, prevMaps(plan));
-    delete plan.rooms;
-    delete plan.envelope;
+    // A row kept verbatim can still carry the keys of a shape we no longer read: the replacement
+    // drops them, so the row never ends up holding half of each.
+    Reflect.deleteProperty(plan, "rooms");
+    Reflect.deleteProperty(plan, "envelope");
     plan.outline = clean.outline;
     plan.walls = clean.walls;
     plan.openings = clean.openings;
@@ -955,133 +840,18 @@ export function applyOp(plan: PlanState, op: Operation): PlanState {
     plan.setupDone = clean.setupDone;
     return plan;
   }
-  return isV5(plan) ? applyOpV5(plan, op) : applyOpV4(plan, op);
+  // A state the validator refused (a shape from before the switchover, kept byte for byte by
+  // `coldLoad`) takes NO ordinary op: applying one would graft a walls-only plan onto bytes we
+  // cannot read. `op_shape` is the same refusal a mismatched op has always produced, and the
+  // client already knows it: it announces the model conflict and reloads.
+  if (!isV5(plan)) throw new OpError("op_shape");
+  return applyOpV5(plan, op);
 }
 
-function applyOpV4(plan: PlanState, op: Operation): PlanState {
-  switch (op.kind) {
-    case "piece.set": {
-      const r = findRoom(plan, op.roomId);
-      const piece = validatePiece(op.piece, idMap(r.pieces));
-      const i = r.pieces.findIndex((p) => p.id === piece.id);
-      if (i >= 0) r.pieces[i] = piece;
-      else {
-        if (r.pieces.length >= MAX_ENTITIES) throw new OpError("pieces_max");
-        r.pieces.push(piece);
-      }
-      return plan;
-    }
-    case "piece.del": {
-      const r = findRoom(plan, op.roomId);
-      if (!isStr(op.pieceId)) throw new OpError("piece_id");
-      r.pieces = r.pieces.filter((p) => p.id !== op.pieceId);
-      return plan;
-    }
-    case "room.add": {
-      const room = validateRoom(op.room);
-      if (plan.rooms.some((x) => x.id === room.id)) throw new OpError("room_exists");
-      if (plan.rooms.length >= MAX_ENTITIES) throw new OpError("rooms_max");
-      plan.rooms.push(room);
-      return plan;
-    }
-    case "room.del": {
-      findRoom(plan, op.roomId);
-      if (plan.rooms.length <= 1) throw new OpError("last_room");
-      plan.rooms = plan.rooms.filter((x) => x.id !== op.roomId);
-      return plan;
-    }
-    case "room.set": {
-      // EVERYTHING is validated in local variables before any write at all: a refused poly must
-      // not leave the already-applied name behind it (an unannounced partial mutation).
-      const r = findRoom(plan, op.roomId);
-      const patch: Partial<Pick<LegacyRoom, "name" | "floor" | "ax" | "ay">> = {};
-      if (op.name !== undefined) patch.name = cleanName(op.name, "room_name");
-      if (op.floor !== undefined) {
-        if (!isFloorValue(op.floor)) throw new OpError("room_floor");
-        patch.floor = op.floor;
-      }
-      if (op.ax !== undefined) {
-        if (op.ax !== null && !isCoord(op.ax)) throw new OpError("room_ax");
-        patch.ax = op.ax;
-      }
-      if (op.ay !== undefined) {
-        if (op.ay !== null && !isCoord(op.ay)) throw new OpError("room_ay");
-        patch.ay = op.ay;
-      }
-      let poly;
-      if (op.poly !== undefined) poly = validatePoly(op.poly).map((pt) => [pt[0], pt[1]] as Point);
-      Object.assign(r, patch);
-      if (poly) r.room.poly = poly;
-      return plan;
-    }
-    case "plan.replace": {
-      // `plan` second: an undo / import coming from an old client sends back its entities
-      // amputated of the fields it doesn't know about. Symmetric to what `plan5.replace` already
-      // does with `prevMaps(plan)`.
-      const clean = sanitizeState(op.state, plan);
-      // plan.replace serves ONLY v4: the shape switchover goes through plan5.replace.
-      if (isV5(clean)) throw new OpError("op_shape");
-      plan.rooms = clean.rooms;
-      plan.envelope = clean.envelope;
-      plan.setupDone = clean.setupDone;
-      return plan;
-    }
-    case "env.set": {
-      // Creates/updates the envelope (poly and/or floor). The COMPLETE envelope is built on the
-      // side, then laid down in a single assignment: an `env.set {floor}` on a plan without an
-      // envelope is refused WITHOUT leaving a {poly:null} skeleton behind it, which used to
-      // poison the plan and make every subsequent cold load fail (env_geom).
-      const cur = plan.envelope == null ? null : plan.envelope;
-      const next = {
-        poly: cur ? cur.poly : null,
-        floor: cur ? cur.floor : "parquet",
-        pieces: (cur && Array.isArray(cur.pieces)) ? cur.pieces : [],
-      };
-      if (op.poly !== undefined) next.poly = validatePoly(op.poly).map((pt) => [pt[0], pt[1]]);
-      if (op.floor !== undefined) {
-        if (!isFloorValue(op.floor)) throw new OpError("env_floor");
-        next.floor = op.floor;
-      }
-      // env.set must establish a valid envelope: refuses a skeleton without a poly.
-      if (!next.poly) throw new OpError("env_geom");
-      plan.envelope = next;
-      return plan;
-    }
-    case "env.del": {
-      plan.envelope = null;
-      return plan;
-    }
-    case "env.piece.set": {
-      if (plan.envelope == null) throw new OpError("no_env");
-      const list = Array.isArray(plan.envelope.pieces) ? plan.envelope.pieces : [];
-      const piece = validatePiece(op.piece, idMap(list));
-      const i = list.findIndex((p) => p.id === piece.id);
-      if (i >= 0) list[i] = piece;
-      else {
-        if (list.length >= MAX_ENTITIES) throw new OpError("pieces_max");
-        list.push(piece);
-      }
-      plan.envelope.pieces = list;
-      return plan;
-    }
-    case "env.piece.del": {
-      if (plan.envelope == null) return plan; // idempotent no-op
-      if (!isStr(op.pieceId)) throw new OpError("piece_id");
-      if (!Array.isArray(plan.envelope.pieces)) plan.envelope.pieces = [];
-      plan.envelope.pieces = plan.envelope.pieces.filter((p) => p.id !== op.pieceId);
-      return plan;
-    }
-    default:
-      // v5 op sent to a v4 state -> op_shape; otherwise a genuinely unknown op.
-      throw new OpError(V5_KINDS.has(op.kind) ? "op_shape" : "unknown_kind");
-  }
-}
-
-// ---- v5 ops ----
-// Furniture lives in a FLAT list plan.pieces (apartment coordinates), no more per-room array:
-// piece.set / piece.del therefore do NOT have a roomId here.
+// ---- the ops ----
+// Furniture lives in a FLAT list plan.pieces (apartment coordinates), never a per-room array.
 function applyOpV5(plan: PlanState, op: Operation): PlanState {
-  // Safety net: a partial v5 state (coming from an old snapshot) must have its 4 lists.
+  // Safety net: a partial state (coming from an old snapshot) must have its 4 lists.
   if (!Array.isArray(plan.walls)) plan.walls = [];
   if (!Array.isArray(plan.openings)) plan.openings = [];
   if (!Array.isArray(plan.pieces)) plan.pieces = [];
@@ -1186,8 +956,10 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
       return plan;
     }
     default:
-      // v4 op (room.*, env.*, plan.replace, rooms.merge) sent to a v5 state -> op_shape.
-      throw new OpError(V4_KINDS.has(op.kind) ? "op_shape" : "unknown_kind");
+      // Any kind this model does not have. A tab left open on the shapes that came before it
+      // (`room.*`, `env.*`, `plan.replace`) lands here too, and the client reads this refusal
+      // exactly as it reads `op_shape`: it announces the conflict and reloads.
+      throw new OpError("unknown_kind");
   }
 }
 

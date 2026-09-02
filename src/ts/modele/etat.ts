@@ -19,10 +19,9 @@ import { cleanOpts, normalizeOpeningFacing, sanitizeV5Plan } from "./migrations.
 import type { Options } from "./migrations.ts";
 import { v5RebuildCells } from "./cellules.ts";
 import { v5AdoptOpening } from "../fil/pseudo-fil.ts";
-import { prochainRuid, readLegacyRooms, rectPoly } from "./lecture-v4.ts";
-import type { PlanAncien } from "./salles-anciennes.ts";
-import { buildV5FromV4 } from "./conversion-v4.ts";
-import type { Meuble, PlanV5 } from "../partage/plan.ts";
+import { rectPoly } from "../geometrie/polygones.ts";
+import { WALL } from "../noyau/nombres.ts";
+import type { Meuble, Mur, PlanV5, Pt } from "../partage/plan.ts";
 
 /**
  * The application's state. `pieces` is a non-enumerable ACCESSOR (D-18), not a copy: see
@@ -76,10 +75,12 @@ function makeState(
 }
 
 /**
- * Turns ANY accepted payload into a walls-only state:
- *  - already walls-only (local `plan` copy, or flat server shape outline/walls/...) -> sanitized;
- *  - legacy format (v4 `rooms[]`+`envelope`, or single-room v1/v2/v3) -> READ then CONVERTED.
- * Returns `null` if the payload is neither: the caller decides the fallback (D-2).
+ * Turns an accepted payload into a walls-only state: a local `plan` copy, or the flat server
+ * shape (outline/walls/...), sanitized. Returns `null` for anything else, and THAT INCLUDES the
+ * formats that came before the walls-only model (decision 0021): they are no longer read, no
+ * longer converted, and no longer thrown away either. The caller decides the fallback (D-2), and
+ * for bootstrap that fallback is the "unreadable plan" path: the bytes are set aside verbatim
+ * under their own key and offered for download in a banner.
  *
  * PRECEDENCE IS A DATA INVARIANT (D-4, docs/reecriture.md §3), not a style detail: the SERVER
  * shape is the FLAT plan, but `st.plan` (nested) remains accepted and takes PRIORITY, because it
@@ -102,32 +103,28 @@ export function migrate(raw: unknown, optsLocaux?: Options | null): Etat | null 
   const locaux = optsLocaux || null;
   const opts = st["opts"] as Partial<Options> | null | undefined;
   const setupDone = st["setupDone"] as boolean | undefined;
-  if (plan) return makeState(plan, opts, setupDone, locaux);
-  const legacy = readLegacyRooms(st);
-  if (!legacy) return null;
-  const res = buildV5FromV4(legacy);
-  const conv = res && res.plan && sanitizeV5Plan(res.plan);
-  if (!conv) return null;
-  return makeState(conv, opts, setupDone, locaux);
+  if (!plan) return null;
+  return makeState(plan, opts, setupDone, locaux);
 }
 
 /**
- * The plan for a fresh install: a single-room apartment (420x360), EMPTY. Written in the
- * LEGACY format then converted through the SAME path as a loaded plan, one single converter,
- * hence one single behavior to verify (D-17).
+ * The plan for a fresh install: one 420x360 room, EMPTY. Four outline walls around a rectangle,
+ * and nothing else: the single cell, its name and its floor are DERIVED by `makeState`, exactly
+ * as they are for any plan that arrives without cells. One path, so one behaviour to check (D-17).
  * It used to come furnished with four objects (sofa, coffee table, shelf, armchair): so on a
  * fresh page the setup wizard opened on top of an already-furnished living room, asking to
  * define the outline while showing ANOTHER, furnished, home behind the modal. A blank plan is
  * blank.
  */
 export function defaultState(optsLocaux?: Options | null): Etat {
-  const legacy: PlanAncien = {
-    rooms: [{
-      id: prochainRuid(), name: "Room 1", floor: "parquet", ax: 0, ay: 0,
-      room: { poly: rectPoly(420, 360) }, pieces: [],
-    }],
-    envelope: null,
-  };
-  const res = buildV5FromV4(legacy);
-  return makeState(res.plan as PlanV5, null, undefined, optsLocaux || null);
+  const outline = rectPoly(420, 360);
+  const walls: Mur[] = outline.map((a, i) => ({
+    id: "w" + (i + 1),
+    a: [a[0], a[1]] as Pt,
+    b: [outline[(i + 1) % outline.length]![0], outline[(i + 1) % outline.length]![1]] as Pt,
+    t: WALL,
+    isOutline: true,
+  }));
+  const plan: PlanV5 = { outline, walls, openings: [], pieces: [], cells: [] };
+  return makeState(plan, null, undefined, optsLocaux || null);
 }
