@@ -12,6 +12,7 @@ import type { Contexte } from "../app/contexte.ts";
 import type { Meuble, Ouverture } from "../partage/plan.ts";
 import { pieceById, v5OpeningById, v5Touch } from "../app/contexte.ts";
 import { isSideable } from "../catalogue/catalogue.ts";
+import { oublierAvantAimant } from "../modele/aimant-memoire.ts";
 import { v5ClampPiece, v5OpeningBlockerOnSide } from "../modele/edition.ts";
 import { autoName } from "../modele/creation.ts";
 import { prochainUid } from "../modele/lecture-v4.ts";
@@ -34,6 +35,7 @@ export function delSel(ctx: Contexte): void {
   const P = ctx.etat.plan;
   const ids = [...ctx.selection.ids];
   ids.forEach((id) => {
+    oublierAvantAimant(String(id));   // no wall-given rotation left to come back to for a gone piece
     const oi = (P.openings || []).findIndex((o) => String(o.id) === String(id));
     if (oi >= 0) { P.openings.splice(oi, 1); v5Touch(ctx); return; }
     const i = (P.pieces || []).findIndex((x) => String(x.id) === String(id));

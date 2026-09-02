@@ -28,6 +28,7 @@ import { TYPEMAP, isWallMount } from "../catalogue/catalogue.ts";
 import { cssId } from "../noyau/dom.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
 import { meubleWallSnap, wallSnapReach } from "../modele/espace.ts";
+import { oublierAvantAimant, rotationAimantee } from "../modele/aimant-memoire.ts";
 import { v5MoveOpeningTo } from "../modele/edition.ts";
 import { dockedChairs, snapChairToTable, TABLE_TYPES } from "./contraintes.ts";
 import { alignSnap, angleVersPointeur, clearGuides, drawAlignLines, drawGuides } from "./guides.ts";
@@ -163,6 +164,9 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     let lastRot = p.rot || 0;
     const move = (ev: PointerEvent): void => {
       pousseHist();
+      // THE PERSON IS TURNING IT HERSELF: any rotation the wall magnet still owes this piece (an
+      // orientation to come back to on a later detach, `modele/aimant-memoire.ts`) is stale now.
+      oublierAvantAimant(String(p.id));
       // G-13 (decision 0013): the pure geometry lives in `gestes/guides.ts`, so it is provable
       // without a browser (`tests/rapide.ts`). Shift still quantizes to 15° steps.
       const a = angleVersPointeur(cx, cy, ev.clientX, ev.clientY, ev.shiftKey);
@@ -233,7 +237,9 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
       let dax = px - p0x, day = py - p0y;
       // THE MAGNET IS READ ONCE, ON THE PIECE UNDER THE HAND, and moves the whole selection with
       // it. TRANSLATION ONLY: turning the primary to face the wall would leave the rest of the
-      // group behind, which is the deformation this branch exists to prevent.
+      // group behind, which is the deformation this branch exists to prevent. Since a group drag
+      // never rotates anyone, `modele/aimant-memoire.ts` (lot S7) has nothing to do here either:
+      // there is no wall-given rotation for a detach to revert.
       if (primaire) {
         const aim = meubleWallSnap(
           ctx.etat.plan,
@@ -271,6 +277,10 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
   }
 
   let lastX = p.x, lastY = p.y;   // delta applied, so the chairs can follow
+  // THE ROTATION AT PICKUP (`modele/aimant-memoire.ts`): if the wall magnet snaps this piece
+  // during the gesture and the hand then carries it back out of reach, THIS is what it returns
+  // to, not whatever the magnet last computed.
+  const rotDepart = p.rot || 0;
   const riderIds = new Set<string>([String(p.id), ...riders.map((c) => String(c.id))]);
 
   const move = (ev: PointerEvent): void => {
@@ -283,7 +293,8 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     // round, and only once. Nothing rounds it a second time: no grid, no bounds.
     p.x = Math.round(cm.x - grabX); p.y = Math.round(cm.y - grabY);
     // ALT SUSPENDS EVERY MAGNET for the length of the gesture, and it is the only modifier that
-    // does: the piece then goes exactly where the hand puts it, to the centimetre.
+    // does: the piece then goes exactly where the hand puts it, to the centimetre. That includes
+    // the detach memory below: held Alt, the rotation stays exactly what it was at pointerdown.
     const libre = !!ev.altKey;
     const snapped = libre ? null : snapChairToTable(ctx.etat.plan, ctx.etat.opts, p);
     // THE WALL MAGNET, for every piece of furniture: whenever a wall comes within reach OF ITS
@@ -291,7 +302,12 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     // the face, oriented with the wall. Out of reach it is left exactly where the hand put it.
     const aimante = snapped
       ? null : meubleWallSnap(ctx.etat.plan, p, wallSnapReach(ctx.vue.scale), libre);
-    if (aimante) { p.x = aimante.x; p.y = aimante.y; p.rot = aimante.rot; }
+    if (aimante) { p.x = aimante.x; p.y = aimante.y; }
+    // DETACHED FROM THE WALL, IT TURNS BACK: `rotationAimantee` applies the magnet's rotation
+    // while snapped, and hands back whatever this piece had before the magnet first took it,
+    // the moment the back leaves reach (lot S7). The chair-to-table snap is a DIFFERENT magnet
+    // with its own rotation (`snapChairToTable` already wrote `p.rot`): left alone here.
+    if (!libre && !snapped) p.rot = rotationAimantee(String(p.id), rotDepart, aimante ? aimante.rot : null);
     const al = (libre || snapped || aimante) ? null : alignSnap(ctx.etat.plan, ctx.etat.opts, p, riderIds);
     const dx = p.x - lastX, dy = p.y - lastY;
     if ((dx || dy) && riders.length) riders.forEach((ch) => { ch.x += dx; ch.y += dy; });

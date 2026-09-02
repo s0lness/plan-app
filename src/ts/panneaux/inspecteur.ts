@@ -36,6 +36,7 @@ import { v5OpeningDepthMax, v5Seg } from "../modele/murs.ts";
 import { v5ResolveOpening } from "../modele/edition.ts";
 import { projection, verdictProjection } from "../modele/projection.ts";
 import { openingWallInfo, rotatePieceWithChairs } from "../gestes/guides.ts";
+import { oublierAvantAimant } from "../modele/aimant-memoire.ts";
 import { cur, delSel, dupliquerSelection, flipWallMountSide } from "../gestes/selection-actions.ts";
 import { aptBBox } from "../rendu/vue.ts";
 import { render } from "../rendu/rendu.ts";
@@ -373,6 +374,7 @@ export function brancherInspecteur(ctx: Contexte): void {
     const p = vue(cur(ctx)); if (!p || p.locked) return;
     if (isWallMount(p.type)) return;   // an opening or a wall-mounted object has no angle of its own
     pushHistory(ctx);
+    oublierAvantAimant(String(p.id));   // the person is choosing the rotation herself
     rotatePieceWithChairs(ctx.etat.plan, p as unknown as Meuble, (p.rot || 0) + 90);
     render(ctx); syncInspector(ctx);
   });
