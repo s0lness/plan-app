@@ -373,37 +373,21 @@ export function planTooBig(plan: PlanState): boolean {
   return JSON.stringify(plan).length > MAX_PLAN_BYTES;
 }
 
-// A plan in the OLD format and completely EMPTY carries no data: it's the new plan that an
-// earlier version installed for a household without a D1 row, and it doomed that household to
-// never share anything (every op from the live client fell into the v4 path). We replace it with
-// the new WALLS-ONLY plan. An old plan that contains ANYTHING AT ALL (a room, an envelope) is
-// never touched: its conversion belongs to the client, via the plan5.replace op.
-export function upgradeEmptyLegacy(plan: PlanState): PlanState {
-  if (!plan || typeof plan !== "object") return plan;
-  if (isV5(plan)) return plan;
-  const vide = Array.isArray(plan.rooms) && plan.rooms.length === 0
-    && (plan.envelope === undefined || plan.envelope === null);
-  if (!vide) return plan;
-  const neuf = emptyPlan();
-  neuf.setupDone = !!plan.setupDone;
-  return neuf;
-}
-
 // COLD load decision, isolated from the Cloudflare runtime to be testable.
 // `rowData` = D1's `data` column, or null/undefined if there is NO row at all.
 // Three outcomes, deliberately distinct:
 //   - "empty": D1 has no row, or a row whose `data` is JSON `null` (how a plan is CREATED, cf.
 //              functions/api/plans.ts) -> legitimate new plan, we install it and persist it.
 //   - "d1"   : row read AND validated -> canonical shape.
-//   - "raw"  : row read but REFUSED by the current validator (schema that has moved on) -> we
-//              keep the bytes as-is. Better an old state than an empty plan.
+//   - "raw"  : row read but REFUSED by the current validator (schema that has moved on, or a
+//              shape from before the walls-only switchover, decision 0021) -> we keep the bytes
+//              as-is. Better an old state than an empty plan; and no op can write over them
+//              (`applyOp` refuses everything but `plan5.replace` on such a state).
 // An unreadable row (broken JSON) throws: the DO then refuses to serve, rather than installing
 // an empty plan that a first modification would go write over the real row.
 export function coldLoad(rowData: unknown): { plan: PlanState; source: string; persist: boolean } {
   if (rowData === null || rowData === undefined) {
-    // New plan in the WALLS-ONLY format, never the old one: cf. emptyPlan() in ops.ts. A
-    // `{rooms:[]}` used to get 100% of the live client's ops refused on a new household, and the
-    // two people each configured their own apartment without ever sharing anything.
+    // New plan in the WALLS-ONLY format: cf. emptyPlan() in ops.ts.
     return { plan: emptyPlan(), source: "empty", persist: true };
   }
   if (typeof rowData !== "string") throw new OpError("cold_unreadable");
@@ -416,7 +400,7 @@ export function coldLoad(rowData: unknown): { plan: PlanState; source: string; p
   if (parsed === null) return { plan: emptyPlan(), source: "empty", persist: true };
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new OpError("cold_unreadable");
   try {
-    return { plan: upgradeEmptyLegacy(sanitizeState(parsed as PlanState)), source: "d1", persist: true };
+    return { plan: sanitizeState(parsed as PlanState), source: "d1", persist: true };
   } catch (_) {
     // Refused by the current validator: we serve the raw data and take it as-is.
     return { plan: parsed, source: "raw", persist: true };
@@ -507,10 +491,10 @@ export class PlanRoom {
   }
 
   // Lazy load: DO storage first, otherwise D1, otherwise an empty plan.
-  // Shape-agnostic: sanitizeState validates a v4 snapshot ({rooms,envelope}) or a v5 one
-  // ({outline,walls,openings,pieces,cells}) alike; applyOp then dispatches on the loaded shape.
-  // A NEW household's plan is in v5 (cf. emptyPlan); a household whose D1 row is still in the
-  // old format is still served as-is, and switches over explicitly via the plan5.replace op.
+  // ONE shape is validated, the walls-only plan ({outline,walls,openings,pieces,cells}). A
+  // snapshot in a shape from before the switchover is refused by `sanitizeState` and therefore
+  // served AS-IS, the same net `coldLoad` applies to a D1 row (decision 0021); `applyOp` refuses
+  // every op on it except `plan5.replace`, so it cannot be half-overwritten.
   async ensureLoaded() {
     if (this.loaded) return;
     const stored = await this.storage.get(["plan", "opCount", OPCOUNT_KEY_OLD, "chat", "d1seen", "planId"]);
@@ -536,10 +520,7 @@ export class PlanRoom {
       // once to the canonical shape, instead of staying mixed until the next write of each
       // entity. On refusal we KEEP the raw plan: better an old state than an empty plan.
       try { this.plan = sanitizeState(this.plan); } catch (_) { /* keep the raw one */ }
-      // A DO created BEFORE the fix keeps the new plan in the old format in its storage: it must
-      // be caught up on wake-up, otherwise that household stays doomed to share nothing.
-      this.plan = upgradeEmptyLegacy(this.plan);
-      // Partial v5 snapshot (old write): we guarantee the 4 lists.
+      // Partial snapshot (old write): we guarantee the 4 lists.
       if (isV5(this.plan)) {
         for (const k of ["walls", "openings", "pieces", "cells"] as ("walls" | "openings" | "pieces" | "cells")[]) {
           if (!Array.isArray(this.plan[k])) this.plan[k] = [];

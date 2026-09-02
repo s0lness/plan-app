@@ -37,7 +37,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_APP = path.join(__dirname, "..", "index.html");
 const APP_PATH = process.argv[2] || DEFAULT_APP;
 const V4_KEY = "room-planner-v4";
-const V3_KEY = "room-planner-v3";
 
 if (!fs.existsSync(APP_PATH)) { console.error("App file not found:", APP_PATH); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error("Chrome not found:", CHROME); process.exit(1); }
@@ -77,60 +76,83 @@ const near = (a: DonneeDynamique, b: DonneeDynamique, tol?: number): boolean => 
 function expect(cond: unknown, msg: string): true { if (!cond) throw new Error(msg); return true; }
 
 // ---- seed builders ----------------------------------------------------------
-// A v4 plan with two rooms sharing a vertical party wall at apt x=300, plus one
-// piece in room 0. Room A: 0..300 wide, Room B: 300..600. setupDone true so no
-// wizard. flow off by default (tests turn it on via opts when needed).
+// The seeds are written in the ONLY shape there is, walls-only (decision 0021). They used to be
+// written in the v4 shape and converted by the reader on load; the two seeds below are that
+// conversion's own output, taken once and frozen here, so every case that follows describes
+// exactly the same apartment as before.
 function seedV4(state: unknown): string {
   return `try{ localStorage.setItem(${JSON.stringify(V4_KEY)}, ${JSON.stringify(JSON.stringify(state))}); }catch(e){}`;
 }
-const rect = (w: DonneeDynamique, l: DonneeDynamique): [number, number][] => [[0,0],[w,0],[w,l],[0,l]];
+const OPTS = { labels: true, flow: false, tvIn: null as DonneeDynamique, collapsedCats: [] as DonneeDynamique[], layFurn: true, layLight: true, layPlug: true };
 
-// two adjacent rooms, party wall at x=300
-const TWO_ROOMS = {
-  rooms: [
-    { id: 1, name: "Salon", floor: "parquet", ax: 0,   ay: 0, room: { poly: rect(300, 300) },
-      pieces: [ { id: 101, type: "sofa3", name: "Canapé 3 places", x: 20, y: 20, w: 220, h: 95, rot: 0 } ] },
-    { id: 2, name: "Chambre", floor: "parquet", ax: 300, ay: 0, room: { poly: rect(300, 300) }, pieces: [] },
+// two adjacent rooms, party wall at x=300, one sofa in the left one
+const TWO_ROOMS: DonneeDynamique = {
+  outline: [[0,0],[600,0],[600,300],[0,300]],
+  walls: [
+    { id: "w1", a: [300,0], b: [300,300], t: 12 },
+    { id: "w2", a: [0,0], b: [600,0], t: 12 },
+    { id: "w3", a: [600,0], b: [600,300], t: 12 },
+    { id: "w4", a: [600,300], b: [0,300], t: 12 },
+    { id: "w5", a: [0,300], b: [0,0], t: 12 },
   ],
-  active: 0,
-  opts: { snap: true, labels: true, flow: false, overlay: false, tvIn: null as DonneeDynamique, collapsedCats: [] as DonneeDynamique[], layFurn: true, layLight: true, layPlug: true },
+  openings: [] as DonneeDynamique[],
+  pieces: [{ id: "101", type: "sofa3", name: "Canapé 3 places", x: 20, y: 20, w: 220, h: 95, rot: 0, locked: false }],
+  cells: [
+    { id: "c1", poly: [[300,0],[300,300],[0,300],[0,0]], name: "Salon", floor: "parquet" },
+    { id: "c2", poly: [[600,0],[600,300],[300,300],[300,0]], name: "Chambre", floor: "parquet" },
+  ],
+  opts: OPTS,
   setupDone: true,
-  envelope: null as DonneeDynamique,
 };
 
-// single room, no envelope, flow ON, one door on the wall -> room reachable
-const ONE_ROOM_FLOW = (withDoor: boolean) => ({
-  rooms: [
-    { id: 1, name: "Salon", floor: "parquet", ax: 0, ay: 0, room: { poly: rect(400, 360) },
-      pieces: withDoor ? [ { id: 201, type: "door", name: "Porte", x: 160, y: -6, w: 80, h: 12, rot: 0, hinge: 0, swing: 1 } ] : [] },
+// single room, flow ON, one door on the top wall -> room reachable
+const ONE_ROOM_FLOW = (withDoor: boolean): DonneeDynamique => ({
+  outline: [[0,0],[400,0],[400,360],[0,360]],
+  walls: [
+    { id: "w1", a: [0,0], b: [400,0], t: 12 },
+    { id: "w2", a: [400,0], b: [400,360], t: 12 },
+    { id: "w3", a: [400,360], b: [0,360], t: 12 },
+    { id: "w4", a: [0,360], b: [0,0], t: 12 },
   ],
-  active: 0,
-  opts: { snap: true, labels: true, flow: true, overlay: false, tvIn: null as DonneeDynamique, collapsedCats: [] as DonneeDynamique[], layFurn: true, layLight: true, layPlug: true },
+  openings: withDoor
+    ? [{ id: "201", wallId: "w1", t0: 160, w: 80, h: 12, type: "door", side: 0, name: "Porte", hinge: 0, swing: 1 }]
+    : [] as DonneeDynamique[],
+  pieces: [] as DonneeDynamique[],
+  cells: [{ id: "c1", poly: [[400,0],[400,360],[0,360],[0,0]], name: "Salon", floor: "parquet" }],
+  opts: Object.assign({}, OPTS, { flow: true }),
   setupDone: true,
-  envelope: null as DonneeDynamique,
 });
+
+// TWO_ROOMS with a CORRIDOR: the two rooms pulled apart, so the gap between them (x 250..400)
+// becomes a cell of its own. Same walls, moved, plus the two walls that close the corridor.
+const COULOIR: DonneeDynamique = {
+  outline: [[0,0],[650,0],[650,300],[0,300]],
+  walls: [
+    { id: "w1", a: [250,0], b: [250,300], t: 12 },
+    { id: "w2", a: [400,0], b: [400,300], t: 12 },
+    { id: "w3", a: [0,0], b: [650,0], t: 12 },
+    { id: "w4", a: [650,0], b: [650,300], t: 12 },
+    { id: "w5", a: [650,300], b: [0,300], t: 12 },
+    { id: "w6", a: [0,300], b: [0,0], t: 12 },
+  ],
+  openings: [] as DonneeDynamique[],
+  pieces: [{ id: "101", type: "sofa3", name: "Canapé 3 places", x: 20, y: 20, w: 220, h: 95, rot: 0, locked: false }],
+  cells: [
+    { id: "c1", poly: [[250,0],[250,300],[0,300],[0,0]], name: "Salon", floor: "parquet" },
+    { id: "c3", poly: [[650,0],[650,300],[400,300],[400,0]], name: "Chambre", floor: "parquet" },
+  ],
+  opts: OPTS,
+  setupDone: true,
+};
 
 // staircase (non-axis-aligned) polygon for the ortho-snap test: a rectangle with
 // one vertex nudged diagonally so an edge is slanted; dragging it back onto grid
 // with ortho snap must re-align all edges.
-// The apartment's OUTLINE, with an edge deliberately off-kilter: the orthogonal snap must
-// bring it back onto the axes. Seeded in the walls-only format, because an old plan is read through a
-// rectilinear hull (computeEnvelopeHull) that comes out already axis-aligned: there would be nothing to straighten.
 const STAIR = {
   outline: [[0,0],[300,0],[300,200],[160,200],[150,340],[0,340]],
   walls: [] as DonneeDynamique[], openings: [] as DonneeDynamique[], pieces: [] as DonneeDynamique[], cells: [] as DonneeDynamique[],
-  opts: { snap: true, labels: true, flow: false, overlay: false, tvIn: null as DonneeDynamique, collapsedCats: [] as DonneeDynamique[], layFurn: true, layLight: true, layPlug: true },
+  opts: OPTS,
   setupDone: true,
-};
-
-// legacy v3 single-room plan (pre-multi-room shape): {room:{poly},pieces,opts}
-const V3_PLAN = {
-  room: { poly: rect(420, 360) },
-  pieces: [
-    { id: 11, type: "sofa3", x: 30, y: 30, w: 220, h: 95, rot: 0 },
-    { id: 12, type: "coffee", x: 100, y: 150, w: 110, h: 60, rot: 0 },
-  ],
-  opts: { snap: true, labels: true, floor: "herringbone" },
 };
 
 // =============================================================================
@@ -165,7 +187,7 @@ await test("boot_fresh_install", "", `
 
 // 2. REPLACES `boot_seeded_v4`: a plan in the old format is READ and CONVERTED on load.
 //    The two rooms become two computed cells, the furniture survives, the assistant stays closed.
-await test("boot_reads_and_converts_v4", seedV4(TWO_ROOMS), `
+await test("boot_reads_the_saved_plan", seedV4(TWO_ROOMS), `
   var P = window.__plan.plan;
   var setup = document.getElementById("setup");
   return {
@@ -176,7 +198,6 @@ await test("boot_reads_and_converts_v4", seedV4(TWO_ROOMS), `
     aptrooms: document.querySelectorAll("#canvas .aptroom").length,
     setupHidden: setup ? !!setup.hidden : null,
     hasRooms: ("rooms" in window.__plan.state),
-    backup: !!window.__plan.backupInfo(),
   };
 `, v => expect(v.cells === 2, "expected 2 cells, got " + v.cells + " " + JSON.stringify(v.names))
      && expect(v.names.indexOf("Salon") >= 0 && v.names.indexOf("Chambre") >= 0,
@@ -185,7 +206,6 @@ await test("boot_reads_and_converts_v4", seedV4(TWO_ROOMS), `
      && expect(v.pieces === 1, "expected 1 piece, got " + v.pieces)
      && expect(v.layers === 1 && v.aptrooms === 0, "one layer, no room container")
      && expect(v.hasRooms === false, "the live state must carry no rooms[]")
-     && expect(v.backup === true, "the pre-conversion blob must be backed up")
      && expect(v.setupHidden === true || v.setupHidden === null, "setup should stay closed with a seeded plan, hidden=" + v.setupHidden));
 
 // 3. Add piece at a cursor point inside the right-hand cell -> it lands in that cell.
@@ -313,30 +333,9 @@ await test("wall_mount_sticks_to_a_wall", seedV4(TWO_ROOMS), `
      && expect(v.openings === 1 && v.pieces === 1, "it becomes an OPENING, not a piece: " + v.openings + "/" + v.pieces)
      && expect(v.faces === "Chambre", "it must face the cell the cursor was in, got " + v.faces));
 
-// 11. REPLACES `envelope_hull_matches_union_bbox`: the envelope is no longer an editable entity,
-//     but the rectilinear hull remains the OUTLINE that reading an old plan produces.
-await test("outline_from_old_plan_matches_union_bbox", seedV4(TWO_ROOMS), `
-  var st = window.__plan.readLegacy(JSON.parse(localStorage.getItem("room-planner-v4-backup")));
-  var u = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-  st.rooms.forEach(function(r){
-    var poly = window.__plan.roomAptPoly(r);
-    poly.forEach(function(p){ u.minX=Math.min(u.minX,p[0]); u.minY=Math.min(u.minY,p[1]);
-                              u.maxX=Math.max(u.maxX,p[0]); u.maxY=Math.max(u.maxY,p[1]); });
-  });
-  var eb = window.__plan.bboxOfPoly(window.__plan.plan.outline);
-  return { u:u, eb:{minX:eb.minX,minY:eb.minY,maxX:eb.maxX,maxY:eb.maxY} };
-`, v => expect(near(v.eb.minX, v.u.minX, 12) && near(v.eb.minY, v.u.minY, 12)
-            && near(v.eb.maxX, v.u.maxX, 12) && near(v.eb.maxY, v.u.maxY, 12),
-        "the outline bbox should ~= the union bbox (tol 1 cell=12): union=" + JSON.stringify(v.u) + " outline=" + JSON.stringify(v.eb)));
-
 // 11b. REPLACES `envelope_corridor_piece_homes_env`: the corridor is no longer a pseudo-container,
 //      it's a CELL computed like the others, and furniture dropped inside it belongs to it.
-await test("corridor_gap_becomes_a_cell", (function(){
-  var s = JSON.parse(JSON.stringify(TWO_ROOMS));
-  s.rooms[0].room.poly = rect(250, 300); s.rooms[0].ax = 0;
-  s.rooms[1].room.poly = rect(250, 300); s.rooms[1].ax = 400;
-  return seedV4(s);
-})(), `
+await test("corridor_gap_becomes_a_cell", seedV4(COULOIR), `
   // point (320,150) is in the old corridor (between x=250 and x=400)
   var c = window.__plan.cellAt(320, 150);
   var p = window.__plan.placeAt("plant", { x: 320, y: 150 });
@@ -368,27 +367,10 @@ await test("flow_with_door_reachable", seedV4(ONE_ROOM_FLOW(true)), `
   return { titles: titles, doors: doors };
 `, v => {
   const t = v.titles || [];
-  return expect(v.doors === 1, "the seeded door must survive the conversion, got " + v.doors)
+  return expect(v.doors === 1, "the seeded door must survive the read, got " + v.doors)
       && expect(!t.some((x: string) => /inaccessible/i.test(x)), "room with a door should NOT be inaccessible, got: " + JSON.stringify(t))
       && expect(!t.some((x: string) => /No door placed/i.test(x)), "should not report 'no door', got: " + JSON.stringify(t));
 });
-
-// 13. Migration: a legacy v3 single-room plan is still READ (and converted) without loss.
-await test("migrate_v3_is_read_and_converted", `try{ localStorage.setItem(${JSON.stringify(V3_KEY)}, ${JSON.stringify(JSON.stringify(V3_PLAN))}); }catch(e){}`, `
-  var P = window.__plan.plan;
-  return {
-    cells: P.cells.length,
-    pieces: P.pieces.length,
-    types: P.pieces.map(function(p){return p.type;}),
-    floor: P.cells[0] && P.cells[0].floor,
-    outline: window.__plan.bboxOfPoly(P.outline),
-  };
-`, v => expect(v.cells === 1, "a v3 plan must read as exactly 1 cell, got " + v.cells)
-     && expect(v.pieces === 2, "both v3 pieces should survive, got " + v.pieces)
-     && expect(v.types.indexOf("sofa3") >= 0 && v.types.indexOf("coffee") >= 0, "piece types lost: " + JSON.stringify(v.types))
-     && expect(v.floor === "herringbone", "v3 opts.floor should carry to the cell floor, got " + v.floor)
-     && expect(near(v.outline.w, 420, 12) && near(v.outline.l, 360, 12),
-        "the v3 room becomes the apartment outline, got " + v.outline.w + "x" + v.outline.l));
 
 // 13b. Roundtrip: serialize -> migrate preserves the whole plan.
 await test("serialize_migrate_roundtrip", seedV4(TWO_ROOMS), `
@@ -532,12 +514,7 @@ await test("wallmount_side_is_the_cursor_side", seedV4(TWO_ROOMS), `
 
 // 19. The reported case: a CORRIDOR wall. The corridor is now a cell like any other,
 //     and a sconce placed FROM the corridor faces the corridor.
-await test("wallmount_corridor_side_is_reachable", (function () {
-  var s = JSON.parse(JSON.stringify(TWO_ROOMS));
-  s.rooms[0].room.poly = rect(250, 300); s.rooms[0].ax = 0;
-  s.rooms[1].room.poly = rect(250, 300); s.rooms[1].ax = 400;
-  return seedV4(s);
-})(), `
+await test("wallmount_corridor_side_is_reachable", seedV4(COULOIR), `
   var P = window.__plan;
   var corridor = P.cellAt(320, 150);
   var p = P.placeAt("sconce", { x: 256, y: 150 });   // cursor on the CORRIDOR side of wall x=250
@@ -627,18 +604,19 @@ await test("wallmount_preview_matches_the_pose", seedV4(TWO_ROOMS), `
 // escapes for everyone (escapeHtml, js/00). The `data-xss` marker is undetectable if the name
 // is rendered as TEXT, and trivially detectable if it was interpreted as markup.
 const XSS_NAME = '<i data-xss="1">boum</i>';
-const HOSTILE_NAMES = {
-  rooms: [
-    { id: 1, name: XSS_NAME, floor: "parquet", ax: 0, ay: 0, room: { poly: rect(400, 360) },
-      pieces: [
-        { id: 201, type: "door",  name: XSS_NAME, x: 160, y: -6, w: 80,  h: 12, rot: 0, hinge: 0, swing: 1 },
-        { id: 202, type: "sofa3", name: XSS_NAME, x: 150, y: 10, w: 220, h: 95, rot: 0 },
-      ] },
+const HOSTILE_NAMES: DonneeDynamique = {
+  outline: [[0,0],[400,0],[400,360],[0,360]],
+  walls: [
+    { id: "w1", a: [0,0], b: [400,0], t: 12 },
+    { id: "w2", a: [400,0], b: [400,360], t: 12 },
+    { id: "w3", a: [400,360], b: [0,360], t: 12 },
+    { id: "w4", a: [0,360], b: [0,0], t: 12 },
   ],
-  active: 0,
-  opts: { snap: true, labels: true, flow: true, overlay: false, tvIn: null as DonneeDynamique, collapsedCats: [] as DonneeDynamique[], layFurn: true, layLight: true, layPlug: true },
+  openings: [{ id: "201", wallId: "w1", t0: 160, w: 80, h: 12, type: "door", side: 0, name: XSS_NAME, hinge: 0, swing: 1 }],
+  pieces: [{ id: "202", type: "sofa3", name: XSS_NAME, x: 150, y: 10, w: 220, h: 95, rot: 0, locked: false }],
+  cells: [{ id: "c1", poly: [[400,0],[400,360],[0,360],[0,0]], name: XSS_NAME, floor: "parquet" }],
+  opts: Object.assign({}, OPTS, { flow: true }),
   setupDone: true,
-  envelope: null as DonneeDynamique,
 };
 await test("hostile_names_never_inject_html", seedV4(HOSTILE_NAMES), `
   var P = window.__plan;

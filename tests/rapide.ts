@@ -51,6 +51,9 @@ import { cleanName as cleanNameFn } from "../functions/nom.ts";
 import { porteDe } from "../functions/porte.ts";
 import { cleanCursorSay, cleanGuestName } from "../live-worker/ops.ts";
 import { hoteAutorise } from "../live-worker/worker.ts";
+import { migrate } from "../src/ts/modele/etat.ts";
+import { rescueUnreadable } from "../src/ts/modele/filets.ts";
+import { V5_RESCUE_KEY } from "../src/ts/noyau/nombres.ts";
 
 type OpBanc = Operation & {
   piece?: Partial<Piece>;
@@ -599,6 +602,54 @@ test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
   });
   return expect(!!p1 && !!p2, "le plan doit rester lisible aux deux passages")
       && expect(ecarts.length === 0, "champs perdus au second passage de sanitizeV5Plan :\n         " + ecarts.join("\n         "));
+});
+
+test("un_plan_v1_a_v4_n_est_plus_lu_et_part_au_filet_illisible", () => {
+  // Décision 0021. Les formats v1 à v4 ne sont plus lus: `migrate()` les REFUSE (null) au lieu de
+  // les convertir. Ce n'est pas une perte, c'est le chemin « plan illisible » qui s'ouvre (D-2):
+  // l'amorçage (`main.ts`) met alors les octets de côté SOUS LEUR PROPRE CLÉ, tels quels, avant
+  // que quoi que ce soit ne les remplace, et l'affiche dans une bannière avec un bouton de
+  // téléchargement. Rien ne se convertit, rien ne se jette.
+  const v4 = {
+    rooms: [{
+      id: 1, name: "Salon", floor: "parquet", ax: 0, ay: 0,
+      room: { poly: [[0, 0], [400, 0], [400, 300], [0, 300]] },
+      pieces: [{ id: 9, type: "sofa", name: "Canapé", x: 10, y: 10, w: 200, h: 90, rot: 0 }],
+    }],
+    envelope: { poly: [[0, 0], [400, 0], [400, 300], [0, 300]], floor: "parquet", pieces: [] as DonneeDynamique[] },
+    setupDone: true,
+  };
+  const v3 = { room: { poly: [[0, 0], [500, 0], [500, 380], [0, 380]], w: 500, l: 380 }, pieces: [] as DonneeDynamique[] };
+  // Contrôle: un plan v5 reste lu, sinon ce test passerait aussi avec un `migrate()` cassé.
+  const v5 = {
+    outline: [[0, 0], [400, 0], [400, 300], [0, 300]],
+    walls: [{ id: "w1", a: [0, 0], b: [400, 0], t: 12 }],
+    openings: [] as DonneeDynamique[], pieces: [] as DonneeDynamique[], cells: [] as DonneeDynamique[], setupDone: true,
+  };
+
+  const octets = JSON.stringify(v4);
+  const MEM: Record<string, string> = {};
+  const avant = Object.prototype.hasOwnProperty.call(globalThis, "localStorage")
+    ? globalThis.localStorage : undefined;
+  globalThis.localStorage = {
+    getItem: (k: string) => (Object.prototype.hasOwnProperty.call(MEM, k) ? MEM[k]! : null),
+    setItem: (k: string, v: string) => { MEM[k] = String(v); },
+    removeItem: (k: string) => { delete MEM[k]; },
+  } as Storage;
+  let filet;
+  try { filet = rescueUnreadable(octets); }
+  finally {
+    if (avant === undefined) delete (globalThis as { localStorage?: Storage }).localStorage;
+    else globalThis.localStorage = avant;
+  }
+
+  return expect(migrate(v4 as unknown) === null, "un plan v4 (rooms[]+envelope) n'est plus lu")
+      && expect(migrate(v3 as unknown) === null, "un plan v1/v2/v3 mono-pièce n'est plus lu non plus")
+      && expect(!!migrate(v5 as unknown), "contrôle: un plan v5 reste lu")
+      && expect(!!filet && filet.kept === true && filet.bytes === octets.length,
+        "le filet garde les octets, vu " + JSON.stringify(filet))
+      && expect(MEM[V5_RESCUE_KEY] === octets,
+        "les octets sont mis de côté TELS QUELS sous la clé illisible");
 });
 
 test("v5_sanitize_applique_les_bornes_serveur_a_la_lecture", () => {

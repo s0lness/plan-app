@@ -61,7 +61,7 @@ not a local convenience.
 
 | Need | Starting point |
 | --- | --- |
-| State, migration, old formats | `ts/modele/etat.ts`, `lecture-v4.ts`, `migrations.ts` |
+| State, reading a payload | `ts/modele/etat.ts`, `migrations.ts`, `filets.ts` (the unreadable-plan net) |
 | Walls, cells, openings | `ts/modele/murs.ts`, `cellules.ts`, `edition.ts` |
 | Room names during a gesture | `ts/modele/photo-cellules.ts` (why the photo exists, and what it protects) |
 | Geometry gestures | `ts/gestes/murs.ts`, `outil-mur.ts` (the wall tool's chain, pure), `ouverture.ts`, `edition-murs.ts` |

@@ -95,19 +95,15 @@ export function keyPourMode(mode: "menage" | "invite" | "local", planId: string 
 }
 
 export const OPTS_KEY = "room-planner-opts";
-export const KEY_V3 = "room-planner-v3";
-export const KEY_V2 = "room-planner-v2";
-export const KEY_OLD = "room-planner-v1";
-export const V5_BACKUP_KEY = "room-planner-v4-backup";
-export const V5_BACKUP_AT = "room-planner-v4-backup-at";
+// The blob that could NOT be read back, set aside under its own key. The name still carries "v4"
+// because it IS the key already written in two browsers: renaming it would orphan what it holds.
 export const V5_RESCUE_KEY = "room-planner-v4-backup-illisible";
 export const V5_RESCUE_AT = "room-planner-v4-backup-illisible-at";
 
 // ---- walls-only model constants ------------------------------------------------------------------
 /** cm: merging points in the planar graph */
 export const V5_EPS = 0.5;
-/** cm: snapping tolerance when READING a plan in the old format */
-export const V5_SNAP = 4;
+
 /** cm²: below this threshold a face is a sliver, not a room (2×2 dm) */
 export const V5_MIN_AREA = 400;
 

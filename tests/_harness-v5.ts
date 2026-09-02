@@ -3,8 +3,7 @@
 //
 // This file contains NO check of its own: it only carries what's needed to write one. Seed +
 // verbatim app + probe, in headless Chrome, verdict read back from `<html data-plan-test="…">`.
-// No suite touches the old v4 path: everything goes through the additive window.__plan API
-// (buildV5FromV4 / detectCells / cellAt / wallsOf / renderV5 / setModel).
+// Everything goes through the window.__plan API (detectCells / cellAt / wallsOf / renderV5).
 //
 // Each suite is its own PROCESS, discovered as-is by tests/all.ts. Do not launch them by
 // hand: the launcher gives each one a private %TEMP% and kills the Chrome tree living inside it.
@@ -65,10 +64,12 @@ function seedV4(state: unknown): string {
   return `try{ localStorage.setItem(${JSON.stringify(V4_KEY)}, ${JSON.stringify(JSON.stringify(state))}); }catch(e){}`;
 }
 
-// The OWNER'S REAL PLAN (D1 rev 177, 8 rooms + envelope), embedded so the suite is hermetic.
+// The OWNER'S REAL PLAN (D1 rev 177, walls-only: 19 walls, 21 openings, 21 pieces, 10 cells),
+// embedded so the suite is hermetic. Converted once, in the repo, when the v1-v4 read path was
+// retired (decision 0021): its three compatibility fingerprints did not move.
 const REAL_PLAN = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "plan-rev177.json"), "utf8"));
 
-// A minimal v5 plan served to most editing, wire and old-plan-reading tests:
+// A minimal plan served to most editing and wire tests:
 // 600x400, one partition wall in the middle, the 4 facades present as walls (isOutline is DERIVED
 // by sanitizeV5Plan).
 const SEED_PLAN = `{

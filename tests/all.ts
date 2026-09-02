@@ -96,8 +96,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/model-v5-modele-defaut.ts",  chrome: 1 },
   { f: "tests/repli-d1-live.ts",           chrome: 3 },
   { f: "tests/model-v5-edition.ts",        chrome: 1 },
-  { f: "tests/model-v5-ancien-plan.ts",    chrome: 1 },
-  { f: "tests/model-v5-conversion-rendu.ts", chrome: 1 },
   { f: "tests/gestes-usage-reel.ts",       chrome: 1 },
   { f: "tests/chaise-dossier-geste.ts",    chrome: 1 },   // REAL MOUSE: a chair docked against a table faces it (backrest outward), relative to the table's OWN rotation, round trip exact
 

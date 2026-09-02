@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// THE WALLS-ONLY MODEL IS THE DEFAULT MODEL: automatic conversion on load, not repeated,
-// reversible, identical across two clients; and the view recropped on the FIRST adoption.
+// THE WALLS-ONLY MODEL IS THE ONLY MODEL: a saved plan opens as it was saved, nothing is
+// converted on the way in (decision 0021); and the view is recropped on the FIRST adoption.
 import type { DonneeDynamique } from "./_types.ts";
 import { sanitizeState, applyOp, isV5 } from "../live-worker/ops.ts";
 import { test, near, expect, seedV4, REAL_PLAN, report } from "./_harness-v5.ts";
@@ -9,10 +9,7 @@ import { test, near, expect, seedV4, REAL_PLAN, report } from "./_harness-v5.ts"
 //  9. THE WALLS-ONLY MODEL IS THE DEFAULT MODEL
 //     (automatic conversion on load, not repeated, reversible)
 // =============================================================================
-// These cases describe what a user sees in production: the walls-only model is the ONLY
-// model, a plan in the old format is read and converted on load.
-const REAL_PIECES = REAL_PLAN.rooms.reduce((n: number, r: DonneeDynamique) => n + ((r.pieces && r.pieces.length) || 0), 0);
-const REAL_ENV_PIECES = (REAL_PLAN.envelope && REAL_PLAN.envelope.pieces) ? REAL_PLAN.envelope.pieces.length : 0;
+// These cases describe what a user sees in production.
 const AUTO = "";
 const seedAuto = (st: DonneeDynamique) => AUTO + seedV4(st);
 // A state that's ALREADY converted, flat server shape (what D1 sends back after conversion).
@@ -21,49 +18,7 @@ const SEED_V5_STATE = {
   walls: [{ id: "w1", a: [300, 0], b: [300, 400], t: 12 }],
   openings: [] as DonneeDynamique[], pieces: [] as DonneeDynamique[], cells: [] as DonneeDynamique[], setupDone: true,
 };
-// A small plan in the OLD format, for the import.
-const IMPORT_V4 = {
-  rooms: [
-    { id: 1, name: "Bureau", floor: "parquet", ax: 0, ay: 0, room: { poly: [[0,0],[300,0],[300,300],[0,300]] },
-      pieces: [{ id: 901, type: "desk", name: "Bureau", x: 40, y: 40, w: 140, h: 70, rot: 0 }] },
-    { id: 2, name: "Cellier", floor: "tile", ax: 300, ay: 0, room: { poly: [[0,0],[200,0],[200,300],[0,300]] },
-      pieces: [] },
-  ],
-  active: 0, setupDone: true, envelope: null as DonneeDynamique,
-};
-
-// 9a. the user's REAL plan, in the old format, converts itself on load:
-// 13 interior walls, 6 facades, 10 cells, 21 openings, 21 pieces of furniture, and the 8 original names.
-await test("v5_boot_converts_the_old_plan", seedAuto(REAL_PLAN), `
-  var P = window.__plan.plan;
-  return { model: window.__plan.model,
-           walls: P ? P.walls.filter(function(w){ return !w.isOutline; }).length : -1,
-           facades: P ? P.walls.filter(function(w){ return w.isOutline; }).length : -1,
-           cells: P ? P.cells.length : -1,
-           names: P ? P.cells.map(function(c){ return c.name; }) : [],
-           openings: P ? P.openings.length : -1,
-           pieces: P ? P.pieces.length : -1,
-           aptrooms: document.querySelectorAll("#canvas .aptroom").length,
-           layer: document.querySelectorAll(".v5layer").length,
-           canvasV5: document.getElementById("canvas").classList.contains("v5"),
-           hasRooms: ("rooms" in window.__plan.state),
-           serverShape: Array.isArray(window.__plan.serialize().walls),
-           backup: !!window.__plan.backupInfo() };
-`, v => expect(v.model === "v5" && v.hasRooms === false,
-        "le chargement doit convertir tout seul et ne laisser AUCUNE salle")
-     && expect(v.walls === 13 && v.facades === 6, "13 murs intérieurs + 6 façades, got " + v.walls + "/" + v.facades)
-     && expect(v.cells === 10, "10 cellules attendues, got " + v.cells)
-     && expect(v.openings === 21 && v.pieces === 21, "21 ouvertures + 21 meubles, got " + v.openings + "/" + v.pieces)
-     && expect(["Salon", "Cuisine", "Pièce 4", "Pièce 6", "Pièce 7", "Pièce 8", "Pièce 9", "Pièce 10"]
-        .every(n => v.names.indexOf(n) >= 0), "les 8 noms d'origine doivent revenir, got " + JSON.stringify(v.names))
-     && expect(v.layer === 1 && v.aptrooms === 0 && v.canvasV5 === true, "l'écran doit être en murs-seuls")
-     && expect(v.serverShape === true, "serialize() doit être à la forme serveur murs-seuls")
-     // THE MENU ENTRY IS GONE, THE BACKUP ISN'T: "Revert to the plan from before conversion" has
-     // been removed from the rail menu (the conversion is done, the converted plan is in service).
-     // What must hold is the BLOB, not a button.
-     && expect(v.backup === true, "la sauvegarde d'avant conversion doit exister"));
-
-// 9b. a plan that's ALREADY converted is not reconverted (two clients cannot step on each other).
+// 9b. re-reading the plan just saved moves NOTHING: same cell ids, same walls.
 await test("v5_boot_does_not_reconvert", seedAuto(SEED_V5_STATE), `
   var idsBefore = window.__plan.plan.cells.map(function(c){ return c.id; }).join(",");
   var wallsBefore = window.__plan.plan.walls.map(function(w){ return w.id; }).join(",");
@@ -72,80 +27,11 @@ await test("v5_boot_does_not_reconvert", seedAuto(SEED_V5_STATE), `
   return { model: window.__plan.model,
            idsBefore: idsBefore, idsAfter: again.plan.cells.map(function(c){ return c.id; }).join(","),
            wallsBefore: wallsBefore, wallsAfter: again.plan.walls.map(function(w){ return w.id; }).join(","),
-           backup: !!window.__plan.backupInfo(), cells: window.__plan.plan.cells.length };
+           cells: window.__plan.plan.cells.length };
 `, v => expect(v.model === "v5", "un état serveur murs-seuls doit se monter en murs-seuls, got " + v.model)
-     && expect(v.backup === false, "un état déjà murs-seuls n'a rien à sauvegarder, backup=" + v.backup)
      && expect(v.idsBefore === v.idsAfter && v.wallsBefore === v.wallsAfter,
         "relire l'état enregistré ne doit rien reconvertir : " + v.idsBefore + " / " + v.idsAfter)
      && expect(v.cells === 2, "les cellules ne doivent pas bouger, got " + v.cells));
-
-// 9c. REPLACES "v5_optout_is_respected_at_boot" (staying on the old model no longer exists): the
-// safety net, however, remains. The blob from BEFORE conversion is copied AS IS, once,
-// and the first save of the converted plan does not overwrite it.
-await test("v5_backup_is_taken_once_and_kept", seedAuto(REAL_PLAN), `
-  var raw = localStorage.getItem("room-planner-v4-backup");
-  var at = localStorage.getItem("room-planner-v4-backup-at");
-  var src = JSON.parse(raw);
-  var info = window.__plan.backupInfo();
-  // a change + a save must NOT touch the backup
-  window.__plan.plan.pieces[0].x += 30; window.__plan.save();
-  var raw2 = localStorage.getItem("room-planner-v4-backup");
-  var live = JSON.parse(localStorage.getItem("room-planner-v4"));
-  return { legacy: Array.isArray(src.rooms) && src.rooms.length,
-           unchanged: raw === raw2, hasAt: !!at,
-           info: info, liveIsWalls: Array.isArray(live.walls) && !("rooms" in live) };
-`, v => expect(v.legacy === 8, "la sauvegarde doit contenir les 8 anciennes pièces, got " + v.legacy)
-     && expect(v.hasAt === true, "la sauvegarde doit être horodatée")
-     && expect(v.unchanged === true, "un enregistrement ne doit jamais réécrire la sauvegarde")
-     && expect(v.liveIsWalls === true, "le plan vivant enregistré, lui, est murs-seuls")
-     && expect(v.info && v.info.rooms === 8, "backupInfo() doit décrire l'ancien plan, got " + JSON.stringify(v.info)));
-
-// 9d. two clients converting at the same time produce EXACTLY the same plan
-// (same wall ids, same cell ids/names): the last write wins without losing anything.
-await test("v5_two_clients_converge_on_the_same_conversion", seedAuto(REAL_PLAN), `
-  var mine = window.__plan.plan;
-  // 2nd client: starts back from the blob from BEFORE conversion and replays the same conversion
-  var raw = localStorage.getItem("room-planner-v4-backup");
-  var st2 = window.__plan.readLegacy(JSON.parse(raw));
-  var other = window.__plan.buildV5FromV4(st2).plan;
-  var key = function(P){ return JSON.stringify({
-      o: P.outline,
-      w: P.walls.map(function(w){ return [w.id, w.a, w.b]; }),
-      c: P.cells.map(function(c){ return [c.id, c.name, c.floor, c.poly]; }),
-      p: P.pieces.map(function(p){ return [p.id, p.x, p.y, p.rot]; }),
-      op: P.openings.map(function(o){ return [o.id, o.wallId, o.t0, o.side]; }) }); };
-  return { same: key(mine) === key(other),
-           mineCells: mine.cells.map(function(c){ return c.id + ":" + c.name; }).join("|"),
-           otherCells: other.cells.map(function(c){ return c.id + ":" + c.name; }).join("|") };
-`, v => expect(v.same === true,
-        "la conversion doit être déterministe :\n  " + v.mineCells + "\n  " + v.otherCells));
-
-// 9e. SAFETY NET: the backup from before conversion gives back the original plan, identically.
-await test("v5_restore_returns_the_plan_from_before_the_conversion", seedAuto(REAL_PLAN), `
-  var conv = { model: window.__plan.model, cells: window.__plan.plan.cells.length };
-  var info = window.__plan.backupInfo();
-  // we first damage the live plan: restoring must really reload the other content
-  window.__plan.plan.pieces.length = 0; window.__plan.save();
-  var r = window.__plan.restoreBackup();
-  var P = window.__plan.plan;
-  return { conv: conv, info: info, r: r, model: window.__plan.model,
-           cells: P.cells.length,
-           names: P.cells.map(function(c){ return c.name; }),
-           pieces: P.pieces.length, openings: P.openings.length,
-           hasRooms: ("rooms" in window.__plan.state),
-           detached: window.__plan.syncDetached,
-           aptrooms: document.querySelectorAll("#canvas .aptroom").length,
-           layer: document.querySelectorAll(".v5layer").length };
-`, v => expect(v.conv.model === "v5" && v.conv.cells === 10, "il faut d'abord avoir été converti")
-     && expect(v.info && v.info.rooms === 8, "la sauvegarde doit décrire les 8 pièces d'origine, got " + JSON.stringify(v.info))
-     && expect(v.cells === 10 && v.pieces === 21 && v.openings === 21,
-        "le contenu d'avant conversion doit revenir (relu + reconverti), got "
-        + v.cells + "/" + v.pieces + "/" + v.openings)
-     && expect(v.names.indexOf("Salon") >= 0 && v.names.indexOf("Cuisine") >= 0,
-        "les noms d'origine doivent revenir, got " + JSON.stringify(v.names))
-     && expect(v.hasRooms === false && v.layer === 1 && v.aptrooms === 0,
-        "l'écran reste murs-seuls : recharger n'est pas revenir aux salles")
-     && expect(v.detached === true, "l'onglet doit se détacher du partage"));
 
 // 9f. BLANK FIRST LAUNCH: no localStorage, no server plan. The app boots in walls-only,
 // the wizard opens, and what it applies becomes the outline + one cell.
@@ -279,23 +165,6 @@ await test("v5_peer_drag_ghost_paints_on_the_layer", seedAuto(REAL_PLAN), `
         "le fantôme doit être posé en cm appartement, got " + v.pose.left + "/" + v.pose.top
         + " au lieu de " + v.expLeft + "/" + v.expTop));
 
-// 9k. IMPORTING a file in the OLD format: converted on import, never a return to rooms.
-await test("v5_importing_an_old_format_file_converts_it", seedAuto(REAL_PLAN), `
-  var payload = JSON.stringify({ app: "room-planner", version: 4, savedAt: "x",
-    state: ${JSON.stringify(IMPORT_V4)} });
-  var ok = window.__plan.importPlan(payload);
-  var P = window.__plan.plan;
-  return { ok: ok, model: window.__plan.model,
-           cells: P ? P.cells.length : -1, pieces: P ? P.pieces.length : -1,
-           rooms: ("rooms" in window.__plan.state) ? 99 : 1,
-           aptrooms: document.querySelectorAll("#canvas .aptroom").length,
-           layer: document.querySelectorAll(".v5layer").length };
-`, v => expect(v.ok === true, "l'import doit réussir")
-     && expect(v.model === "v5", "un fichier ancien format doit être converti à l'import, got " + v.model)
-     && expect(v.cells === 2, "les 2 pièces importées doivent devenir 2 cellules, got " + v.cells)
-     && expect(v.pieces === 1, "le meuble importé doit survivre, got " + v.pieces)
-     && expect(v.rooms === 1 && v.aptrooms === 0 && v.layer === 1, "l'écran reste en murs-seuls"));
-
 // 9l. PNG / PDF EXPORT: the master SVG is painted from the walls and cells, not from
 // old rooms (one band per interior wall, one name per cell).
 await test("v5_master_svg_is_walls_only", seedAuto(REAL_PLAN), `
@@ -311,36 +180,6 @@ await test("v5_master_svg_is_walls_only", seedAuto(REAL_PLAN), `
      && expect(v.names === v.cells, "chaque cellule doit être étiquetée, got " + v.names + "/" + v.cells)
      && expect(v.filters === false, "aucun filtre CSS/SVG dans l'export")
      && expect(v.len > 5000, "l'export ne doit pas être vide, got " + v.len));
-
-// 9m-bis. The OTHER client converted first: its `plan5.replace` switches this tab over without
-// triggering a second local conversion (no concurrent conversion, no overwrite).
-await test("v5_remote_conversion_switches_this_tab", seedV4(REAL_PLAN), `
-  var before = { cells: window.__plan.plan.cells.length, model: window.__plan.model };
-  // the plan the other client just sent: the SAME deterministic conversion, one wall fewer
-  var res = window.__plan.buildV5FromV4(
-    window.__plan.readLegacy(JSON.parse(localStorage.getItem("room-planner-v4-backup"))));
-  res.plan.walls = res.plan.walls.filter(function(w){ return w.isOutline || w.id !== "w1"; });
-  var wire = { outline: res.plan.outline,
-               walls: res.plan.walls.map(function(w){ return {id:w.id, a:w.a, b:w.b, t:w.t}; }),
-               openings: res.plan.openings.map(function(o){ return {id:o.id, wallId:o.wallId, t0:o.t0, w:o.w, type:o.type}; }),
-               pieces: res.plan.pieces.map(function(p){ return {id:String(p.id), type:p.type, name:p.name,
-                 x:p.x, y:p.y, w:p.w, h:p.h, rot:p.rot, locked:!!p.locked}; }),
-               cells: res.plan.cells.map(function(c){ return {id:c.id, poly:c.poly, name:c.name, floor:c.floor}; }) };
-  window.__plan.wsForceOpen(true);
-  window.__plan.wsFeed({ t: "op", rev: 42, op: { kind: "plan5.replace", plan: wire } });
-  window.__plan.wsForceOpen(false);
-  var P = window.__plan.plan;
-  return { before: before, model: window.__plan.model,
-           cells: P ? P.cells.length : -1, pieces: P ? P.pieces.length : -1,
-           walls: P ? P.walls.filter(function(w){ return !w.isOutline; }).length : -1,
-           hasRooms: ("rooms" in window.__plan.state),
-           aptrooms: document.querySelectorAll("#canvas .aptroom").length,
-           layer: document.querySelectorAll(".v5layer").length };
-`, v => expect(v.before.cells === 10, "cet onglet doit avoir converti tout seul au chargement, got " + v.before.cells)
-     && expect(v.model === "v5" && v.pieces === 21, "l'op distante doit remplacer le plan, got " + v.model + "/" + v.pieces)
-     && expect(v.walls === 12, "le mur retiré par le pair doit disparaître ici aussi, got " + v.walls)
-     && expect(v.cells === 10, "les cellules du pair sont adoptées telles quelles, got " + v.cells)
-     && expect(v.hasRooms === false && v.aptrooms === 0 && v.layer === 1, "l'écran reste murs-seuls"));
 
 // 9m. COLLABORATION: presence, cursor, chat. A peer's cursor is placed in APARTMENT cm
 // (aptToScreen); nothing depends anymore on a room id relayed on the wire.

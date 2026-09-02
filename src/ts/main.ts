@@ -23,8 +23,8 @@ import type { Etat } from "./modele/etat.ts";
 import type { Options } from "./modele/migrations.ts";
 import { cleanOpts } from "./modele/migrations.ts";
 import { defaultState, migrate } from "./modele/etat.ts";
-import { downloadRescued, rescueUnreadable, v5BackupLegacy } from "./modele/filets.ts";
-import { KEY, KEY_OLD, KEY_V2, KEY_V3, OPTS_KEY, keyPourMode } from "./noyau/nombres.ts";
+import { downloadRescued, rescueUnreadable } from "./modele/filets.ts";
+import { OPTS_KEY, keyPourMode } from "./noyau/nombres.ts";
 import { $, el } from "./noyau/dom.ts";
 import { aptBBox, aptToScreen, brancherRendu, fitView, renderView } from "./rendu/vue.ts";
 import { render } from "./rendu/rendu.ts";
@@ -69,18 +69,16 @@ import {
   ouvrirEtapeNomInvite, preparerAccueil,
 } from "./fil/invite.ts";
 
-/** The saved blob, AS-IS, tried in the order of the four historical keys (js/07, `load`). */
+/**
+ * The saved blob, AS-IS, under the ONE key this mode owns. No inheritance from another key: a
+ * plan opened here is the plan that was saved here. The three historical keys (`room-planner`,
+ * `-v1`, `-v2`, `-v3`) are no longer read at all (decision 0021): their contents are in shapes
+ * this client no longer knows how to read, so falling back to them would only produce the
+ * "unreadable plan" banner in front of the outline assistant. Their bytes stay where they are.
+ */
 function lireBrut(): string | null {
   try {
-    const k = keyPourMode(modeCourant(), planIdInvite() || planCourant());
-    // THE THREE HISTORICAL KEYS ARE READ ONLY FOR `main`, ON THE HOUSEHOLD DOOR. A fresh plan
-    // must inherit NOTHING: falling back to `room-planner-v3` would make it display the
-    // apartment from two versions ago instead of opening the outline assistant. Batch 3: the
-    // SAME reasoning now also applies to every key `keyPourMode` returns off the household
-    // door, an invited or local-only key never inherits from these either.
-    if (k !== KEY) return localStorage.getItem(k);
-    return localStorage.getItem(KEY) || localStorage.getItem(KEY_V3)
-      || localStorage.getItem(KEY_V2) || localStorage.getItem(KEY_OLD) || null;
+    return localStorage.getItem(keyPourMode(modeCourant(), planIdInvite() || planCourant()));
   } catch (_) { return null; }
 }
 
@@ -113,13 +111,10 @@ function amorcer(): { ctx: Contexte; fil: Fil } {
   let charge: unknown = null;
   try { charge = brut ? JSON.parse(brut) : null; } catch (_) { charge = null; }
 
-  // D-3. THE PRE-CONVERSION BLOB, COPIED VERBATIM, ONCE, BEFORE ANY WRITE. It can only be taken
-  // HERE: as soon as `save()` has run once, the key carries the CONVERTED plan and the
-  // original no longer exists anywhere.
-  try { v5BackupLegacy(brut); } catch (_) { /* storage denied: see the #storeChip badge */ }
-
   const migre = migrate(charge);
   // D-2. A record that is present but UNREADABLE is not a plan, and it is not "no plan" either.
+  // A plan written in one of the shapes that came BEFORE the walls-only model lands here too
+  // (decision 0021): it is not converted, and it is not lost either.
   // It is set aside AS-IS under its own key, before anything replaces it, and `setupDone` falls
   // back to false: no publication can start from a device that failed to read back its plan.
   const illisible = !migre && hadSaved;
