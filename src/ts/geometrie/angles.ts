@@ -1,13 +1,6 @@
-// src/ts/geometrie/angles.ts: THE 45-DEGREE TABLE, pure.
-//
-// Everything here is pure, in the spirit of `geometrie/polygones.ts`: no `Contexte`, no DOM, no
-// `toast`. Its one consumer is the wall tool's endpoint drag (`v5WallEndDrop`, `gestes/murs.ts`),
-// which quantises a dragged end's direction from its wall's own FIXED end.
-//
-// This table outlived the freehand wall trace it was born in (a stroke became a chain of walls,
-// removed on the owner's request): what the tool that remains needs from it is the direction
-// table itself, so the table moved here rather than being hand-rolled a second time at the call
-// site.
+// src/ts/geometrie/angles.ts: THE 45-DEGREE TABLE, pure (no `Contexte`, no DOM, no `toast`), like
+// `geometrie/polygones.ts`. Consumed by the wall tool's endpoint drag (`v5WallEndDrop`,
+// `gestes/murs.ts`) to quantise a dragged end's direction from its wall's fixed end.
 
 import type { Pt } from "../partage/plan.ts";
 

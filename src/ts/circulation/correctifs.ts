@@ -1,9 +1,5 @@
-// src/ts/circulation/correctifs.ts: PORTED VERBATIM from src/js/37-flow-correctifs.js (61 lines).
-//
-// The fixes mutate the REAL piece of the state (apartment coordinates), not the copy the
-// engine works with: that's what `realPieceById` (js/36) says. `afterFix()` lives in `FL` because
-// js/37 calls it and js/38 provides it (`render(); syncInspector(); analyzeNow();`): between two
-// real ES modules, writing it here would be a cycle.
+// src/ts/circulation/correctifs.ts: auto-fixes proposed by the circulation engine. Each mutates
+// the REAL plan piece via `realPieceById`, not the engine's analysis copy, then calls `FL.afterFix()`.
 
 import type { Meuble } from "../partage/plan.ts";
 import type { Rect } from "./etat.ts";
@@ -16,9 +12,9 @@ import { aptBBox } from "../rendu/vue.ts";
 import { frontNormal, pieceAABB, rectGap, rectsOverlap } from "./contexte.ts";
 
 /**
- * `clampPiece` (js/19): a piece of furniture stays within ITS cell, set back by half a wall
- * thickness; a wall-mounted object is a parametric opening, nothing to clamp. Copied here because js/19 is
- * ported inside `gestes/`, where it isn't exported.
+ * A piece of furniture stays within ITS cell, set back by half a wall thickness; a wall-mounted
+ * object is a parametric opening, nothing to clamp. Copied here because the original isn't
+ * exported from `gestes/`.
  */
 function clampPiece(p: Meuble): void {
   if (isWallMount(p.type)) return;

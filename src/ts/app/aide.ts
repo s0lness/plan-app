@@ -1,14 +1,6 @@
-// src/ts/app/aide.ts: THE HELP MODAL.
-// Ported from src/js/31-aide-astuces.js.
-//
-// ONE SINGLE ENTRY POINT TO HELP: the "?" in the toolbar. The rail menu carried a
-// second entry on the exact same handler; two paths to the same modal, one of them
-// hidden behind a menu, helped no one.
-//
-// THE FIRST-USE HINT BUBBLES ARE GONE (decision 0014, "l'app se tait"): a tip explaining a
-// gesture at the moment it happens is a confession that the gesture isn't evident on its own.
-// A browser that still carries the old `plan-hints` localStorage key from before this change
-// is never read or written again: nothing here touches it, so nothing can trip on its shape.
+// src/ts/app/aide.ts: THE HELP MODAL, ONE SINGLE ENTRY POINT (the "?" in the toolbar).
+// First-use hint bubbles are gone (decision 0014, "l'app se tait"); the old `plan-hints`
+// localStorage key is never read or written again.
 
 import type { Contexte } from "./contexte.ts";
 import { $ } from "../noyau/dom.ts";

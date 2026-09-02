@@ -1,9 +1,5 @@
-// src/ts/circulation/contexte.ts: PORTED VERBATIM from src/js/34-flow-contexte.js (129 lines).
-//
-// "Port it verbatim, last, without touching it" (docs/reecriture.md §7.4): no rule, no
-// threshold, no constant, no message moves. What changes is the LANGUAGE of the code, nothing else:
-// the variables of the single closure are in `FL` (circulation/etat.ts), and the functions that
-// the old client saw "everywhere" (`state`, `viewport`, `aptBBox`, `v5CellsAt`…) are imported.
+// src/ts/circulation/contexte.ts: the circulation engine's analysis context (`FL.flowCtx`),
+// built once per pass over the whole apartment.
 
 import type { BBox } from "../geometrie/polygones.ts";
 import type { ItemCatalogue } from "../catalogue/catalogue.ts";
@@ -24,13 +20,8 @@ export const PRIMARY_SEAT = new Set(["sofa3", "sofa2", "arm"]);
 // =====================================================================
 //  ANALYSIS CONTEXT (a single pass, the whole apartment)
 // =====================================================================
-// The apartment is analyzed as ONE plan. CELLS are the rooms, the OUTLINE is
-// the envelope, and everything is already in apartment cm: there's neither a local frame nor a translation.
-// The engine reads its inputs through `FL.flowCtx`, set by analyzeApt() before each pass:
-//   flowCtx.cells  : [{poly:[[x,y]…], ci, name}], each cell's polygon
-//   flowCtx.pieces : [{…furniture, ci, cellName}], furniture AND openings
-//   flowCtx.bb     : outline bbox
-//   flowCtx.env    : {poly}, the outline itself (bounding box and grid)
+// The apartment is analyzed as ONE plan, in apartment cm throughout (no local frame or
+// translation). Cells are the rooms, the outline is the envelope.
 export function fcCells(): CelluleFlow[] { return FL.flowCtx ? FL.flowCtx.cells : []; }
 export function fcPieces(): ObjetFlow[] { return FL.flowCtx ? FL.flowCtx.pieces : meublesDuPlan(); }
 export function fcBBox(): BBox { return FL.flowCtx ? FL.flowCtx.bb : aptBBox(FL.ctx); }
@@ -46,7 +37,7 @@ export function cellIndexAt(x: number, y: number): number {
   for (let i = 0; i < cs.length; i++) { if (pointInPoly(x, y, cs[i]!.poly)) return i; }
   return -1;
 }
-/** The default depth of an opening, the one `v5OpeningBox` used to take implicitly (js/50). */
+/** The default depth of an opening, the one `v5OpeningBox` takes implicitly. */
 export const hDefaut = (type: string): number => (TYPEMAP[type] || { h: WALL }).h || WALL;
 
 // Builds the context. Walls become barriers "for free": buildGrid already
@@ -66,13 +57,9 @@ export function buildAptContext(): ContexteFlow {
     const k = cellAt(p.x + p.w / 2, p.y + p.h / 2);
     pieces.push({ ...p, ci: k.ci, cellName: k.name });
   });
-  // `onOutline` = the opening is carried by a FACADE wall. That's the only exact definition
-  // of "opens onto the outside" in the walls-only model, and `isOutline` is precisely derived
-  // from the geometry at sanitize time (sanitizeV5Plan -> v5OnOutline).
-  // Do NOT derive it from `ci==="env"`: the center of an opening sits on the median line
-  // of its wall, hence on the BOUNDARY of a cell, and pointInPoly answers depending on which side
-  // of the apartment it's on (a door on the left or top facade used to be counted as interior, a
-  // door on the right or bottom facade as exterior).
+  // `onOutline` = the opening is carried by a FACADE wall (`isOutline`, from `sanitizeV5Plan`).
+  // Not derived from `ci==="env"`: an opening's center sits on its wall's median line, a cell
+  // boundary, where `pointInPoly` answers ambiguously depending on which side it falls.
   (P.openings || []).forEach((o) => {
     const box = v5OpeningBox(P, o, hDefaut(o.type)); if (!box) return;
     const k = cellAt(box.cx, box.cy);

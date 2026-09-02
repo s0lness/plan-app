@@ -1,15 +1,7 @@
-// src/ts/exportation/liste-mobilier.ts: THE FURNITURE LIST, by cell.
-// Ported from src/js/30-liste-mobilier.js.
-//
-// A CELL OWNS NOTHING: the grouping is a geometric test, does the object's center
-// fall inside its polygon. An object outside any cell (set down in a wall's thickness, or
-// in an undetected nook) is never lost: it ends up in "Outside any room". Openings
-// are attached to the cell that their FACE looks onto (`v5OpeningBox` + normal).
-//
-// ONE SINGLE TABLE FACTORY: the screen (the modal) and printing (`impression.ts`) both call
-// `furnitureSectionHTML`, so it is impossible for the PDF and the screen to diverge. The print
-// layout is done by `.print-furni` (css/16), which overrides the screen rules
-// (cascade: css/14 then css/16).
+// src/ts/exportation/liste-mobilier.ts: THE FURNITURE LIST, by cell. Grouping is a geometric
+// test (object center inside the cell's polygon); an object outside any cell lands in "Outside
+// any room". Openings attach to the cell their FACE looks onto (`v5OpeningBox` + normal). The
+// screen modal and `impression.ts` both call `furnitureSectionHTML`, so PDF and screen can't diverge.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Cellule, Meuble, Ouverture } from "../partage/plan.ts";

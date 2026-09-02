@@ -1,20 +1,11 @@
 // src/ts/historique/pile.ts: UNDO / REDO, IN MEMORY, NEVER PERSISTED.
-// Ported from src/js/27-historique.js (`snapshot`, `histNoteRemoteOp`, `histReplay`, `pushHistory`,
-// `applyReplacedState`, `restore`, `undo`, `redo`, `updateHistBtns`).
 //
-// C-9. A CTRL+Z UNDOES ONLY ITS AUTHOR'S WORK. Before: `undo()` replayed a COMPLETE
-// snapshot and published it as a replacement (`plan5.replace`). Since ops received from the other
-// person NEVER entered the history, the snapshot was by construction blind to everything she had
-// done since the last local action: her furniture would move back, her renaming would vanish, on BOTH
-// screens, without a word. Fixed in two steps, both carried here:
-//   1. REPLAY: the peers' ops taken since the snapshot are replayed ON TOP (`histReplay`).
-//   2. PUBLISHING BY DIFF: `applyReplacedState(..., {keepShadow:true})` lets the mirror describe
-//      the SERVER, so the final `save()` only emits the entities that changed.
+// C-9: Ctrl+Z undoes only its author's work. Fixed in two steps, both carried here: (1) REPLAY,
+// the peers' ops taken since the snapshot are replayed on top (`histReplay`); (2) PUBLISH BY
+// DIFF, `applyReplacedState(..., {keepShadow:true})` so `save()` only emits changed entities.
 //
-// G-3. `pushHistory()` is NOT pushed on `pointerdown` but on the FIRST REAL MOVEMENT (exception:
-// Alt+drag, whose duplicate is born at pointerdown, so the snapshot must come first). It's
-// the caller who upholds this rule: this module only makes it cheap (a snapshot
-// identical to the previous one doesn't create an entry).
+// G-3: `pushHistory()` is pushed on the FIRST REAL MOVEMENT, not `pointerdown` (exception:
+// Alt+drag). The caller upholds this; this module only makes it cheap (dedupe on the snapshot).
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Op, PlanV5 } from "../partage/plan.ts";
@@ -68,10 +59,8 @@ export function histNoteRemoteOp(op: Op | null | undefined): void {
   }
 }
 
-// `ctx` is here ONLY for the PERSONAL SETTINGS (D-7). A history snapshot carries
-// no `opts` at all (`serialize()` never writes any), so reading it back without them would fall
-// the whole screen back to defaults on every Ctrl+Z: layers turned back on, the Circulation panel
-// reopened, categories re-expanded.
+// `ctx` is here ONLY for the PERSONAL SETTINGS (D-7): a snapshot carries no `opts`, so reading it
+// back without them would fall the screen back to defaults on every Ctrl+Z.
 function histReplay(ctx: Contexte, entry: Entree): ReturnType<typeof migrate> {
   let raw: Record<string, unknown>;
   try { raw = JSON.parse(entry.s) as Record<string, unknown>; } catch (_) { return null; }
@@ -94,15 +83,9 @@ export function pushHistory(ctx: Contexte): void {
 }
 
 /**
- * G-3 + G-12. Called right after a gesture's own `cancel()` has restored the pre-gesture state
- * (Escape). If that gesture had pushed a history entry on its first real movement (the ordinary
- * `pushHistory()` pattern shared by drag, rotate, wall/vertex/opening drag and resize), the top of
- * the undo stack now describes EXACTLY the current state: popping it costs nothing, and keeping it
- * would waste the next `Ctrl+Z` on a no-op, pushing the action the person actually meant to undo
- * one step further away. The comparison is the SAME string equality `pushHistory()` already uses
- * to dedupe, so this only ever removes an entry that is byte-identical to now: a gesture whose
- * `cancel()` did not fully restore the original state (there is none today, but never say never)
- * simply keeps its entry, exactly as before this function existed.
+ * G-3/G-12: called right after a gesture's `cancel()` (Escape) has restored the pre-gesture
+ * state. If a history entry was pushed on the gesture's first move, the top of the undo stack now
+ * describes EXACTLY the current state: pop it, or the next Ctrl+Z wastes itself on a no-op.
  */
 export function jeterHistoriqueVide(ctx: Contexte): void {
   const top = undoStack[undoStack.length - 1];
@@ -110,12 +93,8 @@ export function jeterHistoriqueVide(ctx: Contexte): void {
 }
 
 export interface OptionsRemplacement {
-  /**
-   * DO NOT resync the outgoing mirror onto the new state: it then keeps describing what
-   * the SERVER holds, and the final `save()` publishes the entity-by-entity difference instead
-   * of a whole plan. That's what UNDO wants; adopting a server plan and importing,
-   * on the other hand, do resync.
-   */
+  /** DO NOT resync the outgoing mirror onto the new state: `save()` then publishes the
+   * entity-by-entity difference instead of a whole plan. What UNDO wants; import/adoption resync. */
   keepShadow?: boolean;
 }
 
@@ -143,8 +122,7 @@ export function applyReplacedState(
   ctx.selection.ids.clear(); ctx.selection.primaire = null; ctx.selVtx = -1;
   ctx.crochets.hideInspector?.();
   clearGuides(ctx);
-  // Reasserts the UI from the PERSONAL SETTINGS: `ctx.etat.opts` is the same object as before the
-  // replacement, so these lines can never adopt the options of a received plan (D-7).
+  // Reasserts the UI from PERSONAL SETTINGS (D-7): can never adopt a received plan's options.
   const cl = $("optLabels") as HTMLInputElement | null; if (cl) cl.checked = !!ns.opts.labels;
   renderRoomChips(ctx, true);
   // The mirror follows the freshly adopted state, EXCEPT for an undo (see `keepShadow`).
@@ -154,11 +132,8 @@ export function applyReplacedState(
   ctx.crochets.analyser?.();
 }
 
-/**
- * Restoring an entry: snapshot + peers' ops replayed on top, then published BY
- * DIFF (`keepShadow`), never a `plan5.replace` that would resurrect a whole plan of which our
- * snapshot doesn't know half.
- */
+/** Restoring an entry: snapshot + peers' ops replayed on top, then published BY DIFF
+ * (`keepShadow`), never a `plan5.replace` (C-9). */
 function restore(ctx: Contexte, entry: Entree): void {
   const ns = histReplay(ctx, entry); if (!ns) return;
   applyReplacedState(ctx, ns, { keepShadow: true });
@@ -176,12 +151,8 @@ export function redo(ctx: Contexte): void {
   restore(ctx, redoStack.pop()!);
 }
 
-/**
- * Wiring for the two File-menu entries (decision 0015: Undo/Redo left the toolbar, `Ctrl+Z` /
- * `Ctrl+Y` unchanged in `gestes/clavier.ts`). No disabled-state tracking any more: `undo()` and
- * `redo()` already no-op on an empty stack, so a menu entry that sometimes does nothing needs no
- * separate bookkeeping to say so up front.
- */
+/** Wiring for the two File-menu entries (decision 0015). No disabled-state tracking: `undo()`/
+ * `redo()` already no-op on an empty stack. */
 export function brancherBoutonsHistorique(ctx: Contexte): void {
   $("btnMenuUndo")?.addEventListener("click", () => undo(ctx));
   $("btnMenuRedo")?.addEventListener("click", () => redo(ctx));

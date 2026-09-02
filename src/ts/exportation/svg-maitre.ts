@@ -1,17 +1,8 @@
-// src/ts/exportation/svg-maitre.ts: THE MASTER SVG OF THE WHOLE FLAT.
-// Ported from src/js/32-export.js (`buildMasterSVG`), VERBATIM in its geometry and its strings.
-//
-// ONE SINGLE FRAME: the FLAT cm, `sc=1`, so independent of the live zoom. The file is
-// SELF-CONTAINED (colors and fonts hardcoded) because it goes out as a `data:` URL to an `<img>`:
-// there, no CSS variable exists. Any tint that comes from a token is therefore RESOLVED here, at
-// construction time (`resolveColor`), never left as a `var(--…)`.
-//
-// R-1 HOLDS ON THE SHEET JUST AS ON SCREEN, and that is the shape constraint of this file: "a
-// correct screen with an upside-down sheet would be absurd". The ONLY rotated group in the document is
-// the icons' (`glyph`, which carries `rotate(rot)`); NO `<text>` enters it. All the text
-// (title, cell names, furniture names) is placed NEXT TO the group, horizontal, in the `labels`
-// layer. A `<text>` slipped into `glyph` would inherit the object's rotation and would read
-// crooked, or even upside down.
+// src/ts/exportation/svg-maitre.ts: THE MASTER SVG OF THE WHOLE FLAT, in flat cm (`sc=1`,
+// independent of the live zoom). Self-contained (colors and fonts hardcoded, tokens resolved via
+// `resolveColor`) since it goes out as a `data:` URL to an `<img>`, where no CSS variable exists.
+// R-1 holds on the sheet as on screen: the only rotated group is the icons' (`glyph`); no `<text>`
+// enters it, all labels sit next to it, horizontal, in the `labels` layer.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Cellule, Meuble, Ouverture, Pt } from "../partage/plan.ts";
@@ -57,11 +48,8 @@ export function buildMasterSVG(ctx: Contexte, opts?: OptionsSVGMaitre): string {
       + `stroke="#3b3f3d" stroke-width="${w.t || WALL}" stroke-linecap="square"/>`;
   });
 
-  // NO TEXT INSIDE A `glyph`. This group carries a `rotate(rot)`: any `<text>` slipped in
-  // there would inherit the object's rotation and would read crooked, or even upside down.
-  // ALL the text on this sheet is HORIZONTAL (title, cell names, furniture names):
-  // it's the same rule as on screen (rendu/meubles.ts, noyau/dom.ts `setLabelSpin`), and it
-  // suffers no exception here either. A `<text>` is therefore placed next to the group, never inside it.
+  // NO TEXT INSIDE A `glyph`: it carries `rotate(rot)`, so a `<text>` in there would read crooked
+  // or upside down (same rule as `rendu/meubles.ts`, `noyau/dom.ts` `setLabelSpin`).
   const glyph = (type: string, w: number, h: number, cx: number, cy: number, rot: number, extra?: string): string => {
     const ico = pieceIconSVG(type, w, h).replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
     return `<g transform="translate(${X(cx)} ${Y(cy)}) rotate(${rot}) translate(${(-w / 2).toFixed(2)} ${(-h / 2).toFixed(2)})">${extra || ""}${ico}</g>`;
@@ -83,29 +71,20 @@ export function buildMasterSVG(ctx: Contexte, opts?: OptionsSVGMaitre): string {
   });
 
   // ---- CHOSEN NAMES ARE ALSO ON THE SHEET -------------------------------------------------------
-  // A plan you print is used to discuss it away from the screen: the sheet used to carry only the
-  // title and the CELL names, so "Homu" and "Ikea" only existed on screen. SAME rule as on
-  // screen (rendu/meubles.ts) so the two tell the same story: only CHOSEN names
-  // (`isChosenName`), never a wall-mounted object, never an overflow.
-  // Two deliberate differences, each with a single reason:
-  //   · the "Show names & sizes" option does NOT govern the sheet: it's a personal screen
-  //     setting (`room-planner-opts`), and a printout without names would be an
-  //     unusable printout for someone who unchecked the box a month ago;
-  //   · the threshold is in CENTIMETERS, not pixels: the export is independent of the live zoom.
-  // The text is HORIZONTAL, with no rotation at all: a piece of furniture's name reads flat even when the
-  // furniture is standing upright. The available room is therefore the HORIZONTAL CHORD of the rotated
-  // rectangle (`min(w/|cos|, h/|sin|)`, same calculation as on screen): `w` at 0°, `h` at 90°.
+  // Same rule as on screen (rendu/meubles.ts): only CHOSEN names (`isChosenName`), never a
+  // wall-mounted object, never an overflow. Two differences: the "Show names & sizes" option
+  // doesn't govern the sheet (it's a personal setting, D-7), and the threshold is in centimeters,
+  // not pixels. Text is horizontal, so the available room is the rotated rectangle's horizontal
+  // chord (`min(w/|cos|, h/|sin|)`), same calculation as on screen.
   const LBL_FS = 15, LBL_CH = LBL_FS * 0.52;   // average width of a character in this font
   (P.pieces || []).forEach((p: Meuble) => {
     if (isWallMount(p.type) || !isChosenName(p)) return;
-    // 60 cm of shortest side: that's the on-screen threshold (46 px side) at the zoom level where
-    // the whole flat is visible. Below that (a 45x50 chair), the label eats the thumbnail.
+    // 60cm shortest side: below that, the label eats the thumbnail.
     if (Math.min(p.w, p.h) < 60) return;
     const rad = (p.rot || 0) * Math.PI / 180, ca = Math.abs(Math.cos(rad)), sa = Math.abs(Math.sin(rad));
     const room = Math.min(ca > 1e-6 ? p.w / ca : Infinity, sa > 1e-6 ? p.h / sa : Infinity);
-    // Same tradeoff as on screen: a SHORT overflow (the name overflows by at most a quarter) is
-    // tolerated, beyond that we stay silent rather than print "Coff…". The furniture list, page 2
-    // of the same printout, carries the full name.
+    // A short overflow (at most a quarter) is truncated with "…"; beyond that, stay silent rather
+    // than print "Coff…". The furniture list (page 2) carries the full name.
     const nMax = Math.floor((room - 8) / LBL_CH);
     let n = String(p.name).trim();
     if (nMax < 5 || n.length > nMax * 1.25) return;

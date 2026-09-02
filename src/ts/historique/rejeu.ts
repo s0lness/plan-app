@@ -1,21 +1,8 @@
-// src/ts/historique/rejeu.ts: REPLAYING AN OP ONTO A DATA PLAN.
-// Ported from src/js/27-historique.js (the PURE part: `histApplyOp`). The snapshot stack, the
-// bounded log and the buttons live in the DOM: still to be ported.
+// src/ts/historique/rejeu.ts: REPLAYING AN OP ONTO A DATA PLAN, pure (`histApplyOp`).
 //
-// C-9: CTRL+Z UNDOES ONLY ITS AUTHOR'S WORK. `undo()` used to replay a COMPLETE snapshot and
-// publish it as a replacement of the plan. Since ops received from the other person NEVER entered
-// the history, the snapshot was by construction blind to everything she had done since the
-// last local action: her furniture would move back, her renaming would vanish, on BOTH screens,
-// without a word. The longer we stayed idle while she worked, the more our own Ctrl+Z
-// destroyed.
-//
-// The fix takes two steps, and this is the first one: a snapshot is a past SHARED
-// state, so the peers' ops received since it was taken are REPLAYED on top before
-// restoring. The second step (publishing BY DIFF, never `plan5.replace`) is in
-// `fil/miroir.ts`.
-//
-// Ops have been PARTIAL ever since the emitter diffs field by field: WE MERGE, we never replace
-// a whole entity with a partial op.
+// C-9, step one: a snapshot is a past SHARED state, so the peers' ops received since it was taken
+// are REPLAYED on top before restoring (step two, publishing by diff, is `fil/miroir.ts`).
+// Ops are PARTIAL: we merge, never replace a whole entity with a partial op.
 
 import { WALL } from "../noyau/nombres.ts";
 import { v5OnOutline } from "../modele/conversion.ts";
@@ -52,12 +39,8 @@ export function histApplyOp(P: PlanV5 | null | undefined, op: Op | null | undefi
         ex.id = String(w.id);
         ex.isOutline = v5OnOutline(ex.a, ex.b, P.outline, 1);
       } else {
-        // ONE SINGLE DELIBERATE DIVERGENCE FROM js/27, and it only concerns an ERROR path:
-        // the old code passed `w.a`/`w.b` RAW to `v5OnOutline` while it fell back to `[0,0]`
-        // to store them. A partial wall op with no `a` (possible when the wall no longer exists
-        // on that side) therefore made the replay THROW, which failed the whole undo. Here both
-        // reads see the same fallback value: on every path that succeeded, the result is
-        // identical down to the character.
+        // A partial wall op with no `a`/`b` (wall no longer exists on that side) must not throw
+        // and fail the whole undo: both reads share the same `[0,0]` fallback.
         const a = (w.a || [0, 0]).slice() as Pt;
         const b = (w.b || [0, 0]).slice() as Pt;
         L("walls").push({ id: String(w.id), a, b, t: w.t || WALL, isOutline: v5OnOutline(a, b, P.outline, 1) });
@@ -67,13 +50,10 @@ export function histApplyOp(P: PlanV5 | null | undefined, op: Op | null | undefi
     case "wall.del": {
       const id = String(op.wallId);
       L("walls"); L("openings");
-      // SAME RULE AS THE WIRE AND AS THE UI: a FACADE cannot be deleted (C-13). Without this
-      // guard, receiving would correctly keep the facade and its openings, then the first Ctrl+Z would
-      // make them disappear again, and since the restored snapshot is published BY DIFF, the loss would
-      // propagate all the way to the shared plan.
+      // Same rule as the wire and the UI: a facade cannot be deleted (C-13), or the first Ctrl+Z
+      // after a kept-facade receipt would make it disappear again, published by diff.
       if (v5WallDeleteVerdict(P, id) === "facade") break;
-      // "absent" cascades anyway: the server filters openings without checking whether the wall
-      // existed, and a replay must give the same plan it would.
+      // "absent" cascades anyway, same as the server.
       P.walls = L("walls").filter((w) => String(w.id) !== id);
       P.openings = L("openings").filter((o) => String(o.wallId) !== id);
       break;

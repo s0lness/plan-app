@@ -1,14 +1,7 @@
 // src/ts/catalogue/catalogue.ts: the furniture catalogue (dimensions in cm, w = width, h = depth).
-// Ported from src/js/01-catalogue.js, WITHOUT RENAMING A SINGLE LABEL (docs/reecriture.md §7.5).
-//
-// TWO COLUMNS THAT DON'T SAY THE SAME THING (R-4): `cat` says WHERE YOU LOOK for the object (the
-// rail's section); `color` says WHAT IT IS (the tint it's painted). The color used to be
-// carried by the GROUP, so moving an object from one section to another would REPAINT it in all
-// the plans already saved. It's been moved down to the ITEM; a batch that reorganizes sections never
-// touches `color`.
-//
-// SECTIONS ARE ROOMS BY USE, NOT FAMILIES OF OBJECTS (R-5), and go from the most placed
-// to the least placed (counted on the household's plan, 77 objects: 39, then 13, 9, 9, 7).
+// `cat` says WHERE YOU LOOK for the object, `color` says WHAT IT IS (R-4); color lives on the
+// item, not the group, so reorganizing sections never repaints saved plans. Sections are rooms
+// by use, ordered by how often each is placed (R-5).
 
 export interface ItemCatalogue {
   type: string;
@@ -124,20 +117,10 @@ export const CATALOG: RubriqueCatalogue[] = [
 ];
 
 // ---- THE SECOND TAXONOMY: BY OBJECT KIND (R-4bis) -------------------------------------------------
-// `cat` says WHERE YOU LOOK for the object: a room by use (Bedroom, Kitchen...). That's the right
-// classification when furnishing a room. It is NOT one when you're looking for "all the storage" or
-// "all the light fixtures", because they're scattered across five sections.
-//
-// WHY A TABLE AND NOT A FIELD ON EACH ENTRY: kind is INFORMATION ABOUT THE TYPE,
-// not about the catalogue row. Placing it next to the catalogue keeps it readable at a glance (you
-// see the families AND what they contain), whereas a field repeated 54 times reads line by
-// line. The price is that a type added to the catalogue can be forgotten here: `tests/rapide.ts`
-// therefore requires that EVERY type in the catalogue have a kind, and fails if a batch forgets one.
-//
-// COLOR COULD NOT SERVE, and that was the temptation: it already says "what it is" (R-4).
-// But `var(--bath)` and `var(--kitchen)` are ROOM colors, not kind colors: they file
-// the washer with the bathtub and the oven with the sink. Deriving kind from color would
-// therefore have reproduced the by-room classification under another name.
+// `cat` says WHERE YOU LOOK (a room by use); `kind` groups "all the storage" or "all the light
+// fixtures" across sections. Kept as a table (not a field per entry) so both classifications stay
+// readable side by side; `tests/rapide.ts` requires every catalogue type to have a kind. Color
+// can't serve for this: `var(--bath)`/`var(--kitchen)` are room colors, not kind colors.
 export const KIND_ORDER: readonly string[] = [
   "Seating", "Tables", "Beds", "Storage", "Kitchen units", "Appliances",
   "Bathroom", "Audio & video", "Lighting", "Power & data", "Openings", "Structure", "Soft & decor",
@@ -207,15 +190,10 @@ export function empilables(a: string, b: string): boolean {
 }
 
 /**
- * A radiator is LOW; a window, a wall light, a socket, an RJ45 sit on the wall ABOVE it: none of
- * them occupies the radiator's floor spot, or vice versa, so "two objects in the same place"
- * (circulation/regles.ts) must never fire for that pair, in EITHER order, exactly like `empilables`.
- *
- * A DOOR IS NOT ONE OF THEM, on purpose: `isWallMount` says a door and a window are the same kind
- * of thing (both `opening`), but a door has a floor-level swing and a passage you actually walk
- * through, a window doesn't. You don't pass OVER a radiator to walk through a doorway, so a door
- * (or a sliding door) in front of a radiator stays a real obstacle for this predicate; it is
- * already caught anyway by the door-swing rule (Rule 2), which is untouched by this predicate.
+ * A radiator is LOW; wall-mounted fixtures above it (window, wall light, socket, RJ45) don't
+ * share its floor spot, so the overlap check (circulation/regles.ts) must never fire for that
+ * pair, like `empilables`. A door is excluded on purpose: its floor-level swing is a real
+ * obstacle, already caught by the door-swing rule.
  */
 export function passeAuDessus(a: string, b: string): boolean {
   const paire = (x: string, y: string): boolean =>
@@ -224,13 +202,9 @@ export function passeAuDessus(a: string, b: string): boolean {
 }
 
 /**
- * `type` -> item. The construction is the SAME as in the old client (`it.color || g.color`):
- * `tests/rapide.ts` used to redo it identically on its own side, it's now done HERE, once,
- * and imported by the tests.
- *
- * The return type is `ItemCatalogue | undefined` (`noUncheckedIndexedAccess`): a `type` coming
- * from an old plan or a JSON import is NOT necessarily in the catalogue, and all the code reading it
- * must plan for that. It was true before too, but nothing enforced it.
+ * `type` -> item. Returns `ItemCatalogue | undefined` (`noUncheckedIndexedAccess`): a `type`
+ * coming from an old plan or a JSON import may not be in the catalogue, and callers must plan
+ * for that.
  */
 export const TYPEMAP: Record<string, ItemCatalogue> = {};
 for (const g of CATALOG) {
@@ -240,12 +214,9 @@ for (const g of CATALOG) {
 }
 
 // ---- THE CATALOGUE'S PREVIOUS LABELS (R-3) --------------------------------------------------------
-// A piece of furniture is born with its type's label and KEEPS it for its whole life: renaming an
-// entry leaves behind furniture carrying the OLD label. Without this table, `isChosenName` takes
-// them for TYPED names and writes them onto the plan: measured, four "Chair" around a
-// table that itself carries a fifth, "Table".
-// TWO WAVES, AND THEY STACK: the original English labels (recorded from the PLANS, never
-// invented), then the French labels removed on 2026-08-05.
+// A piece keeps its type's label at creation for life; renaming a catalogue entry must add the
+// old label here, or `isChosenName` mistakes it for a typed name and writes it onto the plan.
+// Two waves: original English labels (from real plans), then French labels since removed.
 export const LEGACY_TYPE_NAMES: Record<string, string[]> = {
   sofa3: ["Canapé 3 places"],
   sofa2: ["Canapé 2 places"],
@@ -282,17 +253,14 @@ export const LEGACY_TYPE_NAMES: Record<string, string[]> = {
   radiateur: ["Radiateur"],
   rug: ["Tapis"],
   plant: ["Plante"],
-  // THIRD WAVE (2026-08-06): "Bed (160)" was renamed to "Double bed" the day the single
-  // bed appeared next to it. Without this entry, any bed already placed would carry a name taken
-  // for a TYPED name and would get written onto the plan.
-  bed: ["Lit (160)", "Bed (160)"],
+  bed: ["Lit (160)", "Bed (160)"], // renamed "Bed (160)" -> "Double bed" (R-3)
   door: ["Door", "Porte"],
   sdoor: ["Porte coulissante"],
   window: ["Window", "Fenêtre"],
   plug: ["Prise"],
 };
 
-/** Strips a trailing "N" from a name to recover its stem (js/07). */
+/** Strips a trailing "N" from a name to recover its stem. */
 export function baseName(name: unknown): string {
   return String(name || "").replace(/\s+\d+$/, "").trim() || String(name || "");
 }

@@ -27,15 +27,10 @@ import {
 // =====================================================================
 //  RULES, ONE pass over the whole apartment
 // =====================================================================
-// `FL.flowCtx` is set by analyzeApt(): every cell and every object, in apartment cm.
-// The GLOBAL rules (grid, clearances, reachability of each cell, pinch points) run
-// once; the COMFORT rules (sofa / coffee table / dining table / TV / rug / window /
-// walls) run PER CELL and are poured into the same list, the cell's name woven into
-// the finding's French text. A SINGLE score.
-//
-// `detail` goes out as innerHTML (js/38) because it carries <b>: every object or cell NAME
-// inserted into it is escaped (escapeHtml, js/00), otherwise a piece of furniture named "<b>x</b>" writes into
-// the Circulation panel.
+// Global rules (grid, clearances, reachability, pinch points) run once; comfort rules (sofa,
+// coffee table, dining, TV, rug, window, walls) run per cell into the same list, then a single
+// score. `detail` goes out as innerHTML (it carries `<b>`): every object/cell name inserted into
+// it is escaped (`escapeHtml`).
 function runRules(): ResultatAnalyse {
   const F: Constat[] = [];
   const grid: GrilleGlobale = { g: null, clear: null, routes: [], pinches: [] };
@@ -52,13 +47,8 @@ function runRules(): ResultatAnalyse {
   const inCell = (name: string | undefined): string => multi && name ? ` (${escapeHtml(name)})` : "";
   const ofCell = (name: string | undefined): string => multi && name ? ` de ${escapeHtml(name)}` : "";
 
-  // The FRONT DOOR is a door set on a FACADE wall (a wall of the outline).
-  // Before: `hasEnv = !!fcEnv()`, always true (fcEnv never returns anything falsy), and
-  // "d.ci === 'env'", that is to say "the door's center is in no cell". That
-  // center is on the median line of its wall, hence on a boundary: the answer depended on which side
-  // of the apartment it was on. A front door on the left or top facade was NOT recognized,
-  // so the rule would cry "no front door" when it was right there, and reachability
-  // would fall back to every door instead of the entrance. The facade wall, though, is a fact.
+  // The FRONT DOOR is a door set on a FACADE wall (`onOutline`), not "center falls in no cell":
+  // that center sits on a wall's median line, a boundary point, which answers ambiguously.
   const frontDoors = doors.filter((d) => d.onOutline);
 
   // Rule 1: no doors at all
@@ -246,25 +236,11 @@ function runRules(): ResultatAnalyse {
         });
       }
     }
-    // Rule 6bis: TWO OBJECTS IN THE SAME PLACE.
-    //
-    // Nothing in the model forbids two pieces of furniture from overlapping, and that's deliberate: you place
-    // fast, you tidy up after, and a plan that refuses an intermediate placement is a plan you
-    // fight. But an overlap that STAYS is almost always an oversight, and it wasn't visible
-    // anywhere: two stacked objects read as one at working zoom.
-    //
-    // FOUR EXEMPTIONS, AND NONE IS ARBITRARY:
-    //   · STACKABLE pairs (the dryer on the washing machine): same floor footprint, that's the
-    //     intended storage, not a mistake;
-    //   · SOFT objects (rugs): they pass UNDER furniture, that's their very function;
-    //   · what isn't an obstacle (sconces, outlets, ceiling lights): they're up high;
-    //   · a RADIATOR and a WALL FIXTURE above it (window, wall light, socket, RJ45): the radiator
-    //     is low, the fixture is on the wall over it (`passeAuDessus`, catalogue.ts). In practice
-    //     `isBlocker` already keeps every wall-mounted fixture out of `solides` below, so this
-    //     exemption never has to fire here; it is kept as the ONE place that STATES the rule,
-    //     alongside `empilables`, rather than leaving it as an unstated side effect of a filter
-    //     written for an unrelated reason.
-    // A graze is also tolerated: two objects touching by 3 cm are placed side by side.
+    // Rule 6bis: TWO OBJECTS IN THE SAME PLACE. Overlap during placement is fine (you place fast,
+    // tidy up after); an overlap that STAYS is usually an oversight, invisible at working zoom.
+    // Four exemptions: stackable pairs (`empilables`), soft objects (rugs pass under furniture),
+    // non-obstacles (sconces, outlets, ceiling lights), and a radiator under its wall fixture
+    // (`passeAuDessus`). A 3cm graze is tolerated as side-by-side placement, not stacking.
     {
       const FROLEMENT = 3;   // cm: below this, it's contact, not stacking
       const solides = cellPieces.filter((p) => isBlocker(p) && !(TYPEMAP[p.type] || {}).soft);

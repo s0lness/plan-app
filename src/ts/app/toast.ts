@@ -1,22 +1,6 @@
-// src/ts/app/toast.ts: THE TRANSIENT BANNER.
-// Ported from src/js/24-multi-salles.js.
-//
-// TWO KINDS OF MESSAGE, AND ONLY TWO (decision 0014, "l'app se tait"):
-//   - a message that RESPONDS TO A DELIBERATE GESTURE (`toast(msg, {geste:true})`): it shows
-//     EVERY time the gesture is repeated, with no fatigue, because that is exactly when someone
-//     who didn't understand tries again. A burst from the SAME gesture (one message per
-//     furniture item of a selection) doesn't repeat: the grouping unit is the gesture
-//     (`_gesteEpoch`, advanced by `pointerdown` and `keydown`), not the second.
-//   - a SYSTEM message (`toast(msg)`, no `geste`): it shows once, and stays throttled by its
-//     exact TEXT until it is dismissed, i.e. until it would have finished fading on screen
-//     (`TOAST_MS`). Two DIFFERENT system texts never wait on each other, even alternating: each
-//     text carries its own cooldown, not a single "last shown" slot.
-//
-// Everything else the app used to say (confirmations, information already visible in the
-// drawing, once-only tips) is gone: what remains is only refusals, losses and system state, so
-// there is no more reason for a system message to wear out after N repeats and demand two
-// minutes of extra silence (`TOAST_LASSITUDE`, `TOAST_LONG_MS`) on top of its own text-cooldown.
-// That fatigue machinery is what this file dropped.
+// src/ts/app/toast.ts: THE TRANSIENT BANNER. Two kinds of message only (decision 0014,
+// "l'app se tait", C-16): a gesture response (`{geste:true}`) shows every time, grouped by
+// `_gesteEpoch`; a system message is throttled by its own text until it fades (`TOAST_MS`).
 
 const TOAST_MS = 3200;
 

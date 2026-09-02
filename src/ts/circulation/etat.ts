@@ -1,19 +1,7 @@
-// src/ts/circulation/etat.ts: THE STATE OF THE CIRCULATION ENGINE, AND NOTHING ELSE.
-//
-// The engine is ported VERBATIM (docs/reecriture.md §7.4). In the old client it lived in the
-// single closure: `flowCtx`, `findings`, `findingCounts`, `findingTotal`, `hoverFinding`,
-// `lastGrid`, `aptCacheSig`, `aptResult` were plain `let`s visible from the five slices
-// js/34 → js/38. Real ES modules don't share a reassignable `let`: so we gather
-// these variables into ONE object, exactly as `app/contexte.ts` does for rendering.
-//
-// `FL.ctx` is the app context, set ONCE by `brancherCirculation`. That's the same
-// approach as `gestes/sortie.ts` (`brancherSortieGestes(ctx)` → `_ctx`): the engine is a
-// page-level singleton, the analysis is never reentrant ("Nothing to stack or restore", js/36),
-// and threading `ctx` through sixty functions would have been a rewrite, not a translation.
-//
-// WHAT'S HERE AND WHAT js/38 USED TO DECLARE: `scoreFromFindings` and `scoreFromCounts`. They're pure,
-// but js/36 CALLS `scoreFromFindings` while js/38 declares it: between two real ES modules,
-// that would be a cycle. So they move down a level, without a single line of their body changing.
+// src/ts/circulation/etat.ts: THE STATE OF THE CIRCULATION ENGINE, AND NOTHING ELSE. Findings,
+// grid cache, and analysis context are gathered in one object (`FL`), a page-level singleton
+// like `app/contexte.ts`; `FL.ctx` is set once by `brancherCirculation`, the same pattern as
+// `gestes/sortie.ts`. The analysis is never reentrant, so there's nothing to stack or restore.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { BBox } from "../geometrie/polygones.ts";
@@ -22,11 +10,9 @@ import type { Id, Meuble, Pt } from "../partage/plan.ts";
 export type Gravite = "error" | "warn" | "tip";
 
 /**
- * An object seen by the engine: a PIECE OF FURNITURE or an OPENING, always in apartment cm, always
- * reduced to a box `{x,y,w,h,rot}`. `ci` / `cellName` / `onOutline` are set by
- * `buildAptContext`; they're optional because `fcPieces()` falls back to `state.pieces`
- * (bare furniture) when no context has been set, that's the behavior of the old client,
- * and it's kept as is.
+ * An object seen by the engine: a piece of furniture or an opening, always in apartment cm,
+ * reduced to a box `{x,y,w,h,rot}`. `ci`/`cellName`/`onOutline` are set by `buildAptContext`;
+ * they're optional because `fcPieces()` falls back to bare furniture when no context is set.
  */
 export interface ObjetFlow {
   id: Id;
@@ -132,11 +118,8 @@ export const FL = {
   flowCanvas: null as HTMLCanvasElement | null,
   /** current findings, ONE list, apartment-wide */
   findings: [] as Constat[],
-  /**
-   * Counts of the WHOLE list, BEFORE the display cap of 14 (js/36). The toolbar
-   * pill reads them: it must not announce 14 blockers when there are 20, and the
-   * cap also must not make it forget tips it isn't displaying.
-   */
+  /** Counts of the WHOLE list, before the display cap of 14: the toolbar pill must not
+   * undercount blockers, nor forget tips it isn't displaying. */
   findingCounts: { error: 0, warn: 0, tip: 0 } as Comptes,
   /** number of findings produced (`findings.length` is the DISPLAYED count) */
   findingTotal: 0,
@@ -144,16 +127,12 @@ export const FL = {
   hoverFinding: null as string | null,
   /** global grid cached as `{g,clear,routes,pinches}` for the overlay layer */
   lastGrid: null as GrilleGlobale | null,
-  /**
-   * The engine reads its inputs through `flowCtx`, set by `analyzeApt()` before each pass.
-   * The apartment is analyzed as ONE plan: cells = rooms, outline = envelope, everything is
-   * already in apartment cm, there's neither a local frame nor a translation.
-   */
+  /** Inputs read by the engine, set by `analyzeApt()` before each pass (apartment cm throughout). */
   flowCtx: null as ContexteFlow | null,
   /** last analyzed signature (we don't recompute when nothing has moved) */
   aptCacheSig: null as string | null,
   aptResult: null as ResultatAnalyse | null,
-  /** `afterFix()` (js/37): `render(); syncInspector(); analyzeNow();`, set by js/38. */
+  /** `afterFix()`: `render(); syncInspector(); analyzeNow();`, set by `brancherCirculation`. */
   afterFix: (() => { /* set by brancherCirculation */ }) as () => void,
 };
 

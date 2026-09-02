@@ -9,11 +9,9 @@ import {
 } from "./contexte.ts";
 
 // ---- circulation grid (THE WHOLE APARTMENT) ----
-// ONE grid over the outline. A cell is walkable when its center falls inside a CELL, outside
-// the wall band and outside furniture. Doors (and pocket doors) punch through their wall
-// band, which links neighboring cells; a door on the outline opens onto a plain stub.
-// There's no more "corridor" to handle separately: the cells tile the inside of the outline, a
-// corridor IS a cell like any other.
+// ONE grid over the outline. A cell is walkable when its center falls inside a plan cell, outside
+// the wall band and outside furniture. Doors punch through their wall band, linking neighboring
+// cells; there's no separate "corridor" concept, a corridor is a cell like any other.
 export function buildGrid(): Grille {
   const bb = fcBBox();
   const W = bb.w, L = bb.l, ox = bb.minX, oy = bb.minY;
@@ -206,9 +204,7 @@ export interface Goulet {
 }
 
 // ---- pinch extraction from a path ----
-// `_g`: the grid isn't read here, and wasn't in js/35 either (`pathBottleneck(g,…)`).
-// The parameter stays in place, calls are positional, but it carries the prefix that
-// `noUnusedParameters` expects.
+// `_g` is unused (calls are positional); the prefix satisfies `noUnusedParameters`.
 export function pathBottleneck(_g: Grille, clear: Float64Array, path: number[]): Goulet {
   let minC = Infinity, minIdx = -1;
   for (const idx of path) { if (clear[idx]! < minC) { minC = clear[idx]!; minIdx = idx; } }
