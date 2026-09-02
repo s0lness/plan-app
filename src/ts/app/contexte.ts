@@ -1,4 +1,4 @@
-// src/ts/app/contexte.ts — THE SMALL BIT OF MUTABLE STATE THAT RENDERING SHARES, in one place.
+// src/ts/app/contexte.ts: THE SMALL BIT OF MUTABLE STATE THAT RENDERING SHARES, in one place.
 //
 // The old client was a single closure: `state`, `vScale`, `vOx`, `vOy`, `selIds`, `selId`,
 // selection and revision counters were module variables visible from everywhere, and "everything is visible
@@ -195,11 +195,11 @@ export interface Crochets {
    * BATCH 3, guest client (docs/decisions/0004-partage-par-lien.md). `fil/rest.ts` DETECTS the
    * guest door's 403 refusal shape (boot, poll, or a push refused mid-session); it does not
    * decide what to do about it, because that decision lives in `fil/invite.ts`, which THIS
-   * module (`rest.ts`) is imported BY (for `setSyncChip`) — importing it back would be a cycle.
+   * module (`rest.ts`) is imported BY (for `setSyncChip`), importing it back would be a cycle.
    * Wired once, right after `brancherFil()` returns in `main.ts`, unconditionally: on the
    * household door neither is ever called, which is exactly the right default.
    *
-   * `accesRefuseSansInvite`: no invitation was ever redeemed on this tab — the guest door,
+   * `accesRefuseSansInvite`: no invitation was ever redeemed on this tab, the guest door,
    * visited by a stranger. Enters LOCAL-ONLY mode.
    * `accesRefuseInvite`: an invitation WAS redeemed, and this door slammed anyway (revoked,
    * expired, the plan deleted). The dead end, full screen.
@@ -212,26 +212,26 @@ export interface Crochets {
    * local-only visitor doesn't read the household's storage key by mistake. A boot read that
    * SUCCEEDS proves this origin does serve a plan to this tab, which makes the guess wrong: wired
    * from `fil/rest.ts`'s `syncBoot`/`pollPull` (the same two places that lift `bootReconciled`) to
-   * `fil/invite.ts`, through a crochet for the same reason `accesRefuseSansInvite` is one — `rest.ts`
+   * `fil/invite.ts`, through a crochet for the same reason `accesRefuseSansInvite` is one, `rest.ts`
    * is imported BY `invite.ts` (for `setSyncChip`), so the reverse import would be a cycle.
    */
   porteMenageConfirmee?: (() => void) | undefined;
   /**
    * BATCH 3+, corrected 2026-08-14. `fil/presence.ts` detects a `guest_unnamed` refusal from the
-   * server (the socket carries no name — see `functions/ws.ts`'s device-matched resolution of
+   * server (the socket carries no name, see `functions/ws.ts`'s device-matched resolution of
    * `invites.last_name`); it does not decide what to DO about it, because that decision lives in
    * `fil/invite.ts`'s name-step UI, which THIS module (`presence.ts`, via `fil/rest.ts`) is
-   * imported BY — the same cycle `accesRefuseSansInvite` above avoids the same way. Wired
+   * imported BY, the same cycle `accesRefuseSansInvite` above avoids the same way. Wired
    * unconditionally in `main.ts`, right beside the other two: never invoked on the household door,
    * since only a guest socket can carry an empty name in the first place.
    */
   guestSansNom?: (() => void) | undefined;
   /**
    * SAME BATCH, THE OTHER HALF: `invites.last_name`/`last_guest_id` is ONE slot, shared by every
-   * device holding the link — it remembers whichever device redeemed the token MOST RECENTLY WITH
+   * device holding the link, it remembers whichever device redeemed the token MOST RECENTLY WITH
    * A NAME, not one name per device. Two guests active on the same link at once therefore keep
    * reclaiming that one slot from each other on every fresh `/api/invite` POST (a page load), and
-   * a plain WebSocket RECONNECT (no POST at all — a network blip, the heartbeat's dead-socket
+   * a plain WebSocket RECONNECT (no POST at all, a network blip, the heartbeat's dead-socket
    * close) reads the row exactly as the OTHER device last left it: whoever reconnects second, on a
    * row the peer currently owns, gets an EMPTY name from `functions/ws.ts` even though THIS
    * device chose one long ago and never forgot it.
@@ -240,21 +240,21 @@ export interface Crochets {
    * not decide what to reassert, because the name it should reassert is a client-storage read that
    * belongs in `fil/invite.ts` (`nomInviteConnu()`), same cycle-avoidance reason as
    * `accesRefuseSansInvite`. When both are non-empty, `presence.ts` sends `{t:"name"}` itself
-   * (it already imports `wsSend`) — it does not need this hook to WRITE, only to READ.
+   * (it already imports `wsSend`), it does not need this hook to WRITE, only to READ.
    */
   guestNomLocal?: (() => string) | undefined;
   /**
    * CURSOR CHAT ("/", FigJam-style, `fil/dire.ts`). `gestes/clavier.ts` cannot call `fil/dire.ts`
    * directly at the moment "/" is pressed: `dire.ts` needs `fil`, which does not exist yet when
-   * `brancherClavier(ctx)` is wired (it runs before `brancherFil(ctx)` — see `main.ts`). Wired by
+   * `brancherClavier(ctx)` is wired (it runs before `brancherFil(ctx)`, see `main.ts`). Wired by
    * `brancherDire(ctx, fil)` (`fil/branchement.ts`, right beside `brancherChat`), the same crochet
    * pattern as `guestSansNom`/`accesRefuseSansInvite` and for the same reason.
    */
   direOuvrir?: (() => void) | undefined;
   /**
    * SAME FEATURE, THE OTHER DIRECTION: `fil/presence.ts`'s `wsOnDown` (the socket just dropped)
-   * needs to close the LOCAL floating box and forget its text — "a text box stuck to a cursor
-   * forever would be a bug" — but `presence.ts` cannot import `fil/dire.ts` back (that module
+   * needs to close the LOCAL floating box and forget its text, "a text box stuck to a cursor
+   * forever would be a bug", but `presence.ts` cannot import `fil/dire.ts` back (that module
    * already imports FROM `presence.ts`, for `direTexte`/`direArreter`; the reverse import would be
    * a cycle, the exact shape "Blank startup" warns about). `wsOnDown` already resets `fil.sayText`
    * itself; this crochet only has to clean up the DOM.

@@ -52,7 +52,7 @@ export async function chargerInvitation(env: Env, token: string): Promise<LigneI
 
 /**
  * Same rule everywhere a guest is let in: not revoked, not expired. Deliberately does NOT check
- * that the plan itself still exists (edge case 10) — that is a separate query each caller runs,
+ * that the plan itself still exists (edge case 10), that is a separate query each caller runs,
  * because the two failures are never reported differently: both collapse to the same dead end.
  */
 export function invitationValide(row: LigneInvitation | null): row is LigneInvitation {
@@ -71,7 +71,7 @@ export function tokenDuCookie(request: Request): string {
   if (!m) return "";
   // `decodeURIComponent` THROWS on a malformed escape (`%zz`), and the cookie is caller-supplied:
   // unguarded, a mangled cookie turns a clean dead end into a 500. The raw value is a perfectly
-  // good fallback — `chargerInvitation` validates the shape either way.
+  // good fallback, `chargerInvitation` validates the shape either way.
   try { return decodeURIComponent(m[1]); } catch { return m[1]; }
 }
 
@@ -89,8 +89,8 @@ export function dureeCookieSecondes(expiresAt: string | null): number {
 }
 
 /** 128 bits, base64url, no padding: 22 characters, matching the `#k=` fragment the link carries
- * (docs/decisions/0004-partage-par-lien.md). Brute-forcing this is not the threat model — revoke
- * is (design edge 15) — but 128 bits costs nothing extra to generate correctly. */
+ * (docs/decisions/0004-partage-par-lien.md). Brute-forcing this is not the threat model, revoke
+ * is (design edge 15), but 128 bits costs nothing extra to generate correctly. */
 export function jetonInvitation(): string {
   const octets = new Uint8Array(16);
   crypto.getRandomValues(octets);

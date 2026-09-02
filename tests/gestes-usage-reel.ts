@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  SUITE "ORDINARY USAGE" — REAL MOUSE (CDP), REAL HIT-TESTING
+//  SUITE "ORDINARY USAGE": REAL MOUSE (CDP), REAL HIT-TESTING
 // =============================================================================
 // Nine defects found by real-usage sessions (about 1,500 gestures on the user's plan, then a
 // two-browser session). They have in common that they betray the most basic promise: LOOKING

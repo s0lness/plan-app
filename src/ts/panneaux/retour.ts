@@ -1,4 +1,4 @@
-// src/ts/panneaux/retour.ts — FEEDBACK: a free-text note from inside the app, no account.
+// src/ts/panneaux/retour.ts: FEEDBACK: a free-text note from inside the app, no account.
 // docs/decisions/0004-partage-par-lien.md gave the guest door a name; this batch
 // ("retour-utilisateur") gives it, and the household door, a way to report something back.
 //
@@ -7,7 +7,7 @@
 // (html/02-scene.html) stays visible on BOTH doors and in the local-only sandbox (file://, the
 // claude.ai artifact): the button is not the thing that can fail here, SENDING is. `envoyer()`
 // below is where that distinction is made, and it NEVER clears the textarea on anything but a
-// confirmed 200 — losing what someone already typed because a request failed is the one thing
+// confirmed 200, losing what someone already typed because a request failed is the one thing
 // this feature must never do (see the batch's own instructions).
 
 import { $ } from "../noyau/dom.ts";
@@ -37,7 +37,7 @@ async function envoyer(): Promise<void> {
   if (!retourValide(texte)) { dire("Write something first.", true); return; }
 
   // THE SANDBOX CASE: file:// and the claude.ai artifact have no network at all (`SYNC_ON`
-  // false). The text is left exactly as typed — never cleared — so it can still be copied by
+  // false). The text is left exactly as typed, never cleared, so it can still be copied by
   // hand; this is not a different code path from a failed fetch below, it is the SAME one, taken
   // before a request that could never succeed is even attempted.
   if (!SYNC_ON) {

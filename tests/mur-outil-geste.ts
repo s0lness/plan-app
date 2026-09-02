@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "WALL TOOL" SUITE — REAL MOUSE + REAL KEYBOARD (CDP), REAL HIT-TESTING
+//  "WALL TOOL" SUITE: REAL MOUSE + REAL KEYBOARD (CDP), REAL HIT-TESTING
 // =============================================================================
 // Three complaints from the owner, verbatim: "walls don't work."
 //
@@ -218,8 +218,8 @@ await test("outil_reste_arme_et_le_quatrieme_mur_partage_le_sommet", async () =>
   // this batch (`v5SnapPoint` checks vertices before edges/the grid); what did NOT, until now,
   // was the END point, because the orthogonal lock used to collapse it onto ONE axis of the
   // start point FIRST, so an existing joint that was not exactly on that axis got missed by a
-  // few centimeters (a "nearly touching" corner). Dragging from (280,200) to near (80,80) —
-  // dx=-200, dy=-120, neither zero — is exactly the case that used to fail: the orthogonal
+  // few centimeters (a "nearly touching" corner). Dragging from (280,200) to near (80,80):
+  // dx=-200, dy=-120, neither zero, is exactly the case that used to fail: the orthogonal
   // constraint would have kept the wall's end at y=200 (or x=280), a few dozen cm from A's real
   // corner, not on it.
   await drag(await aptPoint(280, 200), await aptPoint(82, 78), 14);

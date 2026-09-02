@@ -1,4 +1,4 @@
-// src/ts/app/toast.ts — THE TRANSIENT BANNER, AND ITS THROTTLING.
+// src/ts/app/toast.ts: THE TRANSIENT BANNER, AND ITS THROTTLING.
 // Ported from src/js/24-multi-salles.js.
 //
 // C-16 / G-13. TWO OPPOSITE SITUATIONS, AND IT'S NOT DISTINGUISHING THEM THAT MADE

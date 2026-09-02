@@ -170,7 +170,7 @@ try {
   const URL_A = (p: string) => `http://127.0.0.1:${PORT_A}${p}`;
 
   // ============================================================================================
-  //  1. HOUSEHOLD DOOR: open, type, Send — the server actually receives the row.
+  //  1. HOUSEHOLD DOOR: open, type, Send, the server actually receives the row.
   // ============================================================================================
   const A = await openBrowser("menage", URL_A("/"));
   opened.push(A);
@@ -242,7 +242,7 @@ try {
 
   // ============================================================================================
   //  RIG B: the GUEST door. Redeem a link and go through the name step (design edge 20, corrected
-  //  2026-08-14: a name known for the TOKEN no longer skips the step for a DIFFERENT device — this
+  //  2026-08-14: a name known for the TOKEN no longer skips the step for a DIFFERENT device, this
   //  browser has never named itself before, so it must be asked, same as any real first visit),
   //  then the same round trip: the row must be attributed to "invite" and to the guest's OWN name,
   //  never an email.

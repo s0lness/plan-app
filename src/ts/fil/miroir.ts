@@ -1,4 +1,4 @@
-// src/ts/fil/miroir.ts — THE EMISSION MIRROR AND THE FIELD-BY-FIELD DIFF.
+// src/ts/fil/miroir.ts: THE EMISSION MIRROR AND THE FIELD-BY-FIELD DIFF.
 // Ported from src/js/42-collab-fil.js (the PURE part: the six functions that
 // `tests/harnais-graine.ts` and `tests/rapide.ts` used to carve out of the source).
 //

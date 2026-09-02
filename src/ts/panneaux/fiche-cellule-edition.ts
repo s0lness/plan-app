@@ -1,4 +1,4 @@
-// src/ts/panneaux/fiche-cellule-edition.ts — THE CELL SHEET, EDITABLE PART (name, floor, close).
+// src/ts/panneaux/fiche-cellule-edition.ts: THE CELL SHEET, EDITABLE PART (name, floor, close).
 // Ported from src/js/29-configuration.js (the cell sheet's name and floor block) and
 // from src/js/03-vue-selection.js (`activeFloor` / `setActiveFloor`).
 //

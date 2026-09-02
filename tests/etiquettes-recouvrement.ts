@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  LES ÉTIQUETTES DE PIÈCE NE SE RECOUVRENT PAS — VRAIE PAGE, VRAI DOM
+//  LES ÉTIQUETTES DE PIÈCE NE SE RECOUVRENT PAS: VRAIE PAGE, VRAI DOM
 // =============================================================================
 // Défaut remonté avec une capture : une étiquette de meuble peinte par-dessus le nom d'une pièce,
 // un autre nom de pièce tombant sur un appareil, un troisième sur une zone hachurée. Les deux
@@ -117,7 +117,7 @@ async function reload(): Promise<void> {
 // Every VISIBLE label box: room names (`.ov-name`, absent from the DOM entirely when
 // `disposerEtiquettesCellules` drops one) and furniture names (`.piece .plabel`, present but
 // `display:none` when R-2/R-3 (no name on a wall-mounted object, only a CHOSEN furniture name)
-// or R-6 (no room in the tile) silences it — a zero-size rect filters those out for free).
+// or R-6 (no room in the tile) silences it, a zero-size rect filters those out for free).
 interface Boite { famille: string; id: string; texte: string; x: number; y: number; w: number; h: number }
 interface Mesure { boites: Boite[]; chevauchements: Array<{ a: Boite; b: Boite; dx: number; dy: number }>; etiquettesCellules: number; nbCellules: number }
 async function mesurer(): Promise<Mesure> {

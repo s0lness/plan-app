@@ -1,4 +1,4 @@
-// src/ts/noyau.ts — THE PURE CORE'S ENTRY POINT (E2).
+// src/ts/noyau.ts: THE PURE CORE'S ENTRY POINT (E2).
 //
 // Everything this module re-exports is WITHOUT DOM, WITHOUT global `state`, WITHOUT storage:
 // geometry, old-format reading, serialization, emission diffing, undo replay, and the

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  INTERACTION SUITE — REAL MOUSE (CDP), REAL HIT-TESTING
+//  INTERACTION SUITE: REAL MOUSE (CDP), REAL HIT-TESTING
 // =============================================================================
 // The other two suites dispatch synthetic PointerEvents: they BYPASS hit-testing, so they prove
 // nothing about a real gesture. Here Chrome is driven by CDP (Input.dispatchMouseEvent /
@@ -522,7 +522,7 @@ await test("opening_fields_round_trip", async () => {
 // The chat message list lives INSIDE `#viewport` (html/02-scene.html), so its wheel events reach
 // the viewport's own wheel listener by ordinary bubbling. Measured live, two people testing
 // multiplayer together: the wheel over the OPEN chat panel zoomed the plan underneath it instead
-// of scrolling the messages — the viewport's handler called `preventDefault()` unconditionally, on
+// of scrolling the messages, the viewport's handler called `preventDefault()` unconditionally, on
 // every target inside it. We force the chat panel open (a real one needs a live socket, irrelevant
 // to this defect) and stuff it with more messages than fit, so there is something to scroll.
 await test("wheel_scrolls_panel_under_pointer_not_the_plan", async () => {

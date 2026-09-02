@@ -1973,7 +1973,7 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   };
 }
 // LOSS: one op in three never arrives. The server signals every gap, and the final plan only has
-// what got through — it's up to the client to re-emit (cf. tests/collab-accuses.ts).
+// what got through, it's up to the client to re-emit (cf. tests/collab-accuses.ts).
 {
   const f = fakeD1Room({ data: JSON.stringify(v5State()) });
   await f.room.ensureLoaded();
@@ -2022,7 +2022,7 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
 // =================================================================================================
 // A persisted field only exists if it's declared on BOTH sides (C-5). The client/server contract
 // is already checked set-by-set by tests/rapide.ts; what's missing here is that the server
-// VALIDATES them instead of accepting them as-is — this is exactly what had let 265 KB through
+// VALIDATES them instead of accepting them as-is, this is exactly what had let 265 KB through
 // in a single piece of furniture's field.
 {
   // leaf: 0, 1, 2 and nothing else. ABSENT stays absent (it is not 0).
@@ -2093,7 +2093,7 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
 }
 
 // =================================================================================================
-//  BATCH 2 — WIRE IDENTITY (docs/decisions/0004-partage-par-lien.md, "batch 2, wire identity")
+//  BATCH 2, WIRE IDENTITY (docs/decisions/0004-partage-par-lien.md, "batch 2, wire identity")
 // =================================================================================================
 // `functions/ws.ts` builds the headers (covered by tests/invitation.ts); `attachmentFromRequest`
 // reads them, a PURE function so it is testable under plain node without the real `WebSocketPair`
@@ -2135,9 +2135,9 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   // A name arriving via the HEADER is re-cleaned too, capped at 40: defence in depth, the same
   // reasoning as re-checking porteDe() downstream of the middleware. (Bidi override code points
   // cannot reach this SPECIFIC path at all: the Fetch API's Headers are ByteString, one byte per
-  // code point, and U+202E is far above that ceiling — `new Request` throws before this function
+  // code point, and U+202E is far above that ceiling, `new Request` throws before this function
   // ever sees it. The bidi case is therefore exercised where it CAN actually arrive: the `{t:"name"}`
-  // WebSocket message, a JSON string with no such ceiling — see section 3 below.)
+  // WebSocket message, a JSON string with no such ceiling, see section 3 below.)
   ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1", "X-Plan-Name": "x".repeat(60) }), "tagG2").name.length === 40,
     "un nom recu par en-tete trop long est coupe a 40 cote Worker aussi");
 
@@ -2155,7 +2155,7 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   const invite2 = f.mkWs("", "ggg222", { guest: true, name: "", guestId: "g2", token: "tokB" });
 
   // hello for a GUEST: no email anywhere, not even for the household peer (a name derived from
-  // its address instead — item 2, "a display name instead of the email, never the email itself").
+  // its address instead, item 2, "a display name instead of the email, never the email itself").
   await messageSocket(f.room, invite1, JSON.stringify({ t: "hello" }));
   const helloG = invite1.sent.find((m) => m.t === "hello");
   ok(!("email" in helloG.you), "hello.you cote invite ne porte pas d'email");
@@ -2350,7 +2350,7 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
     new Request("https://plan-live-internal/revoke", { method: "POST", headers, body: JSON.stringify(body) });
 
   // Missing internal marker: refused outright, nothing closed. `/revoke` is not reachable this
-  // way in production (it never crosses the network, see `handleRevoke`'s header note) — this
+  // way in production (it never crosses the network, see `handleRevoke`'s header note), this
   // proves the header check itself works, independent of that structural guarantee.
   const resNoHeader = await f.room.fetch(revokeReq({ token: "tokRevoke" }, {}));
   ok(resNoHeader.status === 403, "sans l'en-tete interne, /revoke est refuse (403)");

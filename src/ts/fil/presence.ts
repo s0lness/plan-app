@@ -1,4 +1,4 @@
-// src/ts/fil/presence.ts — THE SOCKET, THE MESSAGE ROUTER, PRESENCE, CURSORS, CHAT.
+// src/ts/fil/presence.ts: THE SOCKET, THE MESSAGE ROUTER, PRESENCE, CURSORS, CHAT.
 // Ported from src/js/44-collab-presence.js, in full.
 //
 // ---- C-7. TECHNICAL IDENTITY IS THE DEVICE, EMAIL IS THE HUMAN IDENTITY --------------------------
@@ -47,7 +47,7 @@ import {
 import { hudRecordPaint } from "./hud.ts";
 
 // `o` may be a peer/message OBJECT (batch 2: `.name` preferred) or a bare email string, exactly
-// like `displayName`/`personColor` — see their header notes.
+// like `displayName`/`personColor`, see their header notes.
 const initial = (o: unknown): string => {
   const n = displayName(o);
   if (n) return n[0]!.toUpperCase();
@@ -78,7 +78,7 @@ function wsRenderPeers(fil: Fil): void {
     d.textContent = initial(p);
     // Design edge 3: two peers can pick the SAME name (two guests, or a guest naming themselves
     // after a household member's derived name). Display only, disambiguated from the FULL peer
-    // set (self included: the discriminator must be the SAME on every screen) — never the stored
+    // set (self included: the discriminator must be the SAME on every screen), never the stored
     // name, which is what the wire and the invite row keep.
     const dn = dedupedDisplayName(tousLesPairs, p);
     if (wsSameAccount(fil, p)) {
@@ -87,7 +87,7 @@ function wsRenderPeers(fil: Fil): void {
     } else if (p.guest) {
       // Design edge 4: make provenance visible. A household identity is Access-proven; a guest's
       // is self-declared (they typed it themselves), and someone COULD name themselves after the
-      // owner — the dashed ring (`.peer-dot.guest`, css/15-collab.css) plus this tooltip are what
+      // owner, the dashed ring (`.peer-dot.guest`, css/15-collab.css) plus this tooltip are what
       // tell the two apart, since the name alone cannot.
       d.classList.add("guest");
       d.title = (dn || "?") + " (guest, self-declared name)";
@@ -143,7 +143,7 @@ export function wsUpsertCursor(
   hudRecordPaint(fil, performance.now() - t0);
   c.el.style.display = "";
   // CURSOR CHAT ("/"): a string is this peer's CURRENT text (even ""), anything else (absent,
-  // `null`) means "not speaking right now" — no need to tell `null` from absent here, both read
+  // `null`) means "not speaking right now", no need to tell `null` from absent here, both read
   // the same on screen, only the WIRE contract (`live-worker/ops.ts`) distinguishes them.
   majDireCurseur(c.el, typeof msg.say === "string" ? msg.say : null);
   wsEnsureCursorLoop(fil);
@@ -205,7 +205,7 @@ export function wsReprojectCursors(ctx: Contexte, fil: Fil): void {
 interface MessageChat { by?: string; name?: string; guest?: boolean; text?: string; ts?: number }
 
 /**
- * BUILT ENTIRELY VIA `createElement`/`textContent`, no `innerHTML` at all — unlike the version
+ * BUILT ENTIRELY VIA `createElement`/`textContent`, no `innerHTML` at all, unlike the version
  * this replaces. That earlier version DID escape the sender's display name (`escapeHtml(who)`),
  * but interpolated `initial(msg.by)` STRAIGHT into the template UNESCAPED: a name is now a guest's
  * OWN typed string (design edge 1, "the first untrusted string this client has ever rendered"),
@@ -216,7 +216,7 @@ interface MessageChat { by?: string; name?: string; guest?: boolean; text?: stri
  */
 // PLUS EXPORTÉE : ses deux seuls appelants sont dans ce fichier (l'historique rejoué du `hello`,
 // et un message reçu). L'`export` était de la dette gelée dans tests/fixtures/exports-morts-connus.json,
-// et le cliquet descend ici pour une vraie raison — la fonction devient privée au module — plutôt
+// et le cliquet descend ici pour une vraie raison, la fonction devient privée au module, plutôt
 // que parce qu'un commentaire d'une suite prononce son nom, ce que la détection textuelle de
 // tests/exports-morts.ts prendrait pour un appelant.
 function wsAppendChat(fil: Fil, msg: MessageChat): void {
@@ -325,7 +325,7 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
     case "hello": {
       fil.wsMe = (msg["you"] as Fil["wsMe"]) || fil.wsMe;
       // Batch 2: `name`/`guest`/`guestId` are NEW keys an older server never sends (`you` then
-      // simply lacks them), and `wsSameAccount` compares them unconditionally — normalize once,
+      // simply lacks them), and `wsSameAccount` compares them unconditionally, normalize once,
       // here, rather than have every reader guard against `undefined`.
       fil.wsMe.name = fil.wsMe.name || "";
       fil.wsMe.guest = !!fil.wsMe.guest;
@@ -334,7 +334,7 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
       // `functions/ws.ts` resolves the wire name from `invites.last_name`, ONE slot shared by
       // every device holding the link: whichever device last redeemed the token WITH a name owns
       // it, so a second guest active on the same link can find that slot reclaimed by the OTHER
-      // device by the time IT reconnects (a network blip, the heartbeat's dead-socket close — no
+      // device by the time IT reconnects (a network blip, the heartbeat's dead-socket close, no
       // `/api/invite` POST happens on a plain reconnect, only on a fresh page load). The device's
       // OWN choice never left `localStorage`: reassert it on the wire the moment the server hands
       // back nothing, rather than let this socket sit silently unnamed until `guest_unnamed`
@@ -521,7 +521,7 @@ export function wsOnMessage(ctx: Contexte, fil: Fil, raw: string): void {
       // A THROTTLED TOAST IS NOT ENOUGH FOR THIS ONE REASON. Every other `guest_unnamed` write
       // this guest attempts is silently undone, and the toast that explains why is capped to one
       // per 5 s: a session of real edits can lose the ONLY sentence that says why nothing is
-      // sticking. The name step is what happens next instead, every time — `ouvrirEtapeNomInvite`
+      // sticking. The name step is what happens next instead, every time, `ouvrirEtapeNomInvite`
       // is idempotent, so a burst of refusals within one gesture reopens nothing that is already
       // open.
       if (reason === "guest_unnamed") ctx.crochets.guestSansNom?.();
@@ -561,7 +561,7 @@ export function wsConnect(ctx: Contexte, fil: Fil): void {
     let url = avecPlan(proto + location.host + "/ws");
     // BATCH 3. `?g=` identifies THIS guest's own second tab (design edge 8): a browser cannot
     // set a header on a WebSocket upgrade, so the invite token travels as the session cookie
-    // (functions/api/invite.ts) and this small, non-credential id travels in the query — it
+    // (functions/api/invite.ts) and this small, non-credential id travels in the query, it
     // grants nothing by itself, `functions/ws.ts` still requires the cookie to open the socket at
     // all. Household sockets never send it (`estInvite()` false there): `wsMe.guestId` then stays
     // empty, exactly as before this batch.
@@ -584,7 +584,7 @@ export function wsConnect(ctx: Contexte, fil: Fil): void {
 
 /**
  * `code` (batch 3): the WebSocket close code. `4001` is `live-worker/worker.ts`'s
- * `REVOKE_CLOSE_CODE`, sent ONLY by `/revoke` closing a guest's live socket on purpose — the
+ * `REVOKE_CLOSE_CODE`, sent ONLY by `/revoke` closing a guest's live socket on purpose, the
  * "revoked mid-gesture" edge case (design edge 7). It is checked BEFORE any of the ordinary
  * reconnect machinery below runs: a revoked link must never schedule a reconnect attempt (there
  * is nothing left to reconnect TO), and the dead-end screen states plainly whether the last
@@ -665,7 +665,7 @@ export function wsFlushCursor(fil: Fil): void {
   fil.curPending = null;
   // The cursor travels in APARTMENT cm; `room` is just a label relayed as-is.
   const msg: { t: string; room: string; x: number; y: number; say?: string } = { t: "cursor", room: WIRE_ROOM, x: p.x, y: p.y };
-  // CURSOR CHAT ("/", `fil/dire.ts`): rides THIS SAME message, at THIS SAME cadence — no new
+  // CURSOR CHAT ("/", `fil/dire.ts`): rides THIS SAME message, at THIS SAME cadence, no new
   // message type, no message-per-keystroke. `fil.sayText` is `null` while the box is closed, so
   // an ordinary cursor ping (the overwhelming majority of these) carries no extra key at all.
   if (fil.sayText !== null) msg.say = fil.sayText;
@@ -695,7 +695,7 @@ export function brancherCurseursSortants(ctx: Contexte, fil: Fil): void {
 // =================================================================================================
 //  CURSOR CHAT ("/"): THE WIRE HALF. THE BOX ITSELF LIVES IN `fil/dire.ts`.
 // =================================================================================================
-// Two entry points, both called from `fil/dire.ts` on every keystroke / on close — never from a
+// Two entry points, both called from `fil/dire.ts` on every keystroke / on close, never from a
 // gesture, never touching `ctx.etat.plan`: this is presence, not a plan edit, so there is nothing
 // here for `save()`, history, or an op to ever see.
 

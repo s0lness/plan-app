@@ -1,4 +1,4 @@
-// src/ts/modele/filets.ts — THE TWO SAFETY NETS OF BOOTSTRAP.
+// src/ts/modele/filets.ts: THE TWO SAFETY NETS OF BOOTSTRAP.
 // Porté de src/js/55-v5-migration.js (`v5BackupLegacy`, `v5BackupInfo`) and of
 // src/js/02-etat-migrations.js (`rescueUnreadable`, and the call that decides whether the blob
 // is legacy).

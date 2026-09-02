@@ -1,4 +1,4 @@
-// src/ts/sonde.ts — THE PROBE SURFACE, TYPED, and INERT outside `window.__PLAN_TEST__`.
+// src/ts/sonde.ts: THE PROBE SURFACE, TYPED, and INERT outside `window.__PLAN_TEST__`.
 // Replaces src/js/57-sondes-test.js (616 lines, 234 entries) for what the RENDER batch ported,
 // and nothing else.
 //

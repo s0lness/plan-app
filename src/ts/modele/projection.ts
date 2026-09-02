@@ -1,4 +1,4 @@
-// src/ts/modele/projection.ts — THE GEOMETRY OF A VIDEO PROJECTOR.
+// src/ts/modele/projection.ts: THE GEOMETRY OF A VIDEO PROJECTOR.
 //
 // Usage request: "see the projection throw to know where to place it, be able to match it to a
 // screen, move it back and forward, and know whether the minimum distance is respected,

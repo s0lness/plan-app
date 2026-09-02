@@ -1,4 +1,4 @@
-// src/ts/rendu/selection.ts — THE SELECTION MODEL. Ported from src/js/03-vue-selection.js.
+// src/ts/rendu/selection.ts: THE SELECTION MODEL. Ported from src/js/03-vue-selection.js.
 //
 // `ids` is the source of truth (a set of identifiers); `primaire` is DERIVED: it's the LAST one
 // added, the one the inspector and the rotation handle read. The old client said so in a comment

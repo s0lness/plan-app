@@ -1,4 +1,4 @@
-// src/ts/sonde-export.ts — THE PROBE SLICE FOR THE "export" SUB-BATCH (E3c).
+// src/ts/sonde-export.ts: THE PROBE SLICE FOR THE "export" SUB-BATCH (E3c).
 // One probe file PER BATCH: `js/57-sondes-test.js` was "the repo's most likely git conflict
 // point", and two keys were genuinely duplicated in it.
 //

@@ -469,11 +469,11 @@ await test("une_cloison_jamais_libre_n_emet_toujours_pas_free", SEED, `
 // =============================================================================
 // `invites.last_name`/`last_guest_id` is ONE slot, shared by every device holding the link
 // (functions/api/invite.ts, functions/ws.ts): whichever device redeemed the token MOST RECENTLY
-// WITH a name owns it. A plain WebSocket RECONNECT (no `/api/invite` POST — a network blip, the
+// WITH a name owns it. A plain WebSocket RECONNECT (no `/api/invite` POST, a network blip, the
 // heartbeat's dead-socket close) can therefore land THIS device on a `hello` carrying an EMPTY
 // name, even though it chose one long ago and never forgot it (`localStorage`'s
 // `plan-invite-nom`). `fil/presence.ts`'s `hello` handler now reasserts it over the wire itself
-// the moment that happens, rather than leave the socket — and every op it tries to send — silently
+// the moment that happens, rather than leave the socket, and every op it tries to send, silently
 // unnamed until someone notices the `guest_unnamed` refusal.
 const seedNom = (nom: string) => `try{ localStorage.setItem("plan-invite-nom", ${JSON.stringify(nom)}); }catch(e){}`;
 const helloInviteVide = (tag: string, guestId: string) => `window.__plan.wsForceOpen(true);
@@ -482,7 +482,7 @@ const helloInviteVide = (tag: string, guestId: string) => `window.__plan.wsForce
     you:{ email:"", color:"#1f6f78", tag:${JSON.stringify(tag)}, guest:true, name:"", guestId:${JSON.stringify(guestId)} },
     peers:[], state:null, rev:1, fp:"x", chat:[] });`;
 
-// 9a. Device A: the wire hands it back NOTHING, but this browser remembers "Alice" — it must send
+// 9a. Device A: the wire hands it back NOTHING, but this browser remembers "Alice", it must send
 // its own name right away, and its local identity must reflect it immediately (no round trip).
 await test("appareil_a_reaffirme_son_propre_nom_quand_le_fil_ne_le_connait_plus", SEED + seedNom("Alice"), `
   ${helloInviteVide("aaaaaa", "device-a")}
@@ -492,7 +492,7 @@ await test("appareil_a_reaffirme_son_propre_nom_quand_le_fil_ne_le_connait_plus"
       "device A doit renvoyer SON PROPRE nom sur le fil, vu " + JSON.stringify(v.noms))
      && expect(v.moi.name === "Alice", "et se savoir nommé sans attendre l'écho serveur, vu " + JSON.stringify(v.moi)));
 
-// 9b. Device B, SAME token, a DIFFERENT device: it must reassert "Bob", never "Alice" — proves the
+// 9b. Device B, SAME token, a DIFFERENT device: it must reassert "Bob", never "Alice", proves the
 // reassertion is keyed by THIS browser's own storage, not by whatever the last hello happened to say.
 await test("appareil_b_reaffirme_bob_jamais_le_nom_d_alice", SEED + seedNom("Bob"), `
   ${helloInviteVide("bbbbbb", "device-b")}
@@ -503,7 +503,7 @@ await test("appareil_b_reaffirme_bob_jamais_le_nom_d_alice", SEED + seedNom("Bob
      && expect(v.moi.name === "Bob", "et se savoir nommé « Bob », vu " + JSON.stringify(v.moi)));
 
 // 9c. NEGATIVE CONTROL: when the wire ALREADY hands back a name, the client must not resend one
-// needlessly — a `{t:"name"}` on every `hello` would republish the row's last_name on every
+// needlessly, a `{t:"name"}` on every `hello` would republish the row's last_name on every
 // reconnect, exactly the "everyone re-pushes and clobbers everyone else" mechanism this batch closes.
 await test("aucun_reenvoi_de_nom_quand_le_fil_le_connait_deja", SEED + seedNom("Alice"), `
   window.__plan.wsForceOpen(true);

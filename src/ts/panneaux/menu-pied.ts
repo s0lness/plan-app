@@ -1,4 +1,4 @@
-// src/ts/panneaux/menu-pied.ts — THE "File" MENU AT THE FOOT OF THE RAIL.
+// src/ts/panneaux/menu-pied.ts: THE "File" MENU AT THE FOOT OF THE RAIL.
 // Ported from src/js/29-configuration.js (lines 216 to 236), without changing an id or a behavior.
 //
 // WHY IT MATTERS MORE THAN ITS SIZE. The "File" button is the ONLY access to Save,

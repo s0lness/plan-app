@@ -1,4 +1,4 @@
-// src/ts/sonde-fil.ts — THE PROBE SLICE FOR THE SYNC BATCH (E4).
+// src/ts/sonde-fil.ts: THE PROBE SLICE FOR THE SYNC BATCH (E4).
 // Replaces, for this batch alone, the corresponding entries of src/js/57-sondes-test.js.
 //
 // WHY ONE FILE PER BATCH: `js/57` was "the repo's most likely git conflict point", and

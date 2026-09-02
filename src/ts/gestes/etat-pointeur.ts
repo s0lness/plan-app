@@ -1,4 +1,4 @@
-// src/ts/gestes/etat-pointeur.ts — THE LITTLE STATE THAT SEVERAL GESTURES SHARE.
+// src/ts/gestes/etat-pointeur.ts: THE LITTLE STATE THAT SEVERAL GESTURES SHARE.
 // Ported from src/js/09-viewport-rail.js (`isTouchEvt`, `TOUCH_DRAG_THRESH`, `LONGPRESS_MS`),
 // src/js/22-interactions-vue.js (`spaceHeld`, `touchPts`) and src/js/06-mesure.js (`measureMode`).
 //

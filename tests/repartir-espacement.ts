@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "DISTRIBUTE SPACING EVENLY" SUITE — NO BROWSER (the computation is PURE)
+//  "DISTRIBUTE SPACING EVENLY" SUITE: NO BROWSER (the computation is PURE)
 // =============================================================================
 // Usage request: "the same gap between the bed and the two nightstands".
 //

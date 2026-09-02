@@ -1,4 +1,4 @@
-// src/ts/mesure/mesure.ts — THE MEASURING TAPE. Ephemeral, never persisted, PERSONAL.
+// src/ts/mesure/mesure.ts: THE MEASURING TAPE. Ephemeral, never persisted, PERSONAL.
 // Ported from src/js/06-mesure.js, plus the three wiring points that lived elsewhere in
 // the old client (the toolbar button and hover, src/js/22; Escape, src/js/33).
 //

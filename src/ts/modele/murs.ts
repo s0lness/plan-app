@@ -1,4 +1,4 @@
-// src/ts/modele/murs.ts — editing geometry for walls and openings.
+// src/ts/modele/murs.ts: editing geometry for walls and openings.
 // Porté de src/js/52-v5-geometrie-edition.js (PURE part), + `v5OpeningEdgeLimits` (js/56) and
 // `v5OpeningBox` / `v5CellsAt` (js/50), which are likewise pure functions of the plan.
 //
@@ -173,7 +173,7 @@ export function v5ClampOpeningsOfWall(
     const w0 = Number(o.w), t00 = Number(o.t0), h0raw = Number(o.h);
     // A3. A NON-FINITE FIELD (NaN: an interrupted drag, a division by a then-zero-length wall
     // elsewhere) must NOT survive `clamp` below unrepaired: `clamp(NaN, lo, hi)` returns NaN,
-    // untouched — `NaN > hi` and `NaN < lo` are both false, so the usual "clamp catches
+    // untouched, `NaN > hi` and `NaN < lo` are both false, so the usual "clamp catches
     // everything" reasoning does not apply to it. Left alone, that NaN is then written out:
     // `JSON.stringify` turns it into `null`, and the NEXT read (`sanitizeV5Plan`'s
     // `num(null, default)`, which treats `null` as a REAL value of 0, never as "missing") floors

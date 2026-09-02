@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "FREE PARTITION" SUITE — NO BROWSER (the geometry is PURE)
+//  "FREE PARTITION" SUITE: NO BROWSER (the geometry is PURE)
 // =============================================================================
 // Usage request: "walls always latch onto something, I want to be able to make ones that
 // stick out, like a divider".

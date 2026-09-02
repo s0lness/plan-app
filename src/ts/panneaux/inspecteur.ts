@@ -1,4 +1,4 @@
-// src/ts/panneaux/inspecteur.ts — THE INSPECTOR (editable object sheet).
+// src/ts/panneaux/inspecteur.ts: THE INSPECTOR (editable object sheet).
 // Ported from src/js/21-inspecteur.js.
 //
 // THE PANEL DECIDES NOTHING, IT SHOWS AND IT APPLIES. Only three rules live here, and they live
@@ -216,7 +216,7 @@ export function syncInspector(ctx: Contexte): void {
       const sel = $("iPair") as HTMLSelectElement | null;
       if (sel && document.activeElement !== sel) {
         const ecrans = (ctx.etat.plan.pieces || []).filter((q) => q.type === "pscreen");
-        sel.innerHTML = `<option value="">— nothing —</option>`
+        sel.innerHTML = `<option value="">(none)</option>`
           + ecrans.map((q) => `<option value="${escapeHtml(String(q.id))}">${escapeHtml(q.name)}</option>`).join("");
         sel.value = pj.pair || "";
         sel.disabled = !ecrans.length;

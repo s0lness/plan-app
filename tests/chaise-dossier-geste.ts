@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "CHAIR BACKREST" SUITE — REAL MOUSE (CDP), REAL HIT-TESTING
+//  "CHAIR BACKREST" SUITE: REAL MOUSE (CDP), REAL HIT-TESTING
 // =============================================================================
 // The real-usage counterpart of tests/chaise-dossier.ts (the pure geometry suite): drags an
 // actual chair against an actual table with the actual pointer, through the actual DOM, and

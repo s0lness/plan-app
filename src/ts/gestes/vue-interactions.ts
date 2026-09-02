@@ -1,4 +1,4 @@
-// src/ts/gestes/vue-interactions.ts — THE VIEW, THE FINGER, AND THE LASSO.
+// src/ts/gestes/vue-interactions.ts: THE VIEW, THE FINGER, AND THE LASSO.
 // Ported from src/js/22-interactions-vue.js (wheel, panning, pinch, long press, rubber
 // band, `piecesInClientRect`).
 //
@@ -35,7 +35,7 @@ const RUBBER_THRESH = 4;
 
 /**
  * True when a wheel event's target sits inside a panel that scrolls its OWN overflow (today, only
- * the chat message list, `.chat-list` — it lives INSIDE `#viewport`, see `html/02-scene.html`, so
+ * the chat message list, `.chat-list`, it lives INSIDE `#viewport`, see `html/02-scene.html`, so
  * its wheel events reach this listener by ordinary bubbling). Measured live, two people testing
  * multiplayer together: the wheel over the open chat panel zoomed the plan underneath it instead
  * of scrolling the messages, because the viewport's own wheel handler ran first and called
@@ -44,8 +44,8 @@ const RUBBER_THRESH = 4;
  * Walks from the event's target up to (but not including) `viewport` itself: nothing OUTSIDE the
  * viewport ever reaches this listener in the first place (bubbling stops caring past the element
  * the listener is attached to), so anywhere this returns true is provably a panel nested inside
- * the viewport. Deliberately a GENERAL rule — "does the nearest scrolling ancestor actually have
- * something to scroll" — rather than a hardcoded `.chat-list` check, so a later panel added inside
+ * the viewport. Deliberately a GENERAL rule, "does the nearest scrolling ancestor actually have
+ * something to scroll", rather than a hardcoded `.chat-list` check, so a later panel added inside
  * the viewport inherits the fix instead of needing its own copy of it.
  */
 function surPanneauDeroulant(viewport: HTMLElement, cible: EventTarget | null): boolean {
@@ -274,7 +274,7 @@ export function brancherInteractionsVue(ctx: Contexte): void {
     if (e.code === "Space") { setSpaceHeld(false); viewport.classList.remove("spaceready"); }
   });
 
-  // wheel = zoom (ctrl/⌘ = trackpad pinch, same handling), centered on the pointer — UNLESS the
+  // wheel = zoom (ctrl/⌘ = trackpad pinch, same handling), centered on the pointer, UNLESS the
   // pointer is over a panel that scrolls its own content (`surPanneauDeroulant`), in which case we
   // get out of the way entirely: no `preventDefault()`, no zoom, so the browser's native scroll
   // runs exactly as it would with no listener here at all.

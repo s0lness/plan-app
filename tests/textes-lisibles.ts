@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "A TEXT READS FLAT" SUITE — REAL PAGE, MEASURED SCREEN ANGLES
+//  "A TEXT READS FLAT" SUITE: REAL PAGE, MEASURED SCREEN ANGLES
 // =============================================================================
 // Original defect, reported with a screenshot: two sconces placed back to back on the same wall.
 // The one on the other face displayed "Applique" upside down, letters mirrored.

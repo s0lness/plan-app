@@ -1,4 +1,4 @@
-// src/ts/app/options.ts — THE RAIL'S PERSONAL SETTINGS, AND THE UNREADABLE-PLAN BANNER.
+// src/ts/app/options.ts: THE RAIL'S PERSONAL SETTINGS, AND THE UNREADABLE-PLAN BANNER.
 // Ported from src/js/28-options.js (snap, labels, the three layers, the palette search
 // clear button) and from src/js/46-init.js (the `#bootNotice` / `#setupNotice` banner).
 //

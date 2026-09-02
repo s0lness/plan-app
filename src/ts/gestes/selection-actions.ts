@@ -1,4 +1,4 @@
-// src/ts/gestes/selection-actions.ts — THE MINIMUM OF THE INSPECTOR THAT GESTURES NEED.
+// src/ts/gestes/selection-actions.ts: THE MINIMUM OF THE INSPECTOR THAT GESTURES NEED.
 //
 // The inspector (src/js/21-inspecteur.js) is NOT part of this batch: it will come with the
 // panels. But three of its functions are called by GESTURES (Delete, Ctrl+X, the R key on a wall

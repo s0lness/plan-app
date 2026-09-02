@@ -1,4 +1,4 @@
-// src/ts/sonde-gestes.ts — THE "GESTURES" SLICE OF THE PROBE SURFACE.
+// src/ts/sonde-gestes.ts: THE "GESTURES" SLICE OF THE PROBE SURFACE.
 // Completes `src/ts/sonde.ts` (RENDER batch) for what the GESTES batch ported, and nothing else.
 //
 // It is in ITS OWN FILE because `src/js/57-sondes-test.js` was "the repo's most likely git

@@ -1,4 +1,4 @@
-// src/ts/rendu/palette.ts — THE FURNITURE PALETTE.
+// src/ts/rendu/palette.ts: THE FURNITURE PALETTE.
 // Ported from src/js/08-palette.js (`buildPalette`, `normStr`, `isCatCollapsed`, `toggleCat`,
 // `applyPaletteFilter`).
 //

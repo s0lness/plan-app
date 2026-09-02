@@ -135,7 +135,7 @@ await test("v5_white_page_sentinel_is_quiet", seedV4(REAL_PLAN), `
 `, v => expect(v.model === "v5" && v.layer === 1 && v.aptrooms === 0, "expected a painted v5 layer, got " + JSON.stringify(v))
      && expect(v.sentinel === 0, "the sentinel must stay quiet on a healthy v5 plan, got " + v.sentinel + " alert(s)"));
 
-// 7d. SIDE OF THE WALL — parity with v4. The three entry points (placement, dragging,
+// 7d. SIDE OF THE WALL, parity with v4. The three entry points (placement, dragging,
 // button/key) give the same result: the side is the one from the GESTURE. In v5 it lives in
 // `side`, in v4 in `rot`, with no duplicated code visible to the user (same button, same key,
 // same label).

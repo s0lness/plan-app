@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  THE DOOR — NO BROWSER, by import against functions/porte.ts and functions/_middleware.ts.
+//  THE DOOR: NO BROWSER, by import against functions/porte.ts and functions/_middleware.ts.
 // =================================================================================================
 //   node tests/porte.ts
 //
@@ -11,7 +11,7 @@
 // untouched).
 //
 // Section 4 covers the OTHER half of the same rule: every route refuses an unrecognized door
-// ITSELF. This suite imports the route files directly, so the middleware does not exist here —
+// ITSELF. This suite imports the route files directly, so the middleware does not exist here,
 // which is precisely what makes the point provable, and what made the hole invisible for as long
 // as the choke point was the only guard.
 
@@ -42,7 +42,7 @@ function expect(cond: unknown, msg: string): true { if (!cond) throw new Error(m
 
 // A base64url-encoded JWT shape, unsigned: exactly what a forged `Cf-Access-Jwt-Assertion` header
 // or `CF_Authorization` cookie looks like. `identiteFoyer` never verifies the signature (that is
-// Access's job, upstream) — its only defence off the household door is to never read it at all.
+// Access's job, upstream), its only defence off the household door is to never read it at all.
 const jwtForge = (email: string) => {
   const b64url = (s: string) => Buffer.from(s).toString("base64url");
   return b64url(JSON.stringify({ alg: "none" })) + "." + b64url(JSON.stringify({ email })) + ".sig";
@@ -68,7 +68,7 @@ function fauxNext() {
 const requeteVers = (url: string, headers?: Record<string, string>) => new Request(url, { headers });
 
 // =================================================================================================
-//  1. porteDe — the allowlist and its `*.` wildcard
+//  1. porteDe, the allowlist and its `*.` wildcard
 // =================================================================================================
 
 await test("porte_liste_absente_est_foyer", () => {
@@ -132,7 +132,7 @@ await test("porte_liste_est_nettoyee", () => {
 });
 
 // =================================================================================================
-//  1bis. porteDe — the "invite" verdict (batch 1b)
+//  1bis. porteDe, the "invite" verdict (batch 1b)
 // =================================================================================================
 
 await test("porte_invite_correspond_au_guest_host", () => {
@@ -177,7 +177,7 @@ await test("porte_invite_hote_different_reste_inconnue", () => {
 });
 
 // =================================================================================================
-//  2. identiteFoyer — reads nothing off an unrecognized door, and never returns `live`
+//  2. identiteFoyer, reads nothing off an unrecognized door, and never returns `live`
 // =================================================================================================
 
 await test("identite_hote_inconnu_ignore_l_en_tete_direct", () => {
@@ -239,7 +239,7 @@ await test("identite_hote_invite_ignore_aussi_l_en_tete_direct", () => {
 });
 
 // =================================================================================================
-//  3. functions/_middleware.ts — the choke point
+//  3. functions/_middleware.ts, the choke point
 // =================================================================================================
 
 await test("middleware_403_sur_api_hote_inconnu", async () => {
@@ -315,7 +315,7 @@ await test("middleware_retire_les_en_tetes_cf_access_et_seulement_cf_authorizati
 });
 
 // =================================================================================================
-//  3bis. functions/_middleware.ts — the "invite" door (batch 1b): a NAMED surface, not
+//  3bis. functions/_middleware.ts, the "invite" door (batch 1b): a NAMED surface, not
 //  "everything except the owner routes". /api/invite, /api/plan and /ws pass through UNVALIDATED
 //  (the token itself is checked downstream, by the route that can read D1); everything else under
 //  /api/ is 403, /api/plans and /api/invites explicitly included.
@@ -405,7 +405,7 @@ await test("middleware_invite_retire_les_en_tetes_access", async () => {
 });
 
 // =================================================================================================
-//  4. CHAQUE ROUTE REFUSE LA PORTE INCONNUE ELLE-MÊME — sans middleware, par import direct
+//  4. CHAQUE ROUTE REFUSE LA PORTE INCONNUE ELLE-MÊME, sans middleware, par import direct
 // =================================================================================================
 // C'est exactement ce que ces tests prouvent : ils appellent les fichiers de route DIRECTEMENT,
 // donc le point d'étranglement n'existe pas ici. Une route qui ne se gardait pas elle-même était

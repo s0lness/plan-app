@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "NO GRID" SUITE — NO BROWSER (the modifier and the grid math are PURE)
+//  "NO GRID" SUITE: NO BROWSER (the modifier and the grid math are PURE)
 // =============================================================================
 // Usage request: dragging always lands on the 5 cm grid (`ctx.etat.opts.snap`); there was no
 // per-gesture escape to the whole centimeter. Shift already exists but does something DIFFERENT

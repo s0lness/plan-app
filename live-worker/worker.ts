@@ -24,7 +24,7 @@ interface Env {
 // socket. `name` is the one field BOTH sides can carry: a guest's self-declared label, or (once a
 // household member also sets one through `{t:"name"}`) a chosen label instead of an email-derived
 // one. `token` is the raw invite token: it is what `/revoke` matches sockets against (edge 6) and
-// what the per-socket rate cap is keyed on (edge 15) — NOT a credential in its own right here (the
+// what the per-socket rate cap is keyed on (edge 15), NOT a credential in its own right here (the
 // socket is already open), just the label that ties a live connection back to the invite row that
 // let it in.
 interface SocketAttachment {
@@ -52,13 +52,13 @@ const GUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
  * Builds a socket's attachment from the headers `functions/ws.ts` sets (ALWAYS set, never
- * conditionally — see its header note — so a caller cannot forge `X-Plan-Guest`/`X-Plan-Name`/
+ * conditionally, see its header note, so a caller cannot forge `X-Plan-Guest`/`X-Plan-Name`/
  * `X-Plan-Guest-Id`/`X-Plan-Token` by sending its own copy). Pulled out of `PlanRoom.fetch` as a
  * PURE function of `(request, tag)` so it is testable under plain node without a real
  * `WebSocketPair` (which `fetch` itself needs and node does not provide).
  *
  * `??` NOT `||` ON EMAIL: a guest's `X-Plan-Email` is the EXPLICIT empty string ("there is no
- * email to have"), which `||` would silently coerce back into the literal "inconnu" — a real
+ * email to have"), which `||` would silently coerce back into the literal "inconnu", a real
  * value with its OWN meaning ("household door, but Access gave us no header"). `??` only falls
  * back when the header is truly ABSENT (an older forwarder, or a test double that never set it).
  */
@@ -202,7 +202,7 @@ export default {
     // `new Request(url, request)` COPIES every header of the original request, guest-related ones
     // included: this dormant path has no concept of a guest door (`hoteAutorise` only knows
     // `HOUSEHOLD_HOSTS`), so every one of them is FORCED, not merely defaulted, the same way
-    // `X-Plan-Email` already is above — a caller cannot present as a guest, or carry the internal
+    // `X-Plan-Email` already is above, a caller cannot present as a guest, or carry the internal
     // `/revoke` marker (see `INTERNAL_HEADER`, never legitimate on a `/ws` request), through here.
     const fwd = new Request(url.toString(), request);
     fwd.headers.set("X-Plan-Email", email);
@@ -265,14 +265,14 @@ const SEQ_MAX_ENTRIES = 64;
 const SEQ_WINDOW = 64;
 
 // ---- PER-TOKEN RATE CAP (design edge 15) --------------------------------------------------------
-// Brute-forcing a 128-bit invite token is not the threat this guards against — revoke (edge 6) is
+// Brute-forcing a 128-bit invite token is not the threat this guards against, revoke (edge 6) is
 // the real answer to a link handed around too widely. What this closes is a VALID link behaving
 // badly: a tight client-side loop (a bug, or a script fed the token) that would otherwise fill the
 // `plans` row and the D1 write quota with no ceiling at all. Measured interactive use: a furniture
 // drag emits its final `piece.set` on RELEASE, not per frame (gestures diff-and-send once, cf.
 // AGENTS.md "Gestures: ONE exit point"), so even a frantic multi-object session tops out at a
 // handful of `op` messages per SECOND. 120 / rolling minute (2/s sustained) leaves roughly ten
-// times that headroom — a human editing furniture can never hit it, a runaway loop will.
+// times that headroom, a human editing furniture can never hit it, a runaway loop will.
 // Keyed on the ATTACHMENT'S TOKEN, never on `tag`: the cap must follow the LINK (several guest
 // tabs can share one token), and a household socket's token is always "", so this never touches
 // household traffic (MAX_ENTITIES and the 1.5 MB plan ceiling already bound that side).
@@ -319,9 +319,9 @@ const MAX_SOCKETS_TOKEN = 4;
 
 // The internal marker `functions/api/invites.ts` sets on its OWN freshly-built request to
 // `PlanRoom`'s `/revoke` route (docs/decisions/0004-partage-par-lien.md, edge 6). It is never
-// derived from an inbound client request — `functions/_middleware.ts` also strips it from every
+// derived from an inbound client request, `functions/_middleware.ts` also strips it from every
 // request it forwards, and `functions/ws.ts` deletes it explicitly from what it forwards to `/ws`
-// — so its mere presence here can only mean this call came from that trusted code path, over the
+//, so its mere presence here can only mean this call came from that trusted code path, over the
 // `ROOM` binding, a call that never touches the network-facing `export default {fetch}` below (see
 // `handleRevoke`).
 const INTERNAL_HEADER = "X-Plan-Internal";
@@ -426,7 +426,7 @@ export function coldLoad(rowData: unknown): { plan: PlanState; source: string; p
 // ---- RECONCILING WITH D1: the REST fallback is no longer a sink -------------------------------
 // The Durable Object NEVER reread D1 after its first load. During a Worker outage, the client
 // switches to the REST fallback (functions/api/plan.ts): the write succeeds, it travels from one
-// screen to another, it does end up in the D1 row — then the Worker comes back, its `hello`
+// screen to another, it does end up in the D1 row, then the Worker comes back, its `hello`
 // reimposes the plan it held in memory, the change disappears from both screens, and the
 // snapshot alarm overwrites the row. Accept, confirm, then silently destroy.
 //
@@ -669,7 +669,7 @@ export class PlanRoom {
 
   // Conflict message, built from a single place (reconciliation AND the `hello` on return).
   // `by` names a HOUSEHOLD writer (an email, or the REST fallback's "invite:<name>" string for a
-  // guest write) — not this batch's "author identity", but the same "no email to a guest" rule
+  // guest write), not this batch's "author identity", but the same "no email to a guest" rule
   // from item 2 applies here too: a guest recipient gets no `by` at all, only the fact that
   // something was kept.
   conflictMsg(o: { by?: string | null; at?: string | null; bytes?: number; data?: unknown }, guestAudience: boolean) {
@@ -771,7 +771,7 @@ export class PlanRoom {
    * `POST /revoke {token}` (docs/decisions/0004-partage-par-lien.md, edge 6): closes every LIVE
    * socket whose attachment token matches, so "Revoke" in the owner's Share panel is not a lie for
    * as long as the guest stays connected. Reachable in exactly ONE way: `functions/api/invites.ts`
-   * calling `env.ROOM.get(id).fetch(...)` directly on its OWN freshly-built `Request` — that call
+   * calling `env.ROOM.get(id).fetch(...)` directly on its OWN freshly-built `Request`, that call
    * invokes THIS method straight away, over the binding, and never touches the network-facing
    * `export default {fetch}` below (which still 404s any path but `/ws`, so even a future zone
    * route sending traffic there gets nothing new). The `INTERNAL_HEADER` check is defence in
@@ -827,7 +827,7 @@ export class PlanRoom {
   // Device label, unique among LIVE sockets, stable for the duration of the socket. It's used by
   // the client to build entity identifiers that cannot collide: two people drawing a partition
   // at the same moment would both number from THEIR local plan (v5NewId), get the same "w20",
-  // and the second wall would overwrite the first — no error, no banner, both screens converging
+  // and the second wall would overwrite the first, no error, no banner, both screens converging
   // on the survivor.
   // Two tabs of the same person receive two different labels: the email alone would not be enough.
   freshTag() {
@@ -863,13 +863,13 @@ export class PlanRoom {
   // `guest` are the SAME for every recipient (a guest recipient must still be able to tell peers
   // apart and see who is who), but `email`/`by` is INCLUDED ONLY for a household recipient (item 2:
   // "emails never cross to a guest"). Because the SAME broadcast reaches both kinds of socket, the
-  // household's own attribution must not be stripped at the SOURCE — hence `broadcastFor`, which
+  // household's own attribution must not be stripped at the SOURCE, hence `broadcastFor`, which
   // builds (at most) two payload variants and sends each recipient the one meant for it.
 
   /**
    * The name a GUEST recipient should see for `a`. A guest author's own declared name if they have
    * one; a HOUSEHOLD author has no such field (`a.name` is always "" there), so without this a
-   * guest would see a blank dot where a household peer's should be — "a display name instead [of
+   * guest would see a blank dot where a household peer's should be, "a display name instead [of
    * the email], never an email at all" (item 2) means instead, not nothing.
    */
   nameForGuestAudience(a: SocketAttachment): string {
@@ -940,7 +940,7 @@ export class PlanRoom {
    * matches what it is.
    *
    * WHEN ONLY ONE AUDIENCE IS PRESENT among the recipients (the common case: a household with no
-   * guest connected, or — for `live-worker/test-local.ts`'s single-socket doubles — always), this
+   * guest connected, or, for `live-worker/test-local.ts`'s single-socket doubles, always), this
    * delegates to `this.broadcast()` instead of sending directly: tests that override `room.broadcast`
    * to capture what goes out (predating this batch, and unaware `broadcastFor` exists) keep working
    * unchanged. Only a TRULY MIXED audience bypasses it, since `broadcast()` cannot carry two
@@ -1322,7 +1322,7 @@ export class PlanRoom {
         // Ephemeral, not persisted. room:null = cursor off canvas.
         // Relayed as-is to the other tab: therefore validated, cf. sanitizeCursor.
         // `say` (cursor chat, "/"): `c.say` is `undefined` when the sender had no opinion (an
-        // old client, or an ordinary ping with the box closed) — `undefined` is dropped by
+        // old client, or an ordinary ping with the box closed), `undefined` is dropped by
         // `JSON.stringify`, so this changes NOTHING for a recipient on an older client. A string
         // or an explicit `null` (the box just closed) travels as-is, per-recipient audience rule
         // unchanged: same `authorWire` redaction as every other relayed message.

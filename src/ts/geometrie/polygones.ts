@@ -1,4 +1,4 @@
-// src/ts/geometrie/polygones.ts — polygon geometry, in APARTMENT cm.
+// src/ts/geometrie/polygones.ts: polygon geometry, in APARTMENT cm.
 // Ported from src/js/04-geometrie.js (+ `simplifyRectilinear` from src/js/25-enveloppe.js).
 //
 // EVERYTHING HERE IS PURE. The old `aptBBox()` read `state.plan.outline` from the closure; it becomes

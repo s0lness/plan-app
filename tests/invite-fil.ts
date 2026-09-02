@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  THE GUEST CLIENT'S PURE LOGIC — NO BROWSER, against src/ts by import.
+//  THE GUEST CLIENT'S PURE LOGIC: NO BROWSER, against src/ts by import.
 // =================================================================================================
 //   node tests/invite-fil.ts
 //
@@ -35,7 +35,7 @@ function expect(cond: unknown, msg: string): true { if (!cond) throw new Error(m
 const JETON = "abcdefghij0123456789AB";
 
 // =================================================================================================
-//  1. jetonDepuisHash — the token's shape in `location.hash`
+//  1. jetonDepuisHash, the token's shape in `location.hash`
 // =================================================================================================
 
 test("jeton_absent_du_hash_rend_null", () =>
@@ -69,7 +69,7 @@ test("cle_kk_ne_matche_pas_k", () =>
     "le motif doit ancrer sur k= exactement, pas sur un préfixe (kk=, ok=…)"));
 
 // =================================================================================================
-//  2. hashSansJeton — stripped SECOND, and only the k= segment
+//  2. hashSansJeton, stripped SECOND, and only the k= segment
 // =================================================================================================
 
 test("hash_sans_jeton_est_vide_si_le_jeton_etait_seul", () =>
@@ -86,7 +86,7 @@ test("hash_sans_jeton_sur_un_hash_vide_rend_vide", () =>
   expect(hashSansJeton("") === "" && hashSansJeton("#") === "", "rien à retirer, rien à rendre"));
 
 // =================================================================================================
-//  3. keyPourMode / keyPourPlan — design edge 13, the storage key never collides across modes
+//  3. keyPourMode / keyPourPlan, design edge 13, the storage key never collides across modes
 // =================================================================================================
 
 test("menage_main_garde_la_cle_nue_historique", () =>
@@ -132,7 +132,7 @@ test("les_trois_modes_sur_main_donnent_trois_cles_distinctes", () => {
 });
 
 // =================================================================================================
-//  4. dedupedDisplayName — design edge 3, display only, never the stored name
+//  4. dedupedDisplayName, design edge 3, display only, never the stored name
 // =================================================================================================
 
 test("nom_unique_reste_tel_quel", () =>
@@ -156,7 +156,7 @@ test("trois_pairs_meme_nom_sont_numerotes_dans_l_ordre_du_tag", () => {
 
 test("deux_ecrans_recevant_la_meme_liste_calculent_le_meme_rang", () => {
   // THE decisive property: the discriminator must not depend on which client asks, only on the
-  // peer list itself — the server broadcasts the SAME list to everyone, and there is no
+  // peer list itself, the server broadcasts the SAME list to everyone, and there is no
   // coordination round trip to agree on who is "(2)".
   const listeA = [{ tag: "a", name: "Marie" }, { tag: "b", name: "Marie" }];
   const listeB = [{ tag: "b", name: "Marie" }, { tag: "a", name: "Marie" }];   // shuffled, same set

@@ -1,4 +1,4 @@
-// src/ts/rendu/vue.ts — THE VIEW TRANSFORM, and nothing else.
+// src/ts/rendu/vue.ts: THE VIEW TRANSFORM, and nothing else.
 // Ported from src/js/05-espace-appartement.js (`aptToScreen`/`screenToApt`), from
 // src/js/09-viewport-rail.js (`scaleBounds`, `fitView`, `fitCell`, `zoomAt`, `updateReadout`) and
 // from src/js/03-vue-selection.js (`renderView`).

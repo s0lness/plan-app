@@ -7,7 +7,7 @@
 //     known keys). A `planName` slipped in there would be erased on the first snapshot, silently.
 //  2. The name is metadata ABOUT the plan, not part of its geometry. Putting it in the document
 //     would make it enter the content fingerprint, so renaming a plan would count as a change to
-//     sync — whereas it isn't one for the drawing.
+//     sync, whereas it isn't one for the drawing.
 //  3. Listing plans must be CHEAP: `SELECT id, name` doesn't read each document's 12 KB, where a
 //     `json_extract` on the blob would read them all.
 //
@@ -45,7 +45,7 @@ const horsFoyer = (request: Request, env: Env): boolean => porteDe(request, env)
 
 /** Clean name: no control characters, no bidi overrides, no edge whitespace, truncated at
  * NAME_MAX. "" = no name. Now THE SAME implementation a guest's self-declared name goes through
- * (functions/nom.ts) — a plan name sits on the same screen as a guest name, so it gets the same
+ * (functions/nom.ts), a plan name sits on the same screen as a guest name, so it gets the same
  * bidi-override stripping (docs/decisions/0004-partage-par-lien.md, edge case 2), just with the
  * historical 60-character cap instead of a guest's 40. */
 const cleanName = (v: unknown) => nettoieNom(v, NAME_MAX);

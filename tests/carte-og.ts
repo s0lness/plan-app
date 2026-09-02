@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  THE LINK PREVIEW CARD — NO BROWSER, by import against functions/_middleware.ts.
+//  THE LINK PREVIEW CARD: NO BROWSER, by import against functions/_middleware.ts.
 // =================================================================================================
 //   node tests/carte-og.ts
 //
 // Covers the invite link's Open Graph / Twitter card: `avecCarteOg` in functions/_middleware.ts
 // injects `og:url`, `og:image` and `twitter:image` into an HTML response, built from THIS
-// REQUEST's own Host — never from a committed hostname (this repository is public) and never
+// REQUEST's own Host, never from a committed hostname (this repository is public) and never
 // from anything else the request carries. The static tags (title, description, type) live in
 // src/head.html and are not this file's concern.
 //
 // THE TEST THAT MATTERS is the last one: the token travels in the URL FRAGMENT, which a server
 // never sees, so a link-preview crawler can only ever learn the origin. If a future edit built
 // `og:url` from `request.url` verbatim (the easy, wrong shortcut) instead of `origin`, the query
-// string — and anything an operator ever put there by mistake — would ride along into every
+// string, and anything an operator ever put there by mistake, would ride along into every
 // crawler's log. `carte_og_aucun_secret_de_la_requete` proves that never happens, whatever the
 // query string carries.
 
@@ -41,7 +41,7 @@ function ctx(request: Request, env: DonneeDynamique, next: (input?: Request | st
   } as DonneeDynamique;
 }
 // Stands in for the real Pages static-asset handler: returns the deliverable's actual `<head>`
-// shape (a title, nothing more — this suite does not care about src/head.html's own tags), with
+// shape (a title, nothing more, this suite does not care about src/head.html's own tags), with
 // the content type a real HTML response carries, `content-length` included, exactly like the
 // thing `avecCarteOg` must recompute it against.
 function fauxNextHtml(corps = "<!doctype html>\n<html><head><title>Plan d'appartement</title></head><body></body></html>") {

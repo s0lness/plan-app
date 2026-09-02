@@ -6,7 +6,7 @@
 // There are TWO writers to this row: the Durable Object (snapshot every 30 s) and the client via
 // this PUT, when realtime is down. The PUT used to be BLIND: no revision in the body, last writer
 // wins. Two people falling back at the same time overwrote one another, and a late client could
-// overwrite a more recent state — this is the "split brain" that Figma had to lock at the database
+// overwrite a more recent state, this is the "split brain" that Figma had to lock at the database
 // level. State of the art is unambiguous: any "whole document" write requires a COMPARE-AND-SWAP
 // on the revision.
 //
@@ -27,7 +27,7 @@
 //
 // WHAT REMAINS OPEN, AND BELONGS TO THE WORKER: the Durable Object's snapshot
 // (live-worker/worker.ts, `snapshot()`) writes this same row WITHOUT an expected revision, via
-// its own D1 binding — it does not go through this Function. Until it has its own
+// its own D1 binding, it does not go through this Function. Until it has its own
 // compare-and-swap (see DEPLOY.md / the report), it can still overwrite a REST write it hasn't
 // seen; it MITIGATES this by rereading the row before every snapshot (`reconcileD1`).
 
@@ -43,7 +43,7 @@
 // contract entirely: `rev` is required, because a blind PUT is `plan5.replace` by another name
 // (last writer wins, whole document), the old contract exists for a tab opened before this
 // feature deployed, and no guest tab predates it. `updated_by` for a guest write is
-// `"invite:" + <name or "?">`, built from the invite row's `last_name` — never an email (there is
+// `"invite:" + <name or "?">`, built from the invite row's `last_name`, never an email (there is
 // none to have), and never the literal `"live"` (identiteFoyer already screens that out; this
 // path never calls it at all).
 import type { Env } from "../env.ts";
@@ -92,7 +92,7 @@ const porteRefusee = () => new Response(JSON.stringify({ error: "porte_refusee" 
  * valid token is the credential, checked just below). `inconnue` used to fall into the SAME branch
  * as the household: an unlisted host got `main` by default, and the GET answered with the raw
  * `updated_by` column, an Access address, in clear. `functions/_middleware.ts` does keep that host
- * out in production, and that is exactly why the hole was invisible — every direct-import test in
+ * out in production, and that is exactly why the hole was invisible, every direct-import test in
  * this codebase calls this file with no middleware at all, which is the shape any future caller
  * could take too. Same discipline as `functions/api/invites.ts` and `functions/api/feedback.ts`.
  */
@@ -149,7 +149,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     updatedAt: row.updated_at,
     // THE LAST PLACE A HOUSEHOLD ADDRESS COULD CROSS TO A GUEST. Batch 2 stopped emails on the
     // WIRE (the Durable Object projects every message per recipient), but this is the REST
-    // fallback, a Pages Function that shares no code with it — and it reads the raw `updated_by`
+    // fallback, a Pages Function that shares no code with it, and it reads the raw `updated_by`
     // column, which holds an Access email. One GET from the guest door and anyone holding a link
     // collects the couple's address. Design edge 16 covers the wire; this is its other half.
     // A guest is told WHAT they need (someone else wrote before you) and not WHO in a form they
@@ -289,8 +289,8 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
   // Reading the row is what the count refused to tell us, and the row is asked to identify our
   // write completely, not merely plausibly: the SAME revision we would have produced
   // (`expected + 1`), OUR author, OUR timestamp (generated for this request alone), and BYTE FOR
-  // BYTE the document we just sent. Author alone is not enough — one household member's two
-  // devices share an email — and revision alone is not either: a neighbour's write lands on
+  // BYTE the document we just sent. Author alone is not enough, one household member's two
+  // devices share an email, and revision alone is not either: a neighbour's write lands on
   // `expected + 1` just as ours would. All four together leave only "someone re-sent the exact
   // same document, in the same millisecond, under the same address, onto the same revision",
   // which is a write we would be agreeing with anyway.

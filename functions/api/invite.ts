@@ -12,7 +12,7 @@
 //
 // ONE 404, whatever fails: an unknown token, a revoked one, and an expired one all answer the
 // SAME body. Telling them apart would let a probe learn that a guessed token is real but merely
-// expired — see functions/api/plan.ts and functions/ws.ts, which read the SAME cookie later and
+// expired, see functions/api/plan.ts and functions/ws.ts, which read the SAME cookie later and
 // answer with the same shape of refusal for the same reason.
 
 import type { Env } from "../env.ts";
@@ -93,7 +93,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const nomRendu = nomEnvoye || ((guestId && row.last_guest_id && guestId === row.last_guest_id) ? row.last_name : null);
 
   // BEST-EFFORT bookkeeping: a write failure here must never turn an already-valid invite into a
-  // refused one — the guest earned entry above, on the row as it stood before this update.
+  // refused one, the guest earned entry above, on the row as it stood before this update.
   // A REDEMPTION WITH NO NAME (the first call of every visit, before the name step even shows)
   // must never touch `last_name`/`last_guest_id`: that is what lets a SECOND device's silent probe
   // (checking whether a name is already on file) coexist with a FIRST device's remembered identity,

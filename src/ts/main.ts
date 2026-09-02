@@ -1,4 +1,4 @@
-// src/ts/main.ts — THE NEW CLIENT'S BOOTSTRAP.
+// src/ts/main.ts: THE NEW CLIENT'S BOOTSTRAP.
 //
 // Ported from src/js/02-etat-migrations.js (the `state` bootstrap block), from src/js/07 (`load`)
 // and from src/js/46-init.js (the initialization, evaluated last in the old manifest).
@@ -77,7 +77,7 @@ function lireBrut(): string | null {
     // must inherit NOTHING: falling back to `room-planner-v3` would make it display the
     // apartment from two versions ago instead of opening the outline assistant. Batch 3: the
     // SAME reasoning now also applies to every key `keyPourMode` returns off the household
-    // door — an invited or local-only key never inherits from these either.
+    // door, an invited or local-only key never inherits from these either.
     if (k !== KEY) return localStorage.getItem(k);
     return localStorage.getItem(KEY) || localStorage.getItem(KEY_V3)
       || localStorage.getItem(KEY_V2) || localStorage.getItem(KEY_OLD) || null;
@@ -104,7 +104,7 @@ function bootOpts(seed: Partial<Options> | null | undefined): Options {
 /**
  * Returns `{ctx, fil}` (batch 3): `demarrer()` needs both, right after this call, to wire the
  * two guest-door crochets (`accesRefuseSansInvite`/`accesRefuseInvite`) before any network
- * response can possibly arrive, and — for an already-redeemed invitation — to finish onboarding
+ * response can possibly arrive, and, for an already-redeemed invitation, to finish onboarding
  * (`finirGuestOnboarding`).
  */
 function amorcer(): { ctx: Contexte; fil: Fil } {
@@ -257,14 +257,14 @@ function amorcer(): { ctx: Contexte; fil: Fil } {
 
 /**
  * BATCH 3. `preparerAccueil()` runs BEFORE anything else: it captures a `#k=` token (or a
- * remembered one), redeems it, and blocks on the name step if one is shown — nobody reaches the
+ * remembered one), redeems it, and blocks on the name step if one is shown, nobody reaches the
  * wire unnamed. It resolves `false` only when the dead end already covers the whole screen, in
  * which case `amorcer()` never runs at all: "there is no planner behind it" is not a figure of
  * speech. On the household door (and on a guest door with no token yet, which only reveals
  * itself later) it resolves `true` immediately, so nothing here changes anyone else's boot.
  *
  * The two crochets are wired UNCONDITIONALLY, right after `amorcer()` returns and therefore
- * still inside this synchronous tick: no network response — the one thing that could call them —
+ * still inside this synchronous tick: no network response, the one thing that could call them,
  * can possibly have arrived yet. On the household door neither is ever invoked.
  */
 async function demarrer(): Promise<void> {

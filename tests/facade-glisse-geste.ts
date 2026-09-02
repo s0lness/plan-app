@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "A FACADE SLIDES, IT NEVER BENDS" SUITE — REAL MOUSE (CDP)
+//  "A FACADE SLIDES, IT NEVER BENDS" SUITE: REAL MOUSE (CDP)
 // =============================================================================
 // Owner's report, screenshot in hand: after cutting the top facade in two and pushing the left half
 // down, the outline came out BENT. The right half, whose left end had moved and whose right end had

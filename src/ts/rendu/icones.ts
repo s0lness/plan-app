@@ -1,4 +1,4 @@
-// src/ts/rendu/icones.ts — THE FURNITURE ICONS SEEN FROM ABOVE, in SVG.
+// src/ts/rendu/icones.ts: THE FURNITURE ICONS SEEN FROM ABOVE, in SVG.
 // Ported from src/js/11-icones.js, byte for byte: same names, same constants, same attribute
 // order. The proof of the batch is a character-by-character comparison with the old client,
 // for each type in the catalogue and several sizes; any "cleaner" rewording of a

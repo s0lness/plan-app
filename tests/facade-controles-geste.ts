@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "A FACADE ONLY SHOWED ITS ROUND BUTTON" SUITE — REAL MOUSE (CDP)
+//  "A FACADE ONLY SHOWED ITS ROUND BUTTON" SUITE: REAL MOUSE (CDP)
 // =============================================================================
 // Hovering an interior partition gives five controls: the move disc, the "+" that splits, the "×"
 // that deletes, the two endpoint handles, and the link that welds. Hovering a FACADE gave ONE, the

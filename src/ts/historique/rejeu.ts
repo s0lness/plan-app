@@ -1,4 +1,4 @@
-// src/ts/historique/rejeu.ts — REPLAYING AN OP ONTO A DATA PLAN.
+// src/ts/historique/rejeu.ts: REPLAYING AN OP ONTO A DATA PLAN.
 // Ported from src/js/27-historique.js (the PURE part: `histApplyOp`). The snapshot stack, the
 // bounded log and the buttons live in the DOM: still to be ported.
 //

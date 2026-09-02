@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "UNE AVANCÉE S'ARRÊTE SUR LE MUR DE LA PIÈCE" SUITE — REAL MOUSE (CDP)
+//  "UNE AVANCÉE S'ARRÊTE SUR LE MUR DE LA PIÈCE" SUITE: REAL MOUSE (CDP)
 // =============================================================================
 // Owner's report, screenshots in hand: he pushes upward the facade section that forms the top wall
 // of a small room, and "ça crée un trou", "la bissection à droite ne se fait pas au bon endroit".

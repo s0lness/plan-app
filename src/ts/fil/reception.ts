@@ -1,4 +1,4 @@
-// src/ts/fil/reception.ts — WHAT COMES IN: SURGICAL APPLICATION OF A REMOTE OP.
+// src/ts/fil/reception.ts: WHAT COMES IN: SURGICAL APPLICATION OF A REMOTE OP.
 // Ported from src/js/43-collab-reception.js, in full.
 //
 // THREE RULES GOVERN THIS FILE, AND ALL THREE ARE MEASURED LOSSES OF WORK.

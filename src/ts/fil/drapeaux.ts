@@ -1,4 +1,4 @@
-// src/ts/fil/drapeaux.ts — WHERE THE SYNC LAYER HAS THE RIGHT TO EXIST.
+// src/ts/fil/drapeaux.ts: WHERE THE SYNC LAYER HAS THE RIGHT TO EXIST.
 // Ported from src/js/39-sync-drapeaux.js (`SYNC_ON`, `SYNC_URL`), from src/js/00 (`EMBEDDED`) and
 // from src/js/44 (`WIRE_ROOM`).
 //

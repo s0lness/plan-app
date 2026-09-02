@@ -306,7 +306,7 @@ Each of these is a test case, not a note.
 19. **`chat` needs `name`/`guest` too.** It is persisted and replayed in full to
     the household on every `hello`, and `wsAppendChat` derives its label from the
     email.
-20. **The name lives in the invite row, not in local storage — but it belongs
+20. **The name lives in the invite row, not in local storage, but it belongs
     to the DEVICE, not to the LINK.** iOS in-app browsers (a link opened from a
     message) partition and discard storage, so "a returning guest skips the
     name step" would be false exactly where links get opened. `invites.last_name`
@@ -315,7 +315,7 @@ Each of these is a test case, not a note.
     and a link is meant to be opened by more than one person. Confirmed in
     production, two people testing together on one link: the owner named
     himself, his guest opened the SAME link right after, and the guest
-    silently became the owner on both screens — the row's `last_name` came
+    silently became the owner on both screens: the row's `last_name` came
     back on the next redemption with no check on who was asking. Correctness
     beats the iOS convenience here, so the row also keeps `last_guest_id`, the
     durable per-browser id already generated for the wire (`guestIdCourant()`,

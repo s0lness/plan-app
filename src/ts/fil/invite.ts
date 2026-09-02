@@ -1,4 +1,4 @@
-// src/ts/fil/invite.ts — THE GUEST CLIENT (docs/decisions/0004-partage-par-lien.md, batch 3).
+// src/ts/fil/invite.ts: THE GUEST CLIENT (docs/decisions/0004-partage-par-lien.md, batch 3).
 //
 // EVERYTHING a browser does BEFORE it knows whether it is the household, an invited guest, or a
 // stranger on the guest door with nothing: token capture from the link's fragment, the exchange
@@ -12,7 +12,7 @@
 //      BEFORE the strip (stored first, in case `history.replaceState` is refused).
 //   2. Failing that, a token remembered from a previous visit (`localStorage`): the invite
 //      cookie may have expired even though the token has not, so it is worth trying again.
-//   3. Failing THAT, ordinary behaviour, unchanged — with one addition, wired from `fil/rest.ts`
+//   3. Failing THAT, ordinary behaviour, unchanged, with one addition, wired from `fil/rest.ts`
 //      through `ctx.crochets.accesRefuseSansInvite`: if the boot GET answers 403 with
 //      `porte_refusee`/`invite_invalide`, this is the guest door WITHOUT an invitation, and the
 //      tab switches to LOCAL-ONLY mode. Discover-by-trying: it only changes a path that already
@@ -40,7 +40,7 @@ import { guestIdCourant } from "./identite.ts";
 
 // =================================================================================================
 //  LOCAL STORAGE: THE TOKEN AND NAME KEPT ACROSS RELOADS (a CACHE, never the source of truth for
-//  the name — `invites.last_name` is, design edge 20)
+//  the name, `invites.last_name` is, design edge 20)
 // =================================================================================================
 const JETON_KEY = "plan-invite-token";
 const NOM_KEY = "plan-invite-nom";
@@ -63,15 +63,15 @@ const PORTE_LOCALE_KEY = "plan-porte-locale";
  * THE FLAG IS A GUESS, AND A GUESS CAN BE WRONG. Written on a 403 that looked like the guest door
  * with no invitation (see above); read back synchronously, before confirmation, so a returning
  * visitor doesn't fall onto the household's storage key by mistake. But an origin can start
- * serving the household plan again — a misconfigured `HOUSEHOLD_HOSTS`/Access app fixed, a
- * hostname moved — and the flag would then dead-end every later visit to a plan this browser
+ * serving the household plan again, a misconfigured `HOUSEHOLD_HOSTS`/Access app fixed, a
+ * hostname moved, and the flag would then dead-end every later visit to a plan this browser
  * could otherwise reach, FOREVER, on a stale guess.
  *
  * Wired to `ctx.crochets.porteMenageConfirmee` (`main.ts`), called from `fil/rest.ts`'s `syncBoot`
  * and `pollPull` right where they lift `bootReconciled`: a boot read that SUCCEEDED is proof this
  * origin does serve a plan to this tab, which is exactly the condition that makes the guess wrong.
  * Idempotent, and cheap enough to call on every poll: clearing an already-absent key is a no-op.
- * Does NOT touch `modeCourant()` — that mode is frozen for the life of THIS tab (`drapeaux.ts`),
+ * Does NOT touch `modeCourant()`, that mode is frozen for the life of THIS tab (`drapeaux.ts`),
  * on purpose, the same as `SYNC_ON`; what this heals is the NEXT boot's guess, not this one's.
  */
 export function oublierPorteLocale(): void {
@@ -314,9 +314,9 @@ function afficherBanniereLocale(): void {
 
 /**
  * Wired to `ctx.crochets.accesRefuseSansInvite` (`main.ts`), called from `fil/rest.ts`'s boot GET
- * catch ONLY: no invitation was ever redeemed on this tab, and the door refused it anyway — a
+ * catch ONLY: no invitation was ever redeemed on this tab, and the door refused it anyway, a
  * stranger on the guest door. Reuses `fil.detached` (the SAME mechanics as `js/41`'s "tab detached
- * from sharing" — every network gate in `rest.ts`/`presence.ts` already respects it) rather than
+ * from sharing", every network gate in `rest.ts`/`presence.ts` already respects it) rather than
  * inventing a parallel stop switch: the effect wanted here, "no PUT, no poll, no WebSocket
  * reconnect", is EXACTLY that flag's existing contract.
  */
@@ -384,8 +384,8 @@ function masquerCommandesFoyer(): void {
 
 /**
  * Opens the name step ON DEMAND: the "Name…" button, AND `ctx.crochets.guestSansNom` (wired in
- * `main.ts`, called from `fil/presence.ts` on a `guest_unnamed` server refusal). Idempotent —
- * checked BEFORE reopening — because the second caller can fire in a BURST: the Durable Object
+ * `main.ts`, called from `fil/presence.ts` on a `guest_unnamed` server refusal). Idempotent:
+ * checked BEFORE reopening, because the second caller can fire in a BURST: the Durable Object
  * refuses every op with `guest_unnamed` while the socket carries no name (`live-worker/worker.ts`),
  * so several rejections can land within one gesture, and reopening an ALREADY OPEN dialog on each
  * would steal focus back from someone who has already started typing.
@@ -394,7 +394,7 @@ function masquerCommandesFoyer(): void {
  * never a per-socket identity (`functions/ws.ts` now resolves the wire's name by matching
  * `guestId`, the SAME device-scoped rule `functions/api/invite.ts` applies to the redemption
  * response). A device whose `guestId` does not own the row therefore connects with an EMPTY name,
- * which the server correctly refuses to let write — but until this fix, the ONLY sign of that was
+ * which the server correctly refuses to let write, but until this fix, the ONLY sign of that was
  * a throttled toast easy to miss (measured live: a guest could see the plan, every edit visibly
  * did nothing, and the reason scrolled past). Popping the SAME name step a fresh guest sees on
  * arrival turns "editing silently does nothing" into "of course, I still need to say who I am."

@@ -1,4 +1,4 @@
-// src/ts/historique/pile.ts — UNDO / REDO, IN MEMORY, NEVER PERSISTED.
+// src/ts/historique/pile.ts: UNDO / REDO, IN MEMORY, NEVER PERSISTED.
 // Ported from src/js/27-historique.js (`snapshot`, `histNoteRemoteOp`, `histReplay`, `pushHistory`,
 // `applyReplacedState`, `restore`, `undo`, `redo`, `updateHistBtns`).
 //

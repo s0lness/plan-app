@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "WALL ENDPOINT HANDLES" SUITE — NO BROWSER (the geometry is PURE)
+//  "WALL ENDPOINT HANDLES" SUITE: NO BROWSER (the geometry is PURE)
 // =============================================================================
 // Owner's report, verbatim: "j'aimerais aussi pouvoir choper les extrémités des murs et pouvoir
 // étendre et relier à d'autres murs. parfois je fais un mur mais je me rate, je voulais le faire
@@ -500,7 +500,7 @@ test("sans_le_marqueur_free_le_mur_traversant_s_etendrait_a_la_facade", (a: Donn
   // ordinary pipeline (the very one `v5WallEndDragApply` calls internally).
   v5ResoudreGeometrie(P, true);
   const w = mur(P, "w1");
-  a(w.b[0] === 400, `un mur NON free doit s'étendre jusqu'à la façade (x=400), vu ${JSON.stringify(w.b)} — ceci prouve que \`free\` est bien ce qui protège le geste précédent`);
+  a(w.b[0] === 400, `un mur NON free doit s'étendre jusqu'à la façade (x=400), vu ${JSON.stringify(w.b)}, ceci prouve que \`free\` est bien ce qui protège le geste précédent`);
 });
 
 // ---------------------------------------------------------------------------------------------

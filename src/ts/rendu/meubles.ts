@@ -1,4 +1,4 @@
-// src/ts/rendu/meubles.ts — RECONCILING THE FURNITURE IN THE LAYER.
+// src/ts/rendu/meubles.ts: RECONCILING THE FURNITURE IN THE LAYER.
 // Ported from src/js/12-rendu.js (`renderPieces`, `RSZ_HANDLES`, `resizeCursor`, `stackedAt`).
 //
 // This is the most expensive code in the repo, and three invariants live here:

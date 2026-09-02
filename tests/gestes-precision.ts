@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  SUITE "GESTURE PRECISION" — REAL MOUSE (CDP), REAL HIT-TESTING
+//  SUITE "GESTURE PRECISION": REAL MOUSE (CDP), REAL HIT-TESTING
 // =============================================================================
 // Seven defects found by a real-usage session of 1,500 gestures, on the user's plan then on an
 // apartment filled up to 300 objects. They all share the same root: what the screen shows and
@@ -596,7 +596,7 @@ await test("clic_net_sur_poignee_de_meuble_n_ecrit_rien", async () => {
 // 13 cm-thick radiators, the 88 cm-wide ones sit RIGHT AT the edge (the handle's nearest reach is
 // under one screen pixel from center, too razor-thin to make a deterministic automated case), but
 // the 49 cm-wide one is solidly inside the handle's painted area at its EXACT geometric
-// center — `document.elementsFromPoint` returns `.rot-handle` there, reliably. That is the target
+// center, `document.elementsFromPoint` returns `.rot-handle` there, reliably. That is the target
 // picked here, by its own dimensions rather than by name (the fixture carries several
 // "Radiateur"/"Radiateur N", not all of them reproduce this).
 await test("poignee_rotation_ne_vole_pas_le_centre_meuble_mince", async () => {
@@ -653,15 +653,15 @@ await test("poignee_rotation_ne_vole_pas_le_centre_meuble_mince", async () => {
 // piece with little clearance to a wall (here the TV unit, ~4 cm before the partition) stopped
 // short while the rest of the group kept going. Measured on the exact scenario replayed here:
 // forward request (+90,+60) landed as sink +90,+96 (drifted 36 cm past the group), TV unit +4,+60
-// (barely moved), everyone else +90,+60 — the SHAPE of the selection broke.
-// THE RULE (`deltaScaleMax`, gestes/contraintes.ts): a group of FURNITURE moves as ONE — the
+// (barely moved), everyone else +90,+60, the SHAPE of the selection broke.
+// THE RULE (`deltaScaleMax`, gestes/contraintes.ts): a group of FURNITURE moves as ONE, the
 // largest fraction of the requested delta every selected piece can accept, shared, applied to
-// ALL of them — never each piece projected to its own nearest valid spot. Openings are excluded
+// ALL of them, never each piece projected to its own nearest valid spot. Openings are excluded
 // from the check: they keep their own (different, allowed) wall-sliding behaviour, already
 // covered by tests/run.ts:523.
 // Uses SEED_APT (the repository's demo apartment, not the household plan): this specific wall
-// geometry — fridge/worktop/sink/hob/oven/TV unit lined up against the kitchen's walls with
-// uneven clearances — is what produces the divergence; it does not occur by accident in the
+// geometry, fridge/worktop/sink/hob/oven/TV unit lined up against the kitchen's walls with
+// uneven clearances, is what produces the divergence; it does not occur by accident in the
 // household plan's own kitchen layout, tuned for the other cases in this file.
 await test("groupe_de_meubles_bouge_d_un_seul_bloc", async () => {
   const furnitureIds = ["p1", "p2", "p3", "p4", "p5", "p6"];

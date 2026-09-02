@@ -1,4 +1,4 @@
-// src/ts/modele/photo-cellules.ts — LA PHOTO DES CELLULES, PRISE AU DÉBUT DU GESTE.
+// src/ts/modele/photo-cellules.ts: LA PHOTO DES CELLULES, PRISE AU DÉBUT DU GESTE.
 //
 // Le sol est peint à partir des CELLULES, et les cellules sont DÉRIVÉES des murs: les recalculer à
 // chaque image est ce qui fait suivre le sol sous la main (`v5ResoudreGeometrie`). Mais un nom et un

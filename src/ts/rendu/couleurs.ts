@@ -1,4 +1,4 @@
-// src/ts/rendu/couleurs.ts — RESOLVE A CSS COLOR TO HEX, then attach an opacity to it.
+// src/ts/rendu/couleurs.ts: RESOLVE A CSS COLOR TO HEX, then attach an opacity to it.
 // Ported from src/js/11-icones.js (`resolveColor`, `withAlpha`), without changing a single byte
 // of output.
 //

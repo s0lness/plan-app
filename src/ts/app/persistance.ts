@@ -1,4 +1,4 @@
-// src/ts/app/persistance.ts — THE LOCAL WRITE, AND THE G-1 SAFETY NET.
+// src/ts/app/persistance.ts: THE LOCAL WRITE, AND THE G-1 SAFETY NET.
 // Ported from src/js/07-pieces-persistance.js (`serialize`, `save`, `notePersistFailed/Ok`) and from
 // src/js/02 (`saveOpts`).
 //
@@ -84,7 +84,7 @@ export function save(ctx: Contexte): void {
   if (gesteActif()) { ctx.crochets.toucherFraicheur?.(); return; }
   try {
     // Batch 3: which key depends on the MODE (household/invited/local-only), not only on which
-    // plan a `?p=` might name — see `noyau/nombres.ts`'s `keyPourMode` for why `main`'s bare-key
+    // plan a `?p=` might name, see `noyau/nombres.ts`'s `keyPourMode` for why `main`'s bare-key
     // exemption cannot survive off the household door (design edge 13).
     localStorage.setItem(keyPourMode(modeCourant(), planIdInvite() || planCourant()), JSON.stringify(serialize(ctx)));
     notePersistOk();

@@ -1,4 +1,4 @@
-// src/ts/modele/repartir.ts — DISTRIBUTE SPACING EVENLY ACROSS SEVERAL PIECES OF FURNITURE.
+// src/ts/modele/repartir.ts: DISTRIBUTE SPACING EVENLY ACROSS SEVERAL PIECES OF FURNITURE.
 //
 // Usage request: "the same gap between the bed and the two nightstands". This is the operation
 // every layout tool calls "distribute", and it holds three decisions, all made HERE and nowhere

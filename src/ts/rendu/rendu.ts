@@ -1,4 +1,4 @@
-// src/ts/rendu/rendu.ts — `render()`, THE CROSSROADS.
+// src/ts/rendu/rendu.ts: `render()`, THE CROSSROADS.
 // Ported from src/js/12-rendu.js (`render`).
 //
 // "`js/12-rendu.js` is the crossroads: almost every visible feature ends up touching it"

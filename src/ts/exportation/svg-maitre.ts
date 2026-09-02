@@ -1,4 +1,4 @@
-// src/ts/exportation/svg-maitre.ts — THE MASTER SVG OF THE WHOLE FLAT.
+// src/ts/exportation/svg-maitre.ts: THE MASTER SVG OF THE WHOLE FLAT.
 // Ported from src/js/32-export.js (`buildMasterSVG`), VERBATIM in its geometry and its strings.
 //
 // ONE SINGLE FRAME: the FLAT cm, `sc=1`, so independent of the live zoom. The file is

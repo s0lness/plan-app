@@ -1,4 +1,4 @@
-// src/ts/gestes/contraintes.ts — WHAT HOLDS A PIECE OF FURNITURE BACK: the wall inset, and the chair/table snap.
+// src/ts/gestes/contraintes.ts: WHAT HOLDS A PIECE OF FURNITURE BACK: the wall inset, and the chair/table snap.
 // Ported from src/js/19-contraintes.js.
 //
 // THREE INVARIANTS LIVE HERE, and every one of them was paid for by a measured incident:
@@ -157,7 +157,7 @@ export function clampCenterToInset(
 // wall that normal is a single axis, so a piece whose diagonal drag makes it graze that wall gets
 // corrected on THAT AXIS ALONE: the other axis, never having penetrated anything itself, is left
 // exactly where the hand put it. Measured: an entry bench (90x30, rotated 90 deg) dragged diagonally
-// by (+60,+40) landed at (+61,-1) — X followed the pointer, Y was cancelled outright, because the
+// by (+60,+40) landed at (+61,-1), X followed the pointer, Y was cancelled outright, because the
 // piece's rotated footprint (30 wide x 90 TALL) grazed a wall that only bites in Y. Mathematically
 // this is exactly the nearest point in an axis-aligned box, so nothing is "wrong" corner by corner;
 // what's wrong is that nobody asked "how much of the REQUESTED motion can survive", only "where is
@@ -177,7 +177,7 @@ export function clampCenterToInset(
 // membership can itself change mid-path), so there is no formula for "the last t that still fits".
 // We assume feasibility is monotonic in t along the requested straight line, which holds for the
 // convex-ish cells this engine builds (a straight line leaves a room through its boundary once, not
-// repeatedly) — the same practical assumption `clampCenterToInset`'s own iteration already makes.
+// repeatedly), the same practical assumption `clampCenterToInset`'s own iteration already makes.
 export interface MembreDelta {
   cx0: number;
   cy0: number;
@@ -326,7 +326,7 @@ export function snapChairToTable(
       { edge: "right",  d: Math.abs(lx - ( hw)), lx:  hw + off, ly, along: "y", extent: hh, nrm: { x:  1, y: 0 } },
     ];
     // accept: hovering within ~12cm of flush (no need to push into the table), or anywhere
-    // inside the table footprint (nearest edge wins — kills the dead zone on wide tables)
+    // inside the table footprint (nearest edge wins, kills the dead zone on wide tables)
     const inside = Math.abs(lx) <= hw && Math.abs(ly) <= hh;
     for (const c of cands) {
       if (c.d < bestDist && (inside || c.d <= cd + 12)) { bestDist = c.d; best = { q, a, ca, sa, tcx, tcy, c, hw, hh, cd, cw }; }

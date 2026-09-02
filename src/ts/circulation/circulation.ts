@@ -1,4 +1,4 @@
-// src/ts/circulation/circulation.ts — THE CIRCULATION ENGINE, PORTED VERBATIM AND LAST.
+// src/ts/circulation/circulation.ts: THE CIRCULATION ENGINE, PORTED VERBATIM AND LAST.
 // This slice ports src/js/38-flow-ui.js (294 lines): the panel, the `#flowPill` pill,
 // the overlay layer, and the debounce/live-analysis split. The other four slices are
 // in the neighboring files, one for one:
@@ -52,7 +52,7 @@ function anyAptPieces(): boolean { return ((FL.ctx.etat.plan && FL.ctx.etat.plan
 // when there's something to fix.
 // It no longer shows the score: 100 and 91 aren't distinguishable at a glance, and a score
 // out of 100 conflates a BLOCKER (a door that won't open, a room that can't be reached) with a
-// comfort tip — a single blocker gives 82, that is to say the same band as a plan with six
+// comfort tip, a single blocker gives 82, that is to say the same band as a plan with six
 // tips. So it shows a COUNT OF FINDINGS, that of the worst severity present, and its
 // color IS that severity. Neither blocker nor warning: it DISAPPEARS (a permanent green "0" is
 // noise, and as long as nothing has been analyzed yet there's nothing honest to announce).
@@ -252,7 +252,7 @@ function drawFindingHi(ctx: CanvasRenderingContext2D, f: Constat, M: typeof aptC
 
 // ONE apartment-wide analysis. Cached by aptFlowSig(): if nothing that affects circulation
 // changed since the last run, reuse the cached result (still repaint so pan/zoom stay live).
-// (js/36 declared `analyze()`; it lives here because it PAINTS — `renderFlow` and `drawOverlay` are
+// (js/36 declared `analyze()`; it lives here because it PAINTS, `renderFlow` and `drawOverlay` are
 // of this module, and an ES module can't loop. Its body hasn't changed.)
 export function analyze(force?: boolean): void {
   const sig = aptFlowSig();
@@ -351,7 +351,7 @@ function apresRenduFlow(): void {
 
 export function brancherCirculation(ctx: Contexte): void {
   poserContexteFlow(ctx);
-  // js/37: `afterFix()` — the fix mutated the REAL piece, we repaint and re-analyze.
+  // js/37: `afterFix()`, the fix mutated the REAL piece, we repaint and re-analyze.
   FL.afterFix = () => { render(ctx); ctx.crochets.syncInspector?.(); analyzeNow(); };
 
   // THE TWO HOOKS ALREADY PROVIDED FOR (app/contexte.ts).

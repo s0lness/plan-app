@@ -9,7 +9,7 @@
   /* MY other device (same account, different socket): same person, so same color and same
      initial; what changes is a light outline. Two pills = two devices. */
   .peer-dot.self{border-width:2px;border-color:rgba(255,255,255,.9)}
-  /* GUEST identity (design edge 4): self-declared, not Access-proven like every other peer —
+  /* GUEST identity (design edge 4): self-declared, not Access-proven like every other peer:
      someone COULD name themselves after the owner, so provenance must be visible on its own,
      never inferred from the name. A DASHED ring reads as "unverified" against `.self`'s solid
      one, in the same warm-paper visual language. */

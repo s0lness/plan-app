@@ -1,4 +1,4 @@
-// src/ts/fil/emission.ts — WHAT GOES OUT: THE DIFF, THE SEQUENCE NUMBERS, THE ACKNOWLEDGEMENTS,
+// src/ts/fil/emission.ts: WHAT GOES OUT: THE DIFF, THE SEQUENCE NUMBERS, THE ACKNOWLEDGEMENTS,
 // THE RESEND.
 // Ported from src/js/42-collab-fil.js, the IMPURE part (the pure part, mirror and field-by-field
 // diff, has lived in `fil/miroir.ts` since E2, and 20,000 seeds cover it with no browser).

@@ -1,4 +1,4 @@
-// src/ts/modele/cellules.ts — CELL DETECTION (planar subdivision) and persistence of
+// src/ts/modele/cellules.ts: CELL DETECTION (planar subdivision) and persistence of
 // names/floors. Porté de src/js/48-v5-cellules.js.
 //
 // 1. segments = outline edges + interior walls
@@ -339,7 +339,7 @@ export function v5DetectCells(
 }
 
 // =================================================================================================
-//  NAME / FLOOR PERSISTENCE — the cells are derived, the labels are not
+//  NAME / FLOOR PERSISTENCE, the cells are derived, the labels are not
 // =================================================================================================
 // Matching by largest (exact) area overlap, deterministic: every pair sorted by (decreasing
 // overlap, previous index, new index) and consumed greedily.

@@ -1,4 +1,4 @@
-// src/ts/gestes/meuble.ts — DRAG, ROTATE, DRAG A GROUP.
+// src/ts/gestes/meuble.ts: DRAG, ROTATE, DRAG A GROUP.
 // Ported from src/js/17-drag-meubles.js, verbatim in its arithmetic.
 //
 // THIS IS THE APPLICATION'S CENTRAL GESTURE, and six invariants live here. None of them is a

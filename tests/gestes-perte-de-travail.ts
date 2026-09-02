@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  SUITE "WORK LOSS" — REAL MOUSE (CDP), REAL HIT-TESTING
+//  SUITE "WORK LOSS": REAL MOUSE (CDP), REAL HIT-TESTING
 // =============================================================================
 // Seven regressions born from two real-usage sessions. All of them have in common that they
 // destroyed work IN SILENCE: nothing on screen said that something had just gone wrong. Each

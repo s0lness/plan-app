@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS errors(
 );
 
 -- Feedback dropped from inside the app itself (functions/api/feedback.ts): an unauthenticated
--- free-text note, no account required, reachable from EITHER door (household or guest link) —
+-- free-text note, no account required, reachable from EITHER door (household or guest link):
 -- the whole point is that a visitor can report something too. Read periodically by whoever
 -- maintains the plan; there is no in-app inbox to view it back.
 --   at       : ISO timestamp of the write.
@@ -51,11 +51,11 @@ CREATE TABLE IF NOT EXISTS errors(
 --              (invites.last_name) on the guest door; empty when a guest never gave one.
 --   porte    : which door it came from, 'foyer' or 'invite' (functions/porte.ts's own verdict),
 --              so a reply knows which kind of visitor to look for.
---   plan_id  : which plan the note is about — the household's own plan id on the foyer door, or
+--   plan_id  : which plan the note is about, the household's own plan id on the foyer door, or
 --              the plan named by the invite the guest came through. No foreign key, same
 --              reasoning as `invites`: a plan can be deleted while its feedback rows stay legible.
 --   texte    : the note itself. Required, cleaned and capped by functions/nom.ts's cleanName.
---   contact  : optional free text, "how to reach you" — never validated, not necessarily an email.
+--   contact  : optional free text, "how to reach you", never validated, not necessarily an email.
 --   ua       : navigator.userAgent, for triage only (which build/browser hit the bug).
 --   ip       : CF-Connecting-IP, kept short. Rate-limit and abuse bookkeeping only, never shown.
 CREATE TABLE IF NOT EXISTS feedback(
@@ -70,8 +70,8 @@ CREATE TABLE IF NOT EXISTS feedback(
 --   token      : the capability itself, PRIMARY KEY, 128 bits base64url. Stored IN CLEAR,
 --                deliberately: hashing it would mean the link can be shown exactly once, and the
 --                owner will want to re-copy it later (a "Share" panel that lists live invites).
---                What this row protects is the SAME thing the link already protects — someone
---                holding the token can already reach the plan — so a leaked row leaks nothing a
+--                What this row protects is the SAME thing the link already protects, someone
+--                holding the token can already reach the plan, so a leaked row leaks nothing a
 --                leaked link would not. Reachable only through the household door
 --                (functions/api/invites.ts checks porteDe()==="foyer" itself, not just the
 --                middleware), which is why this is acceptable here and would not be for anything

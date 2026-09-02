@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "A JUNCTION MUST HOLD WHEN A WALL IS MOVED" SUITE — REAL MOUSE (CDP), end to end
+//  "A JUNCTION MUST HOLD WHEN A WALL IS MOVED" SUITE: REAL MOUSE (CDP), end to end
 // =============================================================================
 // Owner's exact case: draw wall segments separately, connect them end to end into two rooms
 // (the segment tool stays armed across walls, snapping onto the previous wall's own endpoint),
@@ -17,7 +17,7 @@
 //   node tests/jonction-glisser-mur-geste.ts [path/to/app.html]
 //
 // Real mouse (`Input.dispatchMouseEvent`), never a synthetic PointerEvent: AGENTS.md, "A click
-// lands on what is visible" — a synthetic event bypasses hit-testing and the capture-phase wiring
+// lands on what is visible", a synthetic event bypasses hit-testing and the capture-phase wiring
 // this fix lives in.
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";

@@ -1,4 +1,4 @@
-// src/ts/panneaux/renommer-en-ligne.ts — RENAMING ON THE LABEL ITSELF.
+// src/ts/panneaux/renommer-en-ligne.ts: RENAMING ON THE LABEL ITSELF.
 //
 // The first version opened the panel's name field, cursor inside. It worked, and that
 // was not the ask: "I want the editable text box ON the label." Looking to the right

@@ -1,4 +1,4 @@
-// src/ts/rendu/noms.ts — ONLY A CHOSEN NAME GETS WRITTEN ON THE PLAN (R-3).
+// src/ts/rendu/noms.ts: ONLY A CHOSEN NAME GETS WRITTEN ON THE PLAN (R-3).
 // Ported from src/js/12-rendu.js (`isChosenName` only: it is a PURE function of three inputs,
 // its argument, the catalogue, the table of legacy labels, so it never needed a browser to be
 // verified).

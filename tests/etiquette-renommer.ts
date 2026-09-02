@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "DOUBLE-CLICK ON THE LABEL = RENAME" SUITE — REAL MOUSE (CDP)
+//  "DOUBLE-CLICK ON THE LABEL = RENAME" SUITE: REAL MOUSE (CDP)
 // =============================================================================
 // Usage request: "I want to change the name of a piece of furniture or a room by
 // double-clicking on the label (except when the name is empty)".

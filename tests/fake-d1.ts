@@ -31,12 +31,12 @@ export interface LigneD1 {
 // 1b"): same reasoning as `plans` above, the EXACT schema from live-worker/schema.sql, so a
 // syntax mistake in a route's SQL shows up here rather than in production. Tests populate and
 // read it directly through the `db` handle this factory already returns, exactly like they use
-// `store.writeDirect` for `plans` — no bespoke helper needed for one more table.
+// `store.writeDirect` for `plans`, no bespoke helper needed for one more table.
 // `plans.name` is NOT in live-worker/schema.sql's CREATE TABLE text: that column was added in
 // production by a separate `ALTER TABLE plans ADD COLUMN name TEXT` (functions/api/plans.ts's own
 // top comment says so), which the "exact reproduction" file never captured. It is added here
 // because functions/api/invite.ts genuinely reads it in production (the plan name shown to a
-// guest on redemption) — reproducing the CREATE TABLE text literally would make that query fail
+// guest on redemption), reproducing the CREATE TABLE text literally would make that query fail
 // against every real database it will ever run on.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans(

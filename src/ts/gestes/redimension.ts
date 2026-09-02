@@ -1,4 +1,4 @@
-// src/ts/gestes/redimension.ts — RESIZING A PIECE OF FURNITURE BY ITS HANDLES.
+// src/ts/gestes/redimension.ts: RESIZING A PIECE OF FURNITURE BY ITS HANDLES.
 // Ported from src/js/18-redimension.js.
 //
 // The gesture works in the piece's LOCAL frame, so a rotated piece resizes along

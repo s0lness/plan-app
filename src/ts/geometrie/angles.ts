@@ -1,4 +1,4 @@
-// src/ts/geometrie/angles.ts — THE 45-DEGREE TABLE, pure.
+// src/ts/geometrie/angles.ts: THE 45-DEGREE TABLE, pure.
 //
 // Everything here is pure, in the spirit of `geometrie/polygones.ts`: no `Contexte`, no DOM, no
 // `toast`. Its one consumer is the wall tool's endpoint drag (`v5WallEndDrop`, `gestes/murs.ts`),

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  CURSOR CHAT ("/") — REAL MOUSE, REAL KEYBOARD, REAL DOM (CDP)
+//  CURSOR CHAT ("/"): REAL MOUSE, REAL KEYBOARD, REAL DOM (CDP)
 // =============================================================================
 // FigJam-style: press "/", a small box appears attached to the pointer and follows it; Enter or
 // Escape closes it. This suite proves the LOCAL half, with a real browser and real key events:
@@ -131,7 +131,7 @@ async function taperTexte(s: string) {
 const centerOf = (sel: VerdictSonde) => J(`(function(){var e=document.querySelector(${JSON.stringify(sel)});
   if(!e) return null; var r=e.getBoundingClientRect(); if(!r.width) return null;
   return {x:r.left+r.width/2, y:r.top+r.height/2, w:Math.round(r.width), h:Math.round(r.height)};})()`);
-// `say-box`'s own state: === true / === false against `hidden`, NEVER `!hidden` — an ABSENT
+// `say-box`'s own state: === true / === false against `hidden`, NEVER `!hidden`, an ABSENT
 // element must read as null, not silently as "not hidden" (tests/porte-invitee.ts's own
 // convention, carried here since the box is created/removed by script, not static markup).
 const etatBoite = () => J(`(function(){var e=document.querySelector(".say-box");

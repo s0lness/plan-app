@@ -1,4 +1,4 @@
-// src/ts/modele/conversion-v4.ts — THE v4 -> v5 CONVERSION, in a single pass.
+// src/ts/modele/conversion-v4.ts: THE v4 -> v5 CONVERSION, in a single pass.
 // Porté de src/js/49-v5-conversion.js (`buildV5FromV4`; the four support-line functions live in
 // `modele/conversion.ts` and are IMPORTED).
 //

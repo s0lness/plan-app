@@ -1,4 +1,4 @@
-// src/ts/fil/pseudo-fil.ts — THE SHARED SHAPE OF AN ENTITY, and reading it back.
+// src/ts/fil/pseudo-fil.ts: THE SHARED SHAPE OF AN ENTITY, and reading it back.
 // Ported from src/js/51-v5-pseudo-fil.js.
 //
 // C-5, THE MOST FRAGILE INVARIANT IN THE REPO: a persisted field must be declared HERE (in the

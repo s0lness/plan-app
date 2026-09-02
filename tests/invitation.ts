@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  THE INVITE — NO BROWSER, against the real route files over an in-memory D1 (tests/fake-d1.ts).
+//  THE INVITE: NO BROWSER, against the real route files over an in-memory D1 (tests/fake-d1.ts).
 // =================================================================================================
 //   node tests/invitation.ts
 //
@@ -96,7 +96,7 @@ const req = (url: string, opts: { method?: string; host: string; headers?: Recor
 const cookieDe = (token: string) => "plan_invite=" + jeton(token);
 
 // =================================================================================================
-//  1. functions/nom.ts — the shared name cleaner
+//  1. functions/nom.ts, the shared name cleaner
 // =================================================================================================
 
 await test("nom_retire_les_controles_bidi", () => {
@@ -127,7 +127,7 @@ await test("nom_garde_toujours_les_controles_bas_et_del", () => {
 });
 
 // =================================================================================================
-//  2. functions/api/invite.ts — the guest's redemption of a token
+//  2. functions/api/invite.ts, the guest's redemption of a token
 // =================================================================================================
 
 await test("invite_refuse_sur_la_porte_foyer", async () => {
@@ -268,7 +268,7 @@ await test("invite_nom_ne_prefiltre_pas_un_appareil_different_meme_jeton", async
 
 await test("invite_deux_invites_sur_le_meme_lien_gardent_chacun_leur_nom", async () => {
   // THE FULL SCENARIO from the report: A names themselves, B redeems the SAME token on a
-  // DIFFERENT device and must NOT be handed A's name, then A returns and IS handed theirs — B's
+  // DIFFERENT device and must NOT be handed A's name, then A returns and IS handed theirs, B's
   // own (nameless) redemption must not have clobbered A's remembered identity along the way.
   const { db, env } = base();
   inserePlan(db, "appartement", "Chez nous");
@@ -313,7 +313,7 @@ await test("invite_comptabilise_les_usages_au_mieux", async () => {
 });
 
 // =================================================================================================
-//  3. functions/api/invites.ts — the owner's management, foyer door only
+//  3. functions/api/invites.ts, the owner's management, foyer door only
 // =================================================================================================
 
 const CTX_FOYER = () => {
@@ -391,7 +391,7 @@ await test("invites_creation_liste_revocation_aller_retour", async () => {
 // =================================================================================================
 //  3bis. `guestHost` (batch 4, owner client): the client cannot know the guest hostname on its
 //  own (de-identified repo, different origin from the owner's), so the server hands it back in
-//  every GET/POST response, read straight from GUEST_HOST — the SAME plain value `functions/porte.ts`
+//  every GET/POST response, read straight from GUEST_HOST, the SAME plain value `functions/porte.ts`
 //  already uses for the door check. `base()` configures GUEST_HOST; `baseSansGuestHost()` leaves it
 //  unset, which must give `null`, never an empty string or an omitted field a client would have
 //  to special-case.
@@ -438,7 +438,7 @@ await test("invites_post_guestHost_absent_quand_non_configure", async () => {
 
 await test("invites_delete_appelle_le_do_revoke_avec_le_marqueur_interne", async () => {
   // Batch 2, design edge 6: "Revoke must close live sockets, not merely block new ones." This
-  // proves the WIRING from this route to `live-worker/worker.ts`'s `handleRevoke` — the DO-side
+  // proves the WIRING from this route to `live-worker/worker.ts`'s `handleRevoke`, the DO-side
   // behaviour itself (which sockets close, which don't) is covered in `live-worker/test-local.ts`.
   const { db, env } = CTX_FOYER();
   insereInvite(db, { token: "wire1", planId: "appartement" });
@@ -503,7 +503,7 @@ await test("invites_plafond_ne_compte_pas_les_revoquees", async () => {
 });
 
 // =================================================================================================
-//  4. functions/api/plan.ts — the "invite" door's effect on the shared plan
+//  4. functions/api/plan.ts, the "invite" door's effect on the shared plan
 // =================================================================================================
 
 async function planGetVia(env: DonneeDynamique, url: string, token?: string) {
@@ -615,7 +615,7 @@ await test("plan_put_invite_sans_nom_connu_ecrit_le_point_d_interrogation", asyn
 });
 
 // =================================================================================================
-//  5. functions/ws.ts — door resolution and forwarded identity headers (no real Durable Object)
+//  5. functions/ws.ts, door resolution and forwarded identity headers (no real Durable Object)
 // =================================================================================================
 
 function fakeRoom() {
@@ -664,7 +664,7 @@ await test("ws_invite_valide_force_le_plan_et_marque_l_identite_invite", async (
 await test("ws_invite_un_nom_connu_pour_le_jeton_ne_traverse_pas_vers_un_autre_appareil", async () => {
   // THE OTHER HALF OF THE DEFECT, confirmed live: `functions/ws.ts` used to read
   // `invites.last_name` UNCONDITIONALLY, so BOTH sockets on a shared link carried whichever name
-  // last landed on that ONE row — the two people testing together both appeared under one name.
+  // last landed on that ONE row, the two people testing together both appeared under one name.
   const { db, env } = base();
   inserePlan(db, "appartement", "Chez nous");
   insereInvite(db, { token: "ws2", planId: "appartement", lastName: "Marie", lastGuestId: "device-marie" });
@@ -698,7 +698,7 @@ await test("ws_invite_sans_g_ne_recoit_jamais_un_nom_devine", async () => {
 });
 
 await test("ws_invite_deux_appareils_sur_le_meme_jeton_gardent_chacun_leur_propre_nom", async () => {
-  // THE FULL SCENARIO: two guests, same token, different `guestId` — each socket must carry ITS
+  // THE FULL SCENARIO: two guests, same token, different `guestId`, each socket must carry ITS
   // OWN name, and neither is left nameless because of the other.
   const { db, env } = base();
   inserePlan(db, "appartement", "Chez nous");
@@ -987,7 +987,7 @@ await test("invite_accepte_toujours_un_corps_normal", async () => {
 });
 
 // =================================================================================================
-//  9. /api/orphans — LES VERSIONS QUE LE PLAN VIVANT A ÉCARTÉES, PORTE FOYER SEULEMENT
+//  9. /api/orphans, LES VERSIONS QUE LE PLAN VIVANT A ÉCARTÉES, PORTE FOYER SEULEMENT
 // =================================================================================================
 // La bannière `conflict` du client disait « elles sont gardées sur le serveur » : vrai, et
 // inatteignable, puisque rien ne pouvait les demander. Cette route relaie le `GET /orphans` du

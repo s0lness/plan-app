@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  DETERMINISTIC HARNESS — gap #4 from docs/collab-etat-de-l-art.md
+//  DETERMINISTIC HARNESS: gap #4 from docs/collab-etat-de-l-art.md
 // =================================================================================================
 // The eighteen barrier suites drive real browsers: they prove INTEGRATION, but they can't explore
 // ten thousand interleavings, and the only network effect they model is a uniform delay. This
@@ -817,12 +817,12 @@ function rapportGraine(r: DonneeDynamique) {
 const secondes = ((Date.now() - t0) / 1000).toFixed(1);
 process.stdout.write(`\nharnais déterministe : ${passees}/${graines.length} graines passées en ${secondes} s\n`);
 process.stdout.write(`  invariants connus laissés verts : ${CONNUS.length} (voir CONNUS dans ce fichier)`
-  + (STRICT ? " — REARMÉS par --strict" : "") + "\n");
+  + (STRICT ? ", REARMÉS par --strict" : "") + "\n");
 if (transitoiresVus)
   process.stdout.write(`  états transitoires non conformes traversés : ${transitoiresVus}`
     + " (un geste part en plusieurs ops, ils se résorbent seuls)\n");
 for (const e of echecs) {
-  process.stdout.write(`\n  ÉCHEC graine ${e.graine} — ${e.quoi}\n`);
+  process.stdout.write(`\n  ÉCHEC graine ${e.graine}, ${e.quoi}\n`);
   if (e.detail) { process.stdout.write("    " + e.detail.split("\n").slice(0, 6).join("\n    ") + "\n"); continue; }
   if (e.r.violations.length)
     process.stdout.write("    invariants violés : " +

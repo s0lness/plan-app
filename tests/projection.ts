@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "VIDEO PROJECTOR" SUITE — NO BROWSER (the geometry is PURE)
+//  "VIDEO PROJECTOR" SUITE: NO BROWSER (the geometry is PURE)
 // =============================================================================
 // Usage request: "see the projection throw to know where to place it, be able to pair it to a
 // screen, move it back/forward, and know if the minimum distance is respected, including in ultra

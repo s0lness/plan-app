@@ -1,4 +1,4 @@
-// src/ts/modele/conversion.ts — recognition of support lines, and "is this segment on the
+// src/ts/modele/conversion.ts: recognition of support lines, and "is this segment on the
 // outline?". Porté de src/js/49-v5-conversion.js (PURE part: the four functions that the
 // plan's sanitization (js/02), the verdict for deleting a wall (js/52), and undo replay
 // (js/27) depend on).

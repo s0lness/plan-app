@@ -1,4 +1,4 @@
-// src/ts/modele/creation.ts — BEING BORN: `mk()` and automatic naming.
+// src/ts/modele/creation.ts: BEING BORN: `mk()` and automatic naming.
 // Porté de src/js/07-pieces-persistance.js (`mk`, `autoName`, `aptToLayerPx`).
 //
 // R-3. A PIECE OF FURNITURE IS BORN WITH ITS TYPE'S LABEL, sometimes numbered ("Table 2",

@@ -1,4 +1,4 @@
-// src/ts/catalogue/catalogue.ts — the furniture catalogue (dimensions in cm, w = width, h = depth).
+// src/ts/catalogue/catalogue.ts: the furniture catalogue (dimensions in cm, w = width, h = depth).
 // Ported from src/js/01-catalogue.js, WITHOUT RENAMING A SINGLE LABEL (docs/reecriture.md §7.5).
 //
 // TWO COLUMNS THAT DON'T SAY THE SAME THING (R-4): `cat` says WHERE YOU LOOK for the object (the

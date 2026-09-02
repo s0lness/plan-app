@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  CURSOR CHAT ("/") — THE WIRE HALF, TWO DEVICES BEHIND A SINGLE ADDRESS
+//  CURSOR CHAT ("/"): THE WIRE HALF, TWO DEVICES BEHIND A SINGLE ADDRESS
 // =============================================================================
 // Same harness as `tests/deux-appareils.ts` (one headless page per case, the server simulated
 // through `window.__plan.wsFeed`/`outLog`): A is THIS page, B is simulated by feeding back what
@@ -52,7 +52,7 @@ const seedV4 = (st: VerdictSonde) => `try{ localStorage.setItem(${JSON.stringify
 const SEED = seedV4(REAL_PLAN);
 
 // Device A ("aaaaaa", the household member on this page) and a household peer ("bbbbbb") for the
-// second device — same shape as `tests/deux-appareils.ts`'s own HELLO.
+// second device, same shape as `tests/deux-appareils.ts`'s own HELLO.
 const HELLO = `window.__plan.wsForceOpen(true);
   window.__plan.wsFeed({ t:"hello",
     you:{ email:"a@example.com", color:"#1f6f78", tag:"aaaaaa" },
@@ -61,7 +61,7 @@ const HELLO = `window.__plan.wsForceOpen(true);
     state:null, rev:1, fp:"x", chat:[] });`;
 
 // A message A ACTUALLY EMITTED (captured live, not hand-built), relabelled as if it had arrived
-// from device "bbbbbb": the SERVER stamps `tag`/`by`/`name`, the client never sends its own — a
+// from device "bbbbbb": the SERVER stamps `tag`/`by`/`name`, the client never sends its own, a
 // captured outgoing `cursor` message therefore carries none of them yet.
 const commeUnPair = `function commeUnPair(m){
     return Object.assign({}, m, { tag:"bbbbbb", by:"device.b@example.com", name:"", guest:false });
@@ -134,7 +134,7 @@ await test("b_voit_le_texte_disparaitre_quand_a_ferme_sa_boite", SEED, `
 
 // =============================================================================
 //  4. NOTHING IS WRITTEN: A whole exchange (A speaks, B receives, A dismisses) leaves the plan
-//     byte-identical — nothing to save, nothing to undo.
+//     byte-identical, nothing to save, nothing to undo.
 // =============================================================================
 await test("un_echange_complet_ne_modifie_pas_le_plan", SEED, `
   ${HELLO}

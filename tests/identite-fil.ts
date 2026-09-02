@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  WIRE IDENTITY, CLIENT SIDE — NO BROWSER, by import against the real client modules.
+//  WIRE IDENTITY, CLIENT SIDE: NO BROWSER, by import against the real client modules.
 // =================================================================================================
 //   node tests/identite-fil.ts
 //
 // Covers docs/decisions/0004-partage-par-lien.md, "batch 2, wire identity", client side:
 // `displayName`/`personColor` (src/ts/mesure/curseur-pair.ts) preferring an explicitly sent name,
-// `wsSameAccount` (src/ts/fil/etat.ts) never matching two different guests, and — the highest-risk
-// item in the whole feature (design edge 1) — a stored XSS proof for a guest name rendered by
+// `wsSameAccount` (src/ts/fil/etat.ts) never matching two different guests, and, the highest-risk
+// item in the whole feature (design edge 1), a stored XSS proof for a guest name rendered by
 // `creerNoeudCurseur`.
 //
 // Style and assertion vocabulary match tests/porte.ts / tests/invitation.ts, which this suite
 // continues. Deliberately does NOT import `src/ts/fil/presence.ts`: that module (and everything
 // it pulls in through `fil/drapeaux.ts`) reads `window`/`location` at MODULE SCOPE, which plain
-// node has neither of. `curseur-pair.ts` and `fil/etat.ts` do not, and are imported directly —
+// node has neither of. `curseur-pair.ts` and `fil/etat.ts` do not, and are imported directly:
 // see AGENTS.md, "Blank startup", for why module-scope reads of globals are the trap this avoids.
 
 import { displayName, personColor, creerNoeudCurseur } from "../src/ts/mesure/curseur-pair.ts";
@@ -23,13 +23,13 @@ import { escapeHtml } from "../src/ts/noyau/nombres.ts";
 import type { ResultatSimple } from "./_types.ts";
 
 // =================================================================================================
-//  MINIMAL DOM STUB — just enough for `creerNoeudCurseur`, nothing else
+//  MINIMAL DOM STUB, just enough for `creerNoeudCurseur`, nothing else
 // =================================================================================================
 // `creerNoeudCurseur` calls exactly two DOM operations: `document.createElement("div")`, then sets
 // `.className` and `.innerHTML` on the result. `innerHTML` here is a PLAIN STRING STORE, with NO
 // parsing attempted: that is precisely what makes this a faithful (not a simulated) proof. A real
 // browser's `.innerHTML` SETTER is what parses its argument as HTML and instantiates whatever tags
-// it finds — this stub captures EXACTLY the string that setter would receive. If that string never
+// it finds, this stub captures EXACTLY the string that setter would receive. If that string never
 // contains a raw, un-escaped "<img …>" and DOES contain the escaped form, a real browser parsing
 // it necessarily renders inert text, never an element. No jsdom/happy-dom in this repository (see
 // AGENTS.md, "browserless" tests): this is the honest alternative for the one function that needs
@@ -116,7 +116,7 @@ await test("personColor_sans_rien_retombe_sur_le_repli", () => {
 // BEFORE this field existed, every unauthenticated caller shared the SAME fallback identity
 // ("inconnu"), so `by === fil.wsMe.email` matched every stranger holding the link: each guest saw
 // every OTHER guest wearing the `.self` outline, the "your other device" tooltip and the "Other
-// device" cursor label — the strongest trust marker in the UI, handed to a stranger.
+// device" cursor label, the strongest trust marker in the UI, handed to a stranger.
 
 function filFoyer(email: string, tag: string): Fil {
   const f = creerFil();
@@ -185,7 +185,7 @@ await test("wsSameAccount_jamais_vrai_pour_soi_meme", () => {
 // `creerNoeudCurseur` is the ONE node factory shared by the realtime wire and the probe (see its
 // own header note): it builds `.innerHTML` from an SVG constant plus the ESCAPED label. This is
 // the authoritative proof that the escaping actually runs on the string a real browser would then
-// parse — not just that `escapeHtml` exists somewhere in the codebase.
+// parse, not just that `escapeHtml` exists somewhere in the codebase.
 
 const CHARGE_UTILE = '<img src=x onerror=alert(document.cookie)>';
 
@@ -194,7 +194,7 @@ await test("xss_creerNoeudCurseur_echappe_le_nom_dans_innerHTML", () => {
   const html = el.innerHTML;
   // The RAW payload must be ABSENT as a literal substring: if it were present unescaped, a real
   // browser parsing this `.innerHTML` string would instantiate an <img> element and fire
-  // `onerror` the instant it fails to load — this is what "renders as text" is a proxy for.
+  // `onerror` the instant it fails to load, this is what "renders as text" is a proxy for.
   const ok1 = expect(!html.includes(CHARGE_UTILE), "le HTML genere ne doit JAMAIS contenir le payload brut, vu " + html);
   // And the ESCAPED form must be present: proves the string was actually run through
   // `escapeHtml`, not merely that the raw one is absent for some unrelated reason.
@@ -226,7 +226,7 @@ await test("xss_creerNoeudCurseur_porte_la_classe_guest_pour_la_provenance", () 
 });
 
 await test("xss_escapeHtml_neutralise_les_quatre_caracteres_dangereux", () => {
-  // The primitive itself, isolated: `&`, `<`, `>`, `"` — everything `creerNoeudCurseur` and
+  // The primitive itself, isolated: `&`, `<`, `>`, `"`, everything `creerNoeudCurseur` and
   // `wsAppendChat` (src/ts/fil/presence.ts, rewritten to build the DOM via createElement/
   // textContent rather than innerHTML, so it needs no escaping at all) rely on.
   const sale = `&<>"'`;

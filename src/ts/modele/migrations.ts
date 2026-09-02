@@ -1,4 +1,4 @@
-// src/ts/modele/migrations.ts — SANITIZATION OF THE WALLS-ONLY PLAN ON READ.
+// src/ts/modele/migrations.ts: SANITIZATION OF THE WALLS-ONLY PLAN ON READ.
 // Porté de src/js/02-etat-migrations.js (PURE part: `sanitizeV5Plan`, `normalizeOpeningFacing`,
 // `cleanOpts`). The rest of js/02 (`migrate`, `defaultState`, `bootOpts`, `bindState`, reading
 // `localStorage` at bootstrap) touches storage and bootstrap ordering: still to be ported.
@@ -249,7 +249,7 @@ export function normalizeOpeningFacing<T extends PlanV5>(plan: T | null | undefi
 }
 
 // =================================================================================================
-//  PERSONAL SETTINGS — they NEVER cross over, in either direction (D-7)
+//  PERSONAL SETTINGS, they NEVER cross over, in either direction (D-7)
 // =================================================================================================
 // Everything here describes the person's SCREEN (layers, labels, snap, Circulation panel,
 // overlay, collapsed categories, TV inches), not the apartment.

@@ -1,4 +1,4 @@
-// src/ts/rendu/calque.ts — THE LAYER, the SINGLE editing container.
+// src/ts/rendu/calque.ts: THE LAYER, the SINGLE editing container.
 // Ported from src/js/50-v5-rendu.js (`renderV5`, `v5RenderBack`) and src/js/54-v5-interface.js
 // (`v5RenderOpenings`, `v5RenderLabels`, `v5DrawHandles`).
 //
@@ -599,7 +599,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     //   2. la CROIX: elle est le seul geste de pointage qui supprime, et elle se pose de l'autre
     //      côté de la normale, donc elle ne dispute sa place à personne;
     //   3. la COUPE « + »: elle garde son seuil de longueur, mais pour ce qu'il veut vraiment
-    //      dire — couper plus court laisse deux moitiés qu'on ne peut plus viser;
+    //      dire, couper plus court laisse deux moitiés qu'on ne peut plus viser;
     //   4. les BOUTS, puis 5. les MAILLONS: ils cèdent en premier parce qu'ils ont, eux, une
     //      solution de rechange immédiate, zoomer.
     // Et la place se vérifie sur les BOITES, pas sur la longueur: deux boutons au même pixel
@@ -647,7 +647,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     // G-15-BIS: SAME TRAP AS THE OUTLINE'S "+", one wall family over. Dead-center on the wall's
     // own segment, this "x" used to sit exactly where `[data-w]` (the drag band, G-3's "grab it
     // again to nudge it") is grabbed: selecting a wall by dragging it once, then reaching for the
-    // SAME spot to adjust it again, deleted it instead — the delete handler wins the hit-test the
+    // SAME spot to adjust it again, deleted it instead, the delete handler wins the hit-test the
     // layer's own early return grants `.v5wx` (`v5LayerDown`). Measured: a wall dragged out and
     // back vanished on the second grab, silently (no toast, `v5DeleteSelectedWall`'s refusal path
     // is for facades, not "wrong target"). Offset PERPENDICULAR to the wall, clear of its own

@@ -1,4 +1,4 @@
-// src/ts/fil/branchement.ts — THE ONLY PLACE THAT WIRES THE SYNC LAYER INTO THE REST OF THE CLIENT.
+// src/ts/fil/branchement.ts: THE ONLY PLACE THAT WIRES THE SYNC LAYER INTO THE REST OF THE CLIENT.
 //
 // The old client had no place like this one: `save()` (js/07) called `syncOnSave()` and
 // `wsOnSave()` by name, `js/29` and `js/32` called `wsMaybeReplace()` behind a

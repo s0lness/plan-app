@@ -1,4 +1,4 @@
-// src/ts/mesure/curseur-pair.ts — A PEER'S CURSOR LABEL, RENDERING ONLY.
+// src/ts/mesure/curseur-pair.ts: A PEER'S CURSOR LABEL, RENDERING ONLY.
 //
 // ⚠ OUT OF BATCH, DELIBERATE AND ON PURPOSE MINIMAL. Collaboration is stage E4, not this one. But
 // `.pc-name` is one of the EIGHT text families that `tests/textes-lisibles.ts` requires to be seen
@@ -70,7 +70,7 @@ function displayNameFromEmail(email: unknown): string {
  * identity"). A guest's `name` is self-declared and carried on the wire as-is (`peer`, `op`,
  * `cursor`, `drag`, `chat`, `hello.you`/`.peers`): it is NOT an email and must never be run
  * through the local-part derivation above. A household author still has no such field (only a
- * guest chooses one today), so passing its peer object here — instead of just its `.email` — is
+ * guest chooses one today), so passing its peer object here, instead of just its `.email`, is
  * what lets a GUEST recipient see something better than "?" for a household peer too: the server
  * fills `name` in with an email-derived one for exactly that recipient (`nameForGuestAudience` in
  * `live-worker/worker.ts`), and this function only has to trust whatever arrives.
@@ -117,7 +117,7 @@ export function personColor(o: unknown, fallback?: string): string {
  * cursors, which is its own kind of lie.
  *
  * PURE and DISPLAY-ONLY: it never touches what is stored anywhere (the invite row, `wsMe.name`,
- * the wire) — only what THIS call paints. `all` should be the FULL peer set (self included): the
+ * the wire), only what THIS call paints. `all` should be the FULL peer set (self included): the
  * discriminator is derived by sorting every collision's `tag` and reading off the target's rank,
  * so every screen that received the same peer list computes the SAME numbering independently,
  * with no coordination and no extra round trip. A target with no `tag` at all (e.g. a value read
@@ -152,13 +152,13 @@ function wsCursorArrowSVG(color: string): string {
  * `label` comes from an e-mail RELAYED by the server: it goes into `innerHTML`, so it is ESCAPED,
  * like everything else (R-9). One single rule, no "harmless" exception.
  *
- * SINCE BATCH 2, `label` MAY ALSO BE A GUEST'S SELF-DECLARED NAME — the FIRST untrusted string
+ * SINCE BATCH 2, `label` MAY ALSO BE A GUEST'S SELF-DECLARED NAME, the FIRST untrusted string
  * this client has ever rendered (every name before it came from an Access-verified email). The
  * SAME `escapeHtml` call already covers it: nothing here changed for that reason, which is exactly
  * the point of having one rule instead of a second "harmless" path for the new source.
  *
  * `guest`: design edge 4, "make provenance visible". A household identity is Access-proven; a
- * guest's is self-declared, and someone can name themselves after the owner — the `.guest` class
+ * guest's is self-declared, and someone can name themselves after the owner, the `.guest` class
  * (dashed border, `css/15-collab.css`) is the only thing that tells the two apart on screen.
  */
 export function creerNoeudCurseur(label: string, color: string, guest?: boolean): HTMLElement {
@@ -166,12 +166,12 @@ export function creerNoeudCurseur(label: string, color: string, guest?: boolean)
   el.className = guest ? "peer-cur guest" : "peer-cur";
   // `.pc-say` (cursor chat, "/", `fil/dire.ts` + `fil/presence.ts`): built into the SAME
   // `innerHTML` string as `.pc-name`, empty and `hidden`, rather than appended afterward via
-  // `appendChild` — this keeps `creerNoeudCurseur`'s DOM footprint exactly what it was
+  // `appendChild`, this keeps `creerNoeudCurseur`'s DOM footprint exactly what it was
   // (`createElement` + `.className` + one `.innerHTML` write), which `tests/identite-fil.ts`'s
   // minimal DOM stub relies on. Nothing UNTRUSTED goes into this string: `color` is always one
   // of the server's small fixed palette (`colorFor`, `live-worker/ops.ts`), never wire-supplied
   // free text, exactly like `.pc-name`'s own `background:${color}` right above it. The untrusted
-  // part — a peer's live-typed text — is applied ONLY afterward, by `majDireCurseur`, and ONLY
+  // part, a peer's live-typed text, is applied ONLY afterward, by `majDireCurseur`, and ONLY
   // through `.textContent` (R-9): never baked into this markup.
   el.innerHTML = wsCursorArrowSVG(color)
     + `<span class="pc-name" style="background:${color}">${escapeHtml(label)}</span>`
@@ -181,7 +181,7 @@ export function creerNoeudCurseur(label: string, color: string, guest?: boolean)
 
 /**
  * CURSOR CHAT ("/"): paints a PEER'S live text next to their cursor, or clears it. `textContent`
- * ONLY (R-9) — the second untrusted string this client renders, right after a guest's own name.
+ * ONLY (R-9), the second untrusted string this client renders, right after a guest's own name.
  * Unlike `creerNoeudCurseur`'s `escapeHtml`-into-`innerHTML` path, there is no `innerHTML` here to
  * escape INTO at all: `textContent` makes the injection class structurally unreachable rather
  * than merely escaped, exactly like `wsAppendChat`'s own chat-text write.

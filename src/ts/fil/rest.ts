@@ -1,4 +1,4 @@
-// src/ts/fil/rest.ts — THE REST FALLBACK ON D1, AND THE CHIP THAT MUST NEVER LIE.
+// src/ts/fil/rest.ts: THE REST FALLBACK ON D1, AND THE CHIP THAT MUST NEVER LIE.
 // Ported from src/js/41-sync-rest.js, in full.
 //
 // THIS MODULE IS THE ONLY SAFETY NET WHEN THE WORKER GOES DOWN. When real time is alive, it FALLS

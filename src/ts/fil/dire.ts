@@ -1,4 +1,4 @@
-// src/ts/fil/dire.ts — CURSOR CHAT ("/"): THE LOCAL BOX. THE WIRE HALF LIVES IN `fil/presence.ts`.
+// src/ts/fil/dire.ts: CURSOR CHAT ("/"): THE LOCAL BOX. THE WIRE HALF LIVES IN `fil/presence.ts`.
 //
 // Modeled on FigJam's cursor chat, the owner's request: press "/", a small text box appears
 // attached to your cursor and follows it as you move; Enter or Escape closes it; otherwise it
@@ -51,9 +51,9 @@ function fermerBoiteDire(fil: Fil): void {
   direArreter(fil);
 }
 
-/** "/" was pressed (`gestes/clavier.ts`, through the `direOuvrir` crochet, wired below — its
+/** "/" was pressed (`gestes/clavier.ts`, through the `direOuvrir` crochet, wired below, its
  *  only caller, so it stays private to this module). Idempotent: pressing "/" again while typing
- *  never reaches here — the box IS an `<input>`, so `clavier.ts`'s own `typing` guard already
+ *  never reaches here, the box IS an `<input>`, so `clavier.ts`'s own `typing` guard already
  *  treats it like any other field and lets the character through instead. */
 function ouvrirBoiteDire(ctx: Contexte, fil: Fil): void {
   if (!boite) return;
@@ -94,7 +94,7 @@ export function brancherDire(ctx: Contexte, fil: Fil): void {
 
   // Follows the pointer while open. A second passive listener on the viewport, same reasoning as
   // `brancherCurseursSortants`'s own: cheaper than a coupling between this module and the
-  // gestures batch, and harmless while the box is hidden (`poserBoite` no-ops silently otherwise —
+  // gestures batch, and harmless while the box is hidden (`poserBoite` no-ops silently otherwise,
   // it still runs, but nothing reads its result while `[hidden]` applies `display:none`).
   ctx.viewport.addEventListener("pointermove", () => { if (boite && !boite.hidden) poserBoite(ctx); }, { passive: true });
 

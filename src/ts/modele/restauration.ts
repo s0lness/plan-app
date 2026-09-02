@@ -1,4 +1,4 @@
-// src/ts/modele/restauration.ts — RELOAD THE PRE-CONVERSION PLAN, OUTSIDE SHARING.
+// src/ts/modele/restauration.ts: RELOAD THE PRE-CONVERSION PLAN, OUTSIDE SHARING.
 // Porté de src/js/55-v5-migration.js (`v5RestoreBackup`).
 //
 // D-3. THE SAFETY NET EXISTS, ITS FRONT DOOR DOES NOT. The menu entry that reloaded the backup

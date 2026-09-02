@@ -1,4 +1,4 @@
-// src/ts/gestes/clavier.ts — THE KEYBOARD AND THE CLIPBOARD.
+// src/ts/gestes/clavier.ts: THE KEYBOARD AND THE CLIPBOARD.
 // Ported from src/js/33-clavier.js.
 //
 // G-24. THE CLIPBOARD: A SINGLE UNDO STEP, RELATIVE LAYOUT PRESERVED.

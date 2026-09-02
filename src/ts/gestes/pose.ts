@@ -1,4 +1,4 @@
-// src/ts/gestes/pose.ts — PLACEMENT: ARM, AIM, PLACE.
+// src/ts/gestes/pose.ts: PLACEMENT: ARM, AIM, PLACE.
 // Ported from src/js/16-pose-meubles.js in its entirety, plus `wallMountPreviewApt`
 // (src/js/05-espace-appartement.js), which only has takers in this file: the placement ghost and
 // the refusal probe. Porting it here keeps the PROBE next to the PLACEMENT; `modele/espace.ts` only

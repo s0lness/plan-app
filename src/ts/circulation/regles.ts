@@ -1,4 +1,4 @@
-// src/ts/circulation/regles.ts — PORTED VERBATIM from src/js/36-flow-regles.js (391 lines).
+// src/ts/circulation/regles.ts: PORTED VERBATIM from src/js/36-flow-regles.js (391 lines).
 // ELEVEN RULES MADE RIGHT, no type defect in their history. No threshold, no message,
 // no finding identifier moves (`unreach_room_*` is asserted by tests/rapide.ts).
 
@@ -25,7 +25,7 @@ import {
 } from "./correctifs.ts";
 
 // =====================================================================
-//  RULES — ONE pass over the whole apartment
+//  RULES, ONE pass over the whole apartment
 // =====================================================================
 // `FL.flowCtx` is set by analyzeApt(): every cell and every object, in apartment cm.
 // The GLOBAL rules (grid, clearances, reachability of each cell, pinch points) run
@@ -87,7 +87,7 @@ function runRules(): ResultatAnalyse {
     ? fields.filter((f) => f.a.d.onOutline)
     : fields;
 
-  // Rule 2: blocked door swing (hinged doors only — a pocket/sliding door has no swing)
+  // Rule 2: blocked door swing (hinged doors only, a pocket/sliding door has no swing)
   doors.filter((d) => d.type === "door").forEach((door) => {
     const db = pieceAABB(door);
     const dw = door.w;

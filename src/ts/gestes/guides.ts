@@ -1,4 +1,4 @@
-// src/ts/gestes/guides.ts — THE LIVE DIMENSIONS OF THE DRAG, and the alignment snap.
+// src/ts/gestes/guides.ts: THE LIVE DIMENSIONS OF THE DRAG, and the alignment snap.
 // Ported from src/js/20-guides.js, plus `aptToLayerPx` (src/js/07-pieces-persistance.js) and
 // `pieceAABB` (src/js/34-flow-contexte.js), which had no port yet and for which this module is
 // the first taker.
@@ -257,7 +257,7 @@ export function drawGuides(
  *
  * "Distance to what surrounds it": from the wall's MIDPOINT, one ray cast on each side along its
  * NORMAL, stopping at the first wall or outline edge (`v5RayHits`, the exact primitive
- * `v5ThroughWall` already uses to decide how far a THROUGH wall would reach) — read here without
+ * `v5ThroughWall` already uses to decide how far a THROUGH wall would reach), read here without
  * writing anything back. Reads `ctx.etat.plan`; touches no history, no save, no op.
  */
 export function drawWallGuides(ctx: Contexte, w: Mur): void {

@@ -1,5 +1,5 @@
-// THE FEEDBACK DROP: a free-text note from inside the app, no account. Reachable on BOTH doors —
-// "foyer" (a household member) AND "invite" (a guest) — because the whole point is that a visitor
+// THE FEEDBACK DROP: a free-text note from inside the app, no account. Reachable on BOTH doors:
+// "foyer" (a household member) AND "invite" (a guest), because the whole point is that a visitor
 // looking at a shared link can report something too, not only someone Access already let in.
 // `functions/_middleware.ts` is what actually lets an "invite" door request reach this path at all
 // (a NAMED surface, see its own header comment); this file re-checks `porteDe()` itself anyway,
@@ -9,7 +9,7 @@
 //
 // UNAUTHENTICATED WRITE FROM THE PUBLIC INTERNET: every field is bounded below, and each bound
 // carries its own reason. Never fails the caller's submission because a BOOKKEEPING write (the
-// retention sweep) failed — the row that matters has already landed by then.
+// retention sweep) failed, the row that matters has already landed by then.
 
 import type { Env } from "../env.ts";
 import { identiteFoyer, porteDe } from "../porte.ts";
@@ -30,7 +30,7 @@ const IP_MAX = 64;
 // handle available at all. 5 per hour comfortably covers a real person filing a couple of
 // distinct reports plus a retry after a flaky connection (this feature must never lose what
 // someone typed, so a retry is expected), while still stopping a script from filling the table
-// for free — a genuine household generates at most a handful of these a year.
+// for free, a genuine household generates at most a handful of these a year.
 export const FEEDBACK_PAR_HEURE_MAX = 5;
 const HEURE_MS = 3_600_000;
 
@@ -87,7 +87,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const porte = porteDe(request, env);
   if (porte !== "foyer" && porte !== "invite") return refuse();
 
-  // WHO and WHICH PLAN are resolved from the door, never trusted from the request body — same
+  // WHO and WHICH PLAN are resolved from the door, never trusted from the request body, same
   // discipline as functions/api/plan.ts: a guest cannot claim another plan, and cannot claim to be
   // someone they are not.
   let planId: string;
@@ -113,7 +113,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   // THE SAME CLEANER AS EVERY OTHER HUMAN-TYPED STRING IN THIS CODEBASE (functions/nom.ts):
   // control characters and Unicode bidi overrides stripped, truncated at the cap rather than
-  // rejected outright — an over-long report is still a report.
+  // rejected outright, an over-long report is still a report.
   const texte = cleanTexte(b.texte, TEXTE_MAX);
   if (!texte) return json({ error: "texte_requis" }, 400);
   const contact = cleanName(b.contact, CONTACT_MAX);

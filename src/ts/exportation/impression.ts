@@ -1,4 +1,4 @@
-// src/ts/exportation/impression.ts — THE PNG IMAGE AND THE PRINTED PAGE.
+// src/ts/exportation/impression.ts: THE PNG IMAGE AND THE PRINTED PAGE.
 // Ported from src/js/32-export.js (`renderMasterPNG`, `exportPNG`, `preparePrint`, `clearPrint`,
 // `printPlan`).
 //

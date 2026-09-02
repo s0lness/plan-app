@@ -3,7 +3,7 @@
 // When a write made outside real time cannot be merged, the Durable Object keeps ITS version and
 // announces a `conflict` to the client. The bytes it discarded are not thrown away: it holds the
 // last few of them. Until this route existed there was no way to ask for them, and the client's
-// own banner said "They are held on the server" — true, and useless, because nothing could reach
+// own banner said "They are held on the server", true, and useless, because nothing could reach
 // them. This is the reach.
 //
 // FOYER ONLY, and refused here rather than only in `functions/_middleware.ts`, exactly like every

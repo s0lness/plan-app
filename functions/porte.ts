@@ -36,9 +36,9 @@ const listeHotes = (env: unknown): string[] => {
 };
 
 // A SINGLE hostname, unlike HOUSEHOLD_HOSTS: the guest door is one label under the zone
-// (docs/decisions/0004-partage-par-lien.md — a two-level name needs an advanced Cloudflare
+// (docs/decisions/0004-partage-par-lien.md, a two-level name needs an advanced Cloudflare
 // certificate), so there is never a list to join. UNSET, exactly like an absent HOUSEHOLD_HOSTS
-// entry, means the verdict it would produce can never be reached — but the two absences do NOT
+// entry, means the verdict it would produce can never be reached, but the two absences do NOT
 // mean the same thing: an absent HOUSEHOLD_HOSTS treats every host as the household door
 // (compatibility default, batch 1a), while an absent GUEST_HOST simply removes "invite" from the
 // set of possible verdicts. Nothing starts trusting a guest host that was never declared.

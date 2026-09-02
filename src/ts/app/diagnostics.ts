@@ -1,4 +1,4 @@
-// src/ts/app/diagnostics.ts — ACTION BREADCRUMB TRAIL, CRASH REPORTER, SENTINEL.
+// src/ts/app/diagnostics.ts: ACTION BREADCRUMB TRAIL, CRASH REPORTER, SENTINEL.
 // Ported from src/js/40-diagnostics.js, LOCAL PART ONLY.
 //
 // WHAT IS NOT PORTED HERE, AND IT'S SAID: the `POST /api/err` (both the reporter AND the sentinel) is

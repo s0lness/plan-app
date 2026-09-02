@@ -1,4 +1,4 @@
-// src/ts/panneaux/configuration.ts — THE CONFIGURATION WIZARD (the apartment's OUTLINE).
+// src/ts/panneaux/configuration.ts: THE CONFIGURATION WIZARD (the apartment's OUTLINE).
 // Ported from src/js/29-configuration.js (SETUP OVERLAY block, lines 1 to 194) and the "floor"
 // block of src/js/28-options.js (the floor selector lives INSIDE this modal: it drives
 // `setup.floor`, so it belongs to the draft, not to personal settings).

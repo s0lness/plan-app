@@ -1,4 +1,4 @@
-// src/ts/app/aide.ts — THE HELP MODAL AND THE FIRST-USE HINTS.
+// src/ts/app/aide.ts: THE HELP MODAL AND THE FIRST-USE HINTS.
 // Ported from src/js/31-aide-astuces.js.
 //
 // ONE SINGLE ENTRY POINT TO HELP: the "?" in the toolbar. The rail menu carried a

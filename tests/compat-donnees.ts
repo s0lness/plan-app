@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  THE DATA COMPATIBILITY ORACLE — no browser, a few dozen milliseconds.
+//  THE DATA COMPATIBILITY ORACLE: no browser, a few dozen milliseconds.
 // =================================================================================================
 //   node tests/compat-donnees.ts              # the corpus against the FROZEN fingerprints
 //   node tests/compat-donnees.ts --b other/ts # DIFFERENTIAL: src/ts against other modules

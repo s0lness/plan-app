@@ -6,7 +6,7 @@
 // See docs/decisions/0004-partage-par-lien.md, edge case 2: the guest name is the first
 // UNTRUSTED string this codebase has ever rendered (every name before it came from an
 // Access-verified email). Unicode bidi overrides (U+202A-U+202E, U+2066-U+2069) do not corrupt
-// the name itself — a control character check alone lets them through — they visually reorder
+// the name itself, a control character check alone lets them through, they visually reorder
 // the TEXT AROUND the name: a chat line, a cursor label, a tooltip. Stripped for every caller,
 // not only guests, because a plan name sits on the same screen.
 //
@@ -27,7 +27,7 @@ const BIDI_MIN_2 = 0x2066, BIDI_MAX_2 = 0x2069;
  *
  * Three shapes reach this: `live` (the DO's own snapshot marker), `invite:<name>` (a guest's own
  * write, already a display name), and an Access email. Only the last needs reducing, to the local
- * part with its trailing digits and separators smoothed out — enough to say WHO wrote before you,
+ * part with its trailing digits and separators smoothed out, enough to say WHO wrote before you,
  * not enough to write to them.
  */
 export function auteurPourInvite(v: string | null): string | null {

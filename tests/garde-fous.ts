@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  INTERFACE GUARDRAILS — REAL MOUSE, REAL KEYBOARD, REAL HIT-TESTING (CDP)
+//  INTERFACE GUARDRAILS: REAL MOUSE, REAL KEYBOARD, REAL HIT-TESTING (CDP)
 // =============================================================================
 // Two real-usage sessions made the same complaint: "nothing ever tells me when something has
 // gone wrong". Each case below was born from an observed defect, and checks BOTH halves: the

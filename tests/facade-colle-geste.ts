@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "UNE FAÇADE COLLE À CELLE QUI EST DANS SON PROLONGEMENT" — VRAIE SOURIS (CDP)
+//  "UNE FAÇADE COLLE À CELLE QUI EST DANS SON PROLONGEMENT": VRAIE SOURIS (CDP)
 // =============================================================================
 // Signalé par le propriétaire, mot pour mot: « ça marche pas, j'arrive pas à le refaire coller, il
 // est toujours slightly on top or below et se stick jamais dans le mur ». Sa façade porte une

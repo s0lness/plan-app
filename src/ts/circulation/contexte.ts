@@ -1,4 +1,4 @@
-// src/ts/circulation/contexte.ts — PORTED VERBATIM from src/js/34-flow-contexte.js (129 lines).
+// src/ts/circulation/contexte.ts: PORTED VERBATIM from src/js/34-flow-contexte.js (129 lines).
 //
 // "Port it verbatim, last, without touching it" (docs/reecriture.md §7.4): no rule, no
 // threshold, no constant, no message moves. What changes is the LANGUAGE of the code, nothing else:
@@ -27,10 +27,10 @@ export const PRIMARY_SEAT = new Set(["sofa3", "sofa2", "arm"]);
 // The apartment is analyzed as ONE plan. CELLS are the rooms, the OUTLINE is
 // the envelope, and everything is already in apartment cm: there's neither a local frame nor a translation.
 // The engine reads its inputs through `FL.flowCtx`, set by analyzeApt() before each pass:
-//   flowCtx.cells  : [{poly:[[x,y]…], ci, name}]         — each cell's polygon
-//   flowCtx.pieces : [{…furniture, ci, cellName}]        — furniture AND openings
+//   flowCtx.cells  : [{poly:[[x,y]…], ci, name}], each cell's polygon
+//   flowCtx.pieces : [{…furniture, ci, cellName}], furniture AND openings
 //   flowCtx.bb     : outline bbox
-//   flowCtx.env    : {poly} — the outline itself (bounding box and grid)
+//   flowCtx.env    : {poly}, the outline itself (bounding box and grid)
 export function fcCells(): CelluleFlow[] { return FL.flowCtx ? FL.flowCtx.cells : []; }
 export function fcPieces(): ObjetFlow[] { return FL.flowCtx ? FL.flowCtx.pieces : meublesDuPlan(); }
 export function fcBBox(): BBox { return FL.flowCtx ? FL.flowCtx.bb : aptBBox(FL.ctx); }

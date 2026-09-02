@@ -1,4 +1,4 @@
-// src/ts/panneaux/partage.ts — THE OWNER-SIDE SHARE PANEL for one plan
+// src/ts/panneaux/partage.ts: THE OWNER-SIDE SHARE PANEL for one plan
 // (docs/decisions/0004-partage-par-lien.md, "batch 4, owner client").
 //
 // Opened from a "Share" button on a plan row in `panneaux/plans.ts`. Talks only to
@@ -42,13 +42,13 @@ interface InviteApi {
 }
 
 // =================================================================================================
-//  PURE LOGIC — tested browserless in tests/partage-fil.ts, no DOM, no fetch
+//  PURE LOGIC, tested browserless in tests/partage-fil.ts, no DOM, no fetch
 // =================================================================================================
 
 /**
  * Mirrors the server's own "live" rule (`functions/api/invites.ts`'s `MAX_INVITES_PAR_PLAN`
- * count): not revoked, not past its expiry. The list is display-only here — the server remains
- * the one place that ENFORCES it — but "the list of a plan's live invites" (design doc) means
+ * count): not revoked, not past its expiry. The list is display-only here, the server remains
+ * the one place that ENFORCES it, but "the list of a plan's live invites" (design doc) means
  * this filter has to run before painting, otherwise a revoked or expired row would sit in the
  * list looking exactly like a working one.
  */
@@ -62,7 +62,7 @@ export function inviteEstVivante(inv: { revoked: boolean; expiresAt: string | nu
 }
 
 /**
- * `guestHost` comes straight from the server's `GUEST_HOST` (`null` when unset, never `""` —
+ * `guestHost` comes straight from the server's `GUEST_HOST` (`null` when unset, never `""`,
  * see `functions/api/invites.ts`). Returns `null` rather than a URL built from nothing: a guest
  * host that does not exist must not manufacture a link that looks real and cannot work.
  */
@@ -74,7 +74,7 @@ export function construireLienInvite(guestHost: string | null | undefined, token
 
 /** One decimal-free, `.slice(0,10)` date: the SAME convention `panneaux/plans.ts` already uses
  *  for `updatedAt`, so a household member reads dates the same way in both panels. */
-const fmtDate = (iso: string | null): string => (iso ? String(iso).slice(0, 10) : "—");
+const fmtDate = (iso: string | null): string => (iso ? String(iso).slice(0, 10) : "-");
 
 export interface LigneInviteAffichage { created: string; lastUsed: string; uses: string }
 
@@ -91,7 +91,7 @@ export function ligneInviteAffichage(inv: {
 }
 
 // =================================================================================================
-//  DOM + FETCH — the panel itself
+//  DOM + FETCH, the panel itself
 // =================================================================================================
 let _planId: string | null = null;
 let _guestHost: string | null = null;
@@ -205,7 +205,7 @@ export function ouvrirPartage(planId: string, planNom: string): void {
   // Belt-and-suspenders (see header comment): the button that calls this lives inside a panel a
   // guest never reaches, but the check costs nothing and matches how the server-side routes are
   // written. THIS GESTURE MUST SAY WHY, EVERY TIME (AGENTS.md, "a gesture that cannot succeed
-  // must say so"): returning silently here was the reported defect — clicking Share did nothing
+  // must say so"): returning silently here was the reported defect, clicking Share did nothing
   // at all, no panel, no message, and a confused owner clicked it again and again for nothing.
   // Two distinct reasons get two distinct sentences, `{geste:true}` so a repeated click repeats
   // the message instead of being swallowed by the system-message throttle.

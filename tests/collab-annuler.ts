@@ -792,7 +792,7 @@ await test("une_facade_orphelinee_a_distance_le_dit_tout_de_suite", seedV4({
   outline: [[0, 0], [400, 0], [400, 300], [0, 300]],
   // `wf` LAST on purpose: `v5SyncOutlineWalls` recycles a leftover outline wall onto an
   // unmatched edge in ARRAY order (edition.ts:317), so putting the other three first makes THEM
-  // absorb the new outline's three edges and leaves `wf` — the one carrying the window — with
+  // absorb the new outline's three edges and leaves `wf`, the one carrying the window, with
   // nowhere to go: it becomes "gone", not merely moved.
   walls: [
     { id: "wb", a: [0, 300], b: [400, 300], t: 10, isOutline: true },

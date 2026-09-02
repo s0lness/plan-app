@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "A JUNCTION MUST HOLD WHEN A WALL IS MOVED" SUITE — NO BROWSER (the geometry is PURE)
+//  "A JUNCTION MUST HOLD WHEN A WALL IS MOVED" SUITE: NO BROWSER (the geometry is PURE)
 // =============================================================================
 // Owner's report #1, and the reasoning that led here (AGENTS.md, "A JUNCTION MUST HOLD…"):
 // three walls drawn separately, joined end to end into two rooms; dragging one of them tore the
@@ -12,14 +12,14 @@
 // PR #17 shipped a FRACTION carry: a follower's touching point rides the same fraction along the
 // dragged wall's length. THE BUG THAT SHIPPED WITH IT, only caught by owner's report #2: the
 // dragged wall only ever TRANSLATES while pushed sideways (never rotates), so a fraction carry
-// always moves the touching point by the exact SAME VECTOR as the wall — which lands on a
+// always moves the touching point by the exact SAME VECTOR as the wall, which lands on a
 // perpendicular follower's own axis for free, but on NO OTHER angle. A follower COLLINEAR with the
-// dragged wall — PR #17's own target case — got the same treatment and bent into a visible
+// dragged wall, PR #17's own target case, got the same treatment and bent into a visible
 // diagonal: the very defect PR #17 claimed to fix. Report #2 is a straight wall continuing the
 // dragged one to the facade, exactly that shape.
 //
 // THE CURRENT MECHANISM, `docs/decisions/0005-un-suiveur-ne-bascule-jamais.md`: two rules, in
-// order. (1) A follower never tilts — it keeps its own direction, sliding along it to meet the
+// order. (1) A follower never tilts, it keeps its own direction, sliding along it to meet the
 // dragged wall's new line (ordinary intersection) or not moving at all; no fraction, no other
 // vector. (2) A follower moves ONLY if it would otherwise be left touching nothing: if it is still
 // held by some OTHER wall or the facade (same 2 cm tolerance as junction detection) once the
@@ -28,14 +28,14 @@
 //
 // `voisins_qui_se_tiennent_ne_bougent_pas` is the REWRITE of what PR #17's own test used to assert
 // (`voisin_colineaire_ne_se_detache_plus`, which claimed the collinear neighbor MUST reach the
-// dragged wall's new corner — i.e. must become a diagonal). That claim was the bug; the test is
+// dragged wall's new corner, i.e. must become a diagonal). That claim was the bug; the test is
 // gone, replaced by the truth report #2 established. `trois_murs_au_meme_point...` is the direct
 // reproduction of report #2. `voisin_colineaire_dans_le_vide_se_detache` writes down, deliberately,
 // the one case where rule 1 still costs something: nothing else holds it, its own line can't
 // usefully intersect the dragged wall's, so it stays put and comes apart from it.
 //
 // TRAP THAT COST A FALSE GREEN WHILE WRITING THIS SUITE: `sanitizeV5Plan` (called by the `plan()`
-// helper below) builds BRAND NEW wall objects — it does not keep the caller's references. A first
+// helper below) builds BRAND NEW wall objects, it does not keep the caller's references. A first
 // draft of this file kept asserting on the ORIGINAL `{id:"wA",...}` literals passed into `plan()`,
 // which never mutate: every assertion silently compared a constant against itself and passed
 // whether or not the fix existed (`git stash` proved it: reverting the fix still gave "OK 7/7").
@@ -125,7 +125,7 @@ const troisMurs = (): Mur[] => [
 
 // ---------------------------------------------------------------------------------------------
 test("deux_voisins_perpendiculaires_suivent_le_mur_glisse", (a: DonneeDynamique) => {
-  // wA and wC touch nothing but wB: unheld (rule 2 clears them), so they follow — the control of
+  // wA and wC touch nothing but wB: unheld (rule 2 clears them), so they follow, the control of
   // rule 1 (they slide along their OWN axis, i.e. lengthen, without tilting) and rule 2 (they are
   // in the void, so rule 1 gets to run at all) at once.
   const P = plan(troisMurs());
@@ -151,7 +151,7 @@ test("voisins_qui_se_tiennent_ne_bougent_pas", (a: DonneeDynamique) => {
   // corner, i.e. had to become a diagonal, and called that "not detaching". That IS the shape of
   // the owner's second report. In this exact geometry wA, wX and wY all meet wB at the SAME point
   // (200,150) and touch EACH OTHER there too: once wB leaves, all three are still held by one
-  // another (rule 2), so NONE of them moves, at any angle — not wA (perpendicular), not wX
+  // another (rule 2), so NONE of them moves, at any angle, not wA (perpendicular), not wX
   // (collinear), not wY (perpendicular the other way). Only wB moves.
   const wX: Mur = { id: "wX", a: [100, 150], b: [200, 150], t: 12, isOutline: false, free: 1 };
   const wY: Mur = { id: "wY", a: [200, 150], b: [200, 250], t: 12, isOutline: false, free: 1 };
@@ -167,7 +167,7 @@ test("voisins_qui_se_tiennent_ne_bougent_pas", (a: DonneeDynamique) => {
   v5WallDragApply(ctx, g, 40, true);
   a(JSON.stringify(mur(P, "wB").a) === JSON.stringify([200, 190]), "précondition : wB a bien glissé");
   a(JSON.stringify([mur(P, "wA").a, mur(P, "wA").b]) === wAAvant, "wA (perpendiculaire, tenu par wX/wY) ne doit pas bouger");
-  a(JSON.stringify([mur(P, "wX").a, mur(P, "wX").b]) === wXAvant, "wX (colinéaire, tenu par wA/wY) ne doit pas bouger — PAS devenir une diagonale");
+  a(JSON.stringify([mur(P, "wX").a, mur(P, "wX").b]) === wXAvant, "wX (colinéaire, tenu par wA/wY) ne doit pas bouger, PAS devenir une diagonale");
   a(JSON.stringify([mur(P, "wY").a, mur(P, "wY").b]) === wYAvant, "wY (perpendiculaire, tenu par wA/wX) ne doit pas bouger");
 });
 
@@ -176,7 +176,7 @@ test("voisin_perpendiculaire_change_de_longueur_pas_d_angle", (a: DonneeDynamiqu
   // else (in the void). Pushing wA sideways must shorten/lengthen wB, never tilt it. GREEN before
   // and after the fix: a follower EXACTLY perpendicular to the dragged wall has its own axis
   // parallel to the wall's normal, and the dragged wall only ever TRANSLATES (never rotates) while
-  // being pushed sideways — so the vector carried to the touching point was, by construction,
+  // being pushed sideways, so the vector carried to the touching point was, by construction,
   // already along wB's own line even under the old fraction carry. Kept as a non-regression guard,
   // three separate assertions so a future break says which one broke.
   const wA: Mur = { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false, free: 1 };
@@ -185,7 +185,7 @@ test("voisin_perpendiculaire_change_de_longueur_pas_d_angle", (a: DonneeDynamiqu
   const ctx = ctxDe(P);
   const g = v5WallDragCtx(ctx, "wA")!;
   a(g.followers.length === 1 && !g.followers[0]!.tenu,
-    "précondition : wB est un suiveur, et il n'est tenu par rien d'autre — sinon ce cas mesure autre chose que son nom");
+    "précondition : wB est un suiveur, et il n'est tenu par rien d'autre, sinon ce cas mesure autre chose que son nom");
   v5WallDragApply(ctx, g, 50, true);
   const wBAfter = mur(P, "wB");
   a(wBAfter.a[1] === 250 && wBAfter.b[1] === 250,
@@ -207,7 +207,7 @@ test("voisin_oblique_garde_son_angle", (a: DonneeDynamique) => {
   const ctx = ctxDe(P);
   const g = v5WallDragCtx(ctx, "wA")!;
   a(g.followers.length === 1 && !g.followers[0]!.tenu,
-    "précondition : wC est un suiveur, et il n'est tenu par rien d'autre — sinon ce cas mesure autre chose que son nom");
+    "précondition : wC est un suiveur, et il n'est tenu par rien d'autre, sinon ce cas mesure autre chose que son nom");
   v5WallDragApply(ctx, g, 50, true);
   const wCAfter = mur(P, "wC");
   const angle = Math.atan2(wCAfter.b[1] - wCAfter.a[1], wCAfter.b[0] - wCAfter.a[0]) * 180 / Math.PI;
@@ -217,7 +217,7 @@ test("voisin_oblique_garde_son_angle", (a: DonneeDynamique) => {
 
 test("voisin_colineaire_dans_le_vide_se_detache", (a: DonneeDynamique) => {
   // The cost rule 1 accepts, written down rather than discovered: wZ continues wA in a PERFECTLY
-  // straight line, and its far end touches nothing (in the void — the negative of the previous
+  // straight line, and its far end touches nothing (in the void, the negative of the previous
   // test's "held" case). Two near-parallel lines have no usable intersection, and nothing else
   // holds wZ, so it does not move AT ALL: it detaches from wA rather than stretch into a diagonal.
   const wA: Mur = { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false, free: 1 };

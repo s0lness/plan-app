@@ -1,4 +1,4 @@
-// src/ts/panneaux/plans.ts — THE PLAN SELECTOR.
+// src/ts/panneaux/plans.ts: THE PLAN SELECTOR.
 //
 // A plan is a D1 ROW and a Durable Object carrying the same identifier. This panel only knows
 // the API: it never touches the current document, publishes nothing, and doesn't know how to
@@ -64,7 +64,7 @@ function peindre(): void {
   if (!_plans.length) { l.innerHTML = `<div class="plans-empty">No plan yet.</div>`; return; }
   l.innerHTML = _plans.map((p) => {
     const ici = p.id === courant;
-    const quand = p.updatedAt ? String(p.updatedAt).slice(0, 10) : "—";
+    const quand = p.updatedAt ? String(p.updatedAt).slice(0, 10) : "-";
     const vide = !p.bytes || p.bytes <= 6;   // serialized `null` = 4 bytes: a plan never touched
     return `<div class="plan-row${ici ? " here" : ""}" data-id="${escapeHtml(p.id)}">
       <span class="pname" data-id="${escapeHtml(p.id)}" title="Double-click to rename">${escapeHtml(p.name)}</span>
@@ -274,7 +274,7 @@ export function brancherPlans(ctx: Contexte): void {
   // `fil/invite.ts`). `estMenage()` is already known by this synchronous point for an INVITED
   // tab (the redemption that set it happens before `amorcer()` runs); a fresh LOCAL-ONLY visitor
   // is still `"menage"` here (discovered only after the boot GET answers), so this one fetch can
-  // still fire once before that discovery — harmless, and the price of "discover by trying".
+  // still fire once before that discovery, harmless, and the price of "discover by trying".
   if (SYNC_ON && estMenage()) void charger().then(() => peindreTitre()).catch(() => { /* title = identifier */ });
   // TOOLBAR INVITE BUTTON: opens the Share panel for whatever plan is on screen right now,
   // without going through this panel first. Same gate as the fetch just above (`SYNC_ON` false

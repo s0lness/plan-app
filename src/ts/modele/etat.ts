@@ -1,4 +1,4 @@
-// src/ts/modele/etat.ts — THE STATE, AND THE ONLY ENTRY POINT FOR PAYLOADS.
+// src/ts/modele/etat.ts: THE STATE, AND THE ONLY ENTRY POINT FOR PAYLOADS.
 // Porté de src/js/02-etat-migrations.js (`makeState`, `bindState`, `migrate`, `defaultState`).
 //
 // WHAT CHANGES COMPARED TO THE OLD CLIENT, AND THIS IS THE REASON THIS MODULE EXISTS:

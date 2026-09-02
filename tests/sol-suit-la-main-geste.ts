@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "LE SOL SUIT LA MAIN" SUITE — REAL MOUSE (CDP)
+//  "LE SOL SUIT LA MAIN" SUITE: REAL MOUSE (CDP)
 // =============================================================================
 // Owner's report: "when i move a facade the ground underneath lags behind significantly".
 //

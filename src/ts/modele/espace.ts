@@ -1,4 +1,4 @@
-// src/ts/modele/espace.ts — THE APARTMENT SPACE, GESTURE SIDE.
+// src/ts/modele/espace.ts: THE APARTMENT SPACE, GESTURE SIDE.
 // Porté de src/js/05-espace-appartement.js (`clampCenterToApt`, `wallSnapReach`, `NO_WALL_MSG`).
 // The rest of js/05 (`aptToScreen`/`screenToApt`, `pieceById`, the helpers for reading legacy
 // rooms) already lives in `rendu/vue.ts`, `app/contexte.ts`, and `modele/salles-anciennes.ts`.

@@ -1,4 +1,4 @@
-// src/ts/noyau/champ-numerique.ts — THE ONLY NUMERIC-INPUT GUARD.
+// src/ts/noyau/champ-numerique.ts: THE ONLY NUMERIC-INPUT GUARD.
 // Ported from src/js/00-noyau.js (`numField`), without changing a single rule or message.
 //
 // G-17. NOTHING APPLIES UNTIL THE VALUE IS VALID. Three outcomes, a single truth of

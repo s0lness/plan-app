@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "WALL FACES . PLACEMENT . CLIPBOARD" SUITE — REAL MOUSE, REAL KEYBOARD, REAL FINGER (CDP)
+//  "WALL FACES . PLACEMENT . CLIPBOARD" SUITE: REAL MOUSE, REAL KEYBOARD, REAL FINGER (CDP)
 // =============================================================================
 // Three real usage requests, all checked through the browser's real hit-testing.
 //

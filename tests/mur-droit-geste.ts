@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "UN MUR DE TRAVERS SE REDRESSE, ET SEULEMENT LUI" — VRAIE SOURIS (CDP)
+//  "UN MUR DE TRAVERS SE REDRESSE, ET SEULEMENT LUI": VRAIE SOURIS (CDP)
 // =============================================================================
 // Signalé par le propriétaire: « the vertical wall on the right is slightly off, i want a way to
 // make it perpendicular », puis « automatiquement », puis « it should snap ».

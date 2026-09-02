@@ -1,4 +1,4 @@
-// src/ts/fil/hud.ts — THE LATENCY HUD (`?rt=1`).
+// src/ts/fil/hud.ts: THE LATENCY HUD (`?rt=1`).
 // Ported from src/js/45-hud-latence.js.
 //
 // FIELD PROOF, measured in production with the REAL network and the REAL Durable Object: link
@@ -89,8 +89,8 @@ export function brancherHud(fil: Fil): void {
       "WS      " + (s.wsOpen ? "live ✓" : "offline") + "\n"
       + "cursor   in " + s.inPerSec + "/s  out " + s.outPerSec + "/s\n"
       + "drag    out " + s.dragPerSec + "/s\n"
-      + "recv→paint p95 " + (s.paintP95 == null ? "—" : s.paintP95 + " ms")
-      + "  (p50 " + (s.paintP50 == null ? "—" : s.paintP50) + ", n=" + s.paintN + ")\n"
-      + "round trip     " + (s.rtt == null ? "—" : s.rtt + " ms");
+      + "recv→paint p95 " + (s.paintP95 == null ? "-" : s.paintP95 + " ms")
+      + "  (p50 " + (s.paintP50 == null ? "-" : s.paintP50) + ", n=" + s.paintN + ")\n"
+      + "round trip     " + (s.rtt == null ? "-" : s.rtt + " ms");
   }, 500);
 }

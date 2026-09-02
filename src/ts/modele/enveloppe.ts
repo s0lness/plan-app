@@ -1,4 +1,4 @@
-// src/ts/modele/enveloppe.ts — RECTILINEAR SHELL of the union of legacy rooms.
+// src/ts/modele/enveloppe.ts: RECTILINEAR SHELL of the union of legacy rooms.
 // Porté de src/js/25-enveloppe.js (`computeEnvelopeHull` only).
 //
 // Rectilinear outer outline of a union of polygons (apartment cm). Serves ONLY the conversion of

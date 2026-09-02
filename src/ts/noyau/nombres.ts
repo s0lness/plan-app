@@ -1,4 +1,4 @@
-// src/ts/noyau/nombres.ts — the core's constants and its handful of numeric functions.
+// src/ts/noyau/nombres.ts: the core's constants and its handful of numeric functions.
 // Ported from src/js/00-noyau.js.
 //
 // In the old client, these declarations had to live in the FIRST module because
@@ -83,7 +83,7 @@ export const KEY_GUEST_LOCAL = "room-planner-guest-local";
  * `main` exemption protects bytes already written there, before this feature existed. Off it,
  * that exemption has nothing to protect and everything to lose: local-only mode gets its OWN key
  * (never the bare one, never a plan-namespaced one), and an invited plan is ALWAYS namespaced by
- * its id, `main` included — the SAME `main` that would otherwise collapse to the bare key.
+ * its id, `main` included, the SAME `main` that would otherwise collapse to the bare key.
  *
  * `mode` and `planId` come from `fil/drapeaux.ts` (the only place that tracks them), passed in
  * rather than imported, so this function stays as leaf as `keyPourPlan` itself.

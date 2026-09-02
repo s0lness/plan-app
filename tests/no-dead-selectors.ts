@@ -113,5 +113,5 @@ if (!dead.length) {
   process.exit(0);
 }
 if (DETTE) { console.log("(--dette : suivi d'avancement, pas un verdict)"); process.exit(0); }
-console.log(`\nno_dead_selectors : ÉCHEC — ${dead.length} classe(s) sans preneur dans src/ts`);
+console.log(`\nno_dead_selectors : ÉCHEC, ${dead.length} classe(s) sans preneur dans src/ts`);
 process.exit(1);

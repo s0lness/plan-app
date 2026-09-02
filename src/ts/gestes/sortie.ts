@@ -1,4 +1,4 @@
-// src/ts/gestes/sortie.ts — THE SHARED EXIT POINT OF GESTURES.
+// src/ts/gestes/sortie.ts: THE SHARED EXIT POINT OF GESTURES.
 // Ported from src/js/03-vue-selection.js (the `armGesture` block) and the `save()` safety net (src/js/07).
 //
 // G-1, AND IT IS ONE OF THE THREE MOST FRAGILE INVARIANTS IN THE REPO.

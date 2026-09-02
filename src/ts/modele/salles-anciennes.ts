@@ -1,4 +1,4 @@
-// src/ts/modele/salles-anciennes.ts — THE COORDINATE FRAME OF LEGACY ROOMS, and nothing else.
+// src/ts/modele/salles-anciennes.ts: THE COORDINATE FRAME OF LEGACY ROOMS, and nothing else.
 // Porté de src/js/05-espace-appartement.js (block "READING a plan in the legacy format").
 //
 // In the legacy format, each room had ITS OWN frame: a polygon in local coordinates, plus an

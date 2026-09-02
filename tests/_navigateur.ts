@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  ONE BROWSER PER SUITE — the shared probe of every "seed + app + verdict" suite
+//  ONE BROWSER PER SUITE: the shared probe of every "seed + app + verdict" suite
 // =============================================================================
 // Six suites had each written their OWN copy of the same harness: build a page, `spawnSync` a
 // whole Chrome on it with `--dump-dom` and a brand new profile on disk, read the verdict back out

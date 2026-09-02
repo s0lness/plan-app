@@ -1,4 +1,4 @@
-// src/ts/modele/edition.ts — THE EDITING GEOMETRY: what moves when you trace, drag, or place.
+// src/ts/modele/edition.ts: THE EDITING GEOMETRY: what moves when you trace, drag, or place.
 // Porté de src/js/52-v5-geometrie-edition.js, the half that was NOT already in `modele/murs.ts`
 // (that one holds only the functions with no slate and no neighbors: `v5Seg`, `v5WallById`,
 // `v5SameSegment`, `v5DedupeWalls`, `v5OpeningSameSlot`, `v5OpeningDepthMax`/`For`,

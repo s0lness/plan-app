@@ -1,4 +1,4 @@
-// src/ts/exportation/liste-mobilier.ts — THE FURNITURE LIST, by cell.
+// src/ts/exportation/liste-mobilier.ts: THE FURNITURE LIST, by cell.
 // Ported from src/js/30-liste-mobilier.js.
 //
 // A CELL OWNS NOTHING: the grouping is a geometric test, does the object's center

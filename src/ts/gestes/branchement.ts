@@ -1,4 +1,4 @@
-// src/ts/gestes/branchement.ts — WHERE GESTURES LAND ON THE RENDER.
+// src/ts/gestes/branchement.ts: WHERE GESTURES LAND ON THE RENDER.
 //
 // The render (batch E3a) creates the nodes and calls `ctx.gestes.*`: it knows NOTHING about
 // gestures. This module is the only place that fills in that table, and it is deliberate: in the

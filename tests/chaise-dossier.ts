@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  "CHAIR BACKREST" SUITE — NO BROWSER (snapChairToTable's rotation math is PURE)
+//  "CHAIR BACKREST" SUITE: NO BROWSER (snapChairToTable's rotation math is PURE)
 // =================================================================================================
 // Usage report, verbatim: "Quand je place une chaise contre une table, le dossier ne se met pas
 // dans le bon sens." A chair docked against a table must end up with its BACK to the outside and
@@ -19,7 +19,7 @@
 // `rotate(deg)` the renderer applies (`meubles.ts`): at `rot=0` the backrest bar is drawn at the
 // TOP of the tile (small local y) and the seat opens toward the BOTTOM (large local y). So the
 // chair's own "front" (open, no-backrest side) is the LOCAL vector (0,1), and a `rot` degrees CSS
-// rotation sends it to world `(-sin(rot), cos(rot))` — same rotation convention as
+// rotation sends it to world `(-sin(rot), cos(rot))`, same rotation convention as
 // the piece-corner rotation helper in contraintes.ts, which is exactly what a correct
 // `snapChairToTable` must invert.
 //

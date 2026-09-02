@@ -1,4 +1,4 @@
-// src/ts/fil/identite.ts — IDENTIFIERS OF CREATED ENTITIES.
+// src/ts/fil/identite.ts: IDENTIFIERS OF CREATED ENTITIES.
 // Ported from src/js/51-v5-pseudo-fil.js (`v5DeviceTag`, `v5NewId`, `v5DerivedId`).
 //
 // C-8. AN IDENTIFIER OF A CREATED ENTITY CARRIES A DEVICE LABEL (`w20-a3f9c1`). Without it, two

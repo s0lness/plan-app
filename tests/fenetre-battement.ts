@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // =============================================================================
-//  SUITE "WINDOW SWING" — NO BROWSER (the drawing is PURE)
+//  SUITE "WINDOW SWING": NO BROWSER (the drawing is PURE)
 // =============================================================================
 // Usage request: "show a window's swing the way a door's is shown". With the detail that
 // changes everything, given right after: "some of my windows have a footprint on the floor and
-// others don't" — awning windows (vertical opening) and double windows (opening at the middle).
+// others don't", awning windows (vertical opening) and double windows (opening at the middle).
 //
 // THE TRAP AVOIDED, AND IT'S WHAT THE SUITE GUARDS: widening the `type === "door"` test to
 // windows would have grown an arc on EVERY window already placed (34 on the household's plan),

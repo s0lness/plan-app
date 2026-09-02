@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "WHAT YOU SELECT IS VISIBLE" SUITE — REAL MOUSE (CDP)
+//  "WHAT YOU SELECT IS VISIBLE" SUITE: REAL MOUSE (CDP)
 // =============================================================================
 // Two usage reports, one single root: the selection rectangle said nothing.
 //

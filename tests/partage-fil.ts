@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  THE OWNER SHARE PANEL'S PURE LOGIC — NO BROWSER, against src/ts by import.
+//  THE OWNER SHARE PANEL'S PURE LOGIC: NO BROWSER, against src/ts by import.
 // =================================================================================================
 //   node tests/partage-fil.ts
 //
 // Covers docs/decisions/0004-partage-par-lien.md, "batch 4, owner client":
-// `src/ts/panneaux/partage.ts`'s three pure functions — link construction from a guest host and a
+// `src/ts/panneaux/partage.ts`'s three pure functions, link construction from a guest host and a
 // token, the "not configured" fallback (`construireLienInvite` returns `null` rather than a URL
 // that would not work), the live/revoked/expired filter (`inviteEstVivante`), and the display
 // formatting of one invite row (`ligneInviteAffichage`). Everything DOM-shaped or fetch-shaped
@@ -34,7 +34,7 @@ const TOKEN = "abcdefghij0123456789AB";
 const JOUR_MS = 86_400_000;
 
 // =================================================================================================
-//  1. construireLienInvite — the link's shape, and the honest fallback
+//  1. construireLienInvite, the link's shape, and the honest fallback
 // =================================================================================================
 
 test("lien_construit_depuis_hote_et_jeton", () =>
@@ -48,7 +48,7 @@ test("lien_hote_undefined_rend_null", () =>
   expect(construireLienInvite(undefined, TOKEN) === null, "vu " + construireLienInvite(undefined, TOKEN)));
 
 test("lien_hote_chaine_vide_rend_null", () =>
-  // functions/api/invites.ts's guestHost() only ever sends null or a real hostname, never "" —
+  // functions/api/invites.ts's guestHost() only ever sends null or a real hostname, never "",
   // this proves the client would still refuse to build a broken link even from a malformed reply.
   expect(construireLienInvite("", TOKEN) === null, "un hôte vide ne doit jamais produire de lien"));
 
@@ -60,7 +60,7 @@ test("lien_jeton_vide_rend_null", () =>
   expect(construireLienInvite("share.example.com", "") === null, "sans jeton il n'y a rien à partager"));
 
 // =================================================================================================
-//  2. inviteEstVivante — the same "live" rule the server enforces server-side
+//  2. inviteEstVivante, the same "live" rule the server enforces server-side
 // =================================================================================================
 
 const dans30Jours = new Date(Date.now() + 30 * JOUR_MS).toISOString();
@@ -85,7 +85,7 @@ test("invite_avec_expiration_illisible_n_explose_pas_et_reste_vivante", () =>
     "une date illisible ne doit ni planter ni exclure l'invite par erreur"));
 
 // =================================================================================================
-//  3. ligneInviteAffichage — pure formatting of one row
+//  3. ligneInviteAffichage, pure formatting of one row
 // =================================================================================================
 
 test("ligne_jamais_utilisee_dit_never_used", () => {
@@ -111,8 +111,8 @@ test("ligne_utilisee_sans_nom_connu_n_affiche_que_la_date", () => {
   return expect(l.lastUsed === "2026-08-10", "sans last_name connu, pas de tiret suivi de rien, vu " + JSON.stringify(l.lastUsed));
 });
 
-test("ligne_sans_date_de_creation_rend_le_tiret_cadratin_court", () =>
-  expect(ligneInviteAffichage({ createdAt: null, lastUsedAt: null, lastName: null, uses: 0 }).created === "—",
+test("ligne_sans_date_de_creation_rend_le_tiret_court", () =>
+  expect(ligneInviteAffichage({ createdAt: null, lastUsedAt: null, lastName: null, uses: 0 }).created === "-",
     "même convention que panneaux/plans.ts pour une date absente"));
 
 // =================================================================================================

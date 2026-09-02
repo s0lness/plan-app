@@ -1,4 +1,4 @@
-// src/ts/gestes/murs.ts — select, drag and draw walls, then edit the outline from a facade.
+// src/ts/gestes/murs.ts: select, drag and draw walls, then edit the outline from a facade.
 // Ported from src/js/53-v5-outils.js (everything, EXCEPT the OPENING drag which lives in `ouverture.ts`),
 // from src/js/54-v5-interface.js (the handle WIRING, whose rendering already lives
 // in `rendu/calque.ts`) and from src/js/52 for the single
@@ -260,7 +260,7 @@ function v5ClearDraft(ctx: Contexte): void {
  * THE GEOMETRY PIPELINE ITSELF, no screen effects: re-sync the outline walls, re-traverse every
  * interior wall, keep openings inside their wall, and (`final`) rebuild the cells. Extracted out
  * of `v5AfterGeometry` (below) so a headless test can drive the SAME pipeline without a DOM
- * (`ctx.canvas`, `render()`, `document`) in the loop — exactly how `v5WallDragCtx`/
+ * (`ctx.canvas`, `render()`, `document`) in the loop, exactly how `v5WallDragCtx`/
  * `v5WallDragApply` above are already tested directly, `tests/jonction-glisser-mur.ts`. Pure
  * function of the plan.
  */
@@ -318,7 +318,7 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 // The wall is A SINGLE shared object: moving it adjusts BOTH cells by construction. Any OTHER
 // wall whose endpoint sits on the dragged wall (a corner it was drawn from, or a T further along
 // it) is a FOLLOWER: it is decided ONCE, from the geometry at `pointerdown`
-// (`v5WallDragCtx`), never re-evaluated mid-drag — re-deciding it on every frame would let a wall
+// (`v5WallDragCtx`), never re-evaluated mid-drag, re-deciding it on every frame would let a wall
 // pick up a NEW neighbor it merely swept past, which is not what "this wall was already
 // connected there" means.
 //
@@ -334,7 +334,7 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 // sideways, never rotates). That vector is along a perpendicular follower's own axis for free (a T
 // at a dragged wall's foot just gets longer or shorter), but along NO OTHER angle: an oblique
 // follower's far end is fixed, its near end gets dragged sideways by a vector that isn't its own
-// line, and it PIVOTS — measured, a follower at 45° opened to 63° after a 50 cm push. Worse, for a
+// line, and it PIVOTS, measured, a follower at 45° opened to 63° after a 50 cm push. Worse, for a
 // follower COLLINEAR with the dragged wall (PR #17's own target case) the fraction produced the
 // SAME tilt, just disguised as "still attached": the owner's second report is a straight vertical
 // wall that continued the dragged one downward to the facade, and PR #17's fraction bent it into a
@@ -346,12 +346,12 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 //   1. A follower NEVER tilts. It keeps its own direction (`Suiveur.dir`), fixed at its far end
 //      (`Suiveur.fixe`): either its touching point SLIDES ALONG THAT DIRECTION until it meets the
 //      dragged wall's new line (ordinary line intersection), or it does not move at all. There is
-//      no third option, no fallback that carries it some other way — a wall in an apartment plan
+//      no third option, no fallback that carries it some other way, a wall in an apartment plan
 //      is never diagonal by accident.
 //   2. A follower moves ONLY IF it would otherwise be left touching NOTHING: if its touching point
 //      is still within 2 cm of some OTHER wall's endpoint or flank, or of the facade (the SAME
 //      tolerance junction detection itself uses), after the dragged wall leaves, it is already
-//      held there and STAYS EXACTLY WHERE IT IS — sliding it to chase the dragged wall would tear
+//      held there and STAYS EXACTLY WHERE IT IS, sliding it to chase the dragged wall would tear
 //      open whatever it is still attached to. This is checked FIRST, from the geometry at
 //      `pointerdown` (only the dragged wall moves, and it is excluded from the check, so "held
 //      after it leaves" and "held right now, ignoring it" are the same question); intersection is
@@ -359,8 +359,8 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 // Rule 1 is why intersection is used AT ALL (a fraction cannot keep a direction); rule 2 is why it
 // is not used UNCONDITIONALLY (an already-held neighbor sliding to "correctly" meet the dragged
 // wall would rip the room it is still forming with its OTHER neighbor). Combined, three walls
-// meeting at one point — a dragged wall, a perpendicular neighbor, and a third wall continuing
-// that neighbor in a straight line to the facade — all stay exactly as drawn except the one being
+// meeting at one point, a dragged wall, a perpendicular neighbor, and a third wall continuing
+// that neighbor in a straight line to the facade, all stay exactly as drawn except the one being
 // dragged: the other two hold each other, so neither one is in the void, so neither one moves,
 // and the dragged wall simply comes to rest against the flank of whichever of them it now
 // overlaps. Nothing tears, nothing tilts. See `docs/decisions/` for the two contradictory owner
@@ -369,7 +369,7 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 // A follower whose own line is near-parallel to the dragged wall's new line (`sin < 0.09`, ~5°,
 // covers the exact-collinear case) has no USABLE intersection either way (two near-parallel lines
 // meet arbitrarily far away): rule 1 then gives "does not move" directly, without consulting rule
-// 2 — sliding along a direction the dragged wall's line barely deviates from is not meaningfully
+// 2, sliding along a direction the dragged wall's line barely deviates from is not meaningfully
 // different from not sliding, and forcing a numerically unstable solve is worse than staying put.
 // A collinear follower that ALSO turns out to be in the void (nothing else holds it) therefore
 // DETACHES rather than stretch into a diagonal: an accepted loss, spelled out in
@@ -384,7 +384,7 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 // from leaving the apartment; that is unrelated to this follower list and unchanged by it.
 //
 // CHAINS ARE ONE HOP, DELIBERATELY: if A meets B and B meets C, dragging B carries A and C (their
-// near ends, touching B), but dragging A carries ONLY B — C is not touching A, so it is not in
+// near ends, touching B), but dragging A carries ONLY B, C is not touching A, so it is not in
 // A's follower list, and B's OWN far end (the one touching C) is never written by this function,
 // so C stays exactly where it was. Propagating transitively would mean grabbing one wall silently
 // drags the whole connected partition system across the apartment: that is a MASS operation, the
@@ -416,10 +416,10 @@ function v5FollowerDir(fixe: Pt, p: Pt): Pt {
 }
 
 /** RULE 2: is `pt` (a follower's touching point) still within 2 cm of some wall OTHER than the
- * dragged wall `w` and the follower `x` itself — another wall's endpoint or flank, or a facade
+ * dragged wall `w` and the follower `x` itself, another wall's endpoint or flank, or a facade
  * wall (outline walls are ordinary entries of `P.walls`, so they fall out of this same scan for
  * free)? Only `w` moves during this gesture, and it is excluded here, so "held once w has left"
- * and "held right now, ignoring w" are the same question — this can be decided ONCE, from the
+ * and "held right now, ignoring w" are the same question, this can be decided ONCE, from the
  * geometry at `pointerdown`, exactly like the rest of the follower list. */
 function v5EstTenuAilleurs(P: PlanV5, w: Mur, x: Mur, pt: Pt): boolean {
   return (P.walls || []).some((v) => {
@@ -480,15 +480,15 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
   const wl = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) || 1e-9;
   const wux = (w.b[0] - w.a[0]) / wl, wuy = (w.b[1] - w.a[1]) / wl;
   followers.forEach((f) => {
-    // RULE 2 first: already held by someone other than the dragged wall — stays exactly in place,
+    // RULE 2 first: already held by someone other than the dragged wall, stays exactly in place,
     // no matter its angle. Sliding it to "correctly" meet the dragged wall would tear open
     // whatever it is still attached to (see the header for the three-wall reproduction).
     if (f.tenu) return;
-    // RULE 1: an unheld follower keeps its OWN direction — it slides ALONG THAT DIRECTION to meet
+    // RULE 1: an unheld follower keeps its OWN direction, it slides ALONG THAT DIRECTION to meet
     // the dragged wall's new line (ordinary intersection), or it does not move. Never a fraction,
     // never any other vector: that is what used to tilt it. Near-parallel (`sin < 0.09`, ~5°) has
     // no usable intersection (two near-parallel lines meet arbitrarily far away) and is exactly the
-    // collinear case: it does not move either, and — being unheld — DETACHES. An accepted loss
+    // collinear case: it does not move either, and, being unheld, DETACHES. An accepted loss
     // (`docs/decisions/`): a visible gap is honest and reversible, a diagonal is neither.
     const cross = f.dir[0] * wuy - f.dir[1] * wux;
     if (Math.abs(cross) < 0.09) return;
@@ -683,7 +683,7 @@ const P0 = (ctx: Contexte): PlanV5 | null => ctx.etat.plan || null;
 // ONE endpoint moves, the OTHER stays exactly where it was. This is NOT the perpendicular-offset
 // drag of TOOL 1 above (`v5WallDragCtx`/`v5WallDragApply`, which moves the WHOLE wall and carries
 // its junctions as FOLLOWERS, decided once at `pointerdown`): here there is no follower list,
-// because `v5ResoudreGeometrie` already re-traverses EVERY wall on each frame — the same
+// because `v5ResoudreGeometrie` already re-traverses EVERY wall on each frame, the same
 // mechanism a vertex drag and an outline edge drag already lean on (`v5AfterGeometry`). A
 // neighbor that was resting against this wall reacts to the endpoint's NEW position exactly as
 // it would to any other geometry edit; there is nothing extra to decide or carry.
@@ -699,13 +699,13 @@ const P0 = (ctx: Contexte): PlanV5 | null => ctx.etat.plan || null;
 /**
  * Where the dragged endpoint lands THIS FRAME, in priority order:
  *   1-3. a junction (another wall's endpoint, a point on another wall's segment, or the same on
- *        the outline) within reach — `v5SnapWallEnd` covers all three as one two-stage cascade,
+ *        the outline) within reach, `v5SnapWallEnd` covers all three as one two-stage cascade,
  *        EXACT, regardless of Alt: a deliberate connection is not something "free hand" mode
  *        should make harder to hit.
  *   4. otherwise, the wall's DIRECTION quantised to the nearest 45° measured from the FIXED end
- *      (`DIR8`/`quantizeAngleDeg`, `geometrie/angles.ts`) — unless Alt is held, which frees the
+ *      (`DIR8`/`quantizeAngleDeg`, `geometrie/angles.ts`), unless Alt is held, which frees the
  *      angle, the same meaning Alt already has everywhere else in this file.
- *   5. `step` (5cm, or 1cm under Ctrl/Cmd — the caller passes it, see `sansGrille`) rounds the
+ *   5. `step` (5cm, or 1cm under Ctrl/Cmd, the caller passes it, see `sansGrille`) rounds the
  *      result along whichever direction stage 4 picked.
  * Mirrors `v5StartDraw`'s own precedence (vertex > edge > grid) so extending a wall feels
  * identical to drawing one.
@@ -734,7 +734,7 @@ export function v5WallEndDrop(
  * Applies the drop: moves ONLY `bout`, marks the wall `free` (see file header), re-settles the
  * geometry (`final` also rebuilds the cells and bounds furniture). Mirrors `v5WallDragApply`'s
  * own shape exactly, including being safe to call headlessly with a stub `Contexte`
- * (`ctx.etat.plan` and `ctx.canvas.querySelector` only — no `render()`, no `document`), so the
+ * (`ctx.etat.plan` and `ctx.canvas.querySelector` only, no `render()`, no `document`), so the
  * SAME function drives both the real gesture below and `tests/bouts-de-mur.ts`.
  */
 export function v5WallEndDragApply(

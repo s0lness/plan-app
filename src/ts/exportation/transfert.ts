@@ -1,4 +1,4 @@
-// src/ts/exportation/transfert.ts — SAVE / LOAD A PLAN AS A JSON FILE.
+// src/ts/exportation/transfert.ts: SAVE / LOAD A PLAN AS A JSON FILE.
 // Ported from src/js/32-export.js (`exportPayload`, `importPlan`, the `#xfer` modal).
 //
 // INSIDE AN ARTIFACT IFRAME, THE SANDBOX BLOCKS `<a download>` SILENTLY: the click does

@@ -1,4 +1,4 @@
-// src/ts/rendu/etiquettes-disposition.ts — WHERE a room label lands, aware of furniture and of
+// src/ts/rendu/etiquettes-disposition.ts: WHERE a room label lands, aware of furniture and of
 // its own neighbors.
 //
 // Room labels and furniture labels used to be laid out INDEPENDENTLY: a chosen furniture name

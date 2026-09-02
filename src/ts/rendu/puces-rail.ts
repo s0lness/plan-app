@@ -1,4 +1,4 @@
-// src/ts/rendu/puces-rail.ts — THE ROOM CHIPS IN THE RAIL. Ported from src/js/25-enveloppe.js
+// src/ts/rendu/puces-rail.ts: THE ROOM CHIPS IN THE RAIL. Ported from src/js/25-enveloppe.js
 // (`roomChipsSig`, `renderRoomChips`; `computeEnvelopeHull` is elsewhere, it's reading of
 // an existing plan, not rendering).
 //

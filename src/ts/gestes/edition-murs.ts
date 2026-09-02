@@ -1,4 +1,4 @@
-// src/ts/gestes/edition-murs.ts — THE OUTLINE'S ORTHOGONAL SNAP AND ITS GUIDES.
+// src/ts/gestes/edition-murs.ts: THE OUTLINE'S ORTHOGONAL SNAP AND ITS GUIDES.
 // Ported from src/js/15-edition-murs.js (`orthoTol`, `orthoSnapAxis`, `orthoSnapVertex`,
 // `clearStitchGuides`, `drawOrthoGuides`, `checkShapeWarn`).
 //

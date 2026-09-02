@@ -1,4 +1,4 @@
-// src/ts/mesure/guides-curseur.ts — THE CURSOR-DISTANCE PROBE (Measure mode only).
+// src/ts/mesure/guides-curseur.ts: THE CURSOR-DISTANCE PROBE (Measure mode only).
 // Ported from src/js/06-mesure.js (`allBlockerAABBsApt`, `rayToAnyPolyApt`, `cursorDistances`,
 // `drawCursorGuides`, `scheduleCursorGuides`, `clearCursorGuides`).
 //

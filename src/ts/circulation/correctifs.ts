@@ -1,4 +1,4 @@
-// src/ts/circulation/correctifs.ts — PORTED VERBATIM from src/js/37-flow-correctifs.js (61 lines).
+// src/ts/circulation/correctifs.ts: PORTED VERBATIM from src/js/37-flow-correctifs.js (61 lines).
 //
 // The fixes mutate the REAL piece of the state (apartment coordinates), not the copy the
 // engine works with: that's what `realPieceById` (js/36) says. `afterFix()` lives in `FL` because

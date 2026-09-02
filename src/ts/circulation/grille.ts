@@ -1,4 +1,4 @@
-// src/ts/circulation/grille.ts — PORTED VERBATIM from src/js/35-flow-grille.js (165 lines).
+// src/ts/circulation/grille.ts: PORTED VERBATIM from src/js/35-flow-grille.js (165 lines).
 // No rule, no threshold, no constant changes. Only the language of the code changes.
 
 import type { Grille, ObjetFlow, Rect } from "./etat.ts";
@@ -76,7 +76,7 @@ export function clearanceField(g: Grille): Float64Array {
   const d = new Float64Array(gw * gh);
   for (let i = 0; i < gw * gh; i++) d[i] = blocked[i] ? 0 : INF;
   // outside-polygon cells are already blocked (=0), so this transform encodes
-  // distance to the real walls automatically — no rectangle-edge seeding needed.
+  // distance to the real walls automatically, no rectangle-edge seeding needed.
   const D1 = cs, D2 = cs * Math.SQRT2;
   // forward
   for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {

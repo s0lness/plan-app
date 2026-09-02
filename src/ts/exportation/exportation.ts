@@ -1,4 +1,4 @@
-// src/ts/exportation/exportation.ts — WIRING UP THE OUTPUTS (batch E3c, EXPORT sub-batch).
+// src/ts/exportation/exportation.ts: WIRING UP THE OUTPUTS (batch E3c, EXPORT sub-batch).
 // Ported from src/js/32-export.js and src/js/30-liste-mobilier.js.
 //
 // WHAT THIS MODULE WIRES, and nothing else:

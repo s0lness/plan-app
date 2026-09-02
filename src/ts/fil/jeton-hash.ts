@@ -1,4 +1,4 @@
-// src/ts/fil/jeton-hash.ts — THE INVITE TOKEN'S SHAPE IN `location.hash`, AND NOTHING ELSE.
+// src/ts/fil/jeton-hash.ts: THE INVITE TOKEN'S SHAPE IN `location.hash`, AND NOTHING ELSE.
 //
 // PURE, and split out of `fil/invite.ts` deliberately: `invite.ts` also imports `fil/rest.ts`
 // (`setSyncChip`) and `fil/emission.ts` (`wsSend`), so importing IT from a browserless test pulls

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "NO EXPORT WITHOUT A CALLER" SUITE — NO BROWSER
+//  "NO EXPORT WITHOUT A CALLER" SUITE: NO BROWSER
 // =============================================================================
 // WHY IT EXISTS, AND IT'S A CONFESSION. Twice in the same day I shipped a utility
 // with its intent comment, and NO caller:
 //
-//   . `empilables()` ("the dryer sits on top of the washer") — written for an overlap rule
+//   . `empilables()` ("the dryer sits on top of the washer"), written for an overlap rule
 //     that did not exist yet;
-//   . `renommageEnCours()` ("so gestures don't trample the input field") — never called,
+//   . `renommageEnCours()` ("so gestures don't trample the input field"), never called,
 //     and unnecessary since the keydown's `stopPropagation` already protected it.
 //
 // Both were found because I was asked "are you sure everything is done?" That's not

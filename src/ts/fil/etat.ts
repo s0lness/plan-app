@@ -1,4 +1,4 @@
-// src/ts/fil/etat.ts — ALL THE SYNC LAYER'S MUTABLE STATE, IN A SINGLE OBJECT.
+// src/ts/fil/etat.ts: ALL THE SYNC LAYER'S MUTABLE STATE, IN A SINGLE OBJECT.
 //
 // WHY THIS OBJECT EXISTS, AND WHAT IT REPLACES. The old client held these forty variables in its
 // single closure, spread across five files (js/41 to js/45) that passed them around without any
@@ -25,7 +25,7 @@ import { nouveauMiroir } from "../partage/plan.ts";
  *
  * Batch 2 (wire identity): `name`/`guest` accompany every peer message now, household and guest
  * alike (a guest recipient never gets `email`/`by` at all: `live-worker/worker.ts` omits the key
- * rather than sending "" — this interface allows it because JSON simply doesn't carry it, not
+ * rather than sending "", this interface allows it because JSON simply doesn't carry it, not
  * because the value would be falsy). `guestId` exists ONLY for a guest author: it is what
  * `wsSameAccount` compares to tell a guest's OWN other tab from a different guest entirely.
  */
@@ -149,7 +149,7 @@ export interface Fil {
   wsReconnectTimer: ReturnType<typeof setTimeout> | null;
   /**
    * The identity returned by the `hello`. `tag` = THIS SOCKET, hence THIS device (C-7).
-   * `guest`/`guestId` (batch 2): this device's OWN guest fallback identity, if it is one — the
+   * `guest`/`guestId` (batch 2): this device's OWN guest fallback identity, if it is one, the
    * "same person" key `wsSameAccount` compares against a peer's `guestId`, since a guest carries
    * no email to compare instead.
    */
@@ -214,7 +214,7 @@ export interface Fil {
   /**
    * CURSOR CHAT ("/", `fil/dire.ts`): the LOCAL author's own live text, or `null` when the box
    * is closed. Rides the `cursor` message (`wsFlushCursor`) at the SAME cadence as an ordinary
-   * position ping — never a message of its own, never a second throttle. Purely a piece of WIRE
+   * position ping, never a message of its own, never a second throttle. Purely a piece of WIRE
    * state: the DOM box that edits it lives in `fil/dire.ts`, not here.
    */
   sayText: string | null;
@@ -318,7 +318,7 @@ export function wsFromMe(fil: Fil, o: Pair | null | undefined): boolean {
 }
 
 /**
- * Is this device an OTHER device of MY account? (outline ring, tooltip, "Other device") — the
+ * Is this device an OTHER device of MY account? (outline ring, tooltip, "Other device"), the
  * strongest trust marker in the UI.
  *
  * Design edge 8: BEFORE `guest` existed, every unauthenticated caller shared the SAME fallback
@@ -327,7 +327,7 @@ export function wsFromMe(fil: Fil, o: Pair | null | undefined): boolean {
  *
  * If EITHER side is a guest, email is never the arbiter: `email`/`by` compares two ADDRESSES, and
  * a guest carries none (routing it through the empty-string branch is exactly the old bug). The
- * comparison instead runs on `guestId` — a value the GUEST'S OWN BROWSER generated and stores
+ * comparison instead runs on `guestId`, a value the GUEST'S OWN BROWSER generated and stores
  * locally (batch 3), read back identically by every tab of that SAME browser profile, and never by
  * anyone else's. Two different guests therefore never match (two different random ids), the same
  * guest's two tabs do (same stored id), and a guest can never match a household member (one side

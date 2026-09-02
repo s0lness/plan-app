@@ -3,7 +3,7 @@
 //
 // Reported: "the share button doesn't work." Reproduced: a tab in local-only mode hit
 // `if (!SYNC_ON || !estMenage()) return;` in `ouvrirPartage()` (src/ts/panneaux/partage.ts) and
-// returned SILENTLY — no panel, no message, no error, nothing on screen to explain why nothing
+// returned SILENTLY, no panel, no message, no error, nothing on screen to explain why nothing
 // happened. `tests/partage-fil.ts` only ever exercised the panel's PURE functions; nothing in the
 // suite ever actually clicked Share in a browser, which is exactly how this shipped.
 //
@@ -17,7 +17,7 @@
 //      link" produces a real link, and the server actually received the `POST /api/invites`.
 //   2. `plan-porte-locale` (written when a tab discovers the guest door with no invitation, see
 //      `src/ts/fil/invite.ts`) is a GUESS, not a life sentence: seeded before load, it survives
-//      long enough to freeze THIS tab's mode as local-only (by design — a mode never reverts mid-
+//      long enough to freeze THIS tab's mode as local-only (by design, a mode never reverts mid-
 //      tab), but a boot read that SUCCEEDS proves the origin does serve a household plan, and
 //      clears the flag for the NEXT visit. Reloading (keeping storage, like `porte-invitee.ts`'s
 //      `/revisite`) lands on the household door normally: the Invite button is back, Share works.
@@ -48,7 +48,7 @@ const HOTE_INVITE = "share.example.com";   // GUEST_HOST: never served here, onl
 const HOUSEHOLD_HOSTS_ENV = { HOUSEHOLD_HOSTS: HOTE_MENAGE, GUEST_HOST: HOTE_INVITE };
 // The suite always serves over real http(s) (`SYNC_ON` true), so it can only reach `ouvrirPartage`'s
 // SECOND silent-return reason (`!estMenage()`); the first (`!SYNC_ON`, file:// / the embedded
-// artifact) is covered by reading the source, not a browser here — there is no `SYNC_ON`-false
+// artifact) is covered by reading the source, not a browser here, there is no `SYNC_ON`-false
 // door this rig can serve.
 const MSG_PAS_MENAGE = "This tab is not connected to the household plan: there is nothing to share from here.";
 
@@ -235,7 +235,7 @@ try {
   // ============================================================================================
   // `plan-porte-locale` is seeded BEFORE the app ever boots, exactly as it would be after an
   // earlier visit mistakenly discovered the guest door. This tab is STILL the household door
-  // (Host matches HOUSEHOLD_HOSTS) — the flag is simply WRONG for this origin.
+  // (Host matches HOUSEHOLD_HOSTS), the flag is simply WRONG for this origin.
   const B = await openBrowser("guerison", URL_OF("/porte-locale"));
   opened.push(B);
   const flagEffaceApresLecture = await attendre(async () =>
@@ -251,7 +251,7 @@ try {
 
   // Defect 1: clicking Share on this tab must not be silent. `.click()` on the hidden button
   // exercises `ouvrirPartage()` exactly as a stale/regressed visibility rule would let a real
-  // pointer reach it — the point being to prove the FUNCTION says why, not that the button is
+  // pointer reach it, the point being to prove the FUNCTION says why, not that the button is
   // reachable by mouse today.
   await B.evaluate(`document.getElementById("btnInvite").click()`);
   const toastVu = await attendre(async () => !!(await B.evaluate(`window.__plan.toastText`)));

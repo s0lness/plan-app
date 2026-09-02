@@ -1,4 +1,4 @@
-// src/ts/sonde-donnees.ts — THE "DATA AND THUMBNAILS" PROBE SLICE (E3c).
+// src/ts/sonde-donnees.ts: THE "DATA AND THUMBNAILS" PROBE SLICE (E3c).
 //
 // One probe file PER BATCH: `js/57-sondes-test.js` was "the repo's most likely git conflict
 // point", and two keys were genuinely duplicated in it.

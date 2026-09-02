@@ -1,4 +1,4 @@
-// src/ts/partage/contrat-serveur.ts — THE CLIENT/SERVER CONTRACT, WRITTEN ONCE.
+// src/ts/partage/contrat-serveur.ts: THE CLIENT/SERVER CONTRACT, WRITTEN ONCE.
 //
 // WHY THIS FILE EXISTS (docs/invariants.md, C-5, "the most fragile invariant in the repo"):
 // the validator in `live-worker/ops.ts` fixes the allowed keys and REJECTS the unknown. A

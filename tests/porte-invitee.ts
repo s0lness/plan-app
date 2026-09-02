@@ -14,7 +14,7 @@
 //   3. a dead-end link shows the FULL-SCREEN dead end, and the planner never boots at all
 //      (`window.__plan` stays undefined: `installerSonde` lives inside `amorcer()`, which
 //      `preparerAccueil()` never lets run);
-//   4. local-only mode NEVER issues a PUT, and says so on the chip — never one of the five
+//   4. local-only mode NEVER issues a PUT, and says so on the chip, never one of the five
 //      ordinary sync states.
 //
 // Run:   node tests/porte-invitee.ts [path-to-app-html]
@@ -197,7 +197,7 @@ try {
   const URL_OF = (p: string) => `http://127.0.0.1:${PORT}${p}`;
 
   // ============================================================================================
-  //  1. A #k= LINK IS CAPTURED, STORED, AND STRIPPED — and a name known for the token but NOT for
+  //  1. A #k= LINK IS CAPTURED, STORED, AND STRIPPED, and a name known for the token but NOT for
   //     THIS DEVICE does not skip the step (docs/decisions/0004-partage-par-lien.md, edge 20,
   //     corrected 2026-08-14). Confirmed live, two people testing multiplayer together: the owner
   //     named himself, his friend opened the SAME link right after and silently became him on both

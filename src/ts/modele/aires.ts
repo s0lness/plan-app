@@ -1,4 +1,4 @@
-// src/ts/modele/aires.ts — signed areas, segment intersections, exact overlap.
+// src/ts/modele/aires.ts: signed areas, segment intersections, exact overlap.
 // Porté de src/js/47-v5-modele.js.
 
 import type { Pt } from "../partage/plan.ts";

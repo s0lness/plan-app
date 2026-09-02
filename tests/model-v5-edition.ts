@@ -5,12 +5,12 @@ import type { DonneeDynamique } from "./_types.ts";
 import { test, near, expect, seedV4, REAL_PLAN, SEED_PLAN, report } from "./_harness-v5.ts";
 
 // =============================================================================
-//  6. EDITING (phase 2) — wall / outline / opening / furniture tools
+//  6. EDITING (phase 2), wall / outline / opening / furniture tools
 // =============================================================================
 
 
 
-// 6a. TOOL 1 — dragging a wall moves the SHARED boundary: both cells adjust at once.
+// 6a. TOOL 1, dragging a wall moves the SHARED boundary: both cells adjust at once.
 await test("v5_wall_drag_moves_shared_boundary", "", `
   window.__plan.setModel(${SEED_PLAN});
   var P = window.__plan.plan;
@@ -34,7 +34,7 @@ await test("v5_wall_drag_moves_shared_boundary", "", `
      && expect(near(v.ext[0].area, 160000, 500) && near(v.ext[1].area, 80000, 500),
         "areas should be 400x400 and 200x400, got " + JSON.stringify(v.ext)));
 
-// 6b. TOOL 2 — tracing a wall: a segment that reaches no geometry is EXTENDED (through wall)
+// 6b. TOOL 2, tracing a wall: a segment that reaches no geometry is EXTENDED (through wall)
 // and does split the cell in two.
 await test("v5_wall_draw_splits_cell", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
@@ -51,7 +51,7 @@ await test("v5_wall_draw_splits_cell", "", `
         "both endpoints must be extended to the outline, got " + JSON.stringify([v.a, v.b]))
      && expect(v.areas.every((a: DonneeDynamique) => near(a, 120000, 500)), "two 300x400 halves expected, got " + JSON.stringify(v.areas)));
 
-// 6c. TOOL 3 — deleting a wall merges the two cells; the name of the BIGGER one wins
+// 6c. TOOL 3, deleting a wall merges the two cells; the name of the BIGGER one wins
 // (matched by area overlap), and the wall's openings cascade away.
 await test("v5_wall_delete_merges_bigger_name_wins", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
@@ -76,7 +76,7 @@ await test("v5_wall_delete_merges_bigger_name_wins", "", `
         "the wall's openings must cascade away client-side (mirroring wall.del), got " + v.openingsAfter)
      && expect(v.walls === 0, "the wall itself must be gone, got " + v.walls));
 
-// 6d. TOOL 4 — moving a facade: interior walls that were leaning on it FOLLOW (re-traversal).
+// 6d. TOOL 4, moving a facade: interior walls that were leaning on it FOLLOW (re-traversal).
 await test("v5_outline_drag_pulls_wall_followers", "", `
   window.__plan.setModel({ outline:[[0,0],[600,0],[600,400],[0,400]],
     walls:[{id:"w1", a:[0,200], b:[600,200], t:12}], openings:[], pieces:[], cells:[] });
@@ -95,7 +95,7 @@ await test("v5_outline_drag_pulls_wall_followers", "", `
      && expect(near(v.total, 320000, 2000), "cells must still tile the (bigger) outline, got " + v.total)
      && expect(v.facades === 4, "the facade walls must track the outline, got " + v.facades));
 
-// 6e. TOOL 6 — an opening slides along its wall (t0 only) and reparameterizes onto ANOTHER
+// 6e. TOOL 6, an opening slides along its wall (t0 only) and reparameterizes onto ANOTHER
 // wall when dropped near it (<=60 cm), with no notion of membership whatsoever.
 await test("v5_opening_slides_and_rewalls", "", `
   window.__plan.setModel(${SEED_PLAN});
@@ -112,7 +112,7 @@ await test("v5_opening_slides_and_rewalls", "", `
      && expect(near(v.reWall.t0, 80, 1), "t0 on the new wall should be ~80, got " + v.reWall.t0)
      && expect(near(v.clampTop.t0, 520, 1), "t0 must clamp to L-w = 520, got " + v.clampTop.t0));
 
-// 6f. TOOL 7 — a piece of furniture is bounded by ITS cell (polygon inset by half a wall's
+// 6f. TOOL 7, a piece of furniture is bounded by ITS cell (polygon inset by half a wall's
 // thickness), no longer by the v4 room: it cannot overflow through the partition.
 await test("v5_furniture_clamped_to_its_cell", "", `
   window.__plan.setModel(${SEED_PLAN});

@@ -1,4 +1,4 @@
-// src/ts/noyau/dom.ts — the four DOM gestures that all of rendering shares.
+// src/ts/noyau/dom.ts: the four DOM gestures that all of rendering shares.
 // Ported from src/js/00-noyau.js (`$`, `cssId`, `setLabelSpin`) and from src/js/09-viewport-rail.js
 // (`SVGNS`, `COARSE`).
 //

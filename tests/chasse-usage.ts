@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "CHASSE USAGE" SUITE — REAL MOUSE + KEYBOARD (CDP), real hit-testing
+//  "CHASSE USAGE" SUITE: REAL MOUSE + KEYBOARD (CDP), real hit-testing
 // =============================================================================
 // Two defects found by a long ordinary-use hunt (round trips, repeats, the newest gestures,
 // undo/redo chains, Escape/blur/off-canvas, and a 300-object plan), on the invented demo
@@ -155,7 +155,7 @@ const undoCount = async () => Number(await evaluate(`String(__plan.histInfo().un
 // The delete "x" of the SELECTED wall (painted by the handle pass of rendu/calque.ts) used to sit dead-center on
 // the wall's own segment. Selecting a wall by dragging it once, then reaching for the SAME spot
 // to nudge it again, hit the delete cross
-// instead — the wall vanished, silently (no toast: the layer's own early return hands the event to
+// instead, the wall vanished, silently (no toast: the layer's own early return hands the event to
 // `.v5wx` before the wall-drag gesture is ever armed).
 await test("mur_re_glisse_apres_selection_ne_le_supprime_pas", async () => {
   const w = await J(`(function(){var x=__plan.plan.walls.filter(function(w){return !w.isOutline;})[0];

@@ -1,4 +1,4 @@
-// src/ts/modele/lecture-v4.ts — READING a plan in the LEGACY format (v1 -> v4).
+// src/ts/modele/lecture-v4.ts: READING a plan in the LEGACY format (v1 -> v4).
 // Porté de src/js/02-etat-migrations.js (block "READING a plan in the legacy format").
 //
 // NONE of the structures returned here survive `migrate()`: they are rebuilt in memory for the

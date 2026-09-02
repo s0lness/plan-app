@@ -1,4 +1,4 @@
-// src/ts/gestes/pile.ts — TWO OBJECTS AT THE SAME SPOT: THE ONE UNDERNEATH STAYS REACHABLE.
+// src/ts/gestes/pile.ts: TWO OBJECTS AT THE SAME SPOT: THE ONE UNDERNEATH STAYS REACHABLE.
 // Ported from src/js/12-rendu.js (`pickStacked`, `STACK_TOL`, `STACK_MS`).
 //
 // G-9 / G-10, and it is the sole arbiter of the stack: it is called by the `pointerdown` of

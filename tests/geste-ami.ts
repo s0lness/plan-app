@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "GESTES AMIS" SUITE — REAL MOUSE + KEYBOARD (CDP), two affordances nobody could guess
+//  "GESTES AMIS" SUITE: REAL MOUSE + KEYBOARD (CDP), two affordances nobody could guess
 // =============================================================================
 // Two requests from a real user of the app.
 //
@@ -13,7 +13,7 @@
 //                                      the pointer, ephemeral, nothing written, nothing saved.
 //   d_tenu_privilegie_la_selection     a selection wins over the pointer: guides appear even when
 //                                      the pointer sits over open floor.
-//   d_relache_efface_les_guides        release: the guides disappear, and only the guides — no
+//   d_relache_efface_les_guides        release: the guides disappear, and only the guides, no
 //                                      trace in the model.
 //
 // Plus a THIRD real-user request, on the SAME modifier: holding Ctrl/Cmd BEFORE pressing (the
@@ -25,7 +25,7 @@
 //                                      drag: the piece moves, grid suppressed, and the selection
 //                                      is left exactly as it was (no toggle fires).
 //   ctrl_clic_sans_glisser_bascule_la_selection    Ctrl/Cmd press-then-release with NO movement:
-//                                      the OLD behavior, unchanged — a toggle, and nothing written.
+//                                      the OLD behavior, unchanged, a toggle, and nothing written.
 //   ctrl_clic_deux_fois_desactive_la_selection     the same click twice in a row toggles the
 //                                      piece back OUT of the selection.
 import type { VerdictSonde } from "./_types.ts";
@@ -48,7 +48,7 @@ const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const APP = process.argv[2] || path.join(__dirname, "..", "index.html");
 // The household's real converted plan (v4 on disk, migrated to v5 on load): reused from
 // gestes-precision.ts, which already proves "Homu" clean of alignment-snap interference at a
-// 30 cm nudge in +x — the same piece, a smaller nudge, in the same direction, stays clean too.
+// 30 cm nudge in +x, the same piece, a smaller nudge, in the same direction, stays clean too.
 const SEED = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "plan-reel-77.json"), "utf8"));
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-geste-ami-"));
@@ -248,7 +248,7 @@ await test("ctrl_glisse_meuble_au_centimetre", async () => {
 //  2. d_tenu_montre_les_cotes_du_choisi
 // =============================================================================
 // Request: hold D to SEE the live dimensions without moving anything. Nothing selected: the
-// object under the pointer. Ephemeral DOM only — no history entry, no local write.
+// object under the pointer. Ephemeral DOM only, no history entry, no local write.
 await test("d_tenu_montre_les_cotes_du_choisi", async () => {
   await evaluate(`__plan.clearSel(); __plan.render(); true`);
   const p = await parNom("Homu");
@@ -344,7 +344,7 @@ await test("ctrl_presse_avant_glisse_deplace_sans_toggle", async () => {
 //  5. ctrl_clic_sans_glisser_bascule_la_selection
 // =============================================================================
 // Request's negative control: Ctrl/Cmd press-then-release with NO movement at all must keep
-// doing exactly what it did before this fix — TOGGLE the selection, move nothing, write nothing.
+// doing exactly what it did before this fix, TOGGLE the selection, move nothing, write nothing.
 await test("ctrl_clic_sans_glisser_bascule_la_selection", async () => {
   await evaluate(`__plan.clearSel(); __plan.render(); true`);
   const p = await parNom("Homu");

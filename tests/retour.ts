@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  THE FEEDBACK DROP — NO BROWSER, against the real route file over an in-memory D1 (tests/fake-d1.ts).
+//  THE FEEDBACK DROP: NO BROWSER, against the real route file over an in-memory D1 (tests/fake-d1.ts).
 // =================================================================================================
 //   node tests/retour.ts
 //

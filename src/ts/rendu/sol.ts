@@ -1,4 +1,4 @@
-// src/ts/rendu/sol.ts — A ROOM'S FLOOR PATTERN, as an SVG <pattern>.
+// src/ts/rendu/sol.ts: A ROOM'S FLOOR PATTERN, as an SVG <pattern>.
 // Ported from src/js/10-rendu-sol.js (`floorPatternDefs`), byte for byte: the INDENTATION
 // inside the templates is part of the rendered strings, so it is reproduced as-is
 // and does not follow the indentation of the surrounding code.

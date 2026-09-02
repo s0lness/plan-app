@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  ROOM LABEL PLACEMENT — NO BROWSER (the layout math is PURE)
+//  ROOM LABEL PLACEMENT: NO BROWSER (the layout math is PURE)
 // =============================================================================
 // Reproduces, WITHOUT a browser, the defect measured on the owner's real 103 m2 apartment: room
 // labels and furniture labels used to be laid out INDEPENDENTLY, so a furniture name could sit
@@ -110,7 +110,7 @@ test("jamais_hors_de_sa_propre_cellule", (a) => {
   ], [obstacle]);
   const p = res.get("a");
   if (p) a(p.x < 250, `un déplacement ne doit jamais quitter le polygone de sa cellule, vu x=${p.x}`);
-  // Either a spot within bounds was found, or the label yielded (both acceptable) — what must
+  // Either a spot within bounds was found, or the label yielded (both acceptable), what must
   // NEVER happen is a spot at x >= 250, checked above.
 });
 

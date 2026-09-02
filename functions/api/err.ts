@@ -4,7 +4,7 @@
 // HOUSEHOLD DOOR ONLY, and this file says so itself rather than trusting the choke point.
 // `functions/_middleware.ts` already keeps every other door away from `/api/err`, but every
 // direct-import test in this codebase (tests/porte.ts, tests/repli-conflit.ts) calls a route file
-// directly and bypasses the middleware entirely — a route that trusted it alone would be unguarded
+// directly and bypasses the middleware entirely, a route that trusted it alone would be unguarded
 // under test, and under any future caller that reaches it a different way. Same discipline as
 // functions/api/invites.ts and functions/api/feedback.ts.
 

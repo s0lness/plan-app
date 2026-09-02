@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "WALL ENDPOINT HANDLES" SUITE — REAL MOUSE (CDP), end to end
+//  "WALL ENDPOINT HANDLES" SUITE: REAL MOUSE (CDP), end to end
 // =============================================================================
 // Owner's report, verbatim: "j'aimerais aussi pouvoir choper les extrémités des murs et pouvoir
 // étendre et relier à d'autres murs. parfois je fais un mur mais je me rate, je voulais le faire
@@ -9,7 +9,7 @@
 // real browser can prove:
 //   1. the new handle is actually HITTABLE at working zoom (a headless test can call the
 //      exported function directly and prove nothing about whether a real finger can land on it);
-//   2. clicking the wall's own BODY still drags the WHOLE wall, not an endpoint — the two hit
+//   2. clicking the wall's own BODY still drags the WHOLE wall, not an endpoint, the two hit
 //      targets sit right next to each other and must not steal each other's clicks, the exact
 //      shape of the "+".18px-outward and "delete cross" bugs this codebase has already been bitten
 //      by (AGENTS.md, "G-15" and "G-15-BIS").
@@ -18,7 +18,7 @@
 // drives outside a real browser (every other `*-geste.ts` suite does the same for its own tool).
 //
 // Real mouse (`Input.dispatchMouseEvent`), never a synthetic PointerEvent: AGENTS.md, "A click
-// lands on what is visible" — a synthetic event bypasses hit-testing and the capture-phase wiring
+// lands on what is visible", a synthetic event bypasses hit-testing and the capture-phase wiring
 // this feature lives in.
 //
 //   node tests/bouts-de-mur-geste.ts [path/to/app.html]
@@ -162,7 +162,7 @@ const selWall = () => evaluate(`String(__plan.v5ui.selWall)`);
 /** A single interior wall, isolated, far from the outline: (100,50)->(100,250). `free` matters:
  * a NON-free wall is deliberately used by test 1 (it proves the endpoint drag ITSELF sets the
  * flag), while test 2 needs a `free` wall so its own perpendicular translation is not ALSO
- * re-extended to the facades by the ordinary through-going pipeline — that pre-existing
+ * re-extended to the facades by the ordinary through-going pipeline, that pre-existing
  * behavior is real and correct, but it is orthogonal to what test 2 measures. */
 async function seedUnMur(free?: boolean) {
   await evaluate(`__plan.setModel({outline:[[0,0],[420,0],[420,360],[0,360]],

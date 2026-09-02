@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-//  "SEVERAL OPENINGS ON THE SAME WALL MOVE AS A TRAIN" SUITE — REAL MOUSE (CDP)
+//  "SEVERAL OPENINGS ON THE SAME WALL MOVE AS A TRAIN" SUITE: REAL MOUSE (CDP)
 // =============================================================================
 // Usage report: "selecting and moving several windows on the same wall does not move them
 // as a train, it messes them up".

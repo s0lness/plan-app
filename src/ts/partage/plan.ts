@@ -1,4 +1,4 @@
-// src/ts/partage/plan.ts — THE WALLS-ONLY MODEL, TYPED.
+// src/ts/partage/plan.ts: THE WALLS-ONLY MODEL, TYPED.
 //
 // AN outline partitioned by walls; ROOMS are the CELLS, which are DERIVED.
 // Carried over from src/js/47-v5-modele.js, without changing a single data key (docs/reecriture.md §7.5:

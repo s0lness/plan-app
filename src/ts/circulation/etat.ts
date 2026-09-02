@@ -1,4 +1,4 @@
-// src/ts/circulation/etat.ts — THE STATE OF THE CIRCULATION ENGINE, AND NOTHING ELSE.
+// src/ts/circulation/etat.ts: THE STATE OF THE CIRCULATION ENGINE, AND NOTHING ELSE.
 //
 // The engine is ported VERBATIM (docs/reecriture.md §7.4). In the old client it lived in the
 // single closure: `flowCtx`, `findings`, `findingCounts`, `findingTotal`, `hoverFinding`,
@@ -130,7 +130,7 @@ export interface ResultatAnalyse {
 export const FL = {
   ctx: null as unknown as Contexte,
   flowCanvas: null as HTMLCanvasElement | null,
-  /** current findings — ONE list, apartment-wide */
+  /** current findings, ONE list, apartment-wide */
   findings: [] as Constat[],
   /**
    * Counts of the WHOLE list, BEFORE the display cap of 14 (js/36). The toolbar
@@ -153,7 +153,7 @@ export const FL = {
   /** last analyzed signature (we don't recompute when nothing has moved) */
   aptCacheSig: null as string | null,
   aptResult: null as ResultatAnalyse | null,
-  /** `afterFix()` (js/37): `render(); syncInspector(); analyzeNow();` — set by js/38. */
+  /** `afterFix()` (js/37): `render(); syncInspector(); analyzeNow();`, set by js/38. */
   afterFix: (() => { /* set by brancherCirculation */ }) as () => void,
 };
 

@@ -1,4 +1,4 @@
-// src/ts/rendu/fiche-cellule.ts — THE ROOM SHEET (name, floor, area).
+// src/ts/rendu/fiche-cellule.ts: THE ROOM SHEET (name, floor, area).
 // Ported from src/js/54-v5-interface.js (`v5SyncCellCard`).
 //
 // R-13. IT IS RESYNCED BY `render()`, NOT BY A SELECTION. Before, moving a facade left it on its

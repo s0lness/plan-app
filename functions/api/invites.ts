@@ -1,5 +1,5 @@
 // THE OWNER-FACING SIDE of sharing a plan by link: list, create and revoke invites for one plan.
-// FOYER DOOR ONLY, whatever the method — an invite grants a stranger entry to a plan, so only
+// FOYER DOOR ONLY, whatever the method, an invite grants a stranger entry to a plan, so only
 // someone Access already vouched for may mint or manage one. See
 // docs/decisions/0004-partage-par-lien.md ("batch 1b, the invite").
 //
@@ -13,7 +13,7 @@
 //
 // This paragraph used to claim functions/api/plan.ts and functions/ws.ts already did the same. They
 // did not: they distinguished only the "invite" door, and treated "inconnue" exactly like the
-// household — `/api/plan` GET handed back the raw `updated_by` column (an Access address) and `/ws`
+// household, `/api/plan` GET handed back the raw `updated_by` column (an Access address) and `/ws`
 // forwarded the upgrade to the household's own Durable Object. Both check for themselves now, so
 // the sentence is true; it is written down because a comment that describes a discipline nobody
 // applies is worse than no comment, it stops the next reader from looking.
@@ -129,7 +129,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
     } catch {}
   }
   // IDEMPOTENT, ON PURPOSE: revoking an unknown or already-revoked token still returns 200. A 404
-  // here would let a caller learn whether a guessed token ever existed — exactly what
+  // here would let a caller learn whether a guessed token ever existed, exactly what
   // functions/api/invite.ts's single 404 shape already refuses to leak on the guest side, so the
   // owner side must not reopen the same leak from the other direction.
   // Did the LIVE half of the revocation actually happen? The row is revoked regardless, which is
@@ -144,7 +144,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
     // wait on it.
     const ligne = await env.DB.prepare("SELECT plan_id FROM invites WHERE token=?1").bind(token).first<{ plan_id: string }>();
     await env.DB.prepare("UPDATE invites SET revoked=1 WHERE token=?1").bind(token).run();
-    // Design edge 6: "Revoke must close live sockets, not merely block new ones." BEST-EFFORT — the
+    // Design edge 6: "Revoke must close live sockets, not merely block new ones." BEST-EFFORT, the
     // row is already revoked regardless of whether this call succeeds, so a Worker hiccup here must
     // never turn an otherwise-successful revoke into an error response. If it fails, the ONLY
     // leftover risk is an already-open socket staying open until it drops on its own (heartbeat,

@@ -1,4 +1,4 @@
-// src/ts/rendu/arc-porte.ts — A DOOR'S SWING ARC, as standalone SVG.
+// src/ts/rendu/arc-porte.ts: A DOOR'S SWING ARC, as standalone SVG.
 // Ported from src/js/11-icones.js (`doorArcSVG` only). The rest of js/11 (385 lines of icon
 // fabrication) gains nothing from typing and proves itself in pixels: still to be ported, in E3.
 //

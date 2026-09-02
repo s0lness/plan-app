@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =================================================================================================
-//  THE FAST LOOP — against the TypeScript MODULES (src/ts), by import.
+//  THE FAST LOOP: against the TypeScript MODULES (src/ts), by import.
 // =================================================================================================
 //   node tests/rapide.ts     # 46 checks, all imported from the served client
 
@@ -87,7 +87,7 @@ const sanitizeState = (state: unknown) => sanitizeStateReel(state as PlanState);
   memeNombre("WALL_T_MIN", WALL_T_MIN, SRV.WALL_T_MIN);
   memeNombre("WALL_T_MAX", WALL_T_MAX, SRV.WALL_T_MAX);
   if (ecarts.length) {
-    throw new Error("CONTRAT CLIENT/SERVEUR ROMPU (invariant C-5) — src/ts/partage/contrat-serveur.ts "
+    throw new Error("CONTRAT CLIENT/SERVEUR ROMPU (invariant C-5), src/ts/partage/contrat-serveur.ts "
       + "ne dit plus la même chose que live-worker/ops.ts :\n  " + ecarts.join("\n  "));
   }
 })();
@@ -239,7 +239,7 @@ test("e2_hoteAutorise_identique_a_porteDe_pour_le_foyer", () => {
 
 // =================================================================================================
 //  3. GEOMETRY AND CELL DETECTION
-//  (moved from tests/model-v5-cellules.ts — same names, same assertions, no Chrome)
+//  (moved from tests/model-v5-cellules.ts, same names, same assertions, no Chrome)
 // =================================================================================================
 test("v5_detect_single_wall_2_cells", () => {
   const out = CLIENT.v5DetectCells([[0, 0], [600, 0], [600, 400], [0, 400]],
@@ -496,7 +496,7 @@ test("rapide_ouverture_reste_dans_son_mur", () => {
 
 // =================================================================================================
 //  4bis. SANITIZATION ON READ, AND DOOR ARC
-//  (moved from tests/model-v5-conversion-rendu.ts and tests/run.ts — same names, same
+//  (moved from tests/model-v5-conversion-rendu.ts and tests/run.ts, same names, same
 //   assertions, no Chrome: `sanitizeV5Plan` and `doorArcSVG` touch neither the DOM nor rendering.)
 // =================================================================================================
 test("v5_sanitize_defensive", () => {
@@ -678,7 +678,7 @@ test("door_arc_center_is_hinge", () => {
 
 // =================================================================================================
 //  4ter. CIRCULATION: THE FRONT DOOR, AND THE UNREACHABLE CELL
-//  (moved from tests/model-v5-circulation.ts and tests/model-v5-edition.ts — same names,
+//  (moved from tests/model-v5-circulation.ts and tests/model-v5-edition.ts, same names,
 //   same assertions. The engine only reads the plan and returns a list of findings: no pixel.)
 // =================================================================================================
 // Sets a plan in the engine, cells recomputed as the application does.
@@ -747,7 +747,7 @@ test("v5_flow_doorless_cell_unreachable", () => {
   const unreach = f.filter((x) => /^unreach_room_/.test(x.id)).length;
   return expect(P.cells.length === 2, "expected 2 cells, got " + P.cells.length)
       && expect(unreach === 1, "exactly one cell (the door-less one) must be flagged unreachable, got "
-         + unreach + " — findings: " + JSON.stringify(findingsIds));
+         + unreach + ", findings: " + JSON.stringify(findingsIds));
 });
 
 test("v5_flow_inner_door_makes_it_reachable", () => {
@@ -761,7 +761,7 @@ test("v5_flow_inner_door_makes_it_reachable", () => {
 
 // =================================================================================================
 //  4quater. THE SHARED SHAPE OF AN OPENING
-//  (moved from tests/model-v5-fil-serveur.ts — same name, same assertions.)
+//  (moved from tests/model-v5-fil-serveur.ts, same name, same assertions.)
 // =================================================================================================
 test("v5_opening_side_survives_the_wire", () => {
   const P = SEED_PLAN_V5();

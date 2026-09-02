@@ -1,4 +1,4 @@
-// src/ts/gestes/ouverture.ts — OPENINGS THAT GET DRAGGED AND RESIZED.
+// src/ts/gestes/ouverture.ts: OPENINGS THAT GET DRAGGED AND RESIZED.
 // Ported from src/js/53-v5-outils.js (`v5DrawOpeningGuides`, `v5StartOpeningDrag`) and from
 // src/js/56-ouverture-redim.js (EVERYTHING: handles, the width gesture, the bound slate).
 //

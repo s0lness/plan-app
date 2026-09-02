@@ -107,7 +107,7 @@ export interface CursorMessage {
    * "no opinion" (an ordinary position ping, box not open); `null` = an EXPLICIT "I stopped
    * speaking" (box closed: Enter, Escape, blur); a string = the current, letter-by-letter text.
    * Cleaned by `cleanCursorSay` below: never persisted, never entered into chat history, never
-   * an op — it never touches `plan`.
+   * an op, it never touches `plan`.
    */
   say?: string | null;
 }
@@ -432,7 +432,7 @@ export function cleanCursorSay(v: unknown): string {
  * ITS ONLY CALLER IS THE GUEST-AUDIENCE PATH. "Emails never cross to a guest" (design edge 16)
  * does not mean a guest sees a BLANK dot for every household member instead: item 2 of batch 2
  * says every outgoing message "must carry a display name instead [of the email] and no email at
- * all" — a household author has no self-declared `name` (that field only exists for guests), so
+ * all", a household author has no self-declared `name` (that field only exists for guests), so
  * without this, a guest would see "?" where a household peer's dot should be.
  */
 export function nameFromEmail(email: string): string {
@@ -1089,12 +1089,12 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
   if (!Array.isArray(plan.cells)) plan.cells = [];
   switch (op.kind) {
     case "outline.set": {
-      // {kind:"outline.set", outline:[[x,y],...]} — the apartment's volume.
+      // {kind:"outline.set", outline:[[x,y],...]}, the apartment's volume.
       plan.outline = validatePoly(op.outline).map((pt) => [pt[0], pt[1]]);
       return plan;
     }
     case "wall.set": {
-      // {kind:"wall.set", wall:{id,a,b,t}} — upsert by id. Absent keys reuse the value of the
+      // {kind:"wall.set", wall:{id,a,b,t}}, upsert by id. Absent keys reuse the value of the
       // wall already in the database: two people can move one an endpoint, the other the thickness.
       const wall = validateWall(op.wall, idMap(plan.walls));
       const i = plan.walls.findIndex((w) => w.id === wall.id);
@@ -1106,7 +1106,7 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
       return plan;
     }
     case "wall.del": {
-      // {kind:"wall.del", wallId} — CASCADE: the openings carried by this wall leave with it
+      // {kind:"wall.del", wallId}, CASCADE: the openings carried by this wall leave with it
       // (an opening without a wall no longer has any geometry; refusing would leave the client stuck).
       if (!isStr(op.wallId)) throw new OpError("wall_id");
       plan.walls = plan.walls.filter((w) => w.id !== op.wallId);
@@ -1114,7 +1114,7 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
       return plan;
     }
     case "opening.set": {
-      // {kind:"opening.set", opening:{id,wallId,t0,w,type,side,h?,name?,hinge?,swing?}} — upsert,
+      // {kind:"opening.set", opening:{id,wallId,t0,w,type,side,h?,name?,hinge?,swing?}}, upsert,
       // referenced wall mandatory. The packed shape (no `side`) from an old client is accepted
       // and unpacked; h/name absent are reused from the opening already in the database.
       const wallIds = new Set(plan.walls.map((w) => w.id));
@@ -1128,13 +1128,13 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
       return plan;
     }
     case "opening.del": {
-      // {kind:"opening.del", openingId} — idempotent no-op if absent.
+      // {kind:"opening.del", openingId}, idempotent no-op if absent.
       if (!isStr(op.openingId)) throw new OpError("opening_id");
       plan.openings = plan.openings.filter((o) => o.id !== op.openingId);
       return plan;
     }
     case "cell.set": {
-      // {kind:"cell.set", cellId, name?, floor?, poly?} — metadata of a derived room.
+      // {kind:"cell.set", cellId, name?, floor?, poly?}, metadata of a derived room.
       // poly is computed on the client: we accept it to keep the server snapshot fresh.
       // The COMPLETE cell is built on the side then validated as one block, and is only inserted
       // at the very end. The old version pushed {poly:[]} first: a name too long then threw
@@ -1160,7 +1160,7 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
       return plan;
     }
     case "cells.replace": {
-      // {kind:"cells.replace", cells:[{id,poly,name,floor}]} — after complete re-detection.
+      // {kind:"cells.replace", cells:[{id,poly,name,floor}]}, after complete re-detection.
       if (!Array.isArray(op.cells)) throw new OpError("cells_arr");
       if (op.cells.length > MAX_ENTITIES) throw new OpError("cells_max");
       const prevCells = idMap(plan.cells);
