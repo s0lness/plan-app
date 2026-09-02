@@ -78,14 +78,30 @@ export function nearestOnPoly(x: number, y: number, poly: readonly Pt[]): PointP
   return best;
 }
 
-/** Signed distance from a point to the polygon (positive inside). Used for the pole of inaccessibility. */
+/**
+ * Signed distance from a point to the polygon (positive inside). Used for the pole of inaccessibility.
+ *
+ * ONE PASS, NO OBJECT. It used to call `pointInPoly` and then `closestOnSeg` per edge, and
+ * `closestOnSeg` returns a fresh `{x, y, dist}`. `poleOfInaccessibility` calls this ~450 times per
+ * polygon, so a plan of 30 000 cells allocated tens of millions of throwaway objects for their
+ * `.dist` field alone. The arithmetic below is `closestOnSeg`'s, operation for operation, and the
+ * inside test is `pointInPoly`'s, in the same edge order: the value returned is the same bits.
+ */
 export function signedDistToPoly(x: number, y: number, poly: readonly Pt[]): number {
-  const inside = pointInPoly(x, y, poly);
+  let inside = false;
   let d = Infinity;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
     const pi = poly[i]!, pj = poly[j]!;
-    const c = closestOnSeg(x, y, pi[0], pi[1], pj[0], pj[1]);
-    if (c.dist < d) d = c.dist;
+    const xi = pi[0], yi = pi[1], xj = pj[0], yj = pj[1];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi)) inside = !inside;
+    const dx = xj - xi, dy = yj - yi;
+    const len2 = dx * dx + dy * dy || 1e-9;
+    let t = ((x - xi) * dx + (y - yi) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = xi + t * dx, cy = yi + t * dy;
+    const dist = Math.hypot(x - cx, y - cy);
+    if (dist < d) d = dist;
   }
   return inside ? d : -d;
 }
@@ -93,7 +109,34 @@ export function signedDistToPoly(x: number, y: number, poly: readonly Pt[]): num
 // Cache keyed by polygon signature. Declared here, next to its only consumer: in the old client
 // it lived in js/00-noyau.js ONLY because the bootstrap conversion called it before
 // js/04 was evaluated (temporal dead zone). The import graph settles that on its own.
+//
+// TWO LEVELS, AND THE FIRST ONE COSTS NOTHING TO CONSULT. The key used to be `JSON.stringify(poly)`
+// and the whole cache was EMPTIED as soon as it passed 200 entries. On a plan of more than 200
+// rooms that made every lookup a miss AND paid the stringify: the cache was a pure loss, exactly
+// where it was needed most. A cell polygon is BUILT, never edited point by point (detection
+// rebuilds them whole; the only in-place polygon editing in the client is the OUTLINE, which has
+// no pole), so the array identity is a sound key: a `WeakMap` answers the repeat calls on the same
+// cells with no key to build at all. The string key remains for the polygons that are copied
+// rather than reused (`modele/photo-cellules.ts` deep-copies them), now with a bounded LRU: the
+// oldest entry leaves, instead of all of them at once.
+const _poleParRef = new WeakMap<readonly Pt[], { x: number; y: number }>();
 const _poleCache = new Map<string, { x: number; y: number }>();
+const POLE_CACHE_MAX = 1024;
+
+function signaturePoly(poly: readonly Pt[]): string {
+  let s = "";
+  for (const p of poly) s += p[0] + "," + p[1] + ";";
+  return s;
+}
+
+function memoriserPole(poly: readonly Pt[], sig: string, res: { x: number; y: number }): void {
+  _poleParRef.set(poly, res);
+  if (_poleCache.size >= POLE_CACHE_MAX) {
+    const plusVieux = _poleCache.keys().next();
+    if (!plusVieux.done) _poleCache.delete(plusVieux.value);
+  }
+  _poleCache.set(sig, res);
+}
 
 /**
  * Pole of inaccessibility (polylabel-style): the INTERIOR point farthest from any edge.
@@ -102,9 +145,11 @@ const _poleCache = new Map<string, { x: number; y: number }>();
  */
 export function poleOfInaccessibility(poly: readonly Pt[] | null | undefined): { x: number; y: number } {
   if (!poly || poly.length < 3) return { x: 0, y: 0 };
-  const sig = JSON.stringify(poly);
+  const parRef = _poleParRef.get(poly);
+  if (parRef) return parRef;
+  const sig = signaturePoly(poly);
   const hit = _poleCache.get(sig);
-  if (hit) return hit;
+  if (hit) { _poleParRef.set(poly, hit); return hit; }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of poly) {
     const x = p[0], y = p[1];
@@ -115,10 +160,18 @@ export function poleOfInaccessibility(poly: readonly Pt[] | null | undefined): {
   }
   const w = maxX - minX, h = maxY - minY;
   let bestX = (minX + maxX) / 2, bestY = (minY + maxY) / 2, bestD = -Infinity;
+  // THE BOX IS A CEILING, AND IT IS FREE. The polygon is inside its own bbox, so the largest disk
+  // centred on a point and contained in the polygon is contained in the box too: the signed
+  // distance can never exceed the distance to the box's border. A sample that cannot BEAT the
+  // current best is skipped, and the winner is unchanged because the comparison is strict (a tie
+  // never replaced the incumbent either). Roughly half the coarse grid goes this way.
+  const plafond = (px: number, py: number): number =>
+    Math.min(px - minX, maxX - px, py - minY, maxY - py);
   const N = 16, sx = w / N, sy = h / N;
   for (let i = 0; i <= N; i++) {
     for (let j = 0; j <= N; j++) {
       const px = minX + i * sx, py = minY + j * sy;
+      if (bestD >= 0 && plafond(px, py) <= bestD) continue;
       const d = signedDistToPoly(px, py, poly);
       if (d > bestD) { bestD = d; bestX = px; bestY = py; }
     }
@@ -129,6 +182,7 @@ export function poleOfInaccessibility(poly: readonly Pt[] | null | undefined): {
     for (let i = -4; i <= 4; i++) {
       for (let j = -4; j <= 4; j++) {
         const px = bestX + i * cell, py = bestY + j * cell;
+        if (bestD >= 0 && plafond(px, py) <= bestD) continue;
         const d = signedDistToPoly(px, py, poly);
         if (d > bestD) { bestD = d; bestX = px; bestY = py; }
       }
@@ -141,8 +195,7 @@ export function poleOfInaccessibility(poly: readonly Pt[] | null | undefined): {
     }
   }
   const res = { x: bestX, y: bestY };
-  if (_poleCache.size > 200) _poleCache.clear();
-  _poleCache.set(sig, res);
+  memoriserPole(poly, sig, res);
   return res;
 }
 

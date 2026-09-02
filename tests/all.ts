@@ -122,6 +122,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/repartir-espacement.ts",     chrome: 0 },   // PURE computation: no browser
   { f: "tests/fenetre-battement.ts",       chrome: 0 },   // PURE tracing: no browser
   { f: "tests/mur-libre.ts",               chrome: 0 },   // PURE geometry: no browser
+  { f: "tests/cellules-perf.ts",           chrome: 0 },   // PURE: what cell detection COSTS, and that it still returns the same bytes as before the grids
   { f: "tests/jonction-glisser-mur.ts",    chrome: 0 },   // PURE geometry: junctions carried by a wall drag, outline left alone, one-hop chains, exact round trip, the wire diff
   { f: "tests/bouts-de-mur.ts",            chrome: 0 },   // PURE geometry: a wall endpoint's snap cascade (junction, segment, outline, then 45°, then the grid) and the `free` rule
   { f: "tests/coude-mur.ts",               chrome: 0 },   // PURE geometry: midpoint split, opening ownership and absolute positions

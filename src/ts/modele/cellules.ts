@@ -36,6 +36,128 @@ export interface ResultatDetection {
 
 type Segment = [Pt, Pt];
 
+// =================================================================================================
+//  THE UNIFORM GRIDS — the ONLY thing that changed about detection is what it SKIPS
+// =================================================================================================
+// `v5RebuildCells` runs on every frame of a geometry gesture and on every received op ("THE FLOOR
+// FOLLOWS THE HAND"), a decision taken on a 22-wall plan at 0.40 ms. The server accepts 2000.
+// Three passes were quadratic: `nodeAt` scanned every node, every pair of segments was tested for
+// intersection, and the split rescanned every node for every segment. Measured on a grid of
+// crossing partitions: 400 walls took 4.5 s, 800 took 22 s.
+//
+// EVERY GRID HERE ONLY EVER REMOVES WORK THAT COULD NOT HAVE PRODUCED ANYTHING. The result must
+// stay byte-identical, because D-5 ("the conversion is deterministic, hence idempotent") rests on
+// node NUMBERING and edge INSERTION ORDER, not just on the set of cells. So:
+//   - `nodeAt` still returns the SMALLEST matching index, which is what the linear scan returned;
+//   - candidate pairs are replayed in (i, j) order, so intersections create nodes in the old order;
+//   - the split's tie-break becomes explicit (`t`, then node index), which is exactly what a stable
+//     sort over an index-ordered array used to give.
+// `tests/cellules-perf.ts` keeps the previous implementation as an oracle and compares the two
+// on 200 seeded plans, plus the tolerance-boundary cases the quantization could have moved.
+
+/**
+ * Bucket key for a grid cell. A collision between two distinct cells is HARMLESS: it can only add
+ * candidates, and every candidate is still checked exactly. A miss would not be, which is why the
+ * key is a pure function of the cell and never of the query.
+ */
+const cleCase = (gx: number, gy: number): number => gx * 33554432 + gy;
+
+function ajouter(grille: Map<number, number[]>, k: number, i: number): void {
+  const b = grille.get(k);
+  if (b) b.push(i); else grille.set(k, [i]);
+}
+
+/** Bounding box of a segment list, inflated by nothing. Empty list -> a degenerate box at 0. */
+function boiteDesSegments(segs: readonly Segment[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of segs) {
+    for (const p of s) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+  }
+  if (!isFinite(minX)) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Cells a segment PASSES THROUGH, inflated by `marge`, column by column. Exact supercover: a point
+ * lying on the segment is always in one of the yielded cells, so two segments that meet always
+ * share one. `visite` is called once per cell, in no particular order.
+ */
+function casesDuSegment(
+  ax: number, ay: number, bx: number, by: number,
+  ox: number, oy: number, taille: number, marge: number,
+  visite: (gx: number, gy: number) => void,
+): void {
+  const sMinX = Math.min(ax, bx), sMaxX = Math.max(ax, bx);
+  const sMinY = Math.min(ay, by), sMaxY = Math.max(ay, by);
+  const gx0 = Math.floor((sMinX - marge - ox) / taille);
+  const gx1 = Math.floor((sMaxX + marge - ox) / taille);
+  const vertical = sMaxX - sMinX < 1e-9;
+  for (let gx = gx0; gx <= gx1; gx++) {
+    let yLo: number, yHi: number;
+    if (vertical) {
+      yLo = sMinY; yHi = sMaxY;
+    } else {
+      // the x window of this column, widened by the margin, then clipped to the segment itself
+      const lo = Math.max(sMinX, ox + gx * taille - marge);
+      const hi = Math.min(sMaxX, ox + (gx + 1) * taille + marge);
+      if (lo > hi) continue;
+      const pente = (by - ay) / (bx - ax);
+      const y1 = ay + (lo - ax) * pente, y2 = ay + (hi - ax) * pente;
+      yLo = Math.min(y1, y2); yHi = Math.max(y1, y2);
+    }
+    const gy0 = Math.floor((yLo - marge - oy) / taille);
+    const gy1 = Math.floor((yHi + marge - oy) / taille);
+    for (let gy = gy0; gy <= gy1; gy++) visite(gx, gy);
+  }
+}
+
+/**
+ * Pairs of segments that MIGHT properly intersect, in (i, j) order. A proper intersection lies on
+ * both segments, hence in a cell both pass through: dropping the rest cannot lose a node.
+ */
+function pairesCandidates(segs: readonly Segment[]): Array<[number, number]> {
+  const S = segs.length;
+  const b = boiteDesSegments(segs);
+  const cote = Math.max(b.maxX - b.minX, b.maxY - b.minY, 1);
+  const G = Math.max(1, Math.min(512, Math.ceil(Math.sqrt(S))));
+  const taille = Math.max(2 * V5_EPS, cote / G);
+  const grille = new Map<number, number[]>();
+  for (let i = 0; i < S; i++) {
+    const s = segs[i]!;
+    casesDuSegment(s[0][0], s[0][1], s[1][0], s[1][1], b.minX, b.minY, taille, V5_EPS,
+      (gx, gy) => ajouter(grille, cleCase(gx, gy), i));
+  }
+  // Buckets are filled in increasing `i`, so `voisins[a]` only ever needs sorting, never a pass to
+  // reorder pairs: duplicates land next to each other.
+  const voisins: number[][] = [];
+  for (const bucket of grille.values()) {
+    for (let x = 0; x < bucket.length; x++) {
+      const a = bucket[x]!;
+      let l = voisins[a];
+      if (!l) { l = []; voisins[a] = l; }
+      for (let y = x + 1; y < bucket.length; y++) l.push(bucket[y]!);
+    }
+  }
+  const paires: Array<[number, number]> = [];
+  for (let i = 0; i < S; i++) {
+    const l = voisins[i];
+    if (!l) continue;
+    l.sort((p, q) => p - q);
+    let prev = -1;
+    for (const j of l) {
+      if (j === prev) continue;
+      prev = j;
+      paires.push([i, j]);
+    }
+  }
+  return paires;
+}
+
 export function v5DetectCells(
   outline: readonly Pt[] | null | undefined,
   walls: readonly Mur[] | null | undefined,
@@ -60,44 +182,85 @@ export function v5DetectCells(
 
   // --- 1/2: nodes ---
   const nodes: Pt[] = [];
+  // Buckets of exactly 2*V5_EPS: a merge query covers [x-eps, x+eps], i.e. at most 2 buckets per
+  // axis. The answer is the SMALLEST matching index, which is what the linear scan returned; the
+  // exact tolerance test is unchanged, so a node at exactly +/-V5_EPS still merges as before.
+  const grilleNoeuds = new Map<number, number[]>();
   const nodeAt = (x: number, y: number): number => {
-    for (let i = 0; i < nodes.length; i++) {
-      const n = nodes[i]!;
-      if (Math.abs(n[0] - x) <= V5_EPS && Math.abs(n[1] - y) <= V5_EPS) return i;
+    const gx0 = Math.floor(x - V5_EPS), gx1 = Math.floor(x + V5_EPS);
+    const gy0 = Math.floor(y - V5_EPS), gy1 = Math.floor(y + V5_EPS);
+    let trouve = -1;
+    for (let gx = gx0; gx <= gx1; gx++) {
+      for (let gy = gy0; gy <= gy1; gy++) {
+        const bucket = grilleNoeuds.get(cleCase(gx, gy));
+        if (!bucket) continue;
+        for (const i of bucket) {
+          if (trouve >= 0 && i > trouve) continue;
+          const n = nodes[i]!;
+          if (Math.abs(n[0] - x) <= V5_EPS && Math.abs(n[1] - y) <= V5_EPS) trouve = i;
+        }
+      }
     }
-    nodes.push([v5R2(x), v5R2(y)]);
+    if (trouve >= 0) return trouve;
+    const nx = v5R2(x), ny = v5R2(y);
+    nodes.push([nx, ny]);
+    ajouter(grilleNoeuds, cleCase(Math.floor(nx), Math.floor(ny)), nodes.length - 1);
     return nodes.length - 1;
   };
   segs.forEach((s) => { nodeAt(s[0][0], s[0][1]); nodeAt(s[1][0], s[1][1]); });
-  for (let i = 0; i < segs.length; i++) {
-    for (let j = i + 1; j < segs.length; j++) {
-      const p = v5SegInt(segs[i]![0], segs[i]![1], segs[j]![0], segs[j]![1]);
-      if (p) nodeAt(p[0], p[1]);
-    }
+  for (const [i, j] of pairesCandidates(segs)) {
+    const p = v5SegInt(segs[i]![0], segs[i]![1], segs[j]![0], segs[j]![1]);
+    if (p) nodeAt(p[0], p[1]);
   }
   report.nodes = nodes.length;
 
   // --- 3: split + deduplication ---
-  const edges = new Map<string, [number, number]>(); // "u|v" (u<v) -> [u,v]
+  // The key is `min*N + max` rather than "min|max": a NUMBER, so a plan of 80 000 edges no longer
+  // builds 80 000 strings just to notice it already has the edge. The map is still keyed one entry
+  // per undirected edge and still filled in the same order, which is what the faces walk reads.
+  const NN = nodes.length;
+  const edges = new Map<number, [number, number]>();
   const addEdge = (u: number, v: number): void => {
     if (u === v) return;
-    const k = u < v ? u + "|" + v : v + "|" + u;
-    if (!edges.has(k)) edges.set(k, [Math.min(u, v), Math.max(u, v)]);
+    const lo = u < v ? u : v, hi = u < v ? v : u;
+    const k = lo * NN + hi;
+    if (!edges.has(k)) edges.set(k, [lo, hi]);
   };
+  // Second index, over the FINAL nodes: the split only ever needs the nodes within V5_EPS of the
+  // segment, and it used to rescan all of them for every segment. Cell size follows the density,
+  // so a bucket holds a handful of nodes whatever the plan's extent.
+  const bn = boiteDesSegments(nodes.map((n) => [n, n] as Segment));
+  const coteN = Math.max(bn.maxX - bn.minX, bn.maxY - bn.minY, 1);
+  const GN = Math.max(1, Math.min(1024, Math.ceil(Math.sqrt(nodes.length))));
+  const tailleN = Math.max(2 * V5_EPS, coteN / GN);
+  const grilleSplit = new Map<number, number[]>();
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i]!;
+    ajouter(grilleSplit, cleCase(
+      Math.floor((n[0] - bn.minX) / tailleN),
+      Math.floor((n[1] - bn.minY) / tailleN),
+    ), i);
+  }
   segs.forEach((s) => {
     const ax = s[0][0], ay = s[0][1], bx = s[1][0], by = s[1][1];
     const L2 = (bx - ax) * (bx - ax) + (by - ay) * (by - ay);
     if (L2 < V5_EPS * V5_EPS) return;
     const on: Array<{ ni: number; t: number }> = [];
-    for (let ni = 0; ni < nodes.length; ni++) {
-      const n = nodes[ni]!;
-      const c = closestOnSeg(n[0], n[1], ax, ay, bx, by);
-      if (c.dist <= V5_EPS) {
-        const t = ((n[0] - ax) * (bx - ax) + (n[1] - ay) * (by - ay)) / L2;
-        on.push({ ni, t: clamp(t, 0, 1) });
+    casesDuSegment(ax, ay, bx, by, bn.minX, bn.minY, tailleN, V5_EPS, (gx, gy) => {
+      const bucket = grilleSplit.get(cleCase(gx, gy));
+      if (!bucket) return;
+      for (const ni of bucket) {
+        const n = nodes[ni]!;
+        const c = closestOnSeg(n[0], n[1], ax, ay, bx, by);
+        if (c.dist <= V5_EPS) {
+          const t = ((n[0] - ax) * (bx - ax) + (n[1] - ay) * (by - ay)) / L2;
+          on.push({ ni, t: clamp(t, 0, 1) });
+        }
       }
-    }
-    on.sort((p, q) => p.t - q.t);
+    });
+    // The tie-break on the node index is what the previous stable sort over an index-ordered
+    // array gave for free; the grid hands the nodes back in bucket order, so it is now stated.
+    on.sort((p, q) => (p.t - q.t) || (p.ni - q.ni));
     for (let k = 1; k < on.length; k++) addEdge(on[k - 1]!.ni, on[k]!.ni);
   });
   let E = Array.from(edges.values());
@@ -125,16 +288,16 @@ export function v5DetectCells(
     adj[v]!.push({ v: u, ang: Math.atan2(nodes[u]![1] - nodes[v]![1], nodes[u]![0] - nodes[v]![0]) });
   });
   adj.forEach((l) => l.sort((a, b) => a.ang - b.ang || a.v - b.v));
-  const used = new Set<string>();
+  const used = new Set<number>(); // directed half-edge `u*N + v`, a number for the same reason
   const faces: Pt[][] = [];
   const maxSteps = E.length * 2 + 8;
   for (const [u0, v0] of E) {
     for (const [su, sv] of [[u0, v0], [v0, u0]] as Array<[number, number]>) {
-      if (used.has(su + ">" + sv)) continue;
+      if (used.has(su * NN + sv)) continue;
       const poly: Pt[] = [];
       let u = su, v = sv, steps = 0, ok = true;
       do {
-        used.add(u + ">" + v);
+        used.add(u * NN + v);
         poly.push(nodes[v]!);
         const list = adj[v]!;
         let ri = -1;
@@ -163,10 +326,11 @@ export function v5DetectCells(
     if (area < V5_MIN_AREA) { report.tiny++; return; }
     const c = poleOfInaccessibility(poly);
     if (O.length > 2 && !pointInPoly(c.x, c.y, O)) { report.outside++; return; }
-    cells.push({ id: "c" + (cells.length + 1), poly, name: "", floor: "parquet", area });
+    // The pole is the one just computed: recomputing it below cost a second full pass over every
+    // cell, and on a plan of more than 200 rooms the cache could not absorb it either.
+    cells.push({ id: "c" + (cells.length + 1), poly, name: "", floor: "parquet", area, _px: c.x, _py: c.y });
   });
   // deterministic order: top->bottom then left->right of the pole
-  cells.forEach((c) => { const p = poleOfInaccessibility(c.poly); c._px = p.x; c._py = p.y; });
   cells.sort((a, b) => (a._py! - b._py!) || (a._px! - b._px!));
   cells.forEach((c, i) => { c.id = "c" + (i + 1); delete c._px; delete c._py; });
   return { cells, report };
