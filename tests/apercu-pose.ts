@@ -510,6 +510,53 @@ await test("un_glisser_relache_hors_du_plan_le_dit", async () => {
   ok(!t2 || !/outside the plan/i.test(t2), `et ne parle pas de renoncement : ${JSON.stringify(t2)}`);
 });
 
+console.log("\n=== L'APPUI LONG PASSE PAR LA SORTIE UNIQUE DES GESTES (C2) ===");
+
+// =============================================================================
+//  11. appui_long_interrompu_par_touchCancel_ne_bascule_pas_la_selection
+// =============================================================================
+// The finger long-press disambiguator (`gestes/meuble.ts`) used to hand-roll its own
+// `pointermove`/`pointerup` listeners, with no `pointercancel` and no `blur` handling: a touch
+// interrupted by the platform (a second finger landing, a system gesture) left its 450 ms timer
+// running untouched, so the long-press selection still fired later even though the touch that was
+// supposed to hold it had already gone away. It now arms through `armGesture()` (`gestes/sortie.ts`),
+// whose shared exit ends this window, AND clears the timer in `finish`, on a `pointercancel` exactly
+// like every other gesture (AGENTS.md, "Gestures: ONE exit point").
+await test("appui_long_interrompu_par_touchCancel_ne_bascule_pas_la_selection", async () => {
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await reload();
+  await seedModel();
+  const p = await J(`__plan.addV5Piece("arm",100,60)`);
+  await pause(200);
+  const centre = await J(`(function(){var e=document.querySelector('.piece[data-id="'+${JSON.stringify(String(p.id))}+'"]');
+    var r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2};})()`);
+  const avant = await J(`({n:__plan.selCount, id:__plan.selId})`);
+  ok(avant.n === 1 && String(avant.id) === String(p.id), `la pièce créée est déjà sélectionnée (${JSON.stringify(avant)})`);
+
+  await touch("touchStart", [{ x: centre.x, y: centre.y, id: 1 }]);
+  await pause(150);                                // well under the 450 ms threshold
+  await touch("touchCancel", []);                  // empty, exactly like `touchEnd` elsewhere in this file: no touch remains active
+  await pause(500);                                // past the threshold: the timer must NOT have fired
+
+  const apres = await J(`({n:__plan.selCount, id:__plan.selId})`);
+  ok(apres.n === avant.n && String(apres.id) === String(avant.id),
+    `un touchCancel avant 450 ms ne doit PAS basculer la sélection (avant=${JSON.stringify(avant)}, après=${JSON.stringify(apres)})`);
+
+  // Positive control: an UNINTERRUPTED long press still toggles the selection, exactly as before
+  // this fix. Without it, an assertion that only ever sees "nothing changed" could just as well be
+  // hiding a long-press that no longer fires AT ALL.
+  await touch("touchStart", [{ x: centre.x, y: centre.y, id: 2 }]);
+  await pause(550);
+  await touch("touchEnd", []);
+  await pause(150);
+  const apresLong = await J(`({n:__plan.selCount, id:__plan.selId})`);
+  ok(apresLong.n === 0, `un appui long MENÉ À TERME bascule toujours la sélection (vu ${JSON.stringify(apresLong)})`);
+
+  await send("Emulation.clearDeviceMetricsOverride");
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+});
+
 // ---- verdict ------------------------------------------------------------------------------------
 const bad = results.filter(r => r.fails.length);
 console.log("");

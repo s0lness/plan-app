@@ -35,7 +35,7 @@ import { prochainUid } from "../modele/lecture-v4.ts";
 import { v5ClampPiece, v5LastFit, v5MoveOpeningTo } from "../modele/edition.ts";
 import { deltaScaleMax, dockedChairs, pieceTol, snapChairToTable, TABLE_TYPES } from "./contraintes.ts";
 import { alignSnap, clearGuides, drawAlignLines, drawGuides } from "./guides.ts";
-import { armGesture } from "./sortie.ts";
+import { armGesture, endActiveGesture } from "./sortie.ts";
 import { LONGPRESS_MS, TOUCH_DRAG_THRESH, isTouchEvt, measureMode, pasGrille, sansGrille, spaceHeld, touchPts, pointSuivi } from "./etat-pointeur.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { toast } from "../app/toast.ts";
@@ -93,39 +93,46 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
   // FINGER LONG-PRESS = multi-selection toggle (equivalent of Ctrl+click). A fast movement
   // cancels the timer and continues as a normal drag; the long press only fires if the finger stays
   // in place. When a multi-selection is already active, a simple press drags the group.
+  //
+  // G-1. THIS DISAMBIGUATION WINDOW IS ITSELF A GESTURE, so it arms through `armGesture(finish, onUp)`
+  // (`gestes/sortie.ts`) exactly like the drag it may turn into, instead of hand-rolling its own
+  // `pointermove`/`pointerup`. Before this fix it listened for neither `pointercancel` nor window
+  // `blur`: an interrupted touch (a second finger landing, a system gesture, the tab losing focus)
+  // left the 450 ms timer running untouched, so the long-press selection still fired later even
+  // though the touch that was supposed to hold it had already gone away. `armGesture`'s shared exit
+  // now ends this window (and clears the timer, in `finish`) on the SAME signals every other gesture
+  // already respects.
   if (isTouchEvt(e) && !_resumed) {
     const sx = e.clientX, sy = e.clientY, pid = p.id;
-    let done = false;
+    let timer: ReturnType<typeof setTimeout>;
     const finish = (): void => {
-      done = true; clearTimeout(timer);
+      clearTimeout(timer);
       window.removeEventListener("pointermove", lpMove, true);
-      window.removeEventListener("pointerup", lpUp, true);
     };
     const lpMove = (ev: PointerEvent): void => {
-      if (done) return;
-      if (touchPts.size >= 2) { finish(); return; }
+      if (touchPts.size >= 2) { endActiveGesture(); return; }
       if (Math.hypot(ev.clientX - sx, ev.clientY - sy) >= TOUCH_DRAG_THRESH) {
-        finish();
+        endActiveGesture();
         startPieceDrag(ctx, e, p, true);   // movement won the race: real drag
       }
     };
-    const lpUp = (): void => {
-      if (done) return;
-      finish();
+    // Fires only on a REAL release (`pointerup`/`lostpointercapture`), never on a `pointercancel`
+    // or a focus loss: those end the gesture through `finish` alone, with no selection change,
+    // exactly what a touch that never completed should produce.
+    const onUp = (): void => {
       // brief press (neither a long press nor movement): simple selection, no drag, no history.
       const groupTap = ctx.selection.ids.size > 1 && ctx.selection.ids.has(String(pid));
       if (groupTap) ctx.selection.primaire = String(pid); else selReplace(ctx, pid);
       render(ctx); ctx.crochets.openInspector?.();
     };
-    const timer = setTimeout(() => {
-      if (done) return;
-      finish();
+    armGesture(finish, onUp, null);
+    window.addEventListener("pointermove", lpMove, true);
+    timer = setTimeout(() => {
       selToggle(ctx, pid); render(ctx);
       if (ctx.selection.primaire != null) ctx.crochets.openInspector?.();
       else ctx.crochets.hideInspector?.();
+      endActiveGesture();   // the timer fired: ends this window WITHOUT the tap's own `onUp`
     }, LONGPRESS_MS);
-    window.addEventListener("pointermove", lpMove, true);
-    window.addEventListener("pointerup", lpUp, true);
     return;
   }
 
