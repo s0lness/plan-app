@@ -22,7 +22,7 @@ import {
   // model
   v5SignedArea, v5OverlapArea, v5DetectCells, v5AssignNames, v5RebuildCells,
   v5Seg, v5WallLen, v5OpeningSameSlot, v5OpeningDepthMax, v5OpeningDepthFor, v5OpeningEdgeLimits,
-  v5OpeningBox, v5CellsAt, sanitizeV5Plan,
+  v5OpeningBox, v5CellsAt, sanitizeV5Plan, v5ClampOpeningsOfWall,
   // wire
   v5StateWire, v5AdoptOpening, wireIdentite,
   wsShadowCopy, wsShadowFromServerInto, ws5ShadowPut, wsShadowApplyOpInto, ws5FieldDiff, ws5DiffOps,
@@ -108,6 +108,7 @@ const CLIENT = {
   // `v5WallLen(id)` used to read `state.plan`; `v5OpeningEdgeLimits(op,w)` used to read `state.plan.openings`
   // AND `state.opts` (through `pieceVisible`). Both now take what they read as arguments.
   v5WallLen: (id: string) => v5WallLen(CLIENT.state.plan, id),
+  v5ClampOpeningsOfWall,
   v5OpeningEdgeLimits: (op: unknown, w: unknown) => v5OpeningEdgeLimits(CLIENT.state.plan,
     op as Parameters<typeof v5OpeningEdgeLimits>[1], w as Mur, CLIENT.state.opts),
 };
@@ -487,6 +488,25 @@ test("v5_sanitize_applique_les_bornes_serveur_a_la_lecture", () => {
           "un id de 100 caractères doit être ramené à <= 80 et rester conforme à ID_RE, vu " + (idLong && idLong.walls[0]!.id))
       && expect(!!bornes && bornes.walls.length === 2000,
           "2001 murs en entrée, au plus MAX_ENTITIES en sortie, vu " + (bornes && bornes.walls.length));
+});
+
+test("v5_clamp_ouvertures_repare_un_champ_non_fini", () => {
+  // A3 (modele/murs.ts:173-183): `{t0:NaN, w:NaN, h:NaN}` used to come out UNCHANGED, and the
+  // function reported `[]` (nothing to say). `clamp(NaN, lo, hi)` returns NaN, untouched: it
+  // then survives in memory, `JSON.stringify` turns it into `null` on the next save, and the
+  // NEXT read floors it to 1cm (`num(null, default)` treats `null` as a REAL 0, not "missing").
+  const P: PlanV5 = {
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [{ id: "w1", a: [0, 0], b: [600, 0], t: 12, isOutline: true }],
+    openings: [{ id: "o1", wallId: "w1", t0: NaN, w: NaN, h: NaN, type: "window", side: 0, name: "Fenêtre" }],
+    pieces: [], cells: [],
+  };
+  const chg = CLIENT.v5ClampOpeningsOfWall(P, "w1");
+  const o = P.openings[0]!;
+  return expect(isFinite(o.t0) && isFinite(o.w) && isFinite(o.h),
+          "t0/w/h doivent redevenir des nombres finis : " + JSON.stringify({ t0: o.t0, w: o.w, h: o.h }))
+      && expect(o.w >= 1 && o.h >= 1, "et rester dans les bornes physiques, pas à 0 : " + JSON.stringify({ w: o.w, h: o.h }))
+      && expect(chg.length > 0, "la réparation doit être signalée comme un changement, pas silencieuse (ardoise vide)");
 });
 
 test("door_arc_center_is_hinge", () => {
