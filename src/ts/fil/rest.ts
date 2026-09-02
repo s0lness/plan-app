@@ -469,6 +469,70 @@ function showConflitNotice(info: RefusRevision, n: number): void {
   ban.insertBefore(dl, x || null);
 }
 
+// =================================================================================================
+//  A ROW THAT DISAPPEARED IS NOT A CONFLICT: IT IS A DELETED PLAN
+// =================================================================================================
+// The refusal machinery below assumes the row still exists and someone else got there first: it
+// sets the version aside, arms `putConflict`, and waits for a RE-READ to disarm it. Nothing ever
+// re-reads a row that is gone. `adoptPayload` refuses a `data:null` body (nothing to adopt), so
+// `putConflict` stayed armed FOREVER: every later `doPut` returned at its `if (fil.putConflict)`
+// guard, the chip stayed on "not saved", and the banner accused a neighbour who had done nothing.
+// The person kept working into a tab that would never write again, and was told the wrong reason.
+//
+// The right reading is simpler and it is the truth: the plan was DELETED. There is nowhere left to
+// write, so this tab detaches (exactly `js/41`'s "tab detached from sharing" mechanics, which every
+// network gate in this module and in `presence.ts` already respects), the chip says `local`, and a
+// persistent banner says what happened and how to keep the work.
+
+let _supprimeAffiche = false;
+/**
+ * THE ONE reaction, whichever of the three witnesses arrives first: a 409 whose body describes an
+ * absent row, a poll that finds the row gone under a revision we had already read, or the socket
+ * closed with 4004 `plan_deleted` by `/purge` (`functions/api/plans.ts`'s DELETE).
+ */
+export function surPlanSupprime(ctx: Contexte, fil: Fil): void {
+  void ctx;
+  if (_supprimeAffiche || fil.detached) return;
+  _supprimeAffiche = true;
+  // NOT A CONFLICT: nothing is pending against a winner, because there is no winner.
+  fil.putConflict = null;
+  fil.putFailed = false;
+  fil.dirtySincePut = false;
+  fil.detached = true;              // no more op, PUT or poll leaves: there is nowhere for it to go
+  fil.wsOpen = false;               // so the chip may repaint: `setSyncChip` yields to a live wire
+  try { fil.ws?.close(); } catch (_) { /* already gone, or never opened */ }
+  fil.ws = null;
+  setSyncChip(fil, "local");
+  afficherBanniereSuppression();
+}
+
+/** Does this body describe a row that no longer exists? `{data:null, rev:0}` is the shape
+ *  `functions/api/plan.ts` answers for an absent row, and the ONLY way a 409 can carry it is a row
+ *  deleted between the refused swap and the re-read inside the same response. */
+const ligneDisparue = (p: ReponsePlan | null | undefined): boolean =>
+  !!p && p.rev === 0 && (p.data === null || p.data === undefined);
+
+let _banniereSuppressionWiree = false;
+function afficherBanniereSuppression(): void {
+  const ban = $("bootNotice"), txt = $("bootNoticeText");
+  try { toast("This plan has been deleted."); } catch (_) { /* nothing */ }
+  if (!ban || !txt) return;
+  txt.textContent = "This plan has been deleted. Your work stays on this device and is no longer "
+    + "shared: “Save to file…” keeps it.";
+  ban.hidden = false;
+  if (_banniereSuppressionWiree) return;
+  _banniereSuppressionWiree = true;
+  const x = $("bootNoticeX");
+  if (x) x.addEventListener("click", () => { ban.hidden = true; });
+  // The ORDINARY export action, not a second copy of it: one exporter, one behaviour, the same
+  // choice `fil/invite.ts`'s local banner already makes.
+  const save = document.createElement("button");
+  save.type = "button"; save.className = "btn sm pri"; save.id = "supprimeSave";
+  save.textContent = "Save to file…";
+  save.addEventListener("click", () => { $("btnExport")?.click(); });
+  ban.insertBefore(save, x || null);
+}
+
 /**
  * D-9. A REFUSAL GETS RE-READ, IT NEVER GETS REWRITTEN. Three things, in this order: set aside
  * (nothing disappears), SAY IT (chip + banner), then re-read. `dirtySincePut` falls back to
@@ -476,6 +540,8 @@ function showConflitNotice(info: RefusRevision, n: number): void {
  * the same write back and forth indefinitely.
  */
 function onPutRefused(ctx: Contexte, fil: Fil, mine: unknown, p: ReponsePlan | null | undefined): void {
+  // A DISAPPEARED ROW IS NOT A REFUSAL, and treating it as one armed `putConflict` for good.
+  if (ligneDisparue(p)) { surPlanSupprime(ctx, fil); return; }
   fil.dirtySincePut = false;
   fil.putFailed = true;
   fil.putConflict = {
@@ -590,6 +656,11 @@ export function pollPull(ctx: Contexte, fil: Fil): void {
     fil.bootReconciled = true;   // a read succeeded: we know what is on the other side
     ctx.crochets.porteMenageConfirmee?.();   // self-heals a stale local-only guess, see the crochet's doc
     if (!res) return;
+    // THE ROW WE HAD ALREADY READ IS GONE. A revision never goes backwards, so "rev 0, no plan"
+    // after we have seen rev N is not an empty household, it is a deleted plan: the same reaction
+    // as a 409 whose body says the row is absent, and the poll is where a tab whose realtime link
+    // was already down learns it.
+    if (fil.serverRev > 0 && ligneDisparue(res)) { surPlanSupprime(ctx, fil); return; }
     if (res.updatedBy) fil.lastServerBy = res.updatedBy;
     if (res.updatedAt) fil.lastServerAt = res.updatedAt;
     const rev = typeof res.rev === "number" ? res.rev : -1;

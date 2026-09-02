@@ -42,7 +42,7 @@ import {
 import { wsApplyRemoteDrag, wsApplyRemoteOp, wsRejouerNonAcquittees, wsRevertRefused } from "./reception.ts";
 import {
   adoptServerState, maybeOpenSetupFromServer, pollPull, serverHasPlan, setSyncChip,
-  showConflitFilNotice,
+  showConflitFilNotice, surPlanSupprime,
 } from "./rest.ts";
 import { hudRecordPaint } from "./hud.ts";
 
@@ -593,6 +593,11 @@ export function wsConnect(ctx: Contexte, fil: Fil): void {
  */
 export function wsOnDown(ctx: Contexte, fil: Fil, code?: number): void {
   if (estInvite() && code === 4001) { ctx.crochets.accesRefuseInvite?.(); return; }
+  // `4004` is `plan_deleted`, sent by `/purge` when `functions/api/plans.ts`'s DELETE removes the
+  // plan. Like 4001 it is checked BEFORE the reconnect machinery: there is nothing left to
+  // reconnect to, and retrying would reopen a socket onto a plan that no longer exists. Same
+  // reaction whichever witness arrives first, see `surPlanSupprime`.
+  if (code === 4004) { surPlanSupprime(ctx, fil); return; }
   const was = fil.wsOpen;
   fil.wsOpen = false;
   fil.ws = null;

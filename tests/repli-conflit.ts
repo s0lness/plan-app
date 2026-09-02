@@ -520,6 +520,32 @@ try {
   mesure("et Device A la reçoit", recu === APRES, "Device A voit " + JSON.stringify(recu));
   await B.shot("2-apres");
 
+  // ---- UNE LIGNE DISPARUE N'EST PAS UN CONFLIT, C'EST UN PLAN SUPPRIMÉ ------------------------
+  // La machinerie du refus suppose que la ligne existe encore et que quelqu'un est arrivé avant :
+  // elle met la version de côté, arme `putConflict`, et attend une RELECTURE pour le désarmer.
+  // Rien ne relit jamais une ligne qui n'est plus là. `adoptPayload` refuse un corps `data:null`,
+  // donc `putConflict` restait armé POUR TOUJOURS : chaque `doPut` suivant sortait sur sa garde,
+  // la puce restait sur « non enregistré », et la bannière accusait un voisin qui n'avait rien
+  // fait. La personne continuait de travailler dans un onglet qui n'écrirait plus jamais.
+  db.db.prepare("DELETE FROM plans WHERE id='main'").run();
+  const putsAvantSuppression = putLog.length;
+  let bSupp = await lire(B);
+  // ON ATTEND LA CONDITION : le prochain sondage (4 s) est ce qui découvre la disparition.
+  for (let i = 0; i < 40 && bSupp.puce !== "local"; i++) { await sleep(500); bSupp = await lire(B); }
+  mesure("un plan supprimé fait passer l'onglet en local, jamais en « non enregistré »",
+    bSupp.puce === "local", "puce = " + JSON.stringify(bSupp.puce));
+  mesure("et la bannière dit que le plan a été supprimé",
+    /deleted/i.test(String(bSupp.bandeau || "")), "bandeau = " + JSON.stringify(bSupp.bandeau));
+  // Et surtout : plus rien ne part. Un PUT sur une ligne absente RECRÉERAIT le plan (l'INSERT du
+  // compare-and-swap n'a pas de conflit à résoudre), donc un onglet qui continue d'écrire
+  // ressusciterait le plan qu'on vient de supprimer.
+  await B.evaluate(renomme("Écrit après la suppression"));
+  await sleep(4000);
+  mesure("plus rien ne part vers le serveur, donc le plan supprimé ne ressuscite pas",
+    putLog.length === putsAvantSuppression && !db.store.row,
+    "écritures après la suppression = " + JSON.stringify(putLog.slice(putsAvantSuppression))
+      + ", ligne D1 = " + JSON.stringify(db.store.row));
+
   const errs = async (b: VerdictSonde) => b.evaluate(
     'JSON.stringify((JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]).map(function(e){return e&&e.msg;}))');
   const ea = await errs(A), eb = await errs(B);
