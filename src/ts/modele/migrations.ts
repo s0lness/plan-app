@@ -8,7 +8,10 @@
 // returns null (D-2: "neither a plan, nor no plan", it is the caller that decides).
 
 import { clamp, WALL } from "../noyau/nombres.ts";
-import { estSolConnu, NAME_MAX, OPENING_H_MAX, PIECE_WH_MAX, WALL_T_MAX, WALL_T_MIN } from "../partage/contrat-serveur.ts";
+import {
+  COORD_MAX, estSolConnu, ID_RE, MAX_ENTITIES, NAME_MAX, OPENING_H_MAX, PIECE_WH_MAX,
+  POLY_MAX_PTS, WALL_T_MAX, WALL_T_MIN,
+} from "../partage/contrat-serveur.ts";
 import { TYPEMAP } from "../catalogue/catalogue.ts";
 import { pointInPoly } from "../geometrie/polygones.ts";
 import { v5OnOutline } from "./conversion.ts";
@@ -19,35 +22,88 @@ const num = (v: unknown, d?: number): number => {
   return isFinite(n) ? n : (d || 0);
 };
 
+// A2 (docs/invariants.md C-5's sibling for BOUNDS, not keys): a coordinate is clamped to
+// ±COORD_MAX, the SAME ceiling `live-worker/ops.ts`'s `isCoord` enforces. Read applies this
+// too, not only the server, so a plan loaded out of bounds is not "openable but every future op
+// on it gets rejected": corrected, not merely tolerated.
 const pt = (q: unknown): Pt | null => {
   if (!Array.isArray(q) || q.length < 2) return null;
-  if (!isFinite(Number(q[0])) || !isFinite(Number(q[1]))) return null;
-  return [num(q[0]), num(q[1])];
+  const x = Number(q[0]), y = Number(q[1]);
+  if (!isFinite(x) || !isFinite(y)) return null;
+  return [clamp(x, -COORD_MAX, COORD_MAX), clamp(y, -COORD_MAX, COORD_MAX)];
 };
+
+// A2: one constant for every entity id's length, matching `ID_RE`'s `{1,80}`, instead of the
+// previous mismatched 40 (walls, cells) and `NAME_MAX` (openings, pieces, which happens to also
+// be 80 but for an unrelated reason: it bounds a NAME, not an identifier).
+const ID_MAX = 80;
+
+/**
+ * A raw id turned into one the server will accept: truncated to `ID_MAX` (leaving room for the
+ * de-duplication suffix below, so it never pushes the result past `ID_MAX`), and REPLACED by the
+ * same synthetic id used when the id is absent if it does not match `ID_RE` (a quote or an angle
+ * bracket would otherwise be injected back into a `data-id="…"` attribute and a CSS selector,
+ * G-18: the server bounds the dangerous, we bound the sensible, but an id must respect the
+ * server's SHAPE regardless). `brut` carries the id BEFORE that replacement, so a caller can
+ * alias references made against it (an opening's `wallId`, a piece's `pair`): without this, a
+ * reference following an ill-formed id is silently orphaned by the very fix that made it safe.
+ */
+function idSur(raw: unknown, auto: string, dej: Set<string>): { id: string; brut: string | null } {
+  let brut: string | null = null;
+  let id: string;
+  if (raw == null) {
+    id = auto;
+  } else {
+    const s = String(raw).slice(0, ID_MAX);
+    if (ID_RE.test(s)) id = s;
+    else { brut = String(raw); id = auto; }
+  }
+  if (dej.has(id)) {
+    // A single trailing `_` per collision cannot, by construction, stay under `ID_MAX` past a
+    // handful of EXACT duplicates (an adversarial payload can hold up to `MAX_ENTITIES` of
+    // them): a numbered suffix is bounded and always finds a free slot within a few digits.
+    let n = 2, cand: string;
+    do {
+      const suf = "_" + n;
+      cand = (id.length + suf.length > ID_MAX ? id.slice(0, ID_MAX - suf.length) : id) + suf;
+      n++;
+    } while (dej.has(cand));
+    id = cand;
+  }
+  dej.add(id);
+  return { id, brut };
+}
 
 /**
  * Sanitizes a payload into a walls-only plan, or returns `null`.
- * Identifiers are made unique, orphaned openings (nonexistent wall) removed, positions along a
- * wall clamped to its length, names truncated to NAME_MAX (D-14: a name is truncated, never
- * rejected, a rejection makes the change disappear forever).
+ * Identifiers are made unique and reshaped to `ID_RE`, orphaned openings (nonexistent wall)
+ * removed, positions along a wall clamped to its length, names truncated to NAME_MAX (D-14: a
+ * name is truncated, never rejected, a rejection makes the change disappear forever), and every
+ * bound the server enforces (`COORD_MAX`, `POLY_MAX_PTS`, `MAX_ENTITIES`, `ID_RE`) is applied
+ * here too (A2): a plan read out of bounds is corrected on the spot, not merely opened and left
+ * for the server to reject op by op.
  */
 export function sanitizeV5Plan(p: unknown): PlanV5 | null {
   if (!p || typeof p !== "object" || Array.isArray(p)) return null;
   const src = p as Record<string, unknown>;
-  const outline = (Array.isArray(src["outline"]) ? (src["outline"] as unknown[]) : []).map(pt).filter((q): q is Pt => !!q);
+  // A2: the outline polygon is bounded to POLY_MAX_PTS, the same ceiling `validatePoly`
+  // enforces server-side, TRUNCATED (never rejected, same D-14 spirit as a name).
+  const outline = (Array.isArray(src["outline"]) ? (src["outline"] as unknown[]) : [])
+    .map(pt).filter((q): q is Pt => !!q).slice(0, POLY_MAX_PTS);
   if (outline.length < 3) return null;
 
   const walls: Mur[] = [];
   const wid = new Set<string>();
-  (Array.isArray(src["walls"]) ? (src["walls"] as unknown[]) : []).forEach((raw, i) => {
+  const wallIdAlias = new Map<string, string>(); // raw (ill-formed) wall id -> final id
+  // A2: raw entries are capped to MAX_ENTITIES BEFORE filtering, the first ones kept, so the
+  // reconstructed plan can never hold more than the server would ever accept for this family.
+  (Array.isArray(src["walls"]) ? (src["walls"] as unknown[]) : []).slice(0, MAX_ENTITIES).forEach((raw, i) => {
     if (!raw || typeof raw !== "object") return;
     const w = raw as Record<string, unknown>;
     const a = pt(w["a"]), b = pt(w["b"]);
     if (!a || !b) return;
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) return;
-    let id = String(w["id"] == null ? "w" + (i + 1) : w["id"]).slice(0, 40);
-    while (wid.has(id)) id += "_";
-    wid.add(id);
+    const { id, brut } = idSur(w["id"], "w" + (i + 1), wid);
     // `isOutline` is DERIVED from the geometry: the wire does not carry this flag (WALL_KEYS =
     // id/a/b/t). A wall lying on an outline edge is an outline wall.
     walls.push({
@@ -67,21 +123,27 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       // geometry looked identical.
       free: w["free"] ? 1 : undefined,
     });
+    if (brut != null) wallIdAlias.set(brut, id);
   });
 
+  // A2: an opening naming a wall by its RAW (ill-formed) id must still find it, otherwise fixing
+  // the wall's id would orphan every opening on it, which is exactly the kind of "correction"
+  // that isn't one. The alias only fills a gap, it never shadows a wall that legitimately owns
+  // that string as its FINAL id.
   const byId = new Map(walls.map((w) => [w.id, w]));
+  wallIdAlias.forEach((finalId, brut) => {
+    if (!byId.has(brut)) { const w = byId.get(finalId); if (w) byId.set(brut, w); }
+  });
   const openings: Ouverture[] = [];
   const oid = new Set<string>();
-  (Array.isArray(src["openings"]) ? (src["openings"] as unknown[]) : []).forEach((raw, i) => {
+  (Array.isArray(src["openings"]) ? (src["openings"] as unknown[]) : []).slice(0, MAX_ENTITIES).forEach((raw, i) => {
     if (!raw || typeof raw !== "object") return;
     const o = raw as Record<string, unknown>;
     const cat = TYPEMAP[String(o["type"])];
     if (!cat) return;
     const w = byId.get(String(o["wallId"]));
     if (!w) return;
-    let id = String(o["id"] == null ? "o" + (i + 1) : o["id"]).slice(0, NAME_MAX);
-    while (oid.has(id)) id += "_";
-    oid.add(id);
+    const { id } = idSur(o["id"], "o" + (i + 1), oid);
     const L = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]);
     const ow = clamp(num(o["w"], cat.w), 1, Math.max(1, L));
     openings.push({
@@ -107,20 +169,20 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
 
   const pieces: Meuble[] = [];
   const pid = new Set<string>();
-  (Array.isArray(src["pieces"]) ? (src["pieces"] as unknown[]) : []).forEach((raw, i) => {
+  const pieceIdAlias = new Map<string, string>(); // raw (ill-formed) piece id -> final id
+  (Array.isArray(src["pieces"]) ? (src["pieces"] as unknown[]) : []).slice(0, MAX_ENTITIES).forEach((raw, i) => {
     if (!raw || typeof raw !== "object") return;
     const q = raw as Record<string, unknown>;
     const cat = TYPEMAP[String(q["type"])];
     if (!cat) return;
-    let id = String(q["id"] == null ? "p" + (i + 1) : q["id"]).slice(0, NAME_MAX);
-    while (pid.has(id)) id += "_";
-    pid.add(id);
+    const { id, brut } = idSur(q["id"], "p" + (i + 1), pid);
+    if (brut != null) pieceIdAlias.set(brut, id);
     pieces.push({
       id,
       type: String(q["type"]),
       name: String(q["name"] || cat.name).slice(0, NAME_MAX),
-      x: num(q["x"], 0),
-      y: num(q["y"], 0),
+      x: clamp(num(q["x"], 0), -COORD_MAX, COORD_MAX),
+      y: clamp(num(q["y"], 0), -COORD_MAX, COORD_MAX),
       w: clamp(num(q["w"], cat.w), 1, PIECE_WH_MAX),
       h: clamp(num(q["h"], cat.h), 1, PIECE_WH_MAX),
       rot: ((Math.round(num(q["rot"], 0)) % 360) + 360) % 360,
@@ -136,17 +198,24 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       pair: q["pair"] != null ? String(q["pair"]).slice(0, NAME_MAX) : undefined,
     });
   });
+  // A2: a `pair` made against a piece's RAW (ill-formed) id follows the replacement, exactly like
+  // an opening's `wallId` above. A `pair` that names nothing at all (a screen deleted meanwhile)
+  // is left as is: G-18 already tolerates a dangling `pair` (`fil/pseudo-fil.ts`'s own comment),
+  // this only protects the one case that is NOT dangling, an id our own fix just renamed.
+  pieces.forEach((piece) => {
+    if (piece.pair != null && pieceIdAlias.has(piece.pair)) piece.pair = pieceIdAlias.get(piece.pair);
+  });
 
   const cells: Cellule[] = [];
   const cid = new Set<string>();
-  (Array.isArray(src["cells"]) ? (src["cells"] as unknown[]) : []).forEach((raw, i) => {
+  (Array.isArray(src["cells"]) ? (src["cells"] as unknown[]) : []).slice(0, MAX_ENTITIES).forEach((raw, i) => {
     if (!raw || typeof raw !== "object") return;
     const c = raw as Record<string, unknown>;
-    const poly = (Array.isArray(c["poly"]) ? (c["poly"] as unknown[]) : []).map(pt).filter((q): q is Pt => !!q);
+    // A2: same POLY_MAX_PTS truncation as the outline (`validatePoly` bounds both identically).
+    const poly = (Array.isArray(c["poly"]) ? (c["poly"] as unknown[]) : [])
+      .map(pt).filter((q): q is Pt => !!q).slice(0, POLY_MAX_PTS);
     if (poly.length < 3) return;
-    let id = String(c["id"] == null ? "c" + (i + 1) : c["id"]).slice(0, 40);
-    while (cid.has(id)) id += "_";
-    cid.add(id);
+    const { id } = idSur(c["id"], "c" + (i + 1), cid);
     cells.push({
       id,
       poly,

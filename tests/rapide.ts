@@ -442,6 +442,53 @@ test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
       && expect(ecarts.length === 0, "champs perdus au second passage de sanitizeV5Plan :\n         " + ecarts.join("\n         "));
 });
 
+test("v5_sanitize_applique_les_bornes_serveur_a_la_lecture", () => {
+  // A2: `migrations.ts` used to apply NONE of `COORD_MAX`/`POLY_MAX_PTS`/`MAX_ENTITIES`/`ID_RE`
+  // on read: a plan loaded out of bounds OPENED, but every future op on it got rejected by the
+  // server. The read now corrects, on the spot, exactly what the server would refuse.
+  const s = PLAN.sanitizeV5Plan;
+
+  // -- COORD_MAX: an absurd coordinate is clamped, not left to overflow every downstream sum.
+  const coord = s({
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [{ id: "w1", a: [0, 0], b: [1e9, 0], t: 12 }],
+    pieces: [{ id: "p1", type: "sofa3", x: 1e9, y: -1e9, w: 200, h: 90 }],
+  });
+
+  // -- ID_RE: an id carrying an injection attempt is REPLACED, and the reference following it
+  // (an opening's `wallId`) is NOT orphaned by the replacement.
+  const idInjecte = s({
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [{ id: 'bad"><img>', a: [0, 0], b: [600, 0], t: 12 }],
+    openings: [{ id: "o1", wallId: 'bad"><img>', type: "window", t0: 100, w: 80 }],
+  });
+
+  // -- ID_RE + a valid but 100-character id: truncated to at most 80 AND still ID_RE-shaped.
+  const idLong = s({
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [{ id: "w".repeat(100), a: [0, 0], b: [600, 0], t: 12 }],
+  });
+
+  // -- MAX_ENTITIES: 2001 walls in, at most 2000 out.
+  const trop: DonneeDynamique = { outline: [[0, 0], [600, 0], [600, 400], [0, 400]], walls: [] };
+  for (let i = 0; i < 2001; i++) trop.walls.push({ id: "m" + i, a: [0, i], b: [1, i], t: 5 });
+  const bornes = s(trop);
+
+  const ID_RE_TEST = /^[A-Za-z0-9_.:-]{1,80}$/;
+  return expect(!!coord && Math.abs(coord.walls[0]!.b[0]) === 100000,
+          "une coordonnée absurde doit être ramenée à ±COORD_MAX, vu " + (coord && coord.walls[0]!.b[0]))
+      && expect(!!coord && coord.pieces[0]!.x === 100000 && coord.pieces[0]!.y === -100000,
+          "un meuble hors bornes aussi (x/y sont des coordonnées) : " + JSON.stringify(coord && coord.pieces[0]))
+      && expect(!!idInjecte && idInjecte.walls[0]!.id !== 'bad"><img>' && ID_RE_TEST.test(idInjecte.walls[0]!.id),
+          "un id qui ne passe pas ID_RE doit être remplacé : " + JSON.stringify(idInjecte && idInjecte.walls[0]))
+      && expect(!!idInjecte && idInjecte.openings.length === 1 && idInjecte.openings[0]!.wallId === idInjecte.walls[0]!.id,
+          "et la référence (wallId) doit suivre le remplacement, pas s'orpheliner : " + JSON.stringify(idInjecte && idInjecte.openings))
+      && expect(!!idLong && idLong.walls[0]!.id.length <= 80 && ID_RE_TEST.test(idLong.walls[0]!.id),
+          "un id de 100 caractères doit être ramené à <= 80 et rester conforme à ID_RE, vu " + (idLong && idLong.walls[0]!.id))
+      && expect(!!bornes && bornes.walls.length === 2000,
+          "2001 murs en entrée, au plus MAX_ENTITIES en sortie, vu " + (bornes && bornes.walls.length));
+});
+
 test("door_arc_center_is_hinge", () => {
   function impliedCenter(svg: string): PointTest[] | null {
     const m = svg.match(/M\s+([\-\d.]+)\s+([\-\d.]+)\s+A\s+([\-\d.]+)\s+([\-\d.]+)\s+0\s+0\s+([01])\s+([\-\d.]+)\s+([\-\d.]+)/);
