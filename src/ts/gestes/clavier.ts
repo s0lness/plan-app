@@ -246,6 +246,15 @@ export function brancherClavier(ctx: Contexte): void {
   window.addEventListener("keydown", (e) => {
     const tgt = (e.target || {}) as HTMLElement;
     const typing = /INPUT|TEXTAREA|SELECT/.test(tgt.tagName || "") || tgt.isContentEditable;
+    // ESCAPE CLOSES THE OPEN DIALOG, whatever it is (Plans, Help, Furniture list, Share, Feedback,
+    // file transfer), even from a field inside it. Two are kept out: the outline wizard (`#setup`,
+    // there is no plan to go back to) and the guest's name step (`#inviteNameDlg`, nobody reaches
+    // the wire unnamed). A field that already consumed Escape (an in-place rename) has called
+    // `preventDefault`, and the dialog stays.
+    if (e.key === "Escape" && !e.defaultPrevented) {
+      const dlg = document.querySelector<HTMLElement>('.setup[role="dialog"]:not([hidden]):not(#setup):not(#inviteNameDlg)');
+      if (dlg) { e.preventDefault(); dlg.hidden = true; return; }
+    }
     // The tape measure owns the keyboard for its narrow scope (a later batch).
     if (measureMode() && !typing) return;
     // G-12. As long as a gesture is armed, Escape ONLY cancels it.
