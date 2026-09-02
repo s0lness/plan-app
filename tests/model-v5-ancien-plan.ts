@@ -120,21 +120,6 @@ await test("v5_wallmount_drag_jumps_walls_and_flips", "", `
      && expect(v.p4.facesCell === v.p2.backCell,
         "it must now face the cell that was behind it: faces " + v.p4.facesCell + ", was backing " + v.p2.backCell));
 
-// 7c. The "blank page" sentinel used to count rooms and look for containers that no longer
-// exist: it screamed on every tick over a perfectly painted plan (and relaunched a full fitView
-// every 3 s). It now checks the single layer and must stay quiet on a healthy plan.
-await test("v5_white_page_sentinel_is_quiet", seedV4(REAL_PLAN), `
-  try{ localStorage.removeItem("plan-errors"); }catch(e){}
-  window.__forceSentinel("test");
-  window.__forceSentinel("test2");
-  var errs = [];
-  try{ errs = JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]; }catch(e){}
-  return { model: window.__plan.model, layer: document.querySelectorAll("#canvas .v5layer").length,
-           aptrooms: document.querySelectorAll("#canvas .aptroom").length,
-           sentinel: errs.filter(function(e){ return /sentinel/.test(e.msg||""); }).length };
-`, v => expect(v.model === "v5" && v.layer === 1 && v.aptrooms === 0, "expected a painted v5 layer, got " + JSON.stringify(v))
-     && expect(v.sentinel === 0, "the sentinel must stay quiet on a healthy v5 plan, got " + v.sentinel + " alert(s)"));
-
 // 7d. SIDE OF THE WALL, parity with v4. The three entry points (placement, dragging,
 // button/key) give the same result: the side is the one from the GESTURE. In v5 it lives in
 // `side`, in v4 in `rot`, with no duplicated code visible to the user (same button, same key,

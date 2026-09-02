@@ -551,7 +551,6 @@ function onPutRefused(ctx: Contexte, fil: Fil, mine: unknown, p: ReponsePlan | n
   const n = stashConflit(mine, fil.putConflict);
   setSyncChip(fil, "unsaved");
   showConflitNotice(fil.putConflict, n);
-  try { ctx.crochets.crumb?.("synchro", "revision refused:" + fil.putConflict.rev); } catch (_) { /* nothing */ }
   // RE-READ. The refusal's body already carries the winning state: we adopt it right away if it
   // is safe, otherwise the poll will take care of it (its revision is ahead of `serverRev`, which
   // has not moved).

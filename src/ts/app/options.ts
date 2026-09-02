@@ -66,11 +66,6 @@ export function brancherOptions(ctx: Contexte): void {
    * see would let a Delete keypress erase something invisible.
    */
   const onLayerToggle = (): void => {
-    ctx.crochets.crumb?.("layer", JSON.stringify({
-      furn: !!box("optLayFurn")?.checked,
-      light: !!box("optLayLight")?.checked,
-      plug: !!box("optLayPlug")?.checked,
-    }));
     try {
       const o = ctx.etat.opts;
       o.layFurn = !!box("optLayFurn")?.checked;
@@ -123,7 +118,6 @@ export function brancherOptions(ctx: Contexte): void {
  * than imported, so that this module doesn't depend on export.
  */
 export function direPlanIllisible(
-  ctx: Contexte,
   info: { bytes: number; kept: boolean },
   telecharger?: () => boolean,
 ): void {
@@ -145,5 +139,4 @@ export function direPlanIllisible(
     banTxt.textContent = msg;
     $("bootNoticeX")?.addEventListener("click", () => { ban.hidden = true; });
   }
-  ctx.crochets.crumb?.("boot", "plan local illisible:" + info.bytes);
 }

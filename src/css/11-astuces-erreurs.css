@@ -7,12 +7,4 @@
   .boot-notice span{flex:1;min-width:0}
   .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
   .empty span{color:var(--faint);font-size:13px;background:var(--bg);padding:6px 12px;border-radius:var(--radius-chip)}
-  /* client crash reporter: stack of red toasts, bottom-center */
-  .err-toasts{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;
-    display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
-  .err-toast{pointer-events:auto;background:var(--danger);color:#fff;font-family:var(--mono);
-    font-size:11px;line-height:1.35;padding:6px 10px;border-radius:var(--radius-chip);box-shadow:var(--shadow);
-    max-width:min(520px,92vw);display:flex;align-items:flex-start;gap:8px;word-break:break-word}
-  .err-toast .et-x{flex:none;cursor:pointer;font-size:12px;line-height:1;opacity:.85;background:none;border:0;color:#fff;padding:0 2px}
-  .err-toast .et-x:hover{opacity:1}
 

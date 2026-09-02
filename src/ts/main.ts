@@ -145,7 +145,7 @@ function amorcer(): { ctx: Contexte; fil: Fil } {
   // THE REPORTER FIRST: it must be wired up BEFORE everything else, otherwise an error thrown
   // during a wiring call would be seen by nobody (neither banner nor `plan-errors` ring, and
   // therefore not by the suites either, which read it back after each case).
-  brancherDiagnostics(ctx, () => fitView(ctx));
+  brancherDiagnostics(ctx);
   installerToasts(ctx.viewport);
   brancherSortieGestes(ctx);
   brancherPlanIdentite(() => ctx.etat.plan);
@@ -204,7 +204,7 @@ function amorcer(): { ctx: Contexte; fil: Fil } {
   // D-2. An unreadable local plan is STATED, on screen, and in two places (the assistant does
   // not always open). The panels must be wired up before this: the recovery button lives in
   // the assistant's banner.
-  if (bootIllisible) direPlanIllisible(ctx, bootIllisible, () => downloadRescued(EMBEDDED));
+  if (bootIllisible) direPlanIllisible(bootIllisible, () => downloadRescued(EMBEDDED));
 
   renderRoomChips(ctx, true);
 

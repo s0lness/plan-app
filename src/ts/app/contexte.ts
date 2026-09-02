@@ -139,8 +139,7 @@ export interface Crochets {
   apresRendu?: (() => void) | undefined;
   /** The Circulation engine, finalized on exiting a gesture (later batch). */
   analyser?: (() => void) | undefined;
-  /** Action breadcrumb trail and crash reporter (js/40, later batch). */
-  crumb?: ((a: string, b?: string) => void) | undefined;
+  /** Crash reporter (`app/diagnostics.ts`): a caught exception still reaches the ring. */
   reportError?: ((e: unknown, ou?: string) => void) | undefined;
   /**
    * C-17. What exiting a gesture replays: a full replacement or an op received DURING the

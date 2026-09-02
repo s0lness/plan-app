@@ -65,13 +65,11 @@ export function beginGesture(): void {
   // précédente. Ici, parce que c'est le seul endroit qui allume `gestureActive`
   // (`modele/photo-cellules.ts` dit pourquoi la photo existe).
   photographierCellules(_ctx?.etat.plan ?? null);
-  _ctx?.crochets.crumb?.("drag", "start");
 }
 
 export function endGesture(): void {
   gestureActive = false;
   oublierPhotoCellules();             // le recalcul FINAL a déjà eu lieu, dans le `finish` du geste
-  _ctx?.crochets.crumb?.("drag", "end");
   _ctx?.crochets.persister?.();       // one single real write for the whole gesture
   _ctx?.crochets.analyser?.();        // the analysis skipped during the gesture is finalized
 }
@@ -79,7 +77,6 @@ export function endGesture(): void {
 function gTick(): void {
   if (!gFinish) { if (gTimer) { clearInterval(gTimer); gTimer = 0; } return; }
   if (gestureStale()) {
-    _ctx?.crochets.crumb?.("geste", "chien de garde");
     endActiveGesture();
   }
 }

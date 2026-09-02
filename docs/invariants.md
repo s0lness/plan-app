@@ -1112,17 +1112,16 @@ nothing.
 **Verified** `vue_recadree_a_la_premiere_adoption_seulement`; `repli-d1-live.ts` #19 and #20.
 
 ### R-17. Anti blank page
-**Guarantees** three barriers. Every element dimension is bounded to [0, 100000] px and `NaN` becomes 0
-(`safeDim`, `js/00:5`); the px/cm scale of floor patterns is bounded to keep every `<pattern>` dimension
-under ~4096 px (`js/10:5`); and a **sentinel** periodically checks structural invariants and attempts a
-self-repair.
+**Guarantees** two barriers, both at the source of the dimension. Every element dimension is bounded to
+[0, 100000] px and `NaN` becomes 0 (`safeDim`, `js/00:5`); the px/cm scale of floor patterns is bounded
+to keep every `<pattern>` dimension under ~4096 px (`js/10:5`).
 **Prevents** "a px dimension that is NaN, negative, or gigantic, written into a style, can make the GPU
 raster fail **silently** (especially ARM/ANGLE) and blank out the entire page," **with no JS exception
 at all**, so `window.onerror` never sees it. Other real causes encountered: a focus halo with a GPU
 `filter`, and a giant scroll on the root.
-**Cadence** 3 s while present, 10 s at rest, 20 s of inactivity: "every pass forces a layout sync;
-every 3 s forever is a permanent tax paid for a failure that itself happens **during** an interaction."
-**Verified** `v5_white_page_sentinel_is_quiet`.
+**Detail** the periodic sentinel that used to watch for the symptom is gone (decision 0019): the single
+layer closed the failure at its source, and the sentinel had not tripped since.
+**Verified** `plan-abime.ts`, and every browser suite through the `plan-errors` ring.
 
 ### R-18. The Circulation panel never lies about what it isn't showing
 **Guarantees** the score is computed from the counts of the **entire list**, not from the 14 findings

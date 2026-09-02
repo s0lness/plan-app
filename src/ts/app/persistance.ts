@@ -52,8 +52,7 @@ function setStoreChip(on: boolean): void {
 // swallowed by a silent `catch(e){}`: the person would work an hour believing they were saving, and lose
 // everything on reload. A single message (not one per keystroke), plus a PERSISTENT chip for as long as it
 // doesn't recover.
-function notePersistFailed(ctx: Contexte, e: unknown): void {
-  ctx.crochets.crumb?.("stockage", "refused:" + (((e as Error) && (e as Error).name) || "?"));
+function notePersistFailed(): void {
   if (persistFailed) return;
   persistFailed = true;
   setStoreChip(true);
@@ -88,7 +87,7 @@ export function save(ctx: Contexte): void {
     // exemption cannot survive off the household door (design edge 13).
     localStorage.setItem(keyPourMode(modeCourant(), planIdInvite() || planCourant()), JSON.stringify(serialize(ctx)));
     notePersistOk();
-  } catch (e) { notePersistFailed(ctx, e); }
+  } catch (_) { notePersistFailed(); }
   saveOpts(ctx);
   ctx.crochets.publierD1?.();
   ctx.crochets.publierFil?.();
