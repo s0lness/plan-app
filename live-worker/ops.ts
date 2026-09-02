@@ -1,9 +1,6 @@
-// Pure logic for applying/validating ops on the canonical plan (TypeScript source).
-// No Cloudflare/DO dependency: testable under node.
-// EVERY op is idempotent (each sets a WHOLE entity), so the echo, a replay and a re-emission
-// after a `gap` are all risk-free. This was not true while `rooms.merge` existed: it APPENDED,
-// so replaying it duplicated its rooms. It has been removed (no client emitted it), and the
-// property is now the rule the wire depends on rather than an approximation of it.
+// Pure logic for applying/validating ops on the canonical plan. No Cloudflare/DO dependency:
+// testable under node. Every op is idempotent (each sets a WHOLE entity), so the echo, a replay
+// and a re-emission after a `gap` are all risk-free.
 
 export type Point = [number, number];
 
@@ -105,35 +102,22 @@ const COLORS = ["#1f6f78", "#b04a3d", "#7c8a6b", "#8a6e8e"];
 // Allowed keys of a piece (furniture item). Everything else is rejected.
 export const PIECE_KEYS = new Set([
   "id", "type", "name", "x", "y", "w", "h", "rot", "locked", "hinge", "swing",
-  // VIDEO PROJECTOR. The projection distance is NOT stored: it is derived from the position
-  // of the projector and that of the screen. What we store are the properties of the DEVICE,
-  // the ones found on its spec sheet:
-  //   `tr`   throw ratio x100 (150 = 1.50; 25 = 0.25 = ultra-short throw).
-  //          image width = distance / (tr/100). Integer, so never a float in the
-  //          content fingerprint: two clients cannot diverge on a rounding.
-  //   `dmin` minimum focus distance, cm.
-  //   `pair` id of the paired projection screen (or absent).
-  // The server does NOT know the catalog: it cannot require that only a projector carries
-  // these (G-18, the server bounds the dangerous, the client bounds the sensible).
+  // VIDEO PROJECTOR: properties of the DEVICE, not the derived projection distance. `tr` throw
+  // ratio x100 (integer, never a float in the fingerprint), `dmin` min focus distance cm, `pair`
+  // paired screen id. The server doesn't know the catalog, so it can't require only a projector
+  // carries these (G-18: server bounds the dangerous, client bounds the sensible).
   "tr", "dmin", "pair",
 ]);
 
 // ---- the "wall-partition" model, the only one ----
 // Allowed keys of its entities. Same severity as PIECE_KEYS: everything else is rejected.
 export const WALL_KEYS = new Set(["id", "a", "b", "t",
-  // `free`: this partition does NOT extend until it meets something. A v5 wall reaches through
-  // by default (each end is pushed to the first geometry beyond it, and to the outline failing
-  // a barrier): that's what makes a partition "always hook onto something". A load-bearing
-  // sub-wall, a low wall, a divider that stops in the middle of the room, must instead stay
-  // where it was placed. Absent = historical behavior, so no existing plan moves.
+  // `free`: this partition does NOT extend until it meets something (a v5 wall reaches through by
+  // default). Absent = historical behavior, so no existing plan moves.
   "free"]);
 export const OPENING_KEYS = new Set(["id", "wallId", "t0", "w", "h", "type", "side", "name", "hinge", "swing",
-  // `leaf`: HOW a window opens, and therefore whether it has a floor footprint.
-  //   absent / 0 = fixed or awning (vertical opening) -> NO swing arc
-  //   1 = one leaf (the side comes from `hinge`, the direction from `swing`)
-  //   2 = double window, two leaves meeting in the MIDDLE
-  // The ABSENT default is what makes the addition safe: no opening already in the database
-  // changes appearance until someone sets it.
+  // `leaf`: HOW a window opens. Absent/0 = fixed (no swing arc), 1 = one leaf, 2 = double window.
+  // Absent default is what makes the addition safe: nothing changes appearance until set.
   "leaf"]);
 export const CELL_KEYS = new Set(["id", "poly", "name", "floor"]);
 // Types of opening/fixture that can be placed on a wall (mirrors the client catalog).
@@ -152,46 +136,34 @@ export const CELL_FLOORS = new Set(["parquet", "herringbone", "tile", "plain"]);
 // v5 geometric bounds (cm).
 export const WALL_T_MIN = 1, WALL_T_MAX = 60;
 export const OPENING_W_MIN = 1, OPENING_W_MAX = 600;
-// h of an opening = DEPTH of its box in TOP-DOWN VIEW, not a ceiling height: the client
-// catalog gives 12 cm for a door / sliding door / window / sconce, 6 cm for a plug or RJ45,
-// and falls back to the wall thickness (12) for lack of anything better. The bounds therefore
-// mirror the client clamp (sanitizeV5Plan: clamp(h,1,200)): any tighter, we would reject
-// legitimate values, and a wrongly refused op makes an edit vanish in silence.
+// h of an opening = DEPTH of its box in TOP-DOWN VIEW, not a ceiling height. Mirrors the client
+// clamp (`sanitizeV5Plan`): any tighter, a wrongly refused op makes an edit vanish in silence.
 export const OPENING_H_MIN = 1, OPENING_H_MAX = 200;
 // Max length of a name, aligned with piece.name / cell.name.
 export const NAME_MAX = 80;
 
 // ---- VOLUME and RANGE bounds (defense against a crazed client or a forged wire) ----
-// A coordinate is in cm in the apartment frame. 100,000 cm = 1 km: thirty times the largest
-// plausible dimension of a home (the real plan fits within 1,418 cm), so no legitimate data
-// is refused, but 1e308 / 1e12 are. Without a bound, a single absurd coordinate is enough to
-// make the client render unusable and bloat the snapshot.
+// Coordinates are cm in the apartment frame; 100,000 cm = 1km, thirty times the largest plausible
+// home, rejects nothing legitimate but bounds a forged 1e308.
 export const COORD_MAX = 100_000;
-// Number of vertices of a polygon (outline, cell). The real plan caps at 11.
+// Vertices of a polygon (outline, cell); entities per family (walls/openings/furniture/cells).
+// Both generously bound the snapshot without rejecting any real plan.
 export const POLY_MAX_PTS = 2000;
-// Number of entities per family (walls / openings / furniture / cells). The real plan
-// fits in 22 / 30 / 47 / 10. 2000 leaves two orders of magnitude of margin and bounds the snapshot.
 export const MAX_ENTITIES = 2000;
 // Bounds of a piece of furniture (cm). Unchanged, extracted into constants.
 export const PIECE_WH_MIN = 1, PIECE_WH_MAX = 3000;
 // `swing`: opening direction. The client sends "1" / "-1" (furniture) or 1 / -1 (opening).
 // Same bound on both sides: without it, `swing` accepted a 5 MB string on a piece of furniture.
 export const SWING_MAX = 80;
-// `type` of a piece of furniture: an id from the client catalog (sofa3, radiateur, wc...). We do
-// NOT mirror the list of 41 types: adding to the catalog would then require a Worker redeploy,
-// and in the meantime every placement of the new furniture item would be refused, hence lost in
-// silence. We impose the SHAPE of an identifier, which is enough to rule out
-// "<img src=x onerror=...>" and any injection. Verified: the catalog's 41 types and the 24
-// present in production pass this pattern.
+// `type` of a piece of furniture: an id from the client catalog. We do NOT mirror the list (a
+// catalog addition would then need a Worker redeploy first); we impose the SHAPE of an
+// identifier, enough to rule out injection.
 export const TYPE_RE = /^[a-z0-9_-]{1,32}$/;
 
 // ---- A PLAN'S IDENTIFIER -----------------------------------------------------------------------
-// It serves TWO purposes that must stay in agreement: the D1 row key, and the Durable Object
-// name (`idFromName`). A narrow grammar, then, and a single one: an identifier that would pass
-// one and not the other would make a plan whose realtime side and REST fallback don't talk
-// about the same document -- exactly the kind of divergence that shows "live checkmark".
-// `main` remains the household's historical plan, and the DEFAULT when nothing is requested:
-// any client already open keeps landing on it without knowing anything about this field.
+// Serves TWO purposes that must stay in agreement: the D1 row key, and the Durable Object name
+// (`idFromName`). One narrow grammar, or realtime and REST fallback could disagree on the
+// document. `main` is the household's historical plan and the default.
 export const PLAN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 export const PLAN_ID_DEFAUT = "main";
 
@@ -228,16 +200,9 @@ function bitOf(v: unknown): 0 | 1 | null {
   const n = numOf(v);
   return (n === 0 || n === 1) ? n : null;
 }
-// Cleaned name: string, no control characters, no edge whitespace, TRUNCATED to NAME_MAX.
-//
-// Why truncate and not refuse: a name that's too long is neither dangerous nor inconsistent, and
-// the client's input field has NO limit. A refusal used to translate into a `console.warn` on
-// the sender, which had already noted that the server held the value: the op was never
-// re-emitted and the furniture item NEVER appeared for the peer. With `cells.replace`, a single
-// name that was too long brought down all ten cells at once. Truncating applies the change,
-// minus a shortened name, which the user sees right away.
-// The truncation counts in UTF-16 units but only advances by code point: a surrogate pair
-// (emoji) is never cut in half.
+// Cleaned name: string, no control characters, no edge whitespace, TRUNCATED (never refused, D-14)
+// to NAME_MAX. Counts in UTF-16 units but only advances by code point: a surrogate pair (emoji)
+// is never cut in half.
 function cleanName(v: unknown, code: string): string {
   if (!isStr(v)) throw new OpError(code);       // non-string = malformed op, not a name too long
   let s = "";
@@ -260,20 +225,11 @@ export class OpError extends Error {
   }
 }
 
-// ---- CONTENT FINGERPRINT: a plan's unambiguous identity ----------------------------------------
-// There were two UNRELATED counters carrying the same name `rev`: D1's (number of writes to the
-// row) and the Durable Object's (number of ops since its cold load, so reset to 0 on every
-// wake-up). The client only adopted the `hello` state if the two differed: when they coincided
-// (which happens constantly, both counters sweeping through the same small integers), it kept a
-// stale state forever, "live checkmark" badge and all. A fingerprint, on the other hand, depends
-// ONLY on content: two identical plans share it, two different plans (practically) never share
-// it, and no value can be mistaken for a counter.
-// 64 bits rendered as 16 hex characters, by TWO different mixing functions (FNV-1a and djb2-xor):
-// a collision would require fooling both at once.
-// ONE pass reads each character ONCE and advances both mixers. It used to be two functions, so
-// two full traversals of the same string; the values produced are identical to the character
-// (verified over 20 000 strings, ASCII and beyond, the empty string included), only the reading
-// changed. Measured on a 200 000-character string: 3 346 us in two passes, 246 us in one.
+// ---- CONTENT FINGERPRINT: a plan's unambiguous identity (C-2) -----------------------------------
+// Depends ONLY on content, unlike the two unrelated counters that used to share the name `rev`
+// (D1's row-write count vs. the Durable Object's op count, reset on every wake-up): two identical
+// plans share a fingerprint, two different plans practically never do. 64 bits as 16 hex
+// characters, by TWO mixing functions (FNV-1a and djb2-xor) in one pass over the string.
 export function strHash(s: string): string {
   const t = String(s);
   let f = 0x811c9dc5, d = 5381;
@@ -320,13 +276,8 @@ function canonPlan(plan: PlanState): string {
 // against a counter. It doesn't need to know how to recompute it.
 export function planFp(plan: PlanState): string { return strHash(canonPlan(plan)); }
 
-// NEW plan for a household with nothing yet: WALLS-ONLY shape (v5), not the old one.
-// Previously, the cold load of an empty D1 installed `{rooms:[], setupDone:false}`, a plan in
-// the OLD format: every op from the live client (outline.set, wall.set, piece.set without a
-// room) then fell into the v4 path and came back as `no_room` / `op_shape`, the REST fallback
-// was short-circuited because the WebSocket was alive, and the two people each configured their
-// own apartment without ever sharing anything. `isV5` recognizes this shape (walls is an array),
-// so the dispatch starts on the right side right away.
+// NEW plan for a household with nothing yet: WALLS-ONLY shape (v5). `isV5` recognizes this shape
+// (walls is an array), so the dispatch starts on the right side right away.
 export function emptyPlan(): PlanState {
   return { outline: null, walls: [], openings: [], pieces: [], cells: [], setupDone: false };
 }
@@ -339,14 +290,11 @@ export function colorFor(email: string): string {
   return COLORS[h % COLORS.length];
 }
 
-// ---- GUEST IDENTITY (docs/decisions/0004-partage-par-lien.md, "batch 2, wire identity") --------
-// A guest carries no Access-verified email, so the server must clean and derive identity fields
-// on its own, twice over: once when `functions/ws.ts` forwards the invite's `last_name` as an
-// HTTP header, and again here, because a name can also arrive later over an OPEN SOCKET via the
-// `{t:"name"}` message (item 5), which never passes through a Pages Function at all.
-
-// Same cap as `functions/nom.ts` applies to a guest name (design edge 2): a plan name keeps its
-// historical 80/60, a guest's self-declared name is capped tighter.
+// ---- GUEST IDENTITY (decision 0004, batch 2) ---------------------------------------------------
+// A guest carries no Access-verified email, so identity fields are cleaned twice: once when
+// `functions/ws.ts` forwards the invite's `last_name` as a header, and again here for a name
+// arriving later over an open socket (`{t:"name"}`), which never passes through a Function.
+// Same cap as `functions/nom.ts`: a plan name keeps its historical 80/60, a guest name is tighter.
 export const GUEST_NAME_MAX = 40;
 const CONTROLE_BAS = 32, DEL = 127;
 // LRE, RLE, PDF, LRO, RLO
@@ -355,16 +303,11 @@ const BIDI_MIN_1 = 0x202a, BIDI_MAX_1 = 0x202e;
 const BIDI_MIN_2 = 0x2066, BIDI_MAX_2 = 0x2069;
 
 /**
- * SAME RULE AS `functions/nom.ts`'s `cleanName`, deliberately COPIED rather than imported: this
- * Worker is bundled separately from the Pages Functions (see the header note on
- * `colorFor`/`hoteAutorise` in worker.ts, one repository, two independent bundles). A plain
- * `c < 32` filter lets bidi override code points through; those do not corrupt the name itself,
- * they visually reorder the TEXT AROUND it (a chat line, a cursor label, a peer-dot tooltip).
- * Unlike `cleanName` above (used for plan entities, which THROWS on a non-string so a malformed
- * op is refused outright), this never throws: a guest's `{t:"name"}` message is not an op, and a
- * malformed one should just produce an empty string rather than drop the whole socket. Both
- * `cleanGuestName` and `cleanCursorSay` below share this one implementation (same bundle, so
- * nothing forces a second copy the way `functions/nom.ts` does): only the cap differs per caller.
+ * Same rule as `functions/nom.ts`'s `cleanName`, deliberately COPIED rather than imported (one
+ * repository, two independent bundles). Filters bidi override code points too, since a plain
+ * `c < 32` filter lets them through to visually reorder the TEXT AROUND a name. Never throws
+ * (unlike `cleanName` above): a malformed guest message should produce an empty string, not drop
+ * the socket. `cleanGuestName` and `cleanCursorSay` share this, only the cap differs.
  */
 function cleanTexteBornee(v: unknown, max: number): string {
   if (typeof v !== "string") return "";
@@ -394,15 +337,10 @@ export function cleanCursorSay(v: unknown): string {
 }
 
 /**
- * Same derivation as the client's `displayName()` (`src/ts/mesure/curseur-pair.ts`): the local
- * part of the address, capitalized, trailing digits stripped. Duplicated here for the same reason
- * `cleanGuestName` is: this Worker cannot import from `src/ts`.
- *
- * ITS ONLY CALLER IS THE GUEST-AUDIENCE PATH. "Emails never cross to a guest" (design edge 16)
- * does not mean a guest sees a BLANK dot for every household member instead: item 2 of batch 2
- * says every outgoing message "must carry a display name instead [of the email] and no email at
- * all", a household author has no self-declared `name` (that field only exists for guests), so
- * without this, a guest would see "?" where a household peer's dot should be.
+ * Same derivation as the client's `displayName()` (`src/ts/mesure/curseur-pair.ts`), duplicated
+ * here since this Worker cannot import from `src/ts`. Its only caller is the guest-audience path:
+ * emails never cross to a guest, but a household author has no self-declared `name`, so without
+ * this a guest would see "?" where a household peer's dot should be.
  */
 export function nameFromEmail(email: string): string {
   const s = String(email || "").trim();
@@ -415,23 +353,11 @@ export function nameFromEmail(email: string): string {
 
 // ---- validations ----
 
-// ---- "ABSENT FIELD = NO OPINION", generalized to all entities ----------------------------------
-// An op was an upsert of a WHOLE entity: when one person renamed a rug while the other resized
-// it, the last op overwrote the first one's field, including on the screen of the person who had
-// just typed it, and no one was told. The principle already existed for `h`/`name` of an
-// opening; it now applies to ALL fields of ALL entities: a key absent from the wire does not
-// mean "erase", it means "I have no opinion", so we fall back to the value already in the
-// database.
-// Two accepted consequences:
-//   - ERASING a value stays possible by sending the EXPLICIT neutral value ("" for a name, false
-//     for `locked`, 0 for `hinge`); what becomes unexpressible is the TOTAL REMOVAL of an
-//     optional key (`hinge`, `swing`) on an entity already in the database. No client does that
-//     (a piece of furniture's type never changes after it's placed), and `plan5.replace` remains
-//     the explicit path to lay down a whole new state.
-//   - the change can only turn a REFUSAL into an acceptance: as long as the client sends complete
-//     entities (which is the case today), `base` is never consulted. Nothing that used to pass
-//     can stop passing.
-// `base` is only kept if it carries the SAME id: two distinct entities are never merged.
+// ---- "ABSENT FIELD = NO OPINION", generalized to all entities (C-5) -----------------------------
+// A key absent from the wire does not mean "erase", it means "no opinion", so we fall back to the
+// value already in the database. Erasing stays possible via the explicit neutral value ("" for a
+// name, false for `locked`, 0 for `hinge`); total removal of an optional key becomes
+// inexpressible, which no client needs. `base` is only kept if it carries the SAME id.
 const prevOf = <T extends { id: string }>(prev: Map<string, T> | T | null | undefined, id: string): T | null => {
   if (!prev || id === undefined || id === null) return null;
   const e = prev instanceof Map ? prev.get(id) : prev;
@@ -762,28 +688,19 @@ export function sanitizeState(st: PlanState, prev?: PlanState): PlanState {
 }
 
 // ---- applying ops ----
-// Mutates and returns `plan` (the caller has already cloned the state before calling applyOp
-// if it wants immutability; here we mutate in place, the DO caller stores the result).
+// Mutates and returns `plan` (the caller clones beforehand if it wants immutability).
 //
-// ONE MODEL, so no dispatch by shape any more (decision 0021): every op is a walls-only op. The
-// one guard left is the state's own shape: a row served VERBATIM because the validator refused it
-// (a format from before the switchover) accepts nothing but `plan5.replace`, the complete
-// replacement. Without that guard, the first `wall.set` from a live client would quietly graft a
-// walls-only plan onto bytes it cannot read, and the row would then hold both at once.
-// `piece.front` and `rooms.merge` were removed before, on the same grounds: no client emits them
-// (exhaustive census of the client's `wsSend`/`wsSendOp`: op, cursor, drag, chat, ping, hello),
-// and `rooms.merge` was the ONE op on this wire that was not idempotent, since it APPENDED its
-// rooms. An op nobody sends does not need a contract.
+// ONE MODEL (decision 0021): every op is a walls-only op. The one guard left is the state's own
+// shape: a row served VERBATIM because the validator refused it accepts nothing but
+// `plan5.replace`, or the first `wall.set` would quietly graft a walls-only plan onto bytes it
+// cannot read. `piece.front`/`rooms.merge` are gone: no client emits them (census of `wsSend`/
+// `wsSendOp`).
 
 // ---- THE ENVELOPE OF AN OP IS REBUILT, NEVER RELAYED AS RECEIVED -------------------------------
-// The ENTITIES an op carries are already behind a whitelist (PIECE_KEYS, WALL_KEYS, OPENING_KEYS,
-// CELL_KEYS): an unknown key inside `op.piece` gets the whole op refused. Its ENVELOPE was behind
-// nothing at all, so `{kind:"wall.del", wallId:"w1", junk:"<100 KB>"}` applied cleanly and the
-// server rebroadcast THE OBJECT IT RECEIVED, junk included: any socket could push arbitrary bytes
-// through every peer's receive path, at the plan's own message ceiling.
-// The op that goes back out is therefore REBUILT from the keys its kind is known to carry. An
-// absent key stays absent ("no opinion" is a value on this wire, cf. piece.set), so this changes
-// nothing for a legitimate op.
+// An op's ENTITIES are behind a whitelist (PIECE_KEYS, WALL_KEYS, ...); its ENVELOPE was behind
+// nothing, so a junk key applied cleanly and the server rebroadcast it verbatim: any socket could
+// push arbitrary bytes through every peer's receive path. The op that goes back out is therefore
+// REBUILT from the keys its kind is known to carry.
 export const OP_KEYS: Record<string, string[]> = {
   "piece.set": ["piece"],
   "piece.del": ["pieceId"],

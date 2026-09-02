@@ -53,12 +53,12 @@ Robustness    by construction | by convention | by accident | bounded
 
 | Domain | Count | Section |
 |---|---|---|
-| Data and persistence | 18 | [D](#d-data-and-persistence) |
+| Data and persistence | 19 | [D](#d-data-and-persistence) |
 | Concurrency and collaboration | 22 | [C](#c-concurrency-and-collaboration) |
 | Gestures and interaction | 24 | [G](#g-gestures-and-interaction) |
 | Rendering and legibility | 19 | [R](#r-rendering-and-legibility) |
 | Server-side validation | 12 | [V](#v-server-side-validation) |
-| **Total** | **95** | |
+| **Total** | **96** | |
 
 Measured on 2026-08-05 on `af6459e`: the full pre-deploy barrier runs **3,415 checks across 27
 suites in 348 s**, all green.
@@ -256,6 +256,16 @@ the outline while showing another home, furnished, behind the modal."
 ### D-18. `state.pieces` is an accessor, not a copied alias
 **Prevents** a plan replacement (remote op, undo, pull) used to leave a stale reference behind.
 **Where** `bindState()` (`js/02:280`), non-enumerable property.
+
+### D-19. A tab's plan id is frozen at load time, not re-resolved on every call
+**Guarantees** `planCourant()` reads the URL's `?p=`, falling back to `localStorage` only once,
+at module load; nothing after load can change which plan a tab believes it is.
+**Prevents** resolving fresh on every call, falling back to local storage when the URL says
+nothing: the household tab has no `?p=` in its URL, so creating a second plan wrote its id to
+storage, and the household tab (always open) started resolving to that plan and republishing the
+household's content into it.
+**Where** `fil/drapeaux.ts`, the module-scope `_plan` constant.
+**Robustness**: by construction (resolved once, never re-read).
 
 ---
 

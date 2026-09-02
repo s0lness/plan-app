@@ -18,15 +18,11 @@ interface Env {
   HOUSEHOLD_HOSTS?: string;
 }
 
-// ---- SOCKET IDENTITY (batch 2, wire identity) ---------------------------------------------------
+// ---- SOCKET IDENTITY (decision 0004, batch 2) ---------------------------------------------------
 // `email` is the HOUSEHOLD identity (Access-proven, "inconnu" when unresolvable); `guest` +
-// `guestId` + `token` exist ONLY for the guest door and are always "" / false for a household
-// socket. `name` is the one field BOTH sides can carry: a guest's self-declared label, or (once a
-// household member also sets one through `{t:"name"}`) a chosen label instead of an email-derived
-// one. `token` is the raw invite token: it is what `/revoke` matches sockets against (edge 6) and
-// what the per-socket rate cap is keyed on (edge 15), NOT a credential in its own right here (the
-// socket is already open), just the label that ties a live connection back to the invite row that
-// let it in.
+// `guestId` + `token` exist ONLY for the guest door, always "" / false for a household socket.
+// `name` is the one field both sides can carry. `token` is what `/revoke` matches sockets against
+// and what the per-socket rate cap is keyed on, not a credential here (the socket is already open).
 interface SocketAttachment {
   email: string;
   color: string;
@@ -51,16 +47,10 @@ interface SocketAttachment {
 const GUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
- * Builds a socket's attachment from the headers `functions/ws.ts` sets (ALWAYS set, never
- * conditionally, see its header note, so a caller cannot forge `X-Plan-Guest`/`X-Plan-Name`/
- * `X-Plan-Guest-Id`/`X-Plan-Token` by sending its own copy). Pulled out of `PlanRoom.fetch` as a
- * PURE function of `(request, tag)` so it is testable under plain node without a real
- * `WebSocketPair` (which `fetch` itself needs and node does not provide).
- *
- * `??` NOT `||` ON EMAIL: a guest's `X-Plan-Email` is the EXPLICIT empty string ("there is no
- * email to have"), which `||` would silently coerce back into the literal "inconnu", a real
- * value with its OWN meaning ("household door, but Access gave us no header"). `??` only falls
- * back when the header is truly ABSENT (an older forwarder, or a test double that never set it).
+ * Builds a socket's attachment from the headers `functions/ws.ts` always sets (never
+ * conditionally, so a caller cannot forge them). Pulled out of `PlanRoom.fetch` as a PURE
+ * function of `(request, tag)`, testable under plain node without a real `WebSocketPair`.
+ * `??` not `||` on email: a guest's explicit empty string must not coerce back into "inconnu".
  */
 export function attachmentFromRequest(request: Request, tag: string): SocketAttachment {
   const email = request.headers.get("X-Plan-Email") ?? "inconnu";
@@ -81,13 +71,8 @@ export function attachmentFromRequest(request: Request, tag: string): SocketAtta
   return { email, color, tag, name, guest, guestId, token, planId, expiresAt: expiresFromHeader(request) };
 }
 
-/**
- * `X-Plan-Expires`: when this socket's invite stops being valid. Accepts the ISO 8601 form the
- * `invites.expires_at` column holds (what `functions/ws.ts` has at hand) and a plain millisecond
- * epoch. ABSENT or unreadable answers 0, which means "do not check": a socket opened by a
- * forwarder that predates this header must keep working exactly as before, and a household socket
- * has no expiry to have.
- */
+/** `X-Plan-Expires`: when this socket's invite stops being valid. Accepts ISO 8601 or a plain
+ * millisecond epoch. Absent/unreadable answers 0, meaning "do not check". */
 function expiresFromHeader(request: Request): number {
   const brut = (request.headers.get("X-Plan-Expires") || "").trim();
   if (!brut) return 0;
@@ -150,18 +135,11 @@ interface WireMessage {
   say?: string | null;
 }
 
-// ---- THE SAME DOOR AS functions/porte.ts, applied here too ------------------------------------
-// A DOOR IN WAITING, and that is the point. Today `/ws` is served by Pages
-// (`functions/ws.ts` forwards through the `ROOM` binding), so `functions/_middleware.ts` covers
-// it and this `fetch` is not reachable from outside: the `workers.dev` subdomain is disabled.
-// But `live-worker/DEPLOY.md` §2 describes a zone route that would send `/ws*` straight HERE and
-// take precedence over Pages, and that document is a procedure someone may yet run. The day it
-// is run, this function becomes the front door of the most privileged route in the product,
-// reading a caller-supplied identity header with no middleware in front of it.
-// See docs/decisions/0004-partage-par-lien.md.
-// Kept as an independent copy, not an import from `functions/`: this file is bundled and
-// deployed as its own Worker (`live-worker/build-worker.ts`), a separate unit from the Pages
-// Functions it happens to share a repository with.
+// ---- THE SAME DOOR AS functions/porte.ts, applied here too (decision 0004) ---------------------
+// A DOOR IN WAITING: today `/ws` is served by Pages and `functions/_middleware.ts` covers it, so
+// this `fetch` is not reachable from outside. `live-worker/DEPLOY.md` §2 describes a zone route
+// that would send `/ws*` straight HERE instead, making this the front door of the most privileged
+// route in the product. Kept as an independent copy: this file is its own bundled Worker.
 export function hoteAutorise(request: Request, env: Pick<Env, "HOUSEHOLD_HOSTS">): boolean {
   const hotes = (env.HOUSEHOLD_HOSTS || "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
   // ABSENT VARIABLE = trust the header, exactly as before this door existed:
@@ -180,14 +158,10 @@ export default {
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("expected websocket", { status: 426 });
     }
-    // Access has already filtered on the household host; missing header -> "unknown" but we let
-    // it through. Off an unrecognized host (HOUSEHOLD_HOSTS declared and not matching) the header
-    // is caller-supplied and unsigned, so it is never trusted: force "inconnu" instead.
-    // It DOWNGRADES rather than refuses, unlike `functions/_middleware.ts`, which answers 403 on
-    // an unrecognized host. The asymmetry is deliberate: this handler is not reachable from
-    // outside today, so an unrecognized host here means a MISCONFIGURED allowlist far more often
-    // than an attack, and refusing would take the whole wire down rather than merely lose
-    // attribution. The exposed path is the Pages one, and that one fails closed.
+    // Off an unrecognized host, the header is caller-supplied and unsigned, so force "inconnu"
+    // rather than trust it. DOWNGRADES rather than refuses (unlike `_middleware.ts`'s 403): this
+    // handler isn't reachable from outside today, so a mismatch means a misconfigured allowlist
+    // far more often than an attack.
     const email = hoteAutorise(request, env)
       ? (request.headers.get("Cf-Access-Authenticated-User-Email") || "inconnu")
       : "inconnu";
@@ -198,12 +172,9 @@ export default {
     if (!planId) return new Response("bad plan id", { status: 400 });
     const id = env.ROOM.idFromName(planId);
     const stub = env.ROOM.get(id);
-    // We forward the identity AND the plan to the DO via headers on the forwarded request.
-    // `new Request(url, request)` COPIES every header of the original request, guest-related ones
-    // included: this dormant path has no concept of a guest door (`hoteAutorise` only knows
-    // `HOUSEHOLD_HOSTS`), so every one of them is FORCED, not merely defaulted, the same way
-    // `X-Plan-Email` already is above, a caller cannot present as a guest, or carry the internal
-    // `/revoke` marker (see `INTERNAL_HEADER`, never legitimate on a `/ws` request), through here.
+    // `new Request(url, request)` COPIES every header, guest-related ones included: this dormant
+    // path has no concept of a guest door, so every one is FORCED, not merely defaulted, and the
+    // internal `/revoke` marker cannot ride through here.
     const fwd = new Request(url.toString(), request);
     fwd.headers.set("X-Plan-Email", email);
     fwd.headers.set("X-Plan-Id", planId);
@@ -236,133 +207,87 @@ const MAX_PLAN_BYTES = 1_500_000;
 export const MAX_MSG_BYTES = MAX_PLAN_BYTES + 8_192;
 // Debounce of the D1 snapshot, carried by a storage ALARM (see markDirty).
 const SNAP_DELAY_MS = 30_000;
-// ---- TWO COUNTERS WITH THE SAME NAME IS ONE TOO MANY ------------------------------------------
-// There were two `rev` in this system, and they counted UNRELATED things: the Durable Object's
-// counted its operations, the D1 row's counts its REST writes. Having compared them by mistake
-// produced a permanent divergence, two screens showing "live checkmark".
-// The fix at the time (making one start from the other's value) sidestepped the collision
-// without lifting the ambiguity. The Durable Object's counter is now called `opCount`, it starts
-// from ZERO, it never touches D1's `rev` again, and it only serves to date messages in the logs.
-// CONTENT IDENTITY, the only thing that's comparable, is the `fp` fingerprint (planFp).
+// ---- TWO COUNTERS WITH THE SAME NAME IS ONE TOO MANY (C-2) --------------------------------------
+// The Durable Object's op counter is called `opCount`, starts from ZERO, and never touches D1's
+// `rev`: comparing the two unrelated counters used to produce a permanent divergence. Content
+// identity, the only thing that's comparable, is the `fp` fingerprint (planFp).
 // Historical storage key, read once so as not to restart from zero after a deploy.
 const OPCOUNT_KEY_OLD = "rev";
-// ---- ACKNOWLEDGMENT AND DEDUPLICATION BY (tag, n) ----------------------------------------------
-// Deduplication memory window: one entry PER LIVE SOCKET, in MEMORY only, never in storage.
-// Three reasons:
-//   - the key is the device label `tag`, which is unique per SOCKET and dies with it;
-//   - persisting a counter per op would double the storage writes of the hottest path;
-//   - losing this table (eviction, redeploy) is HARMLESS: ops are idempotent, the worst effect
-//     of a missed deduplication is an op applied twice, so nothing.
-// It is therefore bounded by the number of sockets, plus a safety margin in case a `close` was missed.
+// ---- ACKNOWLEDGMENT AND DEDUPLICATION BY (tag, n) (C-4) -----------------------------------------
+// One entry PER LIVE SOCKET, in MEMORY only: the key `tag` dies with the socket, persisting a
+// counter per op would double storage writes, and losing this table is HARMLESS (ops are idempotent).
 const SEQ_MAX_ENTRIES = 64;
-// How many numbers a socket's "already applied" set remembers at once. It is a plain sliding set
-// of the numbers SEEN, with no notion of contiguity at all: the oldest entry drops out once the set
-// is full, whatever its value. There is no "last contiguous number" anywhere in this code, and
-// there must not be, because an unknown `tag` would then have to DECLARE that everything below
-// has been seen, which is false the moment a socket's very first frame is lost (see `seqOf`).
-// Falling out of the window costs a reapplication of an op 64 sends old, which is nothing: ops
-// are idempotent. Gaps are measured separately, on `max`, the highest number APPLIED.
+// A plain sliding set of numbers SEEN, no notion of contiguity: an unknown `tag` must never
+// DECLARE everything below has been seen, which would be false the moment a first frame is lost.
+// Falling out of the window costs a harmless reapplication; gaps are measured on `max` instead.
 const SEQ_WINDOW = 64;
 
-// ---- PER-TOKEN RATE CAP (design edge 15) --------------------------------------------------------
-// Brute-forcing a 128-bit invite token is not the threat this guards against, revoke (edge 6) is
-// the real answer to a link handed around too widely. What this closes is a VALID link behaving
-// badly: a tight client-side loop (a bug, or a script fed the token) that would otherwise fill the
-// `plans` row and the D1 write quota with no ceiling at all. Measured interactive use: a furniture
-// drag emits its final `piece.set` on RELEASE, not per frame (gestures diff-and-send once, cf.
-// AGENTS.md "Gestures: ONE exit point"), so even a frantic multi-object session tops out at a
-// handful of `op` messages per SECOND. 120 / rolling minute (2/s sustained) leaves roughly ten
-// times that headroom, a human editing furniture can never hit it, a runaway loop will.
-// Keyed on the ATTACHMENT'S TOKEN, never on `tag`: the cap must follow the LINK (several guest
-// tabs can share one token), and a household socket's token is always "", so this never touches
-// household traffic (MAX_ENTITIES and the 1.5 MB plan ceiling already bound that side).
+// ---- PER-TOKEN RATE CAP (decision 0004, edge 15) -------------------------------------------------
+// Not a defense against brute-forcing a token (revoke is); this closes a VALID link behaving
+// badly, a tight client-side loop that would fill the D1 write quota with no ceiling. Furniture
+// drags emit their final `piece.set` on release (AGENTS.md "Gestures: ONE exit point"), so even a
+// frantic session tops out at a handful of `op`/second; 120/minute leaves roughly ten times that
+// headroom. Keyed on the ATTACHMENT'S TOKEN, never `tag`: it must follow the LINK.
 const RATE_MAX_OPS = 120;
 const RATE_WINDOW_MS = 60_000;
-// Bound on the number of DISTINCT (kind, key) windows tracked at once, same spirit as
-// SEQ_MAX_ENTRIES: an abandoned or revoked token's timestamp array must not linger in memory
-// forever. Six kinds are capped now instead of one, so the bound is per-kind-per-socket.
+// Bound on DISTINCT (kind, key) windows tracked at once, same spirit as SEQ_MAX_ENTRIES.
 const RATE_MAX_ENTRIES = 512;
 // ---- EVERY KIND OF MESSAGE HAS A CEILING, NOT JUST `op` ---------------------------------------
-// The cap only covered `op`, so `cursor`, `drag`, `chat`, `ping` and `name` were unbounded on a
-// wire that broadcasts each of them to every peer: one socket in a tight loop cost N sends per
-// frame, and `chat` additionally wrote storage each time. The budgets follow measured interactive
-// use, an order of magnitude above it: a pointer moves at screen refresh but is only relayed on
-// change, a person sends a handful of chat lines a minute, and a name is chosen once.
-// A HOUSEHOLD socket gets a wider `op` budget rather than no budget at all: the point of a
-// ceiling is a runaway loop, and a household tab loops exactly like a guest tab.
+// `cursor`, `drag`, `chat`, `ping` and `name` were unbounded on a wire broadcasting each to every
+// peer. Budgets follow measured interactive use, an order of magnitude above it. A HOUSEHOLD
+// socket gets a wider `op` budget rather than none: a household tab can loop just like a guest tab.
 interface RateBudget { max: number; win: number; foyer?: number }
 const RATE_BUDGETS: Record<string, RateBudget> = {
   op: { max: RATE_MAX_OPS, win: RATE_WINDOW_MS, foyer: 600 },
-  // The client sends the cursor once per animation frame (`curPending`/rAF in presence.ts): a
-  // 60 Hz screen is 60/s, a 120 Hz one twice that. The ghost of a drag is throttled to ~40 ms
-  // (25/s). Both budgets sit ABOVE the honest cadence, otherwise the cap silently eats frames of
-  // ordinary use and the peer's cursor stutters.
+  // Cursor sends once per animation frame (up to 120Hz); drag ghost throttled to ~40ms (25/s).
+  // Both budgets sit ABOVE the honest cadence, or the cap eats frames of ordinary use.
   cursor: { max: 150, win: 1_000 },
   drag: { max: 60, win: 1_000 },
   chat: { max: 5, win: 10_000 },
   name: { max: 3, win: 60_000 },
   ping: { max: 60, win: 60_000 },
 };
-// An overrun is SILENT for the ephemeral kinds (a dropped cursor frame costs nothing, and saying
-// so would double the traffic being throttled) and an `err` for the ones a person watches
-// succeed or fail.
+// An overrun is SILENT for the ephemeral kinds (a dropped cursor frame costs nothing) and an
+// `err` for the ones a person watches succeed or fail.
 const RATE_SILENT = new Set(["cursor", "drag", "ping"]);
 
 // ---- HOW MANY SOCKETS A ROOM, AND A LINK, MAY HOLD --------------------------------------------
-// Nothing bounded the number of open sockets: every one of them costs a send on every broadcast,
-// so the cost of a room is quadratic in the number of tabs pointed at it, and a single invite link
-// could open as many as it liked. The household is two people with a few devices; a link is one
-// person, occasionally with a phone next to the laptop. Both ceilings answer 429 BEFORE the
-// upgrade, so no socket is ever opened and then dropped.
+// The cost of a room is quadratic in the number of tabs pointed at it. Both ceilings answer 429
+// BEFORE the upgrade, so no socket is ever opened and then dropped.
 const MAX_SOCKETS_ROOM = 32;
 const MAX_SOCKETS_TOKEN = 4;
 
-// The internal marker `functions/api/invites.ts` sets on its OWN freshly-built request to
-// `PlanRoom`'s `/revoke` route (docs/decisions/0004-partage-par-lien.md, edge 6). It is never
-// derived from an inbound client request, `functions/_middleware.ts` also strips it from every
-// request it forwards, and `functions/ws.ts` deletes it explicitly from what it forwards to `/ws`
-//, so its mere presence here can only mean this call came from that trusted code path, over the
-// `ROOM` binding, a call that never touches the network-facing `export default {fetch}` below (see
-// `handleRevoke`).
+// The internal marker `functions/api/invites.ts` sets on its own freshly-built `/revoke` request
+// (decision 0004, edge 6): stripped from every inbound request, so its presence can only mean the
+// call came from that trusted code path over the `ROOM` binding.
 const INTERNAL_HEADER = "X-Plan-Internal";
 // ---- SET-ASIDE VERSIONS ARE A LIST, NOT A SLOT ------------------------------------------------
-// `orphan` was a SINGLE storage key: a second conflict overwrote the first, so the version a
-// person lost could disappear before anyone came to look for it, and the only way to look was to
-// open the Durable Object's storage by hand. The client already keeps the last 5 rejected
-// versions (`room-planner-v4-conflit`); the server keeps the same number, and `GET /orphans`
-// (internal route, same guard as `/revoke`) is how they are read back.
+// `orphan` was a SINGLE storage key: a second conflict overwrote the first. The server now keeps
+// the last 5, same as the client; `GET /orphans` (same guard as `/revoke`) reads them back.
 const ORPHAN_MAX = 5;
 // Historical single key, still read once so a conflict recorded before this change is not lost.
 const ORPHAN_KEY_OLD = "orphan";
-// A distinguishable WebSocket close code (RFC 6455 application range 4000-4999) and reason, so a
-// client that reconnects after a revoke can tell it apart from an ordinary drop and show the dead
-// end screen instead of quietly retrying forever.
+// A distinguishable WebSocket close code (RFC 6455 application range) so a reconnecting client
+// shows the dead end screen instead of quietly retrying forever.
 const REVOKE_CLOSE_CODE = 4001;
 const REVOKE_CLOSE_REASON = "invite_revoked";
 // ---- A DELETED PLAN STAYS DELETED --------------------------------------------------------------
-// The DELETE in `functions/api/plans.ts` only erases the D1 row. This object's snapshot being an
-// `INSERT … ON CONFLICT`, it recreated that row on the next alarm, and its sockets stayed open on
-// a plan that no longer exists. `POST /purge` is what the DELETE calls: sockets closed, alarm
-// disarmed, storage erased, and a marker so a message arriving late on a straggling socket is
-// refused instead of rewriting anything.
+// The DELETE in `functions/api/plans.ts` only erases the D1 row; this object's snapshot would
+// recreate it on the next alarm. `POST /purge` closes sockets, disarms the alarm, erases storage,
+// and marks it so a straggling message is refused instead of rewriting anything.
 const PURGE_CLOSE_CODE = 4004;
 const PURGE_CLOSE_REASON = "plan_deleted";
 const PURGED_KEY = "purged";
 // ---- AN EXPIRY IS CHECKED WHILE THE SOCKET LIVES, NOT ONLY WHEN IT OPENS -----------------------
-// `functions/ws.ts` refuses the upgrade of an expired invite, but an ALREADY OPEN socket never
-// passed that door again: a link could expire mid-session and keep writing, which is the very hole
-// `/revoke` was built to close for revocation. Same close-code family, same reason: the client can
-// tell this apart from an ordinary drop and stop retrying.
+// An already-open socket never passes the upgrade door again, so a link could expire mid-session
+// and keep writing without this. Same close-code family as revoke, same reason.
 const EXPIRE_CLOSE_CODE = 4003;
 const EXPIRE_CLOSE_REASON = "link_expired";
 
-// Will the plan fit into the DO's storage and into D1? Checked BEFORE any write: a mutation
-// accepted then rejected by storage.put() used to let the exception escape from
-// webSocketMessage, with no error for the client, no persistence, and no echo to peers.
-// Number of rows actually touched by the last statement, the ONLY verdict of a compare-and-swap.
-// Same contract, and same refusal to guess, as `functions/api/plan.ts`'s own `rowsChanged`: D1
-// answers `meta.changes`, some SQLite harnesses answer a flat `changes`, and `null` means "the
-// executor does not say", which is never read as a success.
+// Will the plan fit into the DO's storage and into D1? Checked BEFORE any write (C-19).
+// Number of rows actually touched by the last statement, the ONLY verdict of a compare-and-swap
+// (D-8). Same contract as `functions/api/plan.ts`'s own `rowsChanged`: `null` means "the executor
+// does not say", never read as a success.
 export function rowsChanged(res: (D1Result<unknown> & { changes?: number }) | null): number | null {
   if (res && res.meta && typeof res.meta.changes === "number") return res.meta.changes;
   if (res && typeof res.changes === "number") return res.changes;
@@ -373,18 +298,12 @@ export function planTooBig(plan: PlanState): boolean {
   return JSON.stringify(plan).length > MAX_PLAN_BYTES;
 }
 
-// COLD load decision, isolated from the Cloudflare runtime to be testable.
-// `rowData` = D1's `data` column, or null/undefined if there is NO row at all.
-// Three outcomes, deliberately distinct:
-//   - "empty": D1 has no row, or a row whose `data` is JSON `null` (how a plan is CREATED, cf.
-//              functions/api/plans.ts) -> legitimate new plan, we install it and persist it.
-//   - "d1"   : row read AND validated -> canonical shape.
-//   - "raw"  : row read but REFUSED by the current validator (schema that has moved on, or a
-//              shape from before the walls-only switchover, decision 0021) -> we keep the bytes
-//              as-is. Better an old state than an empty plan; and no op can write over them
-//              (`applyOp` refuses everything but `plan5.replace` on such a state).
-// An unreadable row (broken JSON) throws: the DO then refuses to serve, rather than installing
-// an empty plan that a first modification would go write over the real row.
+// COLD load decision, isolated from the Cloudflare runtime to be testable. `rowData` = D1's
+// `data` column, or null/undefined if there is no row. Three outcomes: "empty" (no row, or a
+// created-but-blank plan) installs and persists; "d1" (validated) is canonical; "raw" (refused by
+// the current validator, decision 0021) keeps the bytes as-is, better an old state than an empty
+// plan, and `applyOp` refuses everything but `plan5.replace` on it (D-2). An unreadable row
+// throws: the DO refuses to serve rather than install an empty plan over the real one.
 export function coldLoad(rowData: unknown): { plan: PlanState; source: string; persist: boolean } {
   if (rowData === null || rowData === undefined) {
     // New plan in the WALLS-ONLY format: cf. emptyPlan() in ops.ts.
@@ -393,10 +312,7 @@ export function coldLoad(rowData: unknown): { plan: PlanState; source: string; p
   if (typeof rowData !== "string") throw new OpError("cold_unreadable");
   let parsed;
   try { parsed = JSON.parse(rowData); } catch (_) { throw new OpError("cold_unparsable"); }
-  // JSON `null` IS "empty", not "unreadable". `functions/api/plans.ts` writes exactly that string
-  // when a plan is created ("a new plan is born empty, not copied"), so refusing it made
-  // `ensureLoaded` throw, the WebSocket upgrade fail, and the wire never open on a brand-new
-  // plan. Same content as an absent column: no data at all.
+  // JSON `null` IS "empty", not "unreadable": how `functions/api/plans.ts` writes a new plan.
   if (parsed === null) return { plan: emptyPlan(), source: "empty", persist: true };
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new OpError("cold_unreadable");
   try {
@@ -407,26 +323,13 @@ export function coldLoad(rowData: unknown): { plan: PlanState; source: string; p
   }
 }
 
-// ---- RECONCILING WITH D1: the REST fallback is no longer a sink -------------------------------
-// The Durable Object NEVER reread D1 after its first load. During a Worker outage, the client
-// switches to the REST fallback (functions/api/plan.ts): the write succeeds, it travels from one
-// screen to another, it does end up in the D1 row, then the Worker comes back, its `hello`
-// reimposes the plan it held in memory, the change disappears from both screens, and the
-// snapshot alarm overwrites the row. Accept, confirm, then silently destroy.
-//
-// The discriminant is `updated_by`: the DO NEVER writes anything but 'live', and the REST
-// Function NEVER writes 'live' (it sets the Access email, or 'inconnu'). A row that doesn't say
-// 'live' is therefore, for sure, a write the DO didn't make. `seen` (fingerprint of the bytes
-// already written OR already adopted) guarantees we only process it ONCE.
-//
-// `dirty` = does the DO have work of its own, not yet snapshotted? The armed alarm IS this flag
-// (it is persisted, unlike an instance variable which doesn't survive an eviction).
-//   - foreign row + DO at rest    -> "adopt"    : D1 is fresher, the DO has nothing to lose.
-//   - foreign row + DO at work    -> "conflict" : both sides wrote without seeing each other. The
-//     DO keeps its state (someone is editing on it RIGHT NOW), but it keeps the foreign bytes
-//     and TELLS the clients. What is forbidden is destroying them without saying so.
-// Merging the two states field by field is NOT done here: the REST fallback writes a COMPLETE
-// state, with no reliable common base, and a guessed merge would resurrect deleted entities.
+// ---- RECONCILING WITH D1: the REST fallback is no longer a sink (C-21) -------------------------
+// The discriminant is `updated_by`: the DO never writes anything but 'live', the REST Function
+// never writes 'live'. `seen` (fingerprint of bytes already written or adopted) guarantees we
+// process a foreign write only once. `dirty` = does the DO have unsnapshotted work of its own
+// (the armed alarm IS this flag, persisted): foreign row + DO at rest -> "adopt"; foreign row +
+// DO at work -> "conflict" (kept state, foreign bytes preserved, clients told). No field-by-field
+// merge: the REST fallback writes a COMPLETE state with no reliable common base.
 export function d1Verdict(
   row: { data?: string; updated_by?: string; rev?: unknown } | null,
   seen: string | null,
@@ -453,9 +356,8 @@ export class PlanRoom {
   // The plan this room served was DELETED (see PURGE_CLOSE_CODE). Cached in memory, but the
   // authority is the storage marker: a fresh instance must find it there.
   purged: boolean;
-  // Per-token rate window (design edge 15): token -> timestamps of `op` messages accepted within
-  // the rolling window. Memory only, same reasoning as `seq` (cf. RATE_MAX_ENTRIES): losing it on
-  // an eviction just resets the counter, which is harmless.
+  // Per-token rate window (edge 15): token -> timestamps of `op` messages accepted within the
+  // rolling window. Memory only: losing it on eviction just resets the counter, harmless.
   rateSeen: Map<string, number[]>;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -464,13 +366,10 @@ export class PlanRoom {
     this.storage = state.storage;
     this.loaded = false;
     // WHICH plan this object holds. `idFromName(planId)` guarantees one object per plan, so this
-    // value NEVER changes for a given object. It is persisted because memory doesn't survive
-    // hibernation, and an awakened object must know which D1 row is its own BEFORE reading it.
+    // never changes for a given object; persisted since memory doesn't survive hibernation.
     this.planId = null;
-    // plan/opCount/chat are loaded lazily on first access (ensureLoaded).
     this.plan = null;
-    // Number of operations applied by THIS Durable Object. Informative: it's not compared to
-    // anything, and especially not to the D1 row's `rev` (cf. the block at the top of the file).
+    // Number of operations applied by THIS Durable Object. Informative only (C-2).
     this.opCount = 0;
     this.chat = [];
     // Deduplication: device label -> {hwm, at}. Memory only (cf. SEQ_MAX_ENTRIES).
@@ -490,20 +389,15 @@ export class PlanRoom {
     return this.purged;
   }
 
-  // Lazy load: DO storage first, otherwise D1, otherwise an empty plan.
-  // ONE shape is validated, the walls-only plan ({outline,walls,openings,pieces,cells}). A
-  // snapshot in a shape from before the switchover is refused by `sanitizeState` and therefore
-  // served AS-IS, the same net `coldLoad` applies to a D1 row (decision 0021); `applyOp` refuses
-  // every op on it except `plan5.replace`, so it cannot be half-overwritten.
+  // Lazy load: DO storage first, otherwise D1, otherwise an empty plan. ONE shape is validated
+  // (the walls-only plan); a shape from before the switchover is refused and served AS-IS
+  // (decision 0021), and `applyOp` refuses every op on it except `plan5.replace`.
   async ensureLoaded() {
     if (this.loaded) return;
     const stored = await this.storage.get(["plan", "opCount", OPCOUNT_KEY_OLD, "chat", "d1seen", "planId"]);
-    // WHICH ROW IS OURS, reread here and not only in `fetch`. `adoptPlanId` used to be the only
-    // writer of `this.planId`, and it is called from `fetch` alone: an object woken by
-    // `webSocketMessage`, `alarm` or `webSocketClose` after an eviction therefore held null and
-    // fell back to `main`, so a shared plan's alarm snapshotted over the HOUSEHOLD's row.
-    // Second source, for the case where even the key is gone: a live socket's attachment, which
-    // survives hibernation with the plan it was opened on.
+    // WHICH ROW IS OURS, reread here and not only in `fetch`: an object woken by
+    // `webSocketMessage`/`alarm`/`webSocketClose` after an eviction would otherwise hold null.
+    // Second source, for when even the key is gone: a live socket's attachment survives hibernation.
     if (!this.planId) {
       this.planId = (stored.get("planId") as string | undefined) || this.planIdFromSockets();
     }
@@ -514,11 +408,8 @@ export class PlanRoom {
       this.opCount = (stored.get("opCount") as number | undefined)
         || (stored.get(OPCOUNT_KEY_OLD) as number | undefined) || 0;
       this.chat = (stored.get("chat") as ChatEntry[] | undefined) || [];
-      // The DO snapshot survives deploys: it can therefore contain entities written by an
-      // earlier version of the validator (e.g. openings whose `side` is still packed into
-      // `hinge`). We run it back through sanitizeState on wake-up so the database converges at
-      // once to the canonical shape, instead of staying mixed until the next write of each
-      // entity. On refusal we KEEP the raw plan: better an old state than an empty plan.
+      // The DO snapshot survives deploys, so it may hold entities from an earlier validator: run
+      // it back through sanitizeState on wake-up so the database converges to the canonical shape.
       try { this.plan = sanitizeState(this.plan); } catch (_) { /* keep the raw one */ }
       // Partial snapshot (old write): we guarantee the 4 lists.
       if (isV5(this.plan)) {
@@ -528,21 +419,15 @@ export class PlanRoom {
         if (this.plan.outline === undefined) this.plan.outline = null;
       }
     } else {
-      // First wake-up: we read D1. A read FAILURE is NOT an empty plan: we let the exception
-      // escape, the WebSocket upgrade fails and the client retries via its backoff.
-      // Previously everything was swallowed by a silent catch, an empty plan was installed THEN
-      // persisted, and the first modification overwrote the real D1 row: total loss.
+      // First wake-up: we read D1. A read FAILURE is NOT an empty plan: let the exception escape,
+      // the upgrade fails and the client retries via its backoff.
       const row = await this.env.DB
         .prepare("SELECT data, rev, updated_by FROM plans WHERE id=?1")
         .bind(this.requirePlanId())
         .first<D1PlanRow>();
       const cold = coldLoad(row && row.data !== undefined ? row.data : null);
       this.plan = cold.plan;
-      // The op counter STARTS FROM ZERO. It used to start from the D1 row's `rev`, so the two
-      // counters wouldn't sweep through the same small integers and wouldn't coincide by accident
-      // for a client comparing them. That band-aid no longer has a reason to exist: no one
-      // compares them anymore, they no longer share a name, and the authoritative identity is `fp`.
-      // Reading D1's `rev` to make it ours was the LAST place where the two touched each other.
+      // The op counter STARTS FROM ZERO (C-2): the authoritative identity is `fp`, not this count.
       this.opCount = 0;
       this.chat = [];
       this.d1Seen = row && typeof row.data === "string" ? strHash(row.data) : null;
@@ -553,11 +438,9 @@ export class PlanRoom {
     this.loaded = true;
   }
 
-  // Rereads the D1 row and applies the verdict (cf. d1Verdict). Called at the ONLY moments where
-  // the DO could otherwise destroy a write it hasn't seen:
-  //   - when the room REPOPULATES after being empty (end of a REST fallback period);
-  //   - before ANY snapshot (alarm, and flush on the last departure).
-  // `dirty`: see d1Verdict. Returns the verdict, for tests and for the log.
+  // Rereads the D1 row and applies the verdict (d1Verdict). Called at the ONLY moments where the
+  // DO could otherwise destroy a write it hasn't seen: the room repopulating after being empty,
+  // and before any snapshot. Returns the verdict, for tests and for the log.
   async reconcileD1(dirty: boolean): Promise<{ kind: string; why: string; hash?: string; rev: number | null }> {
     const row = await this.env.DB
       .prepare("SELECT data, rev, updated_by, updated_at FROM plans WHERE id=?1")
@@ -569,42 +452,32 @@ export class PlanRoom {
     if (v.kind === "none") return v;
 
     if (v.kind === "adopt") {
-      // Same policy as on cold load: an unreadable row never replaces a live plan. coldLoad
-      // throws on broken JSON -> we keep what we have and report nothing more.
+      // Same policy as cold load: an unreadable row never replaces a live plan.
       let cold;
       try { cold = coldLoad(row.data); } catch (_) { this.d1Seen = v.hash; await this.storage.put("d1seen", v.hash); return { kind: "none", why: "unreadable", rev: revLue }; }
       this.plan = cold.plan;
       this.opCount++;                   // the state changed: clients must notice
       this.d1Seen = v.hash;
-      // No markDirty: the D1 row ALREADY IS this plan, a snapshot would only rewrite the same
-      // bytes. We only persist the DO's storage.
+      // No markDirty: the D1 row already IS this plan, only the DO's storage needs persisting.
       await this.storage.put({ plan: this.plan, opCount: this.opCount, d1seen: this.d1Seen });
       this.broadcast({ t: "state", state: this.plan, opCount: this.opCount, fp: planFp(this.plan), reason: "d1_adopt" }, null);
       return v;
     }
 
-    // CONFLICT: both sides worked. The DO keeps its state (it has live sockets), but the foreign
-    // bytes are KEPT and the clients are told. A plan really weighs 10 KiB; we only refuse to
-    // store beyond the ceiling (a SQLite DO's storage caps at 2 MB per key), in which case we
-    // keep the trace without the bytes.
+    // CONFLICT: both sides worked. The DO keeps its state, but the foreign bytes are KEPT and the
+    // clients are told (C-21). Beyond the storage ceiling, we keep the trace without the bytes.
     const trace = {
       at: row.updated_at || null, by: row.updated_by || null, rev: row.rev ?? null,
       bytes: row.data.length, data: null as string | null, seenAt: Date.now(),
-      // Who has ALREADY been told. The one who wrote offline is, by construction, the one who is
-      // NOT connected at the moment of the conflict: without this list they would never learn of
-      // it. They will be told when they come back, in their `hello`, and only once.
-      // Who has ALREADY been told, by DEVICE LABEL. The one who wrote offline is, by construction,
-      // the one who is NOT connected at the moment of the conflict: without this list they would
-      // never learn of it. They will be told when they come back, in their `hello`, and only once.
-      // Those present are told right away, so they are noted here and not caught again.
+      // Who has ALREADY been told, by DEVICE LABEL: whoever wrote offline is, by construction, not
+      // connected at the moment of the conflict, and will be told once on their next `hello`.
       told: [...new Set(this.state.getWebSockets().map((s) => this.attOf(s).tag).filter(Boolean))],
     };
     const liste = await this.loadOrphans();
     let keepBytes = row.data.length <= MAX_PLAN_BYTES;
     if (keepBytes) {
-      // If storage refuses the bytes, we fall back to the TRACE alone rather than letting the
-      // exception block the alarm (and therefore every subsequent snapshot). Telling without
-      // keeping is better than doing nothing at all.
+      // If storage refuses the bytes, fall back to the trace alone: telling without keeping is
+      // better than doing nothing at all.
       try { await this.saveOrphans([...liste, { ...trace, data: row.data }]); }
       catch (_) { keepBytes = false; await this.saveOrphans([...liste, trace]); }
     } else {
@@ -631,12 +504,8 @@ export class PlanRoom {
     try { await this.storage.delete(ORPHAN_KEY_OLD); } catch (_) { /* nothing to retire */ }
   }
 
-  /**
-   * `GET /orphans` (internal route, same guard and same reachability as `/revoke`): hands back
-   * the versions this room set aside, so recovering one is a request instead of an inspection of
-   * the Durable Object's storage by hand. `functions/` exposes it to the household door.
-   * Response contract: `{orphans:[{at, by, rev, data}]}`, oldest first.
-   */
+  /** `GET /orphans` (internal route, same guard and reachability as `/revoke`): hands back the
+   * versions this room set aside. Response: `{orphans:[{at, by, rev, data}]}`, oldest first. */
   async handleOrphans(request: Request): Promise<Response> {
     if (request.headers.get(INTERNAL_HEADER) !== "1") return new Response("forbidden", { status: 403 });
     if (request.method !== "GET") return new Response("method not allowed", { status: 405 });
@@ -648,11 +517,8 @@ export class PlanRoom {
     });
   }
 
-  // Conflict message, built from a single place (reconciliation AND the `hello` on return).
-  // `by` names a HOUSEHOLD writer (an email, or the REST fallback's "invite:<name>" string for a
-  // guest write), not this batch's "author identity", but the same "no email to a guest" rule
-  // from item 2 applies here too: a guest recipient gets no `by` at all, only the fact that
-  // something was kept.
+  // Conflict message, built from a single place (reconciliation AND the `hello` on return). A
+  // guest recipient gets no `by` at all, only the fact that something was kept.
   conflictMsg(o: { by?: string | null; at?: string | null; bytes?: number; data?: unknown }, guestAudience: boolean) {
     return {
       t: "conflict", by: guestAudience ? null : (o.by || null), at: o.at || null,
@@ -661,30 +527,23 @@ export class PlanRoom {
   }
 
   /**
-   * WHICH plan this object holds. Called before ANY D1 access.
-   *
-   * `idFromName(planId)` guarantees one object per plan: the value therefore never changes for a
-   * given object, and a disagreement between the header and what is stored would be a ROUTING
-   * BUG, not a legitimate change. We then keep the STORED value: it designates the D1 row that
-   * this object has already read and maybe already written, and making it switch rows mid-life
-   * would overwrite another plan with this document.
+   * WHICH plan this object holds, called before ANY D1 access. `idFromName(planId)` guarantees
+   * one object per plan, so this never changes for a given object; a disagreement between the
+   * header and the stored value would be a ROUTING BUG, so the stored value wins.
    */
   async adoptPlanId(fromHeader: string | null) {
     if (this.planId) return;
     const stocke = await this.storage.get<string>("planId");
     if (stocke) { this.planId = stocke; return; }
-    // A MALFORMED identifier leaves the object without a plan rather than pointing it at `main`:
-    // `requirePlanId` then refuses every D1 access, and the upgrade fails, which is the correct
-    // end for a request nobody can route.
+    // A MALFORMED identifier leaves the object without a plan rather than pointing it at `main`.
     const id = cleanPlanId(fromHeader);
     if (!id) return;
     this.planId = id;
     await this.storage.put("planId", this.planId);
   }
 
-  /** The plan id carried by a LIVE socket's attachment. Last-resort source for an object woken on
-   *  a hibernated socket whose `planId` storage key is somehow gone: the attachment survives both
-   *  hibernation and eviction. */
+  /** The plan id carried by a LIVE socket's attachment: last-resort source, since the attachment
+   *  survives both hibernation and eviction. */
   planIdFromSockets(): string | null {
     for (const ws of this.state.getWebSockets()) {
       const a = ws.deserializeAttachment() as SocketAttachment | null;
@@ -694,22 +553,16 @@ export class PlanRoom {
     return null;
   }
 
-  /**
-   * WHICH ROW, or nothing at all. An object that does not know which plan is its own touches
-   * NOTHING: it neither reads nor writes D1. The previous `|| PLAN_ID_DEFAUT` turned "I don't
-   * know" into "the household's plan", which is the one answer that silently corrupts a
-   * different document than the one being edited.
-   */
+  /** WHICH ROW, or nothing at all: an object that doesn't know its plan touches neither D1 read
+   * nor write, rather than silently falling back to the household's plan. */
   requirePlanId(): string {
     if (!this.planId) throw new OpError("plan_id_unknown");
     return this.planId;
   }
 
   async fetch(request: Request): Promise<Response> {
-    // `/revoke` is an INTERNAL route (docs/decisions/0004-partage-par-lien.md, edge 6): it never
-    // upgrades a socket, so it is handled BEFORE `adoptPlanId`/`ensureLoaded` (this room may not
-    // even hold a live plan yet, e.g. a link revoked before anyone ever joined). See `handleRevoke`
-    // for why this is safe to reach only from `functions/api/invites.ts`'s own trusted call.
+    // `/revoke` is an INTERNAL route (decision 0004, edge 6): it never upgrades a socket, so it's
+    // handled BEFORE `adoptPlanId`/`ensureLoaded` (see `handleRevoke` for its reachability guarantee).
     const url = new URL(request.url);
     if (url.pathname === "/revoke") return this.handleRevoke(request);
     if (url.pathname === "/orphans") return this.handleOrphans(request);
@@ -718,12 +571,10 @@ export class PlanRoom {
     if (await this.isPurged()) return new Response("plan deleted", { status: 410 });
 
     await this.adoptPlanId(request.headers.get("X-Plan-Id"));
-    // Nothing routable: refuse the upgrade rather than open a socket onto an object that would
-    // have to guess which row is its own.
+    // Nothing routable: refuse the upgrade rather than guess which row is its own.
     if (!this.planId) return new Response("bad plan id", { status: 400 });
-    // ---- CEILINGS BEFORE THE UPGRADE (see MAX_SOCKETS_ROOM) --------------------------------------
-    // Answered here, ahead of `ensureLoaded` and of the pair: a socket that will be refused must
-    // never be opened, and must cost neither a D1 read nor a reconciliation.
+    // ---- CEILINGS BEFORE THE UPGRADE, ahead of `ensureLoaded`: a refused socket must cost
+    // neither a D1 read nor a reconciliation.
     const att = attachmentFromRequest(request, this.freshTag());
     const vivants = this.state.getWebSockets();
     if (vivants.length >= MAX_SOCKETS_ROOM) return new Response("too many sockets", { status: 429 });
@@ -733,10 +584,8 @@ export class PlanRoom {
       if (parJeton >= MAX_SOCKETS_TOKEN) return new Response("too many sockets", { status: 429 });
     }
     await this.ensureLoaded();
-    // The room was EMPTY: no one was in realtime, so everyone was on the REST fallback. This is
-    // the exact moment when D1 can be ahead of us. Tolerant: if D1 doesn't answer, we serve
-    // anyway (the REST fallback is dead anyway, better the live one) and the next reconciliation,
-    // before the snapshot, will catch up on the foreign write.
+    // The room was EMPTY: everyone was on the REST fallback, the exact moment D1 can be ahead of
+    // us. Tolerant: if D1 doesn't answer, serve anyway; the next reconciliation catches up.
     if (this.state.getWebSockets().length === 0) {
       try { await this.reconcileD1(await this.storage.getAlarm() !== null); } catch (_) { /* serve anyway */ }
     }
@@ -749,14 +598,11 @@ export class PlanRoom {
   }
 
   /**
-   * `POST /revoke {token}` (docs/decisions/0004-partage-par-lien.md, edge 6): closes every LIVE
-   * socket whose attachment token matches, so "Revoke" in the owner's Share panel is not a lie for
-   * as long as the guest stays connected. Reachable in exactly ONE way: `functions/api/invites.ts`
-   * calling `env.ROOM.get(id).fetch(...)` directly on its OWN freshly-built `Request`, that call
-   * invokes THIS method straight away, over the binding, and never touches the network-facing
-   * `export default {fetch}` below (which still 404s any path but `/ws`, so even a future zone
-   * route sending traffic there gets nothing new). The `INTERNAL_HEADER` check is defence in
-   * depth on top of that structural guarantee: see its definition for what makes it trustworthy.
+   * `POST /revoke {token}` (decision 0004, edge 6): closes every LIVE socket whose attachment
+   * token matches, so "Revoke" is not a lie for as long as the guest stays connected. Reachable in
+   * exactly ONE way: `functions/api/invites.ts` calling `env.ROOM.get(id).fetch(...)` directly,
+   * never through the network-facing `export default {fetch}` below. `INTERNAL_HEADER` is defence
+   * in depth on top of that structural guarantee.
    */
   async handleRevoke(request: Request): Promise<Response> {
     if (request.headers.get(INTERNAL_HEADER) !== "1") return new Response("forbidden", { status: 403 });
@@ -775,14 +621,9 @@ export class PlanRoom {
     return Response.json({ ok: true, closed });
   }
 
-  /**
-   * `POST /purge` (internal route, same guard and same reachability as `/revoke`): the plan this
-   * room served has been deleted. Everything this object could use to write that row again goes:
-   * the sockets (closed with a distinguishable code, so the client shows a dead end instead of
-   * retrying), the alarm, and the whole storage. The `purged` marker is written LAST, over the
-   * emptied storage, and is what makes a straggling message harmless.
-   * Response contract: `{ok:true, closed:<n>}`.
-   */
+  /** `POST /purge` (internal route, same guard and reachability as `/revoke`): the plan has been
+   * deleted. Sockets, alarm, and storage all go; the `purged` marker is written LAST, over the
+   * emptied storage, so a straggling message is harmless. Response: `{ok:true, closed:<n>}`. */
   async handlePurge(request: Request): Promise<Response> {
     if (request.headers.get(INTERNAL_HEADER) !== "1") return new Response("forbidden", { status: 403 });
     if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
@@ -805,12 +646,9 @@ export class PlanRoom {
     return Response.json({ ok: true, closed });
   }
 
-  // Device label, unique among LIVE sockets, stable for the duration of the socket. It's used by
-  // the client to build entity identifiers that cannot collide: two people drawing a partition
-  // at the same moment would both number from THEIR local plan (v5NewId), get the same "w20",
-  // and the second wall would overwrite the first, no error, no banner, both screens converging
-  // on the survivor.
-  // Two tabs of the same person receive two different labels: the email alone would not be enough.
+  // Device label, unique among LIVE sockets, stable for the socket's duration. Used by the client
+  // to build entity identifiers that cannot collide (C-8). Two tabs of the same person receive
+  // two different labels: the email alone would not be enough.
   freshTag() {
     const used = new Set();
     for (const ws of this.state.getWebSockets()) {
@@ -828,39 +666,24 @@ export class PlanRoom {
       || { email: "inconnu", color: colorFor("inconnu"), tag: "000000", name: "", guest: false, guestId: "", token: "", planId: "", expiresAt: 0 };
   }
 
-  // ---- TECHNICAL IDENTITY IS THE DEVICE, NOT THE EMAIL ADDRESS -----------------------------------
-  // The household has two accounts, but ONE person has several devices (the computer on the
-  // table, the phone in the apartment), both behind the same Access identity. The server already
-  // assigned a unique device label per SOCKET (freshTag) but only broadcast it in the `hello`: on
-  // the client, everything was decided on `by === my email`, so the second device of the same
-  // person was mistaken for ONESELF. Measured consequences: its ops didn't enter the replay log
-  // (a Ctrl+Z destroyed its work on both screens AND on the server), and neither its badge, nor
-  // its cursor, nor its drag ghosts appeared.
-  // `tag` therefore accompanies EVERYTHING that is relayed: presence, ops, cursors, ghosts.
-  // An OLD client simply ignores the extra key.
+  // ---- TECHNICAL IDENTITY IS THE DEVICE, NOT THE EMAIL ADDRESS (C-7) ------------------------------
+  // `tag` accompanies EVERYTHING relayed: presence, ops, cursors, ghosts, so a second device of
+  // the same person is never mistaken for oneself. An old client ignores the extra key.
   //
-  // ---- WIRE IDENTITY, batch 2 --------------------------------------------------------------------
-  // Every message naming an author now goes through `authorWire`/`identityWire`: `tag`, `name` and
-  // `guest` are the SAME for every recipient (a guest recipient must still be able to tell peers
-  // apart and see who is who), but `email`/`by` is INCLUDED ONLY for a household recipient (item 2:
-  // "emails never cross to a guest"). Because the SAME broadcast reaches both kinds of socket, the
-  // household's own attribution must not be stripped at the SOURCE, hence `broadcastFor`, which
-  // builds (at most) two payload variants and sends each recipient the one meant for it.
+  // ---- WIRE IDENTITY (decision 0004, batch 2) -----------------------------------------------------
+  // Every message naming an author goes through `authorWire`/`identityWire`: `tag`/`name`/`guest`
+  // are the same for every recipient, but `email`/`by` is included ONLY for a household recipient
+  // (emails never cross to a guest). `broadcastFor` builds two payload variants so the SAME
+  // broadcast reaches both kinds of socket without stripping the household's own attribution.
 
-  /**
-   * The name a GUEST recipient should see for `a`. A guest author's own declared name if they have
-   * one; a HOUSEHOLD author has no such field (`a.name` is always "" there), so without this a
-   * guest would see a blank dot where a household peer's should be, "a display name instead [of
-   * the email], never an email at all" (item 2) means instead, not nothing.
-   */
+  /** The name a GUEST recipient should see for `a`: their own declared name, or (a household
+   * author has none) a name derived from the email, never a blank dot. */
   nameForGuestAudience(a: SocketAttachment): string {
     return a.name || nameFromEmail(a.email);
   }
 
-  /** The author fields common to every relayed message (`op`/`cursor`/`drag`, which all key the
-   *  address as `by`): `tag` always, `name`+`guest` always (see `nameForGuestAudience`), `guestId`
-   *  when the author is a guest (not sensitive: a self-generated device id, never a credential),
-   *  `by` NEVER unless `guestAudience` is false. */
+  /** Author fields common to every relayed message: `tag`/`name`/`guest` always, `guestId` when
+   *  the author is a guest, `by` only when `guestAudience` is false. */
   authorWire(a: SocketAttachment, guestAudience: boolean): Record<string, unknown> {
     const o: Record<string, unknown> = {
       tag: a.tag || null,
@@ -873,28 +696,26 @@ export class PlanRoom {
   }
 
   /** `hello.you` / `hello.peers` / `peer` shape: `authorWire` plus `color`, plus `email` for a
-   *  household recipient (mirrors the pre-batch-2 shape exactly, so an older client still works). */
+   *  household recipient (an older client still works). */
   identityWire(a: SocketAttachment, guestAudience: boolean): Record<string, unknown> {
     const o: Record<string, unknown> = { color: a.color, ...this.authorWire(a, guestAudience) };
     if (!guestAudience) o.email = a.email;
     return o;
   }
 
-  /** `exclude`: drop ONE socket from the list itself (webSocketClose's "remaining", which has
-   *  already left); `null` keeps every socket (hello, and the newcomer broadcast, which excludes
-   *  the RECIPIENT via `broadcastFor`'s own `exclude`, not the list). */
+  /** `exclude`: drop ONE socket from the list itself (`webSocketClose`'s already-left socket);
+   *  `null` keeps every socket. */
   peersWire(guestAudience: boolean, exclude: WebSocket | null): Record<string, unknown>[] {
     return this.state.getWebSockets()
       .filter((ws) => ws !== exclude)
       .map((ws) => this.identityWire(this.attOf(ws), guestAudience));
   }
 
-  /** Full-fidelity peer list (household shape): kept for callers, and for tests, that only ever
-   *  cared about the household's own view (`live-worker/test-local.ts`). */
+  /** Full-fidelity peer list (household shape), kept for callers and tests. */
   peers(): Record<string, unknown>[] { return this.peersWire(false, null); }
 
-  /** A stored chat entry, redacted for `guestAudience`. `e.by` (the real author identity) is kept
-   *  in STORAGE always; only the outgoing copy ever omits it (design edge 19). */
+  /** A stored chat entry, redacted for `guestAudience`. `e.by` is kept in STORAGE always; only
+   *  the outgoing copy ever omits it (edge 19). */
   chatWire(e: ChatEntry, guestAudience: boolean): Record<string, unknown> {
     const o: Record<string, unknown> = {
       id: e.id, text: e.text, ts: e.ts, guest: !!e.guest,
@@ -913,19 +734,11 @@ export class PlanRoom {
   }
 
   /**
-   * Per-recipient broadcast: `builder(guestAudience)` returns the payload for that AUDIENCE, and
-   * we serialize it AT MOST TWICE (once per distinct audience actually among the RECIPIENTS),
-   * never once per socket. "Do not simply strip at the source" (item 2): stripping the
-   * household's OWN email out of a single shared payload would blind the household to its own
-   * attribution, so two payloads are built instead of one, and each recipient gets the one that
-   * matches what it is.
-   *
-   * WHEN ONLY ONE AUDIENCE IS PRESENT among the recipients (the common case: a household with no
-   * guest connected, or, for `live-worker/test-local.ts`'s single-socket doubles, always), this
-   * delegates to `this.broadcast()` instead of sending directly: tests that override `room.broadcast`
-   * to capture what goes out (predating this batch, and unaware `broadcastFor` exists) keep working
-   * unchanged. Only a TRULY MIXED audience bypasses it, since `broadcast()` cannot carry two
-   * different payloads to two different sockets in one call.
+   * Per-recipient broadcast: `builder(guestAudience)` returns the payload for that AUDIENCE,
+   * serialized AT MOST TWICE, never once per socket. Stripping the household's own email out of a
+   * single shared payload would blind it to its own attribution, so two variants are built and
+   * each recipient gets the one that matches. When only one audience is present, this delegates
+   * to `this.broadcast()` so tests overriding it keep working unchanged.
    */
   broadcastFor(builder: (guestAudience: boolean) => object, exclude: WebSocket | null) {
     const destinataires = this.state.getWebSockets().filter((ws) => ws !== exclude);
@@ -1116,8 +929,7 @@ export class PlanRoom {
     const att = this.attOf(ws);
 
     // ---- EXPIRY AND THE RATE CAP ARE CHECKED ON EVERY MESSAGE, NOT ONLY AT THE DOOR -------------
-    // An invite that expires while its socket is open stops here. `expiresAt === 0` means the
-    // forwarder said nothing, so nothing is checked (compatibility).
+    // `expiresAt === 0` means the forwarder said nothing, so nothing is checked (compatibility).
     if (att.guest && att.expiresAt > 0 && Date.now() > att.expiresAt) {
       this.send(ws, { t: "err", reason: EXPIRE_CLOSE_REASON });
       try { ws.close(EXPIRE_CLOSE_CODE, EXPIRE_CLOSE_REASON); } catch (_) { /* already gone */ }
@@ -1138,35 +950,22 @@ export class PlanRoom {
       case "hello": {
         this.send(ws, {
           t: "hello",
-          // `tag`: device label unique among live sockets (cf. freshTag). `name`/`guest` carry the
-          // wire identity added in batch 2; `email` is present here too (this is `att`'s OWN
-          // identity, sent back to itself) but stays "" for a guest, exactly as `X-Plan-Email` was.
           you: this.identityWire(att, att.guest),
           peers: this.peersWire(att.guest, null),
           state: this.plan,
-          // `opCount` replaces the old `rev`: it's THIS Durable Object's op counter, it is purely
-          // INFORMATIVE and is not compared to anything (especially not to the D1 row's `rev`,
-          // which the client reads at startup via the REST fallback). `fp` is the content
-          // identity, the only thing to compare (cf. planFp). No client reads this number; it
-          // stays for the logs.
+          // `opCount`: THIS Durable Object's op counter, purely INFORMATIVE (C-2). `fp` is the
+          // content identity, the only thing to compare (planFp).
           opCount: this.opCount,
           fp: planFp(this.plan),
-          // CAPABILITY ANNOUNCEMENT: this server acknowledges receipt of ops by their number (`n`
-          // in the echo, `ack` message for a duplicate, `gap` message when a number is missing).
-          // An up-to-date client only arms its re-emission IF it sees this flag: facing an older
-          // server, it behaves exactly as before, without re-emitting anything into the void.
+          // CAPABILITY ANNOUNCEMENT: an up-to-date client only arms its re-emission if it sees
+          // this flag; facing an older server it behaves exactly as before.
           acks: true,
           chat: this.chat.slice(-CHAT_CAP).map((e) => this.chatWire(e, att.guest)),
         });
         // The others learn about the newcomer.
         this.broadcastFor((guestAudience) => ({ t: "peer", peers: this.peersWire(guestAudience, null) }), ws);
-        // A write made offline couldn't be merged while this person was away? It's THEM who lost
-        // work, and they weren't there to hear about it. We tell them when they come back, only
-        // once (the `told` list remembers who has already been notified).
-        // Indexed on the DEVICE LABEL, not the email: a guest's email is always empty, so one
-        // guest told marked every guest as told and the others never heard of it.
-        // ONE message for the whole list (the most recent set-aside version): the banner says
-        // that something was kept, `GET /orphans` is what enumerates them.
+        // Tell whoever comes back about the most recent set-aside version, once (C-21, `told`
+        // indexed on DEVICE LABEL, not email: a guest's email is always empty).
         const orphans = await this.loadOrphans();
         const dernier = orphans.length ? orphans[orphans.length - 1] : null;
         if (dernier && att.tag && !(dernier.told || []).includes(att.tag)) {
@@ -1179,63 +978,42 @@ export class PlanRoom {
       }
 
       case "op": {
-        // TRANSACTION: the op is applied to a COPY. The shared plan is only replaced once the op
-        // is accepted AND the size checked; if persistence fails we roll back and tell the
-        // client, instead of leaving a live but unpersisted mutation that peers would never hear about.
+        // TRANSACTION: the op is applied to a COPY. The shared plan is only replaced once accepted
+        // AND size-checked; if persistence fails we roll back and tell the client (C-19).
         //
-        // ---- A REFUSAL NOW SAYS *WHICH ONE* -----------------------------------------------------
-        // The client emits by DIFF and marks the value as acquired right after sending it: a
-        // refused op was never re-emitted, the screen kept the change, the badge stayed "live
-        // checkmark", and the two devices diverged permanently without anything saying so.
-        // The client therefore numbers its ops (`n`, an increasing integer, private to its
-        // socket) and the refusal returns that number: it knows exactly which change to undo. An
-        // OLD client doesn't send `n`; we then return `n:null` and it falls back to a full
-        // resync. `seq` never leaves the socket that emitted it, it is never persisted.
-        //
-        // ---- AND IT NOW ACKNOWLEDGES *THE ONES THAT GO THROUGH* --------------------------------
-        // Without an ack, an op lost in transit was only caught by the `pong`'s fingerprint
-        // comparison, up to 10 s later, and that re-read ADOPTS the server state: the lost change
-        // was not caught up, it was ERASED. The op echo therefore now carries its number `n`:
-        // paired with `tag` (the device), it tells the author "that one arrived". Three cases,
-        // three responses, never silence:
-        //   - number already processed -> {t:"ack"}   (duplicate: nothing is reapplied, but we acknowledge)
-        //   - expected number          -> the ordinary echo, which carries `n`
-        //   - number ahead             -> the echo, PLUS {t:"gap"}: a number is missing, re-emit
+        // ---- A REFUSAL SAYS *WHICH ONE* (C-10), AND ACKNOWLEDGES *THE ONES THAT GO THROUGH* (C-3) --
+        // The client numbers its ops (`n`, private to its socket); a refusal returns that number so
+        // it knows exactly which change to undo. An old client doesn't send `n`; we return `n:null`
+        // and it falls back to a full resync. The op echo carries `n` paired with `tag` as the ack.
+        // Three responses, never silence: already processed -> `{t:"ack"}`; expected number -> the
+        // ordinary echo; number ahead -> the echo plus `{t:"gap"}`.
         const seq = Number.isSafeInteger(msg.n) ? msg.n : null;
         const tag = att.tag || null;
         const sq = (tag && seq !== null) ? this.seqOf(tag, seq) : null;
         if (sq && this.seqVu(sq, seq)) {
-          // ALREADY PROCESSED. We apply nothing (it would have no effect, ops are idempotent, but
-          // it would be an `opCount` and a broadcast for nothing) and we acknowledge, otherwise
-          // the author would think their change was lost and would re-emit it endlessly.
+          // Already processed: apply nothing (idempotent), acknowledge so the author doesn't
+          // re-emit endlessly believing the change was lost.
           return this.send(ws, { t: "ack", n: seq, tag, opCount: this.opCount, fp: planFp(this.plan), dup: true });
         }
-        // A GAP IS MEASURED ON THE HIGHEST NUMBER ALREADY SEEN, not on the last contiguous one.
-        // On the contiguous one, a gap never filled would mask all the following ones: every new
-        // loss must be announced once, and only once.
+        // A gap is measured on the HIGHEST number seen, not the last contiguous one, or a gap
+        // never filled would mask all the following ones.
         const gapNeed = (sq && seq > sq.max + 1) ? sq.max + 1 : null;
         // ---- A REFUSAL DOES NOT MOVE THE WINDOW -------------------------------------------------
-        // The number used to be consumed as soon as the server had PROCESSED it, refusal included.
-        // A gap was then swallowed by the very op that revealed it: n°5 lost, n°6 refused (the
-        // refusal returns before the `gap` is sent) but noted anyway, so n°7 looked contiguous and
-        // the loss of n°5 was never announced. And a refusal is not always the client's fault:
-        // `rate_limited` and `persist_fail` are changes the client SHOULD re-emit. The number is
-        // therefore noted below, once the op is APPLIED. The price is one gap announced after a
-        // genuine validation refusal, and one is the right side to err on: a gap costs a single
-        // idempotent re-emission, a swallowed loss costs the change.
+        // Noted below, only once the op is APPLIED: a refusal is not always the client's fault
+        // (`rate_limited`, `persist_fail` should be re-emitted), and consuming the number on a
+        // refusal would let a later op look contiguous, swallowing the gap it revealed. One gap
+        // announced after a genuine refusal costs a harmless idempotent re-emission; a swallowed
+        // loss costs the change.
 
-        // ---- GUEST-ONLY REFUSALS (design edges 15, 17; batch 2 items 4, 5, 7) --------------------
-        // All three share the SAME numbered err path as an ordinary validation refusal: the client
-        // must UNDO through the normal receive path, never silently swallow a rejected change.
-        // Item 5: the name gate is client-side in the guest onboarding UI (batch 3), a disabled
-        // Join button stops a PERSON, not a script. `sync`/`hello` stay allowed (a nameless guest
-        // must still be able to SEE the plan and be told what is wrong); only `op` is gated.
+        // ---- GUEST-ONLY REFUSALS (decision 0004, edges 15/17, batch 2 items 4/5/7) ----------------
+        // Share the same numbered err path as an ordinary refusal: the client must UNDO through
+        // the normal receive path, never silently swallow a rejected change. `sync`/`hello` stay
+        // allowed for a nameless guest; only `op` is gated.
         if (att.guest && !att.name) {
           return this.send(ws, { t: "err", reason: "guest_unnamed", n: seq, kind: (msg.op && msg.op.kind) || null });
         }
-        // Item 4: `plan5.replace` replaces the plan in ONE atomic op AND clears undo history (cf.
-        // AGENTS.md, "Ctrl+Z undoes only its author's work"). Hidden from the guest UI (batch 3);
-        // refused here regardless of what reaches the wire.
+        // `plan5.replace` clears undo history (C-9): refused for a guest regardless of what
+        // reaches the wire, even though it's hidden from the guest UI.
         if (att.guest && msg.op && msg.op.kind === "plan5.replace") {
           return this.send(ws, { t: "err", reason: "guest_no_replace", n: seq, kind: "plan5.replace" });
         }
@@ -1262,36 +1040,18 @@ export class PlanRoom {
         }
         // APPLIED and persisted: only now does the window move past this number.
         if (sq) this.seqNote(sq, seq);
-        // Echo to EVERYONE (sender included): ops are idempotent, it consumes the op.
-        // `fp` accompanies every echo: this way the client knows, without recomputing anything,
-        // which content identity the server holds after this op, and a later `hello` that
-        // doesn't carry the same fingerprint tells it that it missed something.
-        // `tag` = the author device. It is THIS that the client compares to decide whether the op
-        // is its own (undo replay log), not the email: two devices of the same person carry the
-        // same email and different labels.
-        // `n` = the author's number. THE ECHO IS THE ACK: the message already existed, it already
-        // goes to the author, it already carries the plan's fingerprint AFTER the op. A separate
-        // ack message would have doubled the traffic to say something the echo establishes
-        // better (it proves not only receipt, but APPLICATION). Peers, for their part, ignore a
-        // number that isn't theirs: they compare `tag` to their own, exactly as for the undo
-        // replay log.
-        // `opWire`, NOT `msg.op`: the envelope that goes back out is rebuilt from the keys its
-        // kind is known to carry (see ops.ts), so a key the validator never looked at cannot ride
-        // the broadcast into every peer's receive path.
+        // Echo to EVERYONE (sender included, C-3): the echo IS the ack (`tag`/`n`/`fp`), so a
+        // separate ack message would only double the traffic. `opWire`, NOT `msg.op`: rebuilt
+        // from the keys its kind is known to carry, so an unvalidated key can't ride the broadcast.
         const opSortie = opWire(msg.op);
-        // `fp` is computed HERE and not inside the builder: the builder runs once per AUDIENCE
-        // (household, guest), and the fingerprint of a plan does not depend on who reads it.
-        // Inside, a mixed audience paid for the same traversal of the plan twice.
+        // `fp` computed HERE, not inside the builder, since it doesn't depend on the audience.
         const fpApres = planFp(this.plan);
         this.broadcastFor((guestAudience) => ({
           t: "op", op: opSortie, n: seq, opCount: this.opCount, fp: fpApres,
           ...this.authorWire(att, guestAudience),
         }), null);
-        // A NUMBER IS MISSING. The op that just went through wasn't the expected next one: an op
-        // from this device was lost in transit. We tell it right away rather than letting it wait
-        // for its own guard delay: it will re-emit what's missing, at its CURRENT value.
-        // The client responds to a `gap` with a COMPLETE re-emission of what it's missing (diff
-        // against its acknowledged mirror): a single message is enough to cover several losses at once.
+        // A number is missing: an op from this device was lost in transit. Tell it right away
+        // rather than waiting for its guard delay; it re-emits everything missing in one message.
         if (gapNeed !== null) this.send(ws, { t: "gap", tag, need: gapNeed, n: seq });
         break;
       }
@@ -1304,13 +1064,9 @@ export class PlanRoom {
       }
 
       case "cursor": {
-        // Ephemeral, not persisted. room:null = cursor off canvas.
-        // Relayed as-is to the other tab: therefore validated, cf. sanitizeCursor.
-        // `say` (cursor chat, "/"): `c.say` is `undefined` when the sender had no opinion (an
-        // old client, or an ordinary ping with the box closed), `undefined` is dropped by
-        // `JSON.stringify`, so this changes NOTHING for a recipient on an older client. A string
-        // or an explicit `null` (the box just closed) travels as-is, per-recipient audience rule
-        // unchanged: same `authorWire` redaction as every other relayed message.
+        // Ephemeral, not persisted. room:null = cursor off canvas. Relayed as-is, so validated
+        // (sanitizeCursor). `say` (cursor chat "/"): `undefined` (no opinion) is dropped by
+        // `JSON.stringify`, changing nothing for an older client.
         const c = sanitizeCursor(msg);
         if (!c) break;
         this.broadcastFor((guestAudience) => ({
@@ -1335,9 +1091,8 @@ export class PlanRoom {
       case "chat": {
         const text = String(msg.text ?? "").slice(0, 500).trim();
         if (!text) return;
-        // `name`/`guest` captured AT SEND TIME (design edge 19): a stored entry survives a rename
-        // and a departure alike, so the replayed history in a later `hello` must not depend on the
-        // author's socket still being around, or on their CURRENT name.
+        // `name`/`guest` captured AT SEND TIME (edge 19): a stored entry survives a rename or a
+        // departure, so replayed history in a later `hello` never depends on the current name.
         const entry: ChatEntry = { id: crypto.randomUUID(), by: att.email, name: att.name || "", guest: !!att.guest, text, ts: Date.now() };
         this.chat.push(entry);
         if (this.chat.length > CHAT_CAP) this.chat = this.chat.slice(-CHAT_CAP);
@@ -1346,32 +1101,25 @@ export class PlanRoom {
         break;
       }
 
-      // A socket may set/change its display name AT ANY TIME (item 5), not only a guest at
-      // onboarding: this is also what the sync-chip's "change my name" menu (batch 3/4) will call.
-      // Cleaned server-side regardless of what the caller already did upstream (defence in depth,
-      // same reasoning as re-checking `porteDe()` in every Pages Function that could reach here).
+      // A socket may set/change its display name AT ANY TIME, not only a guest at onboarding.
+      // Cleaned server-side regardless of what the caller already did (defence in depth).
       case "name": {
         const cleaned = cleanGuestName(msg.name);
         const next: SocketAttachment = { ...att, name: cleaned };
-        // Colour follows the SAME formula used at connection time (cf. `attachmentFromRequest`),
-        // so picking/typing a name doesn't leave the dot showing the colour derived from the OLD
-        // (usually empty) one. A household socket's colour stays tied to its email: it must not
-        // drift just because someone typed a name into the same field.
+        // Colour follows the SAME formula as at connection time, so it doesn't drift when a
+        // guest picks a name; a household socket's colour stays tied to its email.
         if (att.guest) next.color = colorFor(cleaned || att.guestId || att.tag);
         ws.serializeAttachment(next);
-        // Presence must reflect the rename on every screen right away, including sockets that
-        // never send an `op` (a guest who only ever looks) and therefore never trigger the
-        // ordinary `peer` broadcast on their own.
+        // Reflect the rename on every screen right away, including sockets that never send an
+        // `op` and so never trigger the ordinary `peer` broadcast on their own.
         this.broadcastFor((guestAudience) => ({ t: "peer", peers: this.peersWire(guestAudience, null) }), null);
         this.send(ws, { t: "name", ok: true, name: cleaned });
         break;
       }
 
       case "ping": {
-        // Client heartbeat: we send back the timestamp for the round trip (HUD ?rt=1). No storage access.
-        // It also carries the current fingerprint: the client therefore has, every 10 s and
-        // without a single byte of extra traffic, what it needs to notice it missed a message and
-        // request a `sync`.
+        // Client heartbeat: timestamp for the round trip, plus the fingerprint so the client can
+        // notice a missed message without extra traffic.
         this.send(ws, { t: "pong", ts: msg.ts, fp: planFp(this.plan) });
         break;
       }
@@ -1385,8 +1133,6 @@ export class PlanRoom {
     try { ws.close(); } catch (_) {}
     // A purge closed every socket at once: the departure flush would only rewrite the deleted row.
     if (await this.isPurged()) return;
-    // The deduplication window dies with the socket: it's indexed by the device label, which is
-    // unique per socket and never reused. Nothing to purge later.
     const att = this.attOf(ws);
     if (att && att.tag) this.seq.delete(att.tag);
     this.broadcastFor((guestAudience) => ({ t: "peer", peers: this.peersWire(guestAudience, ws) }), ws);

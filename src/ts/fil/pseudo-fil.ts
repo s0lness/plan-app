@@ -1,21 +1,10 @@
 // src/ts/fil/pseudo-fil.ts: THE SHARED SHAPE OF AN ENTITY, and reading it back.
-// Ported from src/js/51-v5-pseudo-fil.js.
-//
-// C-5, THE MOST FRAGILE INVARIANT IN THE REPO: a persisted field must be declared HERE (in the
-// `*Wire` functions) **and** in `live-worker/ops.ts`'s whitelist, OTHERWISE IT NEVER CROSSES THE
-// NETWORK, WITH NO VISIBLE ERROR. Already happened twice: an opening's name and depth used to not
-// travel, then the side got packed as a bitfield into the hinge for lack of an authorized key
-// ("the server believed it was validating a hinge while it was validating three mixed-up fields,
-// and any finite number would pass").
-//
-// WHAT THE PORT CHANGES: the four functions now return a NAMED type (`MurFil`, `OuvertureFil`,
-// `MeubleFil`, `CelluleFil`) whose keys are exactly those of the server contract, and
-// `tests/rapide.ts` compares this contract to the `Set`s exported by `ops.ts`. Forgetting a key
-// is no longer silent: it is a red test. C-5 stays conventional in the sense of "add a field on
-// both sides", but it can no longer DIVERGE without our knowing.
-//
-// THE ORDER OF KEYS IN EACH LITERAL IS A CONTRACT: the emission mirror compares `JSON.stringify`
-// strings, so reordering a key would re-emit every entity in the plan.
+// C-5, the most fragile invariant in the repo: a persisted field must be declared HERE (the
+// `*Wire` functions) AND in `live-worker/ops.ts`'s whitelist, or it never crosses the network.
+// The four functions return a NAMED type whose keys are exactly the server contract's;
+// `tests/rapide.ts` compares it to `ops.ts`'s `Set`s, so a forgotten key is a red test, not
+// silence. The order of keys in each literal is a contract: the emission mirror compares
+// `JSON.stringify` strings, so reordering a key would re-emit every entity in the plan.
 
 import { clamp, v5R2, WALL } from "../noyau/nombres.ts";
 import { estSolConnu, NAME_MAX, OPENING_H_MAX, OPENING_W_MAX, PIECE_WH_MAX, WALL_T_MAX, WALL_T_MIN } from "../partage/contrat-serveur.ts";
@@ -43,29 +32,20 @@ function v5WallWire(w: Mur): MurFil {
     b: [v5R2(w.b[0]), v5R2(w.b[1])],
     t: clamp(Math.round(w.t || WALL), WALL_T_MIN, WALL_T_MAX),
   };
-  // NO `free` ON THE WIRE (decision 0012). Nothing stretches any more, so the flag describes
-  // nothing; a wall is its two points and its thickness. The server still accepts the key from a
-  // tab running the old code, and still normalizes an explicit 0 to the same storage and
-  // fingerprint as absence (`WALL_FREE`, `live-worker/ops.ts`), so a mixed session degrades to
-  // "the old tab keeps a field nobody reads" rather than to a refused op.
+  // NO `free` ON THE WIRE (decision 0012): a wall is its two points and its thickness. The server
+  // still accepts and normalizes the key from an old tab (`WALL_FREE`, `live-worker/ops.ts`).
   return out;
 }
 
 /**
  * UNPACKED shape: `side` is a key in its own right (so `hinge` is a pure 0/1 boolean), and
- * `h`/`name` cross the network.
- * `plan` is needed to know the length of the carrying wall: in the old client this read went
- * through the closure (`state.plan`), which made the function impure without saying so.
+ * `h`/`name` cross the network. `plan` gives the carrying wall's length.
  */
 export function v5OpeningWire(plan: PlanV5 | null | undefined, o: Ouverture): OuvertureFil {
   const L = v5WallLen(plan, o.wallId);
   const t = TYPEMAP[o.type];
-  // FAITHFUL TO THE OLD CLIENT, INCLUDING ITS DEFECT: `o.w || t.w` on an UNKNOWN type (hence
-  // absent from the catalogue) returns `undefined`, so `v5R2(undefined)` returns NaN, so the op
-  // goes out with a NaN width and the server refuses it, a placement lost in silence. The case is
-  // only reachable through an entity created by a peer with a `type` outside the catalogue (the
-  // server only enforces a SHAPE, not the list). This is NOT fixed here: the rewrite changes the
-  // language of the code, not its behavior. To be handled in its own batch, with its own measurement.
+  // KNOWN DEFECT, NOT FIXED HERE: `o.w || t.w` on a type outside the catalogue (a peer-created
+  // entity) returns `undefined`, so the op goes out with a NaN width and is silently refused.
   const ow = clamp(v5R2(o.w || (t ? t.w : (undefined as unknown as number))), 1, OPENING_W_MAX);
   const out: OuvertureFil = {
     id: String(o.id),
@@ -92,8 +72,6 @@ export function v5OpeningWire(plan: PlanV5 | null | undefined, o: Ouverture): Ou
 /**
  * wire -> local: unpacks `side`, re-derives `h`/`name` from the catalogue. Idempotent on an
  * already-local object (V-8: both shapes of an opening are accepted during the rollout window).
- * The input type explicitly says `hinge` can be 0..3: the packing is no longer tribal knowledge,
- * it is in the signature.
  */
 export function v5AdoptOpening<T>(o: T): T | Ouverture {
   if (!o || typeof o !== "object") return o;
@@ -146,22 +124,12 @@ function v5CellWire(c: Cellule): CelluleFil {
   };
 }
 
-/**
- * D-16: THE FOUR WIRE LISTS ARE SORTED BY IDENTIFIER.
- * The content of a list is a SET, but the LOCAL order diverges as soon as two people each create
- * an entity at the same moment. Without this sort, two plans with identical content gave two
- * different exports, two different PUT bodies, and a screen comparison that failed with no
- * entity actually differing. The order of the LIVE plan is never touched.
- */
+/** D-16: the four wire lists are sorted by identifier; the order of the LIVE plan is untouched. */
 const v5ById = (a: { id: string }, b: { id: string }): number =>
   String(a.id) < String(b.id) ? -1 : (String(a.id) > String(b.id) ? 1 : 0);
 
-/**
- * The full shared STATE, flattened, as `sanitizeState()` recognizes it.
- * `plan` and `setupDone` are ARGUMENTS: in the old client the function read `state.plan` and
- * `state.setupDone` from the closure, which made it untestable without bringing up the whole
- * client (this is exactly why `tests/rapide.ts` had to fabricate a fake `state`).
- */
+/** The full shared STATE, flattened, as `sanitizeState()` recognizes it. `plan`/`setupDone` are
+ * arguments rather than read from a closure, so this is testable standalone. */
 export function v5StateWire(plan: PlanV5 | null | undefined, setupDone: boolean): EtatFil {
   const P = plan || ({} as Partial<PlanV5>);
   const ids = new Set((P.walls || []).map((w) => String(w.id)));
@@ -181,12 +149,8 @@ export function v5StateWire(plan: PlanV5 | null | undefined, setupDone: boolean)
 // =================================================================================================
 //  THE FOUR SERIALIZERS, IN A SINGLE OBJECT
 // =================================================================================================
-// The emission mirror (`fil/miroir.ts`) serializes the state announced by the server. In the old
-// client it called the four `*Wire` functions by their closure name; this is precisely what
-// `tests/rapide.ts` and `tests/harnais-graine.ts` had to SUBSTITUTE ("the only substitution in
-// this whole file"), because their entities already come out of the server validator.
-// The substitution becomes a TYPED ARGUMENT. The bench no longer hacks a closure; it passes
-// `wireIdentite`.
+// The emission mirror (`fil/miroir.ts`) serializes the state announced by the server. Tests whose
+// entities already come out of the server validator substitute `wireIdentite` as a typed argument.
 
 export interface Serialiseurs {
   wall(w: Mur): MurFil;

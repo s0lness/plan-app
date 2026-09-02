@@ -1,34 +1,10 @@
 // src/ts/fil/reception.ts: WHAT COMES IN: SURGICAL APPLICATION OF A REMOTE OP.
-// Ported from src/js/43-collab-reception.js, in full.
 //
-// THREE RULES GOVERN THIS FILE, AND ALL THREE ARE MEASURED LOSSES OF WORK.
-//
-//  C-5  AN OP CAN BE PARTIAL. The emitter diffs field by field and the server relays the op AS IS:
-//       an absent key means "no opinion", exactly as on the server side. We MERGE the keys that
-//       are present, we NEVER replace the entity. Manufacturing the key anyway (with `undefined`)
-//       erased the piece's name, type, and dimensions on the peer's side as soon as only its
-//       position had moved.
-//
-//  C-10 BOUNDING BELONGS TO THE GESTURE'S AUTHOR. We RECOMPUTE cells (they are derived, and
-//       without them nothing paints), but we DO NOT REBOUND EITHER furniture OR openings here. The
-//       person who pushes a wall bounds it ONCE, on the FINAL geometry, and publishes the result;
-//       the person receiving sees the walls arrive ONE BY ONE, so rebounding on every op made it
-//       pass through every INTERMEDIATE geometry and accumulate the drift, measured at 27 cm
-//       across 4 pieces of furniture, permanently and without a word, on the screen of the person
-//       who had touched nothing.
-//       THE ONLY HOLE IN THE RULE, AND NOTHING MORE: when a peer THINS or SHORTENS a wall while we
-//       are placing an opening on it, the merge produces an opening outside its wall, and the
-//       result is wrong on BOTH screens, this is no longer a divergence, it is invalid data that
-//       nobody will ever fix again. So we bound whatever depends on the wall NAMED by that
-//       particular op, and nothing else: monotone, deterministic on both sides, and republished
-//       by `save()`.
-//
-//  C-13 A FACADE IS NEVER DELETED, NO MATTER WHERE THE ORDER COMES FROM. The local interface
-//       already refused it; this path, though, obeyed. Measured with two browsers: the wall
-//       stayed standing (it is DERIVED from the outline, `v5SyncOutlineWalls` recreates it right
-//       away) but its openings left for good, 6 objects on a SINGLE received op, recorded as
-//       lost. And refusing is not enough: the mirror follows the server, so we GIVE BACK what it
-//       lost, we do not just settle for keeping it.
+// Three rules govern this file: C-5 (an op can be PARTIAL, merge only the keys present, never
+// replace the entity), C-10 (bounding belongs to the gesture's author: cells are recomputed, but
+// neither furniture nor openings are rebounded here, except the one wall named by a `wall.set`/
+// `opening.set`, C-11), C-13 (a facade is never deleted, and a refusal gives back what the server
+// already cascaded away, not merely keeps what we still have).
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Fil } from "./etat.ts";
@@ -75,9 +51,8 @@ function wsAdoptPiece(wp: Partial<Meuble> & { id: unknown; hinge?: unknown; swin
 // =================================================================================================
 //  SURGICAL APPLICATION
 // =================================================================================================
-// IN-PLACE MUTATION of entities, NEVER object replacement: the DOM nodes hold closures over them
-// (this is the v4 "orphan echo" fix). Cells are derived: after a wall or outline op we RECOMPUTE
-// locally rather than waiting for the peer.
+// IN-PLACE MUTATION of entities, never object replacement: the DOM nodes hold closures over them.
+// Cells are derived: after a wall or outline op we RECOMPUTE locally rather than waiting for the peer.
 
 function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
   const P = ctx.etat.plan;
@@ -91,18 +66,15 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
       break;
 
     case "wall.set": {
-      // Possibly PARTIAL op (one moves an endpoint, the other changes the thickness): only the
-      // keys present are copied over. An UNKNOWN wall, on the other hand, can only be born from a
-      // complete op: without `a` or `b` there is no segment to place.
+      // Possibly PARTIAL op: only the keys present are copied over (C-5). An unknown wall can only
+      // be born from a complete op: without `a` or `b` there is no segment to place.
       const w = op.wall || ({} as typeof op.wall);
       const ex = v5WallById(ctx, w.id);
       if (ex) {
         if (w.a) ex.a = [w.a[0], w.a[1]];
         if (w.b) ex.b = [w.b[0], w.b[1]];
         if (w.t !== undefined) ex.t = w.t;
-        // `free` is READ AND DROPPED (decision 0012): a peer still running the old code may send
-        // it, and it names a behavior that no longer exists. It is not in `MurFil` any more, so
-        // there is nothing here to copy.
+        // `free` is read and dropped (decision 0012): a peer on old code may still send it.
         ex.isOutline = v5OnOutline(ex.a, ex.b, P.outline, 1);
       } else if (w.a && w.b) {
         const a: Pt = [w.a[0], w.a[1]], b: Pt = [w.b[0], w.b[1]];
@@ -111,8 +83,7 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
           isOutline: v5OnOutline(a, b, P.outline, 1),
         });
       }
-      // C-10, THE ONLY HOLE IN THE RULE (see the header): we bound ONLY what depends on the wall
-      // named by THIS op. No furniture is touched, `v5ClampPieces` stays out of it.
+      // C-10/C-11: bound ONLY what depends on the wall named by THIS op; no furniture touched.
       v5ClampOpeningsOfWall(P, String(w.id), { gardeOrphelines: true });
       geo = true;
       break;
@@ -120,15 +91,13 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
 
     case "wall.del": {
       const id = String(op.wallId);
-      // C-13. On rollback, the "facade" verdict does not apply: it was OUR OWN creation that got
-      // refused, undoing it is legitimate. "absent" stays "absent" (nothing to remove).
+      // C-13. On rollback, the "facade" verdict does not apply: it was OUR OWN creation refused,
+      // undoing it is legitimate.
       let verdict = v5WallDeleteVerdict(P, id);
       if (fil.reverting && verdict === "facade") verdict = "ok";
       if (verdict === "facade") {
-        // We keep it. The server, ON ITS SIDE, did cascade: our two plans no longer agree. This
-        // is deliberate and TEMPORARY, `refusedDel` republishes the wall and its openings right
-        // after, so the divergence resolves FROM THE TOP, by giving back to the other side what
-        // it lost, never by destroying here what we still have.
+        // We keep it; the server did cascade, deliberately and temporarily: `refusedDel`
+        // republishes the wall and its openings right after (C-13).
         fil.refusedDel = true;
         (P.openings || []).forEach((o) => { if (String(o.wallId) === id) fil.keptOpenings.add(String(o.id)); });
         while (fil.keptOpenings.size > WS5_KEPT_MAX) {
@@ -137,10 +106,8 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         toast("A facade was deleted on the other device: it and its openings are kept, and put back into the shared plan.");
         break;
       }
-      // "ok" JUST LIKE "absent": the CASCADE is the server's, and it is UNCONDITIONAL over there
-      // (`wall.del` filters the openings there without checking whether the wall existed).
-      // Cascading only when the wall is still present let a window placed on a wall deleted at
-      // the same instant survive on the placer's side, while the server had already thrown it out.
+      // "ok" like "absent": the cascade is the server's and unconditional; only cascading when
+      // the wall is still present would let a window placed on it survive on our side.
       for (let i = P.openings.length - 1; i >= 0; i--) {
         if (String(P.openings[i]!.wallId) === id) P.openings.splice(i, 1);
       }
@@ -148,13 +115,8 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         const k = P.walls.findIndex((w) => String(w.id) === id);
         if (k >= 0) P.walls.splice(k, 1);
         if (String(ctx.ihm.selWall) === id) ctx.ihm.selWall = null;
-        // `geo` MEANS "THE GEOMETRY CHANGED", NOT "A WALL OP WENT THROUGH". In the two other
-        // branches NO wall moved, and re-running `v5SyncOutlineWalls()` for nothing is NOT
-        // neutral: it re-matches facades to the outline's edges and, when one is missing, the
-        // fallback loop SHIFTS all the others by one edge. Measured on the two-browser bench: the
-        // echo of its OWN deletion made the emitting device's six facades rotate by one notch,
-        // its windows ended up on the wrong wall, and the two screens no longer showed the same
-        // apartment while ours had stayed intact.
+        // `geo` means "the geometry changed", not "a wall op went through" (C-14): re-running
+        // `v5SyncOutlineWalls()` for nothing shifts facades to the wrong edge.
         geo = true;
       }
       break;
@@ -164,8 +126,8 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
       const o = op.opening || ({} as typeof op.opening);
       const ex = v5OpeningById(ctx, o.id);
       if (ex) {
-        // Merge of only the keys present. The PACKED shape from an old client (no `side`, `side`
-        // in bit 1 of `hinge`) is unpacked first, and ONLY in that case (V-8).
+        // Merge of only the keys present (C-5). The packed shape from an old client is unpacked
+        // first, and only in that case (V-8).
         const src = Object.assign({}, o) as OuvertureFilEntrante & Record<string, unknown>;
         if (src.side === undefined && src.hinge !== undefined) {
           const n = Number(src.hinge) || 0;
@@ -178,9 +140,7 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         // Clone: the op then lives on in the undo journal, no shared object.
         P.openings.push(v5AdoptOpening(JSON.parse(JSON.stringify(o))) as Ouverture);
       }
-      // Symmetric to the `wall.set` case: the opening may have been placed on a wall WE have
-      // already thinned or shortened. We bound THIS opening on ITS wall, not the others, a plan
-      // saved long ago is never silently recalculated.
+      // Symmetric to `wall.set`: bound THIS opening on ITS wall only (C-10/C-11).
       const cible = v5OpeningById(ctx, o.id);
       if (cible) v5ClampOpeningsOfWall(P, cible.wallId, { only: cible.id, gardeOrphelines: true });
       break;
@@ -188,9 +148,8 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
 
     case "opening.del": {
       const oid = String(op.openingId);
-      // C-13, the follow-up of the refused cascade. We CANNOT refuse facade opening deletions as
-      // a block: deleting ONE window is a perfectly legitimate move. What we refuse is the
-      // CONSEQUENCE of a facade deletion we just turned away, recognized by identifier and ONLY ONCE.
+      // C-13 follow-up: we cannot block facade opening deletions wholesale (deleting one window is
+      // legitimate). We refuse only the CONSEQUENCE of a facade deletion just turned away, by id, once.
       if (fil.keptOpenings.delete(oid)) { fil.refusedDel = true; break; }
       const k = P.openings.findIndex((o) => String(o.id) === oid);
       if (k >= 0) P.openings.splice(k, 1);
@@ -215,8 +174,7 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
     }
 
     case "cells.replace": {
-      // We REUSE the object when the identifier already exists: the DOM nodes hold closures over
-      // it (see the section header).
+      // We REUSE the object when the identifier already exists: the DOM nodes hold closures over it.
       const keep = new Map(P.cells.map((c) => [String(c.id), c] as const));
       P.cells.length = 0;
       (op.cells || []).forEach((c) => {
@@ -249,9 +207,7 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
     case "piece.del": {
       const i = P.pieces.findIndex((p) => String(p.id) === String(op.pieceId));
       if (i >= 0) {
-        // C-16. NOTHING DISAPPEARS FROM UNDER SOMEONE'S HAND WITHOUT A WORD. A piece deleted by
-        // the other person while it was selected (or being dragged) here: seeing it evaporate in
-        // silence is the worst kind of disappearance, one believes it is a bug in one's own gesture.
+        // C-15/C-16: a piece deleted by the other person while selected (or dragged) here says so.
         const mien = !fil.reverting && !fil.rebasing
           && [...ctx.selection.ids].some((id) => String(id) === String(op.pieceId));
         P.pieces.splice(i, 1);
@@ -267,51 +223,35 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
       break;
     }
 
-    // `piece.front` no longer exists: the server removed it from both its op sets and no client
-    // emits it. An op with this name falls through here and is ignored, this is the old client's
-    // behavior, and `Op`'s typing even makes it inexpressible on the emission side.
+    // `piece.front` no longer exists: an op with this name falls through and is ignored.
     default:
       return false;
   }
 
-  // C-10. We recompute CELLS (derived, without them nothing paints) and facades, but we do NOT
-  // rebound EITHER furniture OR openings. See the header.
+  // C-10: recompute CELLS (derived) and facades, but do not rebound furniture or openings.
   if (geo) {
     v5SyncOutlineWalls(P);
     v5RebuildCells(P);
-    // A4, C-13's sibling for the ORDINARY case (a peer's outline shrink relogges a facade's
-    // openings, `v5RelogerOuverturesContour`, `modele/edition.ts`), not the refused one already
-    // handled above. `ardoiseBorned` is a SHARED module-level slate, the same one a LOCAL
-    // gesture's own clamping (`v5ClampOpenings`) accumulates into and flushes at the end of that
-    // gesture. Left unflushed here, an opening lost to a PEER's op sat there until whatever
-    // LOCAL gesture ran next called `v5FlushOpeningsBorned()`, and the banner landed on the
-    // wrong screen, attributed to whatever that person happened to do. Furniture has the exact
-    // same defect and the exact same fix, `v5NoteForeignOrphans` below: say it (or here, since
-    // an opening is truly gone rather than merely repaired, using the SAME banner and vocabulary
-    // `v5FlushOpeningsBorned` already uses for this) HERE, on receipt, and clear the slate so
-    // nothing survives for the next local gesture to inherit.
+    // C-13's sibling for the ordinary case (a peer's outline shrink relogs a facade's openings).
+    // `v5FlushOpeningsBorned()` is flushed HERE, on receipt, so the banner never lands on the
+    // wrong screen (attributed to whatever LOCAL gesture ran next).
     const perdu = v5FlushOpeningsBorned();
     if (perdu) toast(perdu);
   }
-  // A piece that the OTHER person's op has just left outside any cell is THEIR business: it is
-  // them who bounds it and republishes it. We note the orphan so as not to claim its repair on
-  // the next local gesture.
+  // A piece the OTHER person's op left outside any cell is THEIR business to bound and republish;
+  // we only note the orphan so as not to claim its repair on the next local gesture.
   if (!fil.reverting && !fil.rebasing) v5NoteForeignOrphans(P);
   v5Touch(ctx); if (_renduGroupe) _renduDu = true; else render(ctx);
   return true;
 }
 
 // ---- ONE PAINT FOR A BATCH THAT ARRIVES AS A BATCH ----------------------------------------------
-// The surgical path repaints after EVERY op, which is right when ops arrive one by one off the
-// wire: that is the whole point, the peer's work appears as they do it. A REPLAY is not that. Its
-// ops are handed over as a list, in one call, describing ONE final state, and painting each
-// intermediate one costs a full `render()` per op for a picture nobody sees. The `state` path has
-// always done the opposite (`adoptServerState` replaces everything, then paints once), and this is
-// the same rule applied where the arrival is already grouped.
+// The surgical path repaints after EVERY op, right for ops arriving one by one off the wire. A
+// REPLAY describes ONE final state handed over as a list: painting each intermediate one costs a
+// full `render()` per op for a picture nobody sees, so this groups them into a single paint.
 //
 // A COUNTER, not a boolean: `wsApplyRemoteOp` is re-entrant through `save()` on a facade refusal.
-// `_renduDu` records that SOMETHING asked to paint, so a batch where every op was refused still
-// paints nothing, exactly as before.
+// `_renduDu` records that something asked to paint, so a batch where every op was refused paints nothing.
 let _renduGroupe = 0;
 let _renduDu = false;
 
@@ -325,23 +265,18 @@ function enUnSeulRendu(ctx: Contexte, corps: () => void): void {
   }
 }
 
-/**
- * Returns TRUE if the op was REFUSED (facade deletion, or an opening from its cascade). A refused
- * op never happened here: it must not enter the undo journal either, otherwise the first Ctrl+Z
- * would replay it onto the snapshot and redo exactly the disappearance we just prevented (C-9 + C-13).
- */
+/** Returns TRUE if the op was REFUSED (facade deletion, or an opening from its cascade): a
+ * refused op must not enter the undo journal, or Ctrl+Z would redo the disappearance (C-9/C-13). */
 export function wsApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op | null | undefined): boolean {
   if (!op || !op.kind) return false;
-  // C-17. A full replacement DURING a local gesture erases the gesture: the dragged object
-  // becomes orphaned (the closure holds the old object) and the view recenters under one's
-  // fingers. We QUEUE it, we do not drop it: the gesture's shared exit applies it, watchdog included.
+  // C-17: a full replacement DURING a local gesture erases it (orphaned closure, recentered
+  // view). We QUEUE it, the gesture's shared exit applies it, watchdog included.
   if (op.kind === "plan5.replace" && gesteActif()) { fileOpDistante(op); return false; }
   fil.wsSuppress = true;
   fil.refusedDel = false;
   let refuse = false;
   try {
-    // Full replacement of the shared plan (conversion of an old plan on a peer's side, import,
-    // undo). This is the ONLY op that replaces everything; the others are surgical.
+    // The ONLY op that replaces everything; the others are surgical.
     if (op.kind === "plan5.replace") {
       const p = sanitizeV5Plan({
         outline: op.plan && op.plan.outline,
@@ -357,15 +292,11 @@ export function wsApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op | null | undefin
     ws5ApplyRemoteOp(ctx, fil, op);
   } finally {
     fil.wsSuppress = false;
-    // The mirror follows the SERVER: we apply the op to it, never the local state (C-6).
+    // The mirror follows the SERVER, never local state (C-6).
     wsShadowApplyOp(ctx, fil, op);
-    // C-13. FACADE REFUSAL: WE GIVE BACK, WE DO NOT JUST SETTLE FOR KEEPING IT. The mirror
-    // describes the server, which just lost the wall AND its openings (cascade); our plan, on the
-    // other hand, still has them. The diff therefore sees them as CREATIONS and re-emits them in
-    // full on the next `save()`. We trigger it RIGHT AWAY, outside `wsSuppress`: without this the
-    // preservation would only hold until the first F5 (the `hello` would adopt the amputated
-    // plan) and the other person would never see their windows again. During a gesture, `save()`
-    // bails out early and the end of the gesture replays a real `save()`.
+    // C-13: facade refusal gives back what the server cascaded away. The mirror now describes it
+    // as gone, so the diff sees our copy as a CREATION and re-emits it on the next `save()`,
+    // triggered right away (outside `wsSuppress`) so it survives an F5 before that.
     refuse = fil.refusedDel;
     fil.refusedDel = false;
     if (refuse) save(ctx);
@@ -374,27 +305,20 @@ export function wsApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op | null | undefin
 }
 
 // =================================================================================================
-//  ROLLBACK OF AN OP THE SERVER REFUSED (C-11)
+//  ROLLBACK OF AN OP THE SERVER REFUSED (C-10)
 // =================================================================================================
-// BEFORE: the client KEPT the local change, showed a 4 s banner, left the chip on "live ✓" and
-// updated its emission mirror as if the op had gone through, so the diff never re-emitted it.
-// Measured: 33 openings on one side, 33 on the other, NOT the same ones, 30 at the server, and
-// both screens announcing "live ✓".
-// DECISION: we VISIBLY UNDO the local change. The chip, though, DOES NOT LIE: the link IS alive,
-// it is that particular write that got refused. Switching it to "not saved" would say something
-// FALSE about the rest of the plan, and would leave it false until an event that will never
-// arrive (the server retries nothing).
+// We VISIBLY UNDO the local change. The chip does not lie: the link IS alive, it is that
+// particular write that got refused; switching it to "not saved" would be false about the rest of
+// the plan, with no event ever coming to clear it.
 
 /** Returns true if the change could be undone PRECISELY (otherwise a resync was requested). */
 export function wsRevertRefused(ctx: Contexte, fil: Fil, n: number | null | undefined): boolean {
   const e = (n !== undefined && n !== null) ? fil.pending.get(n) : null;
   if (e && n != null) fil.pending.delete(n);
-  // A refusal IS a response: this op no longer waits for anything, it must not trigger a resend.
-  // The server, on its side, consumed its number for the same reason.
+  // A refusal IS a response: this op no longer waits for anything, must not trigger a resend.
   if (n !== undefined && n !== null) fil.unacked.delete(n);
-  // Server from BEFORE this fix (no `n`), or a non-invertible op (`plan5.replace`): we do not
-  // know what to undo, but we know who to ask. A full resync brings this screen back in line
-  // with the shared plan, without inventing anything.
+  // No `n`, or a non-invertible op (`plan5.replace`): a full resync brings this screen back in
+  // line with the shared plan, without inventing anything.
   if (!e || !e.undo) { wsRequestFullSync(fil); return false; }
   if (!e.undo.length) return true;        // the server did not know the entity: nothing to undo
   fil.reverting = true;
@@ -405,28 +329,17 @@ export function wsRevertRefused(ctx: Contexte, fil: Fil, n: number | null | unde
 }
 
 // =================================================================================================
-//  RESUME AFTER AN OUTAGE: WHAT THE SERVER NEVER RECEIVED GOES BACK OUT (C-3)
+//  RESUME AFTER AN OUTAGE: WHAT THE SERVER NEVER RECEIVED GOES BACK OUT (C-18)
 // =================================================================================================
-// On reconnection, the `hello` carries the household plan and the client ADOPTS it (the
-// fingerprint has moved, if only because it was forgotten when the link dropped). Adoption
-// replaces the local state: everything that was IN FLIGHT at the moment of the outage would then
-// disappear from its author's screen, without a word. The replay puts this work back ON TOP OF
-// the adopted state, then the final `save()` republishes it through the ordinary diff.
-//
-// The replayed ops are computed BEFORE adoption: `ws5DiffOps(local state, ACKNOWLEDGED mirror)`.
-// This is exactly our unconfirmed work, and nothing else:
-//   - an entity the PEER modified without us: local == acknowledged -> no op;
-//   - an entity the peer created: absent from both -> no op;
-//   - an entity the peer deleted: present in both -> no op;
-//   - an entity WE touched: they differ -> one op, at its CURRENT value.
-// This is Replicache's rebasing, written with our field-by-field diff.
+// Adoption on reconnection replaces local state, which would erase whatever was IN FLIGHT at the
+// moment of the outage. Ops computed BEFORE adoption (`ws5DiffOps(local, ACKNOWLEDGED mirror)`,
+// exactly our unconfirmed work) are replayed on top of the adopted state, then republished by `save()`.
 
 export function wsRejouerNonAcquittees(ctx: Contexte, fil: Fil, ops: Op[] | null | undefined): number {
   if (!ops || !ops.length || ops.length > WS_REBASE_MAX) return 0;
   fil.rebasing = true;
-  // ONE PAINT FOR THE WHOLE REPLAY. These ops arrive together and describe ONE state: up to 500 of
-  // them (`WS_REBASE_MAX`) each triggered a full `render()`, on the reconnection frame, which is
-  // exactly the moment the screen has the least room to spare.
+  // ONE PAINT for the whole replay: up to 500 ops (`WS_REBASE_MAX`) describing ONE state, on the
+  // reconnection frame, where the screen has the least room to spare for one `render()` each.
   try { enUnSeulRendu(ctx, () => { ops.forEach((op) => { wsApplyRemoteOp(ctx, fil, op); }); }); }
   finally { fil.rebasing = false; }
   save(ctx);                              // the diff (mirror = server state) republishes them in order
@@ -436,9 +349,8 @@ export function wsRejouerNonAcquittees(ctx: Contexte, fil: Fil, ops: Op[] | null
 // =================================================================================================
 //  REMOTE DRAG GHOSTS
 // =================================================================================================
-// A ghost is the SOURCE OF TRUTH while a peer moves a piece: we apply the position directly onto
-// the DOM node on every rAF frame, AND after every `render()` (otherwise a re-render would freeze
-// the piece). Expires ~800 ms after the last message, or when the `piece.set` arrives.
+// A ghost is the SOURCE OF TRUTH while a peer moves a piece: applied onto the DOM node on every
+// rAF frame and after every `render()`. Expires ~800ms after the last message, or on `piece.set`.
 
 export function wsApplyRemoteDrag(
   ctx: Contexte, fil: Fil,
@@ -456,16 +368,14 @@ function wsApplyOneGhost(ctx: Contexte, key: string, g: { x: number; y: number; 
   const cont = ctx.canvas.querySelector<HTMLElement>(".v5layer");
   if (!cont) return false;
   const lbb = aptBBox(ctx);
-  // `key` comes from the wire: NEVER raw in a selector (R-9). An exception here would kill the
-  // ghost rAF loop, hence ALL of the peer's ghosts, not just this one.
+  // `key` comes from the wire: NEVER raw in a selector (R-9), or an exception kills the ghost rAF
+  // loop for ALL of the peer's ghosts.
   const el = cont.querySelector<HTMLElement>(`.piece[data-id="${cssId(key)}"]`);
   if (!el) return false;
   el.style.left = ((g.x - lbb.minX) * ctx.vue.scale) + "px";
   el.style.top = ((g.y - lbb.minY) * ctx.vue.scale) + "px";
-  // The ghost drives the NODE's rotation: the label, which is its child, must be straightened
-  // against THAT rotation. `renderPieces` set it on `p.rot`, the value from BEFORE the peer's
-  // gesture: without this callback, a piece the other person rotates showed its name upside down
-  // for the whole drag, then straightened itself alone when the `piece.set` arrived (R-1).
+  // The label must be straightened against the ghost's rotation too, or it reads upside down for
+  // the whole drag (R-1).
   if (g.rot != null) {
     el.style.transform = `rotate(${g.rot}deg)`;
     setLabelSpin(el.querySelector<HTMLElement>(".plabel-wrap"), g.rot);

@@ -1,15 +1,9 @@
 // src/ts/fil/jeton-hash.ts: THE INVITE TOKEN'S SHAPE IN `location.hash`, AND NOTHING ELSE.
-//
-// PURE, and split out of `fil/invite.ts` deliberately: `invite.ts` also imports `fil/rest.ts`
-// (`setSyncChip`) and `fil/emission.ts` (`wsSend`), so importing IT from a browserless test pulls
-// their whole graph along, which is fine under `tsconfig.json` (`strict:true`, what the built
-// client actually compiles with) but not under `tsconfig.outils.json` (`strict:false`, what
-// `tests/**/*.ts` compiles with): a file reached for the FIRST time through a different config's
-// program gets re-checked under that config's own rules. This module has no such graph: it is
-// safe to import from either program, and `tests/invite-fil.ts` does exactly that.
-//
-// `{16,64}` mirrors the server's own `JETON_RE` (`functions/invitation.ts`): `jetonInvitation()`
-// only ever produces 22 base64url characters, so this rejects nothing legitimate.
+// PURE, split out of `fil/invite.ts` deliberately: that file's graph (`fil/rest.ts`,
+// `fil/emission.ts`) isn't safe to import from a browserless test under `tsconfig.outils.json`
+// (`strict:false`); this module has no such graph, so `tests/invite-fil.ts` imports it directly.
+// `{16,64}` mirrors the server's own `JETON_RE`: `jetonInvitation()` only ever produces 22
+// base64url characters, so this rejects nothing legitimate.
 const JETON_HASH_RE = /(?:^|&)k=([A-Za-z0-9_-]{16,64})(?:&|$)/;
 
 /** The invite token carried by a `location.hash`-shaped string (leading `#` optional, absent, or

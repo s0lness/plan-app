@@ -1,21 +1,7 @@
-// src/ts/fil/miroir.ts: THE EMISSION MIRROR AND THE FIELD-BY-FIELD DIFF.
-// Ported from src/js/42-collab-fil.js (the PURE part: the six functions that
-// `tests/harnais-graine.ts` and `tests/rapide.ts` used to carve out of the source).
-//
-// C-6: THE MIRROR DESCRIBES THE SERVER, NEVER US. Resyncing it from the local state is a trap:
-// during a drag, the gesture continuously rewrites the piece's position, so the local state IS
-// NOT what the server holds. The mirror would then record the dragged position as confirmed on
-// the server's side, and the field the other person had just changed would never be re-emitted
-// again: the two screens stayed permanently off by one coordinate.
-//
-// C-5: AN OP IS A FIELD-BY-FIELD DIFF; an absent field means "no opinion", and the server keeps
-// the value already in the database. Two people editing two fields of the same object no longer
-// overwrite each other. On CREATION, the whole entity is sent.
-//
-// C-3: two mirrors, and that is what makes resending safe. `ws5` (optimistic) advances on
-// emission; `ws5Ack` (acknowledged) only advances on what the server has confirmed. Resending
-// means bringing the optimistic one back onto the acknowledged one and redoing a diff, hence
-// re-emitting THE CURRENT VALUE, never the dead op.
+// src/ts/fil/miroir.ts: THE EMISSION MIRROR AND THE FIELD-BY-FIELD DIFF (pure; covered without a
+// browser by `tests/harnais-graine.ts`). The mirror describes the SERVER, never us (C-6); an op
+// is a field-by-field diff, an absent field means "no opinion" (C-5); two mirrors make resending
+// safe (C-3).
 
 import { v5R2 } from "../noyau/nombres.ts";
 import type { Serialiseurs } from "./pseudo-fil.ts";
@@ -32,14 +18,8 @@ export function wsShadowCopy(src: Miroir, dst: Miroir): void {
 
 /**
  * Rebuilds the mirror from the state announced by the `hello` (or a `state`), each entity passed
- * back through its serializer. Without this, a `hello` WITHOUT adoption (fresh household, or
- * reconnection with an identical fingerprint) used to copy the LOCAL state: the diff would then
- * only emit the local delta, and the shared plan stayed short of everything the server had never
- * received.
- *
- * An entity we fail to serialize is left ABSENT from the mirror: the next diff will emit it IN
- * FULL, which is the safe direction for the error, emitting too much loses nothing, emitting too
- * little loses everything.
+ * back through its serializer (C-6). An entity we fail to serialize is left ABSENT from the
+ * mirror: the next diff emits it in full, the safe direction for the error.
  */
 export function wsShadowFromServerInto(m: Miroir, st: unknown, wire: Serialiseurs): void {
   m.outline = null;
@@ -67,11 +47,8 @@ export function wsShadowFromServerInto(m: Miroir, st: unknown, wire: Serialiseur
   put(m.cells, s.cells, wire.cell as (e: unknown) => { id: Id });
 }
 
-/**
- * Applies a PARTIAL entity to the mirror, field by field. An `undefined` field is not written:
- * this is the same rule as on the server side (`prevOf` / `pick`), and it is what makes C-5 hold
- * on both sides of the wire.
- */
+/** Applies a PARTIAL entity to the mirror, field by field; an `undefined` field is not written,
+ * same rule as the server's (`prevOf`/`pick`), which is what makes C-5 hold on both sides. */
 export function ws5ShadowPut(map: Map<Id, string>, ent: { id: Id } & Record<string, unknown>): void {
   const id = String(ent.id);
   const prev = map.get(id);
@@ -83,11 +60,8 @@ export function ws5ShadowPut(map: Map<Id, string>, ent: { id: Id } & Record<stri
   map.set(id, JSON.stringify(base));
 }
 
-/**
- * THE MIRROR FOLLOWS THE SERVER OP BY OP. After applying a received op, we cannot resync the
- * mirror onto the local state (see C-6): we apply the op TO THE MIRROR, exactly as the server
- * applies it to its plan.
- */
+/** The mirror follows the server op by op (C-6): applied TO THE MIRROR, exactly as the server
+ * applies it to its plan, never resynced from local state. */
 export function wsShadowApplyOpInto(m: Miroir, op: Op | null | undefined, wire: Serialiseurs): void {
   if (!op || !op.kind) return;
   switch (op.kind) {
@@ -145,12 +119,9 @@ export function wsShadowApplyOpInto(m: Miroir, op: Op | null | undefined, wire: 
 }
 
 /**
- * FIELD-BY-FIELD diff of an entity against its mirror. Returns `null` if nothing moved, the
- * WHOLE entity if the server does not know it (creation), otherwise `{id}` plus only the changed
- * fields.
- *
- * Subtlety: a key that the server has and that we no longer have is INEXPRESSIBLE as a partial
- * ("absent" means "no opinion"), so we then send the entity whole rather than leave a ghost field.
+ * Field-by-field diff of an entity against its mirror. Returns `null` if nothing moved, the WHOLE
+ * entity if the server doesn't know it yet (creation) or if a key it has is now absent locally
+ * (inexpressible as a partial), otherwise `{id}` plus only the changed fields.
  */
 export function ws5FieldDiff<E extends { id: Id }>(cur: E, prevStr: string | undefined): E | (Partial<E> & { id: Id }) | null {
   if (prevStr === undefined) return cur; // creation: the whole entity
@@ -169,15 +140,9 @@ export function ws5FieldDiff<E extends { id: Id }>(cur: E, prevStr: string | und
 }
 
 /**
- * The ops the mirror `m` is missing for it to describe `wire`. A PURE function: it emits nothing
- * and touches no mirror. Two callers, and that is what makes resending safe: the ordinary case
- * compares it to the OPTIMISTIC mirror; the resume after reconnection compares it to the
- * ACKNOWLEDGED mirror, which gives exactly the work the server has never received (C-3).
- *
- * THE ORDER IS A CONTRACT: the outline goes out BEFORE the walls (a facade `wall.del` arriving
- * before its `outline.set` would be refused by the peer, C-13), a `wall.del` goes out AFTER the
- * openings (the server cascades a deleted wall's openings, so an opening that MOVED to another
- * wall has to be re-homed first, or the weld loses it), and cells LAST (derived).
+ * The ops the mirror `m` is missing for it to describe `wire`. A PURE function (C-3).
+ * The order is a contract: outline before walls (C-13), `wall.del` after openings (the server
+ * cascades a deleted wall's openings, so a re-homed opening must move first), cells last.
  */
 export function ws5DiffOps(wire: PlanFil, m: Miroir): Op[] {
   const ops: Op[] = [];
@@ -192,13 +157,9 @@ export function ws5DiffOps(wire: PlanFil, m: Miroir): Op[] {
     const d = ws5FieldDiff(w, m.walls.get(w.id));
     if (d) ops.push({ kind: "wall.set", wall: d });
   });
-  // UN MUR SE SUPPRIME EN DERNIER, APRES LES OUVERTURES, et c'est une regle de non-perte, pas de
-  // style. Le serveur CASCADE les ouvertures d'un `wall.del`. La soudure de deux murs deplace les
-  // ouvertures du mur avale vers le survivant puis supprime le mur avale: en envoyant la
-  // suppression d'abord, le serveur detruisait ces ouvertures, et l'`opening.set` qui suivait etait
-  // refuse (`opening_w`, la ligne n'existe plus) donc rien ne les ramenait. Mesure par une revue
-  // adverse, en rejouant les ops emises contre le VRAI validateur: souder un mur portant deux
-  // portes en laissait une sur le plan partage. On garde donc la suppression pour la fin.
+  // Un mur se supprime en dernier, apres les ouvertures: le serveur cascade les ouvertures d'un
+  // `wall.del`, donc une ouverture re-hebergee par une soudure doit d'abord porter son nouveau
+  // `wallId`, ou le `wall.del` la detruirait avant que l'`opening.set` suivant ne la sauve.
   const mursSupprimes: Id[] = [];
   m.walls.forEach((_, id) => { if (!curW.has(id)) mursSupprimes.push(id); });
 

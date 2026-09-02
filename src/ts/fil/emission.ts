@@ -1,37 +1,12 @@
 // src/ts/fil/emission.ts: WHAT GOES OUT: THE DIFF, THE SEQUENCE NUMBERS, THE ACKNOWLEDGEMENTS,
-// THE RESEND.
-// Ported from src/js/42-collab-fil.js, the IMPURE part (the pure part, mirror and field-by-field
-// diff, has lived in `fil/miroir.ts` since E2, and 20,000 seeds cover it with no browser).
+// THE RESEND (the pure mirror and field-by-field diff live in `fil/miroir.ts`).
 //
-// ---- C-3. AN OP LOST EN ROUTE GOES OUT AGAIN, AND IT IS THE CURRENT VALUE THAT GOES OUT AGAIN ----
-// THE ECHO IS THE ACKNOWLEDGEMENT: the server re-emits every op to everyone, the author included,
-// with `tag` (the device) and `n` (the author's sequence number). It proves more than a separate
-// ack would: it says the op WAS APPLIED, and it already carries the fingerprint of the plan that
-// resulted. Only the DUPLICATE needs a message of its own (`{t:"ack"}`): the server replays
-// nothing for it, so there is no echo.
+// C-3: the echo IS the acknowledgement (`tag` + `n`); two mirrors make resending safe, `ws5`
+// (optimistic, advances on emission) and `ws5Ack` (acknowledged, only what the server confirmed).
+// Resending re-emits the CURRENT value of what the server is missing, never a stale op.
 //
-// THE MIRROR CANNOT SERVE AS MEMORY BY ITSELF. We keep TWO mirrors:
-//   `ws5`    OPTIMISTIC: it advances on emission (otherwise every `save()` would re-emit the same
-//            op for the whole round trip) and on reception. This is the one the diff compares
-//            against.
-//   `ws5Ack` ACKNOWLEDGED: it only advances on what the server has CONFIRMED. This is the MEMORY
-//            of what is actually on the other side.
-// Resending means `ws5 := ws5Ack` then an ordinary diff. What goes back out is NEVER the stale
-// intent of a dead op, but the CURRENT value of what the server is missing. This is where we
-// diverge from Replicache, whose "exactly once" assumes an ordered BATCH send: on a frame-by-frame
-// wire, replaying a stale op after a more recent one would let it win.
-//
-// THE `pong` SAFETY NET DID NOT COVER THIS CASE. It compares the fingerprint announced by the
-// server to the previous one, but an op lost ON THE WAY OUT changes nothing on the server. It
-// catches a missed INCOMING message, never a lost OUTGOING op. And the full resync it triggered
-// ERASED instead of catching up: adoption made the lost change disappear from its author's
-// screen, silently.
-//
-// ---- THE "OLD SERVER" MODE IS NOT A VESTIGE (C-4) -------------------------------------------------
-// A server without `acks` leaves ALL of this machinery dormant (`wsAcksOn` false): `wsUnackedPut`
-// records nothing, the timer never arms, no resend goes out. Without acknowledgement, a resend on
-// the guard delay would republish the entire plan every 2.5 s. This mode is what keeps a tab left
-// open from destroying the plan.
+// C-4: a server without `acks` leaves this machinery dormant (`wsAcksOn` false), which is what
+// keeps a tab left open from republishing the entire plan every 2.5 s.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Fil } from "./etat.ts";
@@ -80,25 +55,16 @@ export function wsShadowAdopted(ctx: Contexte, fil: Fil): void {
   wsShadowCopy(fil.ws5, fil.ws5Ack);
 }
 
-/**
- * C-6. The mirror must describe the SERVER, not us. A `hello` WITHOUT adoption (fresh household,
- * or reconnection with an identical fingerprint) used to copy the LOCAL state: the diff would
- * then only emit the local delta, and the shared plan stayed short of everything the server had
- * never received.
- */
+/** C-6: the mirror must describe the SERVER, not us. */
 export function wsShadowFromServer(ctx: Contexte, fil: Fil, st: unknown): void {
   wsShadowFromServerInto(fil.ws5, st, serialiseurs(ctx));
   wsShadowCopy(fil.ws5, fil.ws5Ack);
 }
 
 /**
- * An op RECEIVED from the server advances BOTH mirrors: it is an established fact on the other
- * side. TWO EXCEPTIONS, both ops MANUFACTURED HERE, that the server has never seen:
- *   - the rollback of a refusal (`reverting`): it corrects an optimistic assumption, it reports
- *     nothing from the server. Writing it into the acknowledged mirror would make the value of
- *     ANOTHER op still in flight look confirmed, and that op would then never be resent;
- *   - the replay of unacknowledged ops after reconnection (`rebasing`): these ops go out
- *     precisely BECAUSE the server does not have them; no mirror should record them.
+ * A received op advances BOTH mirrors. Two exceptions, both manufactured here, that the server
+ * has never seen: the rollback of a refusal (`reverting`) and the replay of unacknowledged ops
+ * after reconnection (`rebasing`); recording either as confirmed would suppress a real resend.
  */
 export function wsShadowApplyOp(ctx: Contexte, fil: Fil, op: Op | null | undefined): void {
   if (fil.rebasing) return;
@@ -125,12 +91,11 @@ export function wsSend(fil: Fil, obj: unknown): void {
 }
 
 // =================================================================================================
-//  THE INVERSE OP, COMPUTED BEFORE SENDING (C-11)
+//  THE INVERSE OP, COMPUTED BEFORE SENDING (C-10)
 // =================================================================================================
-// The emitter works by DIFF and marks the value as confirmed right after sending: a refused op is
-// never resent. Measured: two screens each showed 33 openings, not the same ones, the server had
-// 30, and both announced "live ✓". So, BEFORE sending, we retain the op able to restore the
-// entity to what the MIRROR (hence the server) knows.
+// The emitter marks the value as confirmed right after sending, so a refused op is never resent
+// on its own: BEFORE sending, we retain the op able to restore the entity to what the mirror
+// (hence the server) knows.
 
 /**
  * A mirror entry, read back. The mirror only ever contains entities that passed through the
@@ -213,12 +178,9 @@ function wsPendingPut(fil: Fil, n: number, e: { t: number; kind: Op["kind"] | un
 }
 
 /**
- * The unacknowledged queue is ONLY A TIMER: it says which ones are waiting and since when. The
- * memory of what has not gone through, on the other hand, is the gap between the local state and
- * `ws5Ack`, and that gap has NO bound to cross. On overflow we therefore drop the oldest entry
- * without losing anything: the next one keeps aging, the guard delay eventually fires, and the
- * resend goes out from the acknowledged mirror, so it also catches up on the one whose timer we
- * dropped.
+ * The unacknowledged queue is ONLY A TIMER (which ones are waiting, since when); the memory of
+ * what has not gone through is the gap to `ws5Ack`, which has no bound. Dropping the oldest entry
+ * on overflow loses nothing: the resend goes out from the acknowledged mirror regardless.
  */
 function wsUnackedPut(ctx: Contexte, fil: Fil, n: number, kind: Op["kind"] | undefined): void {
   while (fil.unacked.size >= WS_UNACKED_MAX) fil.unacked.delete(fil.unacked.keys().next().value as number);
@@ -262,10 +224,9 @@ export function wsAckTick(ctx: Contexte, fil: Fil): void {
 }
 
 /**
- * RESEND. The optimistic mirror drops back onto the acknowledged one, the queue empties out, and
- * an ordinary diff re-emits exactly what the server is missing, AT TODAY'S VALUE.
- * If `wsOnSave` bails out early (a drag in progress, applying a remote op), nothing is lost: the
- * mirror has ALREADY dropped back, so the NEXT `save()` will emit the same thing.
+ * RESEND: the optimistic mirror drops back onto the acknowledged one, and an ordinary diff
+ * re-emits exactly what the server is missing, at today's value. If `wsOnSave` bails out early,
+ * nothing is lost: the mirror has already dropped back, so the next `save()` catches up.
  */
 export function wsRetransmit(ctx: Contexte, fil: Fil): void {
   fil.retransmits++;
@@ -305,12 +266,10 @@ export function wsOnSave(ctx: Contexte, fil: Fil): void {
 }
 
 // =================================================================================================
-//  THE ATOMIC PUBLICATION OF THE WHOLE PLAN (C-14)
+//  THE ATOMIC PUBLICATION OF THE WHOLE PLAN
 // =================================================================================================
-// TWO USES, BOTH VOLUNTARY AND GLOBAL: the "replace" import, and bootstrapping a fresh household
-// (end of the wizard, or a `hello` from a server with no plan while this device has one).
-// UNDO NO LONGER GOES THROUGH HERE: it publishes by DIFF (C-9), otherwise it would put back a
-// whole plan whose snapshot does not know half of it.
+// Two uses, both voluntary and global: the "replace" import, and bootstrapping a fresh household.
+// Undo no longer goes through here: it publishes by diff (C-9).
 
 export function wsPublishWholePlan(ctx: Contexte, fil: Fil): void {
   if (!fil.wsOpen || fil.detached) return;

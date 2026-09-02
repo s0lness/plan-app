@@ -1,16 +1,7 @@
 // src/ts/fil/identite.ts: IDENTIFIERS OF CREATED ENTITIES.
-// Ported from src/js/51-v5-pseudo-fil.js (`v5DeviceTag`, `v5NewId`, `v5DerivedId`).
-//
-// C-8. AN IDENTIFIER OF A CREATED ENTITY CARRIES A DEVICE LABEL (`w20-a3f9c1`). Without it, two
-// people drawing a partition at the same instant would both number from THEIR local plan, get the
-// same `w20`, and every other wall would disappear without a word. The label comes from `wsMe.tag`
-// (the server `hello`, unique per SOCKET, hence distinct for two tabs of the same person),
-// otherwise from a draw kept in `sessionStorage`; it is frozen for the life of the tab.
-//
-// THE SYMMETRIC TRAP: a DERIVED entity that both devices recompute identically (FACADE walls,
-// mirroring the outline's edges) must keep an id WITHOUT a label. The "collision" there is the
-// INTENDED behavior, otherwise a received `outline.set` would spawn a second facade wall on the
-// peer's side and the two plans would diverge.
+// C-8: a created entity's id carries a device label (`w20-a3f9c1`), from `wsMe.tag` or a draw
+// kept in `sessionStorage`, frozen for the tab's life. A DERIVED entity (facade walls, mirroring
+// the outline) keeps an id WITHOUT a label on purpose: both devices recompute it identically.
 
 import type { PlanV5 } from "../partage/plan.ts";
 
@@ -73,17 +64,13 @@ export function v5DerivedId(prefix: string): string {
   return id;
 }
 
-// ---- BATCH 3, GUEST CLIENT: A GUEST'S OWN SECOND TAB ------------------------------------------
-// docs/decisions/0004-partage-par-lien.md, design edge 8. `v5DeviceTag` (above) is per SOCKET,
-// so it cannot tell "my other tab" from "a different guest": two tabs of the same guest open two
-// sockets, hence two different tags. `guestId`, by contrast, is per BROWSER PROFILE: `localStorage`
-// (not `sessionStorage`, deliberately, unlike `v5DeviceTag`), read back identically by every tab
-// on this device, and by nobody else's. `wsSameAccount` (`fil/etat.ts`) compares it the same way
-// it compares an email on the household door.
+// ---- GUEST CLIENT: A GUEST'S OWN SECOND TAB (decision 0004, edge 8) ---------------------------
+// `v5DeviceTag` is per SOCKET, so it can't tell "my other tab" from "a different guest". `guestId`
+// is per BROWSER PROFILE (`localStorage`, not `sessionStorage`), read back identically by every
+// tab on this device; `wsSameAccount` (`fil/etat.ts`) compares it like an email on the household door.
 const GUEST_ID_KEY = "plan-guest-id";
-// Same shape the server re-validates (`functions/ws.ts`'s `GUEST_ID_RE`, `live-worker/worker.ts`'s
-// copy): not a credential, so no cryptographic requirement, just narrow enough to carry nothing
-// but itself.
+// Same shape the server re-validates (`functions/ws.ts`, `live-worker/worker.ts`): not a
+// credential, just narrow enough to carry nothing but itself.
 const GUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 export function guestIdCourant(): string {
