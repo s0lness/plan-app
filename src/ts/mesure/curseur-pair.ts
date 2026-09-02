@@ -1,25 +1,16 @@
-// src/ts/mesure/curseur-pair.ts: A PEER'S CURSOR LABEL, RENDERING ONLY.
+// src/ts/mesure/curseur-pair.ts: WHO A PEER IS, AND THE NODE THAT SAYS SO.
 //
-// ⚠ OUT OF BATCH, DELIBERATE AND ON PURPOSE MINIMAL. Collaboration is stage E4, not this one. But
-// `.pc-name` is one of the EIGHT text families that `tests/textes-lisibles.ts` requires to be seen
-// ACTUALLY rendered (without which the suite proves nothing about it), and R-1 must be measurable on
-// it just like the other seven. So we port EXACTLY what's needed to paint a peer's cursor
-// label, and NOTHING else:
+// The identity primitives (displayed name, deduplication between two peers of the same first
+// name, the person's color) and the ONE factory for the `.peer-cur` node: SVG arrow plus an
+// ESCAPED `.pc-name`. `fil/presence.ts` builds every live cursor with it, and the probe paints
+// its own with it too, so there is a single node to keep in step (decision 0019: the second
+// painting path, `peindreCurseurPair`, and its private map of cursors are gone).
 //
-//   PORTED    : the factory for the `.peer-cur` node (SVG arrow + escaped `.pc-name`), its screen
-//              position via `translate3d`, the displayed name and the person's color.
-//   NOT PORTED : no WebSocket, no emission, no presence, no badge, no
-//              expiry timer, no smoothing rAF loop, no drag ghost,
-//              no acknowledgment. `wsUpsertCursor` (src/js/44) remains to be ported IN FULL by the E4
-//              batch, which will take this module as a starting point or replace it.
-//
-// Nothing here is called by the live application: the only caller is the test probe. At rest
-// `#peerCursors` is empty, so the render fingerprint never sees a `.pc-name`.
+// `.pc-name` is one of the EIGHT text families `tests/textes-lisibles.ts` requires to be seen
+// ACTUALLY rendered, and R-1 must be measurable on it like the other seven. Positioning,
+// smoothing, expiry and the wire itself live in `fil/presence.ts`.
 
-import type { Contexte } from "../app/contexte.ts";
-import { $ } from "../noyau/dom.ts";
 import { escapeHtml } from "../noyau/nombres.ts";
-import { aptToScreen } from "../rendu/vue.ts";
 
 /**
  * IDENTITY: DERIVED FROM THE ADDRESS, NEVER HARDCODED.
@@ -169,41 +160,5 @@ export function creerNoeudCurseur(label: string, color: string, guest?: boolean)
   // free text.
   el.innerHTML = wsCursorArrowSVG(color)
     + `<span class="pc-name" style="background:${color}">${escapeHtml(label)}</span>`;
-  return el;
-}
-
-export interface MessageCurseur {
-  by?: string | undefined;
-  tag?: string | undefined;
-  color?: string | undefined;
-  name?: string | undefined;
-  guest?: boolean | undefined;
-  x: number;
-  y: number;
-}
-
-/** A cursor is indexed by DEVICE (`tag`), never by person: two devices of the same
- *  person used to share the same key and replace one another. */
-const curseurs = new Map<string, HTMLElement>();
-
-/**
- * Places (or moves) a peer's cursor. The label comes from an e-mail RELAYED by the server: it
- * goes into `innerHTML`, so it is escaped, like everything else (R-9). One single rule, no
- * "harmless" exception.
- */
-export function peindreCurseurPair(ctx: Contexte, msg: MessageCurseur): HTMLElement | null {
-  const hote = $("peerCursors"); if (!hote) return null;
-  const key = msg.tag ? String(msg.tag) : String(msg.by || "");
-  const col = personColor(msg, msg.color);
-  let el = curseurs.get(key) || null;
-  if (!el || !el.isConnected) {
-    el = creerNoeudCurseur(displayName(msg) || "?", col, !!msg.guest);
-    hote.appendChild(el);
-    curseurs.set(key, el);
-  }
-  const s = aptToScreen(ctx, msg.x, msg.y);
-  // `translate3d`: the write goes through the compositor, no CSS transition so no added delay.
-  el.style.transform = `translate3d(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px,0)`;
-  el.style.display = "";
   return el;
 }

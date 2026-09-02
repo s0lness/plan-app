@@ -27,7 +27,8 @@ import {
   type PointMesure, type Segment,
 } from "./mesure/mesure.ts";
 import { drawCursorGuides } from "./mesure/guides-curseur.ts";
-import { peindreCurseurPair } from "./mesure/curseur-pair.ts";
+import { creerNoeudCurseur } from "./mesure/curseur-pair.ts";
+import { aptToScreen } from "./rendu/vue.ts";
 
 export interface MesureLue {
   a: PointMesure;
@@ -95,7 +96,15 @@ export function sondeExport(ctx: Contexte): SondeExport {
       return document.querySelectorAll(".guides .glab").length;
     },
     montrerCurseurPair(x: number, y: number): number {
-      peindreCurseurPair(ctx, { by: "pair@exemple.fr", tag: "t-pair", color: "#c0392b", x, y });
+      // The SAME node factory the wire uses (`fil/presence.ts` calls it too): the probe paints a
+      // peer cursor without a second painting path to keep in step with the first one.
+      const hote = document.getElementById("peerCursors");
+      if (hote) {
+        const el = creerNoeudCurseur("pair", "#c0392b");
+        hote.appendChild(el);
+        const s = aptToScreen(ctx, x, y);
+        el.style.transform = `translate3d(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px,0)`;
+      }
       return document.querySelectorAll(".peer-cur .pc-name").length;
     },
   };

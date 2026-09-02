@@ -105,7 +105,7 @@ function wsRenderPeers(fil: Fil): void {
 
 const WS_LERP = 0.35;                 // ~80 ms convergence at 60 fps
 
-export function wsUpsertCursor(
+function wsUpsertCursor(
   ctx: Contexte, fil: Fil,
   msg: {
     by?: string; tag?: string; color?: string; name?: string; guest?: boolean;
