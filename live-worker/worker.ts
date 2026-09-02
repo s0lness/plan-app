@@ -271,6 +271,16 @@ const REVOKE_CLOSE_REASON = "invite_revoked";
 // Will the plan fit into the DO's storage and into D1? Checked BEFORE any write: a mutation
 // accepted then rejected by storage.put() used to let the exception escape from
 // webSocketMessage, with no error for the client, no persistence, and no echo to peers.
+// Number of rows actually touched by the last statement, the ONLY verdict of a compare-and-swap.
+// Same contract, and same refusal to guess, as `functions/api/plan.ts`'s own `rowsChanged`: D1
+// answers `meta.changes`, some SQLite harnesses answer a flat `changes`, and `null` means "the
+// executor does not say", which is never read as a success.
+export function rowsChanged(res: (D1Result<unknown> & { changes?: number }) | null): number | null {
+  if (res && res.meta && typeof res.meta.changes === "number") return res.meta.changes;
+  if (res && typeof res.changes === "number") return res.changes;
+  return null;
+}
+
 export function planTooBig(plan: PlanState): boolean {
   return JSON.stringify(plan).length > MAX_PLAN_BYTES;
 }
@@ -831,25 +841,55 @@ export class PlanRoom {
   // snapshot silently overwrites everything the REST fallback deposited during the outage.
   async alarm() {
     await this.ensureLoaded();
-    await this.reconcileD1(true);
-    await this.snapshot();
+    const v = await this.reconcileD1(true);
+    await this.snapshot(v.rev);
   }
 
-  async snapshot() {
+  /**
+   * ---- THE SNAPSHOT IS A COMPARE-AND-SWAP TOO ---------------------------------------------------
+   * There were TWO round trips here (reread, then write) and the write carried no `WHERE`. A PUT
+   * compare-and-swap (`functions/api/plan.ts`) landing BETWEEN the two won its swap, answered 200
+   * to its client, and was then overwritten by this blind write; `d1Seen` recorded our own bytes,
+   * so the next reconciliation saw nothing foreign and no one was ever told. The fallback believed
+   * it had written, the row held none of it, and the wire said everything was fine.
+   *
+   * `expectedRev` is the revision READ by the reconciliation that precedes this call. The write
+   * uses the SAME statement shape as the REST Function: insert if the row is absent, update only
+   * if the revision is still that one, nothing otherwise. The verdict is read from `meta.changes`,
+   * never from a re-read. Zero rows touched = the row moved under us: we reconcile ONCE more
+   * (which adopts it, or sets it aside as an orphan and tells the clients, the existing path) and
+   * retry exactly once. A second failure lets a D1 error propagate: the alarm replays it.
+   *
+   * `expectedRev === null` (no row at read time) is not a hole: the INSERT branch fires when the
+   * row is genuinely absent, and if a row appeared meanwhile `plans.rev = NULL` is never true, so
+   * the swap correctly refuses instead of overwriting it.
+   */
+  async snapshot(expectedRev: number | null = null, secondeChance = true): Promise<void> {
+    const planId = this.requirePlanId();
     const data = JSON.stringify(this.plan);
     const now = new Date().toISOString();
     // A D1 error propagates up: the alarm will be replayed automatically (up to 6 times).
-    await this.env.DB
+    const res = await this.env.DB
       .prepare(
-        "INSERT INTO plans(id,data,rev,updated_at,updated_by) VALUES(?4,?1,1,?2,'live') " +
-        "ON CONFLICT(id) DO UPDATE SET data=?1, rev=rev+1, updated_at=?2, updated_by='live'"
+        "INSERT INTO plans(id,data,rev,updated_at,updated_by) VALUES(?3,?1,1,?2,'live') " +
+        "ON CONFLICT(id) DO UPDATE SET data=?1, rev=rev+1, updated_at=?2, updated_by='live' " +
+        "WHERE plans.rev=?4"
       )
-      .bind(data, now, null, this.requirePlanId())
+      .bind(data, now, planId, expectedRev)
       .run();
-    // We now know what the row looks like: the next reconciliation won't mistake it for a
-    // foreign write (belt-and-suspenders, `updated_by='live'` already says so).
-    this.d1Seen = strHash(data);
-    await this.storage.put("d1seen", this.d1Seen);
+    if (rowsChanged(res) === 1) {
+      // We now know what the row looks like: the next reconciliation won't mistake it for a
+      // foreign write (belt-and-suspenders, `updated_by='live'` already says so).
+      this.d1Seen = strHash(data);
+      await this.storage.put("d1seen", this.d1Seen);
+      return;
+    }
+    // The row moved (or the executor won't say how many rows it touched, which is the same thing
+    // here: a swap whose bite we don't know about is not a swap). `d1Seen` is deliberately NOT
+    // updated: whatever is in that row is not ours.
+    if (!secondeChance) throw new OpError("snapshot_conflict");
+    const v = await this.reconcileD1(true);
+    await this.snapshot(v.rev, false);
   }
 
   // The alarm is armed BEFORE the write: if `put` fails, the caller can roll back without
@@ -1141,8 +1181,8 @@ export class PlanRoom {
       try {
         if (await this.storage.getAlarm() !== null) {
           await this.ensureLoaded();
-          await this.reconcileD1(true);   // never overwrite a REST write without saying so
-          await this.snapshot();
+          const v = await this.reconcileD1(true);   // never overwrite a REST write without saying so
+          await this.snapshot(v.rev);
           await this.storage.deleteAlarm();
         }
       } catch (_) { /* the alarm stays armed and will retry */ }

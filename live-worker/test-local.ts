@@ -1394,12 +1394,12 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false, planId = 
 // =====================================================================
 // Double with a MUTABLE D1 row and several sockets: what was needed to replay
 // "the Worker goes down, the REST fallback writes, the Worker comes back".
-function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main", avantEcriture = null }: {
+function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main" }: {
   data?: string | null; by?: string; rev?: number; planId?: string;
-  /** Hook fired at the START of a D1 write: what a concurrent PUT landing between the
-   *  reconciliation's SELECT and the snapshot's INSERT does to the row. */
-  avantEcriture?: (() => void) | null;
 } = {}) {
+  /** `avantEcriture` fires at the START of every D1 write: this is how a concurrent PUT lands
+   *  BETWEEN the reconciliation's SELECT and the snapshot's INSERT. */
+  const hooks = { avantEcriture: null as (() => void) | null, ecritures: 0 };
   const kv = new Map<string, DonneeDynamique>();
   kv.set("planId", planId);   // cf. fakeRoom: the key `PlanRoom.fetch` writes on first contact.
   let alarmAt: DonneeDynamique = null;
@@ -1443,7 +1443,8 @@ function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main", avantE
     // still carries the expected revision, and the verdict travels in `meta.changes` (the shape
     // production D1 actually answers with, cf. functions/api/plan.ts `rowsChanged`).
     async run() {
-      if (avantEcriture) avantEcriture();
+      hooks.ecritures++;
+      if (hooks.avantEcriture) hooks.avantEcriture();
       const [data, at] = this.args;
       const attendu = this.args[3];
       if (/WHERE plans\.rev=/.test(sql) && world.row && world.row.rev !== attendu) {
@@ -1460,7 +1461,7 @@ function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main", avantE
   const putRest = (plan: DonneeDynamique, who = "b@example.com") => {
     world.row = { data: JSON.stringify(plan), rev: (world.row ? world.row.rev : 0) + 1, updated_by: who, updated_at: "2026-08-03T11:00:00Z" };
   };
-  return { room, kv, world, mkWs, sockets, putRest, alarm: () => alarmAt, setAlarm: (t: DonneeDynamique) => { alarmAt = t; } };
+  return { room, kv, world, mkWs, sockets, putRest, hooks, alarm: () => alarmAt, setAlarm: (t: DonneeDynamique) => { alarmAt = t; } };
 }
 
 // The complete scenario: the DO runs, everyone loses realtime, the REST fallback writes, realtime
@@ -1527,6 +1528,33 @@ function fakeD1Room({ data = null, by = "live", rev = 1, planId = "main", avantE
   ws.sent.length = 0;
   await messageSocket(f.room, ws, JSON.stringify({ t: "hello" }));
   ok(!ws.sent.some((m) => m.t === "conflict"), "le present n'est pas prevenu deux fois");
+}
+// ---- LE SNAPSHOT EST LUI AUSSI UN COMPARE-AND-SWAP ---------------------------------------------
+// `alarm()` faisait deux allers-retours : relire, puis ecrire SANS clause `WHERE`. Un PUT
+// compare-and-swap qui atterrit entre les deux gagnait (200 rendu au client) puis etait ecrase
+// par le snapshot, et `d1Seen` masquait la trace : le repli croyait avoir ecrit, la ligne ne
+// portait plus rien de lui, et rien ne le disait. Le snapshot swape donc sur la `rev` LUE.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", op: { kind: "cell.set", cellId: "c1", name: "Vu par le live" } }));
+  const perdu = sanitizeState(v5State());
+  perdu.cells[0].name = "Ecrit par le repli";
+  // La ligne bouge ENTRE le SELECT de la reconciliation et l'INSERT du snapshot, une seule fois.
+  let glisse = false;
+  f.hooks.avantEcriture = () => {
+    if (glisse) return;
+    glisse = true;
+    f.world.row = { data: JSON.stringify(perdu), rev: f.world.row.rev + 1, updated_by: "b@example.com", updated_at: "2026-08-03T11:30:00Z" };
+  };
+  ws.sent.length = 0;
+  await f.room.alarm();
+  ok(f.hooks.ecritures === 2, "le premier snapshot ne mord pas, un second est tente, vu " + f.hooks.ecritures);
+  ok(ws.sent.some((m) => m.t === "conflict" && m.by === "b@example.com"),
+    "l'ecriture glissee entre les deux est ANNONCEE, pas ecrasee en silence, vu " + JSON.stringify(ws.sent.map((m) => m.t)));
+  ok(JSON.parse(f.world.row.data).cells[0].name === "Vu par le live", "et le snapshot finit par passer");
+  ok(f.kv.get("d1seen") === strHash(f.world.row.data), "l'empreinte memorisee est celle qui est REELLEMENT en base");
 }
 // Adoption tells connected clients (a `state` message): no one is left on the old plan.
 {
