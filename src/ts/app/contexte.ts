@@ -92,6 +92,11 @@ export interface Gestes {
   supprimerMurClic?: (e: MouseEvent, wallId: string) => void;
   couperMurClic?: (e: MouseEvent, wallId: string) => void;
   redresserMurClic?: (e: MouseEvent, wallId: string) => void;
+  /** THE MERGE GLYPH at a weldable joint (owner: "if i split a wall, and then want to merge it
+   * back, how do i do it?"). Drawn where the endpoint handle would be if the end weren't already
+   * a joint (`rendu/calque.ts`), only when `v5WallMergeCandidate` says this end continues into
+   * exactly one collinear neighbour. */
+  fusionnerMurClic?: (e: MouseEvent, wallId: string, bout: "a" | "b") => void;
   /** Placing an object turns its layer back on (G-22, gestes/pose.ts): the toggles follow (js/28). */
   syncLayerToggles?: () => void;
   /** The rail drawer (js/09): an armed placement closes it, otherwise it covers what you're aiming at. */

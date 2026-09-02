@@ -934,6 +934,35 @@ function v5CouperMurSelectionne(ctx: Contexte): void {
   save(ctx);
 }
 
+/**
+ * WELD THE SELECTED WALL BACK INTO THE NEIGHBOUR IT CONTINUES. Owner's report, verbatim: "if i
+ * split a wall, and then want to 'merge it back' how do i do it?" Before this, only Ctrl+Z did:
+ * `v5WallMergeAt` existed but was only ever called by `v5RessouderJoints`, the automatic weld
+ * that closes a T after its bar is deleted.
+ *
+ * Same path as Couper: push history, merge, keep selection on the merged wall (it keeps
+ * `wallId`), rebuild the cells (a merge changes wall count, not room topology, but the cells are
+ * still derived from the walls), bound the furniture, touch, render, save.
+ */
+function v5FusionnerMurSelectionne(ctx: Contexte, bout: "a" | "b"): void {
+  const P = ctx.etat.plan;
+  const wallId = ctx.ihm.selWall;
+  if (!P || !wallId) return;
+  // Le bouton n'existe que la ou la fusion est legitime (meme garde que le redressement): ce
+  // refus n'est pas une porte fermee a l'usage, c'est la garde du chemin pour un identifiant
+  // perime d'une image a l'autre.
+  if (!v5WallMergeCandidate(P, String(wallId), bout)) return;
+  pushHistory(ctx);
+  const r = v5WallMergeAt(P, String(wallId), bout);
+  if ("refus" in r) return;
+  v5SelectWall(ctx, r.id);
+  v5RebuildCells(P);
+  bornerLesMeubles(ctx);
+  v5Touch(ctx);
+  render(ctx);
+  save(ctx);
+}
+
 // =================================================================================================
 //  TOOL 2: THE WALL TOOL, CLICK BY CLICK
 // =================================================================================================
@@ -1597,6 +1626,11 @@ export function brancherOutilsMurs(ctx: Contexte): void {
     e.preventDefault(); e.stopPropagation();
     if (String(ctx.ihm.selWall) !== String(wallId)) return;
     v5RedresserMurSelectionne(ctx);
+  };
+  ctx.gestes.fusionnerMurClic = (e, wallId, bout) => {
+    e.preventDefault(); e.stopPropagation();
+    if (String(ctx.ihm.selWall) !== String(wallId)) return;
+    v5FusionnerMurSelectionne(ctx, bout);
   };
 
   // EXACT LENGTH OF A PARTITION. We stretch the FREE end, not both: the other end is almost always

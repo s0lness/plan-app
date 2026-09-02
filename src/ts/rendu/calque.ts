@@ -16,7 +16,7 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
-import { v5BoutJoint, v5IndexAreteContour, v5MurDeTravers } from "../modele/edition.ts";
+import { v5BoutJoint, v5IndexAreteContour, v5MurDeTravers, v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
@@ -401,7 +401,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   // EVERY handle class belongs in this list, and forgetting one leaves ghosts on screen. `.v5wjoin`
   // was missing: the merge controls were never removed, so they piled up and survived the deletion
   // of the very wall they belonged to. Reported from real use as two "-" floating in mid-air.
-  layer.querySelectorAll(".vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit").forEach((n) => n.remove());
+  layer.querySelectorAll(".vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit,.v5wjoin").forEach((n) => n.remove());
   if (ctx.ihm.hoverWall && !(ctx.etat.plan.walls || []).some((w) => String(w.id) === String(ctx.ihm.hoverWall))) {
     ctx.ihm.hoverWall = null;
   }
@@ -505,8 +505,25 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   if (!w.isOutline) {
     (["a", "b"] as const).forEach((bout) => {
       // A JOINT IS NOT AN END. Something already holds this tip (another wall, its flank, the
-      // facade): offering a grip to stretch it would tear the junction open.
-      if (v5BoutJoint(ctx.etat.plan, w.id, bout)) return;
+      // facade): offering a grip to stretch it would tear the junction open. But a joint that
+      // continues into EXACTLY one collinear neighbour (`v5WallMergeCandidate`) can be soldered
+      // back, so the merge glyph takes the spot the endpoint handle would have used otherwise:
+      // owner's report, "if i split a wall, and then want to 'merge it back' how do i do it?".
+      if (v5BoutJoint(ctx.etat.plan, w.id, bout)) {
+        if (!v5WallMergeCandidate(ctx.etat.plan, w.id, bout)) return;
+        const s = toC(w[bout][0], w[bout][1]);
+        const j = document.createElement("div");
+        j.className = "v5wjoin";
+        j.dataset["w"] = String(w.id);
+        j.dataset["bout"] = bout;
+        j.style.cssText = boite(20);
+        j.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+          traits('<line x1="11.6" y1="11.6" x2="16" y2="16"/><line x1="20.4" y1="11.6" x2="16" y2="16"/>'));
+        j.title = "Weld this wall back into its neighbour";
+        j.addEventListener("click", (ev) => ctx.gestes.fusionnerMurClic?.(ev as MouseEvent, String(w.id), bout));
+        poser(j, s.x, s.y);
+        return;
+      }
       const s = toC(w[bout][0], w[bout][1]);
       const h = document.createElement("div");
       h.className = "v5wend";

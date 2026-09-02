@@ -41,7 +41,7 @@ import { meubleWallSnap } from "../src/ts/modele/espace.ts";
 import { oublierAvantAimant, rotationAimantee } from "../src/ts/modele/aimant-memoire.ts";
 import { outilMurALongueur, outilMurFin, outilMurNeuf, outilMurPoint } from "../src/ts/gestes/outil-mur.ts";
 import { angleVersPointeur } from "../src/ts/gestes/guides.ts";
-import { v5PlaceWallMount } from "../src/ts/modele/edition.ts";
+import { v5PlaceWallMount, v5WallMergeAt, v5WallMergeCandidate, v5WallSplitAt } from "../src/ts/modele/edition.ts";
 // Le lot « un mur va d'un point à un point » (0012) éprouve le PIPELINE, pas un helper: le module
 // entier est importé une fois, plutôt que six symboles nommés dont aucun n'a d'autre lecteur ici.
 import * as MURS from "../src/ts/gestes/murs.ts";
@@ -1523,6 +1523,34 @@ test("free_est_lu_en_entree_ignore_et_jamais_reecrit", () => {
       "le fil ne porte plus la clé `free`, vu " + JSON.stringify(w));
 });
 
+test("une_fenetre_survit_a_une_coupe_puis_a_un_ressoudage", () => {
+  // Le propriétaire: « if i split a wall, and then want to "merge it back" how do i do it? »
+  // `v5WallMergeAt` RÉPROJETTE chaque ouverture depuis le mur qui la porte au moment de la fusion,
+  // plutôt que d'additionner des longueurs (qui suppose les deux moitiés dans le même sens): ce
+  // test vérifie que la fenêtre revient exactement à sa place d'avant la coupe, une fois les deux
+  // moitiés ressoudées en une seule paroi.
+  const P: PlanV5 = {
+    outline: [[0, 0], [500, 0], [500, 300], [0, 300]],
+    walls: [{ id: "w1", a: [0, 150], b: [500, 150], t: 10, isOutline: false }],
+    openings: [{ id: "o1", wallId: "w1", t0: 300, w: 60, h: 12, type: "window", side: 0, name: "Fenêtre" } as Ouverture],
+    pieces: [], cells: [],
+  };
+  const div = v5WallSplitAt(P, "w1");
+  expect("id" in div, "la coupe doit réussir, vu " + JSON.stringify(div));
+  if (!("id" in div)) return;
+  expect(P.walls.length === 2, "deux moitiés après la coupe, vu " + P.walls.length);
+  // La coupe est au milieu (x=250): la fenêtre (t0=300) est au-delà, donc bascule sur la SECONDE
+  // moitié à t0=50. C'est précisément ce cas (l'ouverture n'est plus portée par le mur qui garde
+  // son bout `a`) qui force `v5WallMergeAt` à reprojeter plutôt qu'à recopier `t0` tel quel.
+  expect(String(P.openings[0]!.wallId) === String(div.id) && P.openings[0]!.t0 === 50,
+    "la fenêtre bascule sur la seconde moitié à t0=50, vu " + JSON.stringify(P.openings[0]));
+  expect(!!v5WallMergeCandidate(P, "w1", "b"), "le bout b de la première moitié doit être un candidat à la fusion");
+  const fusion = v5WallMergeAt(P, "w1", "b");
+  expect("id" in fusion, "la fusion doit réussir, vu " + JSON.stringify(fusion));
+  expect(P.walls.length === 1, "une seule paroi après ressoudage, vu " + P.walls.length);
+  return expect(P.openings.length === 1 && P.openings[0]!.t0 === 300 && String(P.openings[0]!.wallId) === "w1",
+    "la fenêtre est de retour à t0=300 sur w1, vu " + JSON.stringify(P.openings[0]));
+});
 
 // =================================================================================================
 //  ROTATION HANDLE: PURE GEOMETRY (decision 0013)
