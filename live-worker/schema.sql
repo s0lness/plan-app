@@ -14,8 +14,13 @@
 -- The household's plan. A SINGLE row, id='main'.
 --   data       : the complete state serialized as JSON (v4 shape {rooms,envelope} or v5
 --                {outline,walls,openings,pieces,cells}, cf. ops.ts / sanitizeState).
---   rev        : write counter. Informative, this is NOT a lock: the last writer wins. The rev
---                that is authoritative for live clients is the Durable Object's, not this one.
+--   rev        : write counter, AND the lock. Both writers compare-and-swap on it in a single
+--                statement (`ON CONFLICT(id) DO UPDATE ... WHERE plans.rev=?`, verdict read from
+--                `meta.changes`): the REST fallback since docs/decisions/0003, the Durable
+--                Object's snapshot since it stopped writing blind. The last writer no longer
+--                wins; the one whose revision moved under it is refused and rereads.
+--                Live clients compare CONTENT (`fp`), never this number: the Durable Object's own
+--                `opCount` counts something else entirely (cf. live-worker/worker.ts).
 --   updated_by : 'live' when the write comes from the Durable Object's snapshot, otherwise the
 --                Access email of the author (write from functions/api/plan.ts).
 CREATE TABLE IF NOT EXISTS plans(

@@ -255,10 +255,13 @@ const OPCOUNT_KEY_OLD = "rev";
 //     of a missed deduplication is an op applied twice, so nothing.
 // It is therefore bounded by the number of sockets, plus a safety margin in case a `close` was missed.
 const SEQ_MAX_ENTRIES = 64;
-// Window width above the last CONTIGUOUS number. A simple "highest number seen" was not enough:
-// under reordering, a legitimate op arriving late would pass for a duplicate and be DROPPED. We
-// therefore keep the numbers seen above the contiguous one, up to this width; beyond it, we
-// consider the gap final and close the window on the highest one.
+// How many numbers a socket's "already applied" set remembers at once. It is a plain sliding set
+// of the numbers SEEN, with no notion of contiguity at all: the oldest entry drops out once the set
+// is full, whatever its value. There is no "last contiguous number" anywhere in this code, and
+// there must not be, because an unknown `tag` would then have to DECLARE that everything below
+// has been seen, which is false the moment a socket's very first frame is lost (see `seqOf`).
+// Falling out of the window costs a reapplication of an op 64 sends old, which is nothing: ops
+// are idempotent. Gaps are measured separately, on `max`, the highest number APPLIED.
 const SEQ_WINDOW = 64;
 
 // ---- PER-TOKEN RATE CAP (design edge 15) --------------------------------------------------------

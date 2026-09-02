@@ -1,6 +1,9 @@
 // Pure logic for applying/validating ops on the canonical plan (TypeScript source).
 // No Cloudflare/DO dependency: testable under node.
-// All ops are idempotent (set of whole entities), so the echo is risk-free.
+// EVERY op is idempotent (each sets a WHOLE entity), so the echo, a replay and a re-emission
+// after a `gap` are all risk-free. This was not true while `rooms.merge` existed: it APPENDED,
+// so replaying it duplicated its rooms. It has been removed (no client emitted it), and the
+// property is now the rule the wire depends on rather than an approximation of it.
 
 export type Point = [number, number];
 
@@ -865,15 +868,6 @@ function findRoom(plan: PlanState, roomId: string): LegacyRoom {
   return r;
 }
 
-// Generates a fresh id unique within the plan (for a merge in case of collision).
-function freshId(existing: Set<string>, base: string): string {
-  let id = base;
-  let n = 1;
-  while (existing.has(id)) id = base + "-" + n++;
-  existing.add(id);
-  return id;
-}
-
 // ---- applying ops ----
 // Mutates and returns `plan` (the caller has already cloned the state before calling applyOp
 // if it wants immutability; here we mutate in place, the DO caller stores the result).
@@ -885,9 +879,14 @@ function freshId(existing: Set<string>, base: string): string {
 // `piece.front` was REMOVED from both sets and both dispatch tables: no client emits it
 // (exhaustive census of the client's `wsSend`/`wsSendOp`: op, cursor, drag, chat, ping, hello).
 // The client keeps a RECEIVE branch for it, also dead, to be removed client-side.
+// `rooms.merge` was REMOVED from this set and from the dispatch table, like `piece.front` before
+// it: no client emits it (exhaustive search of `src/ts` for the kind: not one call site), and it
+// was the ONE op on this wire that was not idempotent, since it APPENDED its rooms and renamed
+// colliding ids. Replayed by the echo, or re-emitted after a `gap`, it duplicated every room it
+// carried. Removed rather than made idempotent: an op nobody sends does not need a contract.
 const V4_KINDS = new Set([
   "piece.set", "piece.del", "room.add", "room.del", "room.set",
-  "plan.replace", "rooms.merge", "env.set", "env.del", "env.piece.set", "env.piece.del",
+  "plan.replace", "env.set", "env.del", "env.piece.set", "env.piece.del",
 ]);
 const V5_KINDS = new Set([
   "piece.set", "piece.del", "outline.set", "wall.set", "wall.del",
@@ -909,7 +908,6 @@ export const OP_KEYS: Record<string, string[]> = {
   "room.del": ["roomId"],
   "room.set": ["roomId", "name", "floor", "ax", "ay", "poly"],
   "plan.replace": ["state"],
-  "rooms.merge": ["rooms"],
   "env.set": ["poly", "floor"],
   "env.del": [],
   "env.piece.set": ["piece"],
@@ -1081,22 +1079,6 @@ function applyOpV4(plan: PlanState, op: Operation): PlanState {
       if (!isStr(op.pieceId)) throw new OpError("piece_id");
       if (!Array.isArray(plan.envelope.pieces)) plan.envelope.pieces = [];
       plan.envelope.pieces = plan.envelope.pieces.filter((p) => p.id !== op.pieceId);
-      return plan;
-    }
-    case "rooms.merge": {
-      if (!Array.isArray(op.rooms)) throw new OpError("merge_rooms");
-      const ids = new Set(plan.rooms.map((r) => r.id));
-      // Everything is validated and re-identified BEFORE the first insertion: an invalid room in
-      // third position must not leave the first two in the shared plan.
-      const merged = [];
-      for (const raw of op.rooms) {
-        const room = validateRoom(raw);
-        if (ids.has(room.id)) room.id = freshId(ids, room.id);
-        else ids.add(room.id);
-        merged.push(room);
-      }
-      if (plan.rooms.length + merged.length > MAX_ENTITIES) throw new OpError("rooms_max");
-      for (const room of merged) plan.rooms.push(room);
       return plan;
     }
     default:

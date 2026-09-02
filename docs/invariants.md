@@ -567,7 +567,8 @@ written with the field-by-field diff.
 ### C-19. A refused op leaves no trace, and a failed write is rolled back
 **Guarantees** `applyOp(structuredClone(plan), op)` works on a copy; size is checked **before** any
 write; a `storage.put()` failure restores both the plan **and** the op counter.
-**Prevents** `cell.set`, `env.set`, `room.set`, and `rooms.merge` used to leave an **incomplete**
+**Prevents** `cell.set`, `env.set`, `room.set`, and `rooms.merge` (an op since removed: no client
+emitted it, and it was the only non-idempotent one) used to leave an **incomplete**
 entity, later persisted by the next op, which made **any subsequent cold load** fail (a cell with
 `poly:[]` born from a name that was too long). And a mutation accepted then rejected by
 `storage.put()` let the exception escape `webSocketMessage`, with no error for the client, no

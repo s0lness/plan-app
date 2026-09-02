@@ -150,16 +150,11 @@ ok(plan.setupDone === false, "plan.replace setupDone");
 ok(!("opts" in plan) && !("active" in plan), "plan.replace strips opts/active");
 throws(() => applyOp(freshPlan(), { kind: "plan.replace", state: { rooms: "nope" } }), "plan.replace bad shape");
 
-// ---- rooms.merge ----
-plan = freshPlan();
-applyOp(plan, { kind: "rooms.merge", rooms: [
-  { id: "r1", name: "Collision", floor: 0, room: { poly: poly() }, pieces: [] }, // collision -> fresh id
-  { id: "r5", name: "Neuf", floor: 0, room: { poly: poly() }, pieces: [] },
-] });
-ok(plan.rooms.length === 3, "rooms.merge appends both");
-ok(plan.rooms.some((r) => r.id === "r5"), "rooms.merge keeps free id");
-ok(plan.rooms.filter((r) => r.id === "r1").length === 1, "rooms.merge reids collision");
-throws(() => applyOp(freshPlan(), { kind: "rooms.merge", rooms: "nope" }), "rooms.merge bad arg");
+// ---- rooms.merge : OP RETIREE ----------------------------------------------------------------
+// Aucun client ne l'emettait (recherche exhaustive du genre dans `src/ts` : zero site d'appel), et
+// c'etait la seule op non idempotente du fil (elle AJOUTAIT ses salles et renommait les ids en
+// collision), donc rejouee par l'echo ou re-emise apres un `gap` elle dupliquait tout.
+throws(() => applyOp(freshPlan(), { kind: "rooms.merge", rooms: [] }), "rooms.merge n'existe plus (genre inconnu)");
 
 // ---- sanitizeState directly ----
 const clean = sanitizeState({ rooms: [{ id: "s1", name: "S", floor: 0, room: { poly: poly() }, pieces: [piece()] }], setupDone: true, opts: {}, active: 1 });
@@ -439,7 +434,6 @@ shapeErr(() => applyOp(freshV5(), { kind: "plan.replace", state: freshPlan() }),
 shapeErr(() => applyOp(freshV5(), { kind: "room.add", room: { id: "r9", name: "X", floor: 0, room: { poly: poly() }, pieces: [] } }), "v4 room.add on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "room.set", roomId: "r1", name: "X" }), "v4 room.set on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "room.del", roomId: "r1" }), "v4 room.del on v5");
-shapeErr(() => applyOp(freshV5(), { kind: "rooms.merge", rooms: [] }), "v4 rooms.merge on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "env.set", poly: envPoly() }), "v4 env.set on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "env.del" }), "v4 env.del on v5");
 shapeErr(() => applyOp(freshV5(), { kind: "env.piece.set", piece: piece() }), "v4 env.piece.set on v5");
@@ -644,9 +638,6 @@ const V4_BAD = [
   ["env.set poly invalide", { kind: "env.set", poly: [[0, 0], [1, 1]] }],
   ["env.set poly hors bornes", { kind: "env.set", poly: [[0, 0], [1e308, 0], [0, 1]] }],
   ["env.piece.set sans enveloppe", { kind: "env.piece.set", piece: piece() }],
-  ["rooms.merge argument non-tableau", { kind: "rooms.merge", rooms: "nope" }],
-  ["rooms.merge 2e salle invalide", { kind: "rooms.merge", rooms: [
-    { id: "ok1", room: { poly: poly() } }, { id: "ko", room: { poly: [[0, 0]] } }] }],
   ["op v5 sur état v4", { kind: "wall.set", wall: wall() }],
   ["kind inconnu", { kind: "nope" }],
   ["op nulle", null],
