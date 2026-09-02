@@ -6,9 +6,9 @@ Everything runs through **ONE single command**:
 node tests/all.ts
 ```
 
-36 suites run in parallel on the development machine. The total check count is printed by
-the launcher: several suites have gained cases since the historical measurement of 2026-08-05. Nonzero exit
-code as soon as one suite fails; only the FAILURE detail is reprinted.
+Every suite shown by `node tests/all.ts --list` runs in parallel on the development machine. The
+launcher prints the current check count. A nonzero exit code follows as soon as one suite fails;
+only the FAILURE detail is reprinted.
 
 ```
 node tests/all.ts --list        # list the suites
@@ -19,7 +19,8 @@ node tests/all.ts --repeat 5    # replay the whole barrier 5 times (stability pr
 PLAN_TESTS_PRIORITE=normale node tests/all.ts   # normal priority: used to REPLAY the measurement
 ```
 
-- `node` must be on PATH
+- The launcher may use an absolute Node path; suites inherit it through `process.execPath`.
+- The barrier runs both TypeScript configurations before reporting green.
 - Default path of the application under test: `index.html` of the repo (produced by `node build.ts`).
 
 **Never run the suites one by one by hand.** The launcher gives each suite a PRIVATE `%TEMP%`,

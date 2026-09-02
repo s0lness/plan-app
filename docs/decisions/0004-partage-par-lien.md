@@ -1,6 +1,6 @@
 # 0004 - Sharing a plan by link: two doors, one deliverable
 
-Status: PROPOSED, 2026-08-13. Not implemented.
+Status: IMPLEMENTED (2026-08-13).
 
 ## Context
 

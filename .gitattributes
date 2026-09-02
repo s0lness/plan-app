@@ -1,3 +1,6 @@
+* text=auto eol=lf
+*.png binary
+
 # Keep built artifacts out of the language statistics and collapse them in diffs.
 # They stay committed and served: index.html IS this project's static deliverable.
 index.html        linguist-generated=true

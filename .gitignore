@@ -27,8 +27,8 @@ live-worker/dist/
 
 # `index.html` is NOT ignored, and that is deliberate: Pages serves the root as static
 # content, with no Cloudflare-side build step, so the deliverable MUST be committed. It is
-# produced by `node build.mjs` (typed client, src/ts) and is never hand-edited;
-# `node build.mjs --check` verifies it.
+# produced by `node build.ts` (typed client, src/ts) and is never hand-edited;
+# `node build.ts --check` verifies it.
 #
 # Since the switchover (batch E5c), `index-next.html` no longer exists: the typed client IS
 # `index.html`. What remains ignored is only the tuning artifact, unminified and never served.

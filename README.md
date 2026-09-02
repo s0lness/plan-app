@@ -74,7 +74,7 @@ For a change touching data, geometry or synchronization, run the whole
 pre-deploy barrier, which is the project's only gate:
 
 ```
-node tests/all.ts        # 36 suites, 4 557 checks
+node tests/all.ts        # current list: node tests/all.ts --list
 ```
 
 Most suites drive a real Chrome and currently expect it at the standard Windows
