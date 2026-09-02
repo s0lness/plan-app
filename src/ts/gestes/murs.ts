@@ -61,6 +61,7 @@ import {
   v5DerivedId,
 } from "../modele/edition.ts";
 import { render } from "../rendu/rendu.ts";
+import { SEL_POIGNEES } from "../rendu/calque.ts";
 import { syncCellCard } from "../rendu/fiche-cellule.ts";
 import { aptToScreen, evtApt, fitView } from "../rendu/vue.ts";
 import { resolveColor } from "../rendu/couleurs.ts";
@@ -193,10 +194,6 @@ export function v5ClearDims(ctx: Contexte): void {
   ctx.canvas.querySelectorAll(".v5dimwrap").forEach((n) => n.remove());
 }
 
-/**
- * A wall's dimension, at the segment's midpoint. `t` (the thickness) was never read by `v5Seg`: the
- * callers that used to pass `{a,b,t:WALL}` now pass `{a,b}`, which changes nothing.
- */
 /**
  * The walls that TOUCH `w` at one end, outline walls included.
  *
@@ -1554,7 +1551,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (e.button !== undefined && e.button !== 0) return;
   const t = e.target as Element | null;
   if (ctx.ihm.draw) { v5OutilMurAppui(ctx, e); return; }
-  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit,.v5wjoin")) return;
+  if (t && t.closest && t.closest(".piece," + SEL_POIGNEES)) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
   if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], true); return; }
 }

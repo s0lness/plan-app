@@ -38,6 +38,15 @@ export const focusEl = (ctx: Contexte): HTMLElement | null =>
 const survolBranche = new WeakSet<Contexte>();
 
 /**
+ * EVERY HANDLE CLASS, IN ONE PLACE. Four call sites need this list (the removal sweep at the top of
+ * `drawHandles`, the hover test below, `gestes/murs.ts`'s capture guard and the touch long-press in
+ * `gestes/vue-interactions.ts`), and they were four hand-kept copies. `.v5wjoin` was missing from
+ * one of them, so the merge controls were never removed and piled up until they outlived the wall
+ * they belonged to: two "-" floating in mid-air, reported from real use.
+ */
+export const SEL_POIGNEES = ".vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit,.v5wjoin";
+
+/**
  * THE WALL UNDER THE POINTER, DECIDED BY GEOMETRY. A transparent DOM band would join the hit-test
  * stack and could cover the furniture that is visibly painted above the wall; measuring the
  * distance to each segment cannot. The reach is half a thickness, or 7 px, whichever is larger:
@@ -80,7 +89,7 @@ function brancherSurvolMurs(ctx: Contexte): void {
     const t = ev.target instanceof Element ? ev.target : null;
     // What is painted above the wall owns the pointer where it is painted; and with the tool armed
     // the whole plan is drawing space, so nothing is "clickable" in the hover sense.
-    const pris = !!t?.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit,.v5wjoin");
+    const pris = !!t?.closest(".piece," + SEL_POIGNEES);
     const id = (ctx.ihm.draw || pris) ? null : murSousLePointeur(ctx, ev);
     if (ctx.ihm.hoverWall === id) return;
     ctx.ihm.hoverWall = id;
@@ -401,10 +410,7 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
  * 16 pieces of furniture.
  */
 export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
-  // EVERY handle class belongs in this list, and forgetting one leaves ghosts on screen. `.v5wjoin`
-  // was missing: the merge controls were never removed, so they piled up and survived the deletion
-  // of the very wall they belonged to. Reported from real use as two "-" floating in mid-air.
-  layer.querySelectorAll(".vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit,.v5wjoin").forEach((n) => n.remove());
+  layer.querySelectorAll(SEL_POIGNEES).forEach((n) => n.remove());
   // LES MURS SONT INDEXES UNE FOIS PAR IMAGE. Cette fonction faisait trois `walls.find` de plus un
   // `find` par arete de contour, a chaque image d'un geste; sur un plan qui approche le plafond du
   // serveur (2000 murs) c'est le balayage qui coute, pas les poignees.
@@ -505,12 +511,28 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     el.style.top = y + "px";
     layer.appendChild(el);
   };
-  const move = document.createElement("div");
-  move.className = "v5wmove";
-  move.dataset["w"] = String(w.id);
-  move.style.cssText = boite(20);
-  move.innerHTML = disque(9, "var(--accent)", "var(--room-bg)");
-  move.title = w.isOutline ? "Click to select this facade" : "Drag to move this wall";
+  // ONE SHAPE FOR ALL SIX CONTROLS. Move, the two endpoints, weld, delete, split and square up were
+  // six copies of the same eight lines (class, identity tag, box, disc, title, listener); only the
+  // glyph, the size and the act ever differed. The node they build is the same, attribute for
+  // attribute, which is what lets them share a builder.
+  const bouton = (cls: string, titre: string, base: number, svg: string, bout?: "a" | "b"): HTMLElement => {
+    const el = document.createElement("div");
+    el.className = cls;
+    el.dataset["w"] = String(w.id);
+    if (bout) el.dataset["bout"] = bout;
+    el.style.cssText = boite(base);
+    el.innerHTML = svg;
+    el.title = titre;
+    return el;
+  };
+  /** A CLICK COMMAND on the wall (weld, delete, split, square up): accent disc, white glyph. */
+  const commande = (cls: string, titre: string, d: string, agir: (ev: MouseEvent) => void, bout?: "a" | "b"): HTMLElement => {
+    const el = bouton(cls, titre, 20, disque(9, "var(--accent)", "var(--room-bg)", traits(d)), bout);
+    el.addEventListener("click", (ev) => agir(ev as MouseEvent));
+    return el;
+  };
+  const move = bouton("v5wmove", w.isOutline ? "Click to select this facade" : "Drag to move this wall",
+    20, disque(9, "var(--accent)", "var(--room-bg)"));
   move.addEventListener("pointerdown", (ev) => ctx.gestes.deplacerMurPointerDown?.(ev as PointerEvent, String(w.id)));
   poser(move, sMid.x, sMid.y);
   // A FACADE HAS NO ENDPOINT HANDLE: its ends are the outline's CORNERS, which already carry their
@@ -525,26 +547,14 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
       if (v5BoutJoint(ctx.etat.plan, w.id, bout)) {
         if (!v5WallMergeCandidate(ctx.etat.plan, w.id, bout)) return;
         const s = toC(w[bout][0], w[bout][1]);
-        const j = document.createElement("div");
-        j.className = "v5wjoin";
-        j.dataset["w"] = String(w.id);
-        j.dataset["bout"] = bout;
-        j.style.cssText = boite(20);
-        j.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
-          traits('<line x1="11.6" y1="16" x2="20.4" y2="16"/>'));
-        j.title = "Weld this wall back into its neighbour";
-        j.addEventListener("click", (ev) => ctx.gestes.fusionnerMurClic?.(ev as MouseEvent, String(w.id), bout));
-        poser(j, s.x, s.y);
+        poser(commande("v5wjoin", "Weld this wall back into its neighbour",
+          '<line x1="11.6" y1="16" x2="20.4" y2="16"/>',
+          (ev) => ctx.gestes.fusionnerMurClic?.(ev, String(w.id), bout), bout), s.x, s.y);
         return;
       }
       const s = toC(w[bout][0], w[bout][1]);
-      const h = document.createElement("div");
-      h.className = "v5wend";
-      h.dataset["w"] = String(w.id);
-      h.dataset["bout"] = bout;
-      h.style.cssText = boite(16);
-      h.innerHTML = disque(7, "var(--room-bg)", "var(--accent)");
-      h.title = "Drag to extend this wall, or connect it to another";
+      const h = bouton("v5wend", "Drag to extend this wall, or connect it to another",
+        16, disque(7, "var(--room-bg)", "var(--accent)"), bout);
       h.addEventListener("pointerdown", (ev) => ctx.gestes.boutMurPointerDown?.(ev as PointerEvent, String(w.id), bout));
       poser(h, s.x, s.y);
     });
@@ -568,39 +578,21 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   // DELETE: never on a facade (C-13, it is derived from the outline and cannot be deleted; a
   // button that would only refuse teaches nothing).
   if (!w.isOutline) {
-    const x = document.createElement("div");
-    x.className = "v5wx";
-    x.dataset["w"] = String(w.id);
-    x.style.cssText = boite(20);
-    x.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
-      traits('<line x1="12.9" y1="12.9" x2="19.1" y2="19.1"/><line x1="19.1" y1="12.9" x2="12.9" y2="19.1"/>'));
-    x.title = "Delete this wall (the two rooms merge)";
-    x.addEventListener("click", (ev) => ctx.gestes.supprimerMurClic?.(ev as MouseEvent, String(w.id)));
-    poser(x, sMid.x + nx * off, sMid.y + ny * off);
+    poser(commande("v5wx", "Delete this wall (the two rooms merge)",
+      '<line x1="12.9" y1="12.9" x2="19.1" y2="19.1"/><line x1="19.1" y1="12.9" x2="12.9" y2="19.1"/>',
+      (ev) => ctx.gestes.supprimerMurClic?.(ev, String(w.id))), sMid.x + nx * off, sMid.y + ny * off);
   }
   // SPLIT: on the OPPOSITE side of the normal from delete, so the pair never disputes a pixel. A
   // facade carries it too (it inserts an outline corner, `v5CouperMurSelectionne`).
-  const coupe = document.createElement("div");
-  coupe.className = "v5wmid";
-  coupe.dataset["w"] = String(w.id);
-  coupe.style.cssText = boite(20);
-  coupe.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
-    traits('<line x1="16" y1="11.6" x2="16" y2="20.4"/><line x1="11.6" y1="16" x2="20.4" y2="16"/>'));
-  coupe.title = w.isOutline ? "Split this facade in two here" : "Split this wall in two here";
-  coupe.addEventListener("click", (ev) => ctx.gestes.couperMurClic?.(ev as MouseEvent, String(w.id)));
-  poser(coupe, sMid.x - nx * off, sMid.y - ny * off);
+  poser(commande("v5wmid", w.isOutline ? "Split this facade in two here" : "Split this wall in two here",
+    '<line x1="16" y1="11.6" x2="16" y2="20.4"/><line x1="11.6" y1="16" x2="20.4" y2="16"/>',
+    (ev) => ctx.gestes.couperMurClic?.(ev, String(w.id))), sMid.x - nx * off, sMid.y - ny * off);
   // SQUARE UP: a notch further out, on the DELETE side, and only where the model says the wall is
   // actually crooked (`v5MurDeTravers`): a button that appears and then refuses teaches nothing.
   if (!w.isOutline && v5MurDeTravers(ctx.etat.plan, w.id)) {
-    const eq = document.createElement("div");
-    eq.className = "v5wdroit";
-    eq.dataset["w"] = String(w.id);
-    eq.style.cssText = boite(20);
-    eq.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
-      traits('<path d="M11.2 10 L11.2 21 L22.2 21"/><path d="M15.8 21 L15.8 16.4 L20.4 16.4" stroke-width="1.3" opacity=".75"/>'));
-    eq.title = "Square this wall up (it is slightly off)";
-    eq.addEventListener("click", (ev) => ctx.gestes.redresserMurClic?.(ev as MouseEvent, String(w.id)));
-    poser(eq, sMid.x + nx * off * 2, sMid.y + ny * off * 2);
+    poser(commande("v5wdroit", "Square this wall up (it is slightly off)",
+      '<path d="M11.2 10 L11.2 21 L22.2 21"/><path d="M15.8 21 L15.8 16.4 L20.4 16.4" stroke-width="1.3" opacity=".75"/>',
+      (ev) => ctx.gestes.redresserMurClic?.(ev, String(w.id))), sMid.x + nx * off * 2, sMid.y + ny * off * 2);
   }
 }
 
