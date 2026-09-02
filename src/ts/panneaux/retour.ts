@@ -47,7 +47,6 @@ async function envoyer(): Promise<void> {
 
   _envoiEnCours = true;
   if (btn) btn.disabled = true;
-  dire("Sending…");
   try {
     const r = await fetch(avecPlan(FEEDBACK_URL), {
       method: "POST",
@@ -58,16 +57,13 @@ async function envoyer(): Promise<void> {
         ua: (typeof navigator !== "undefined" && navigator.userAgent) || "",
       }),
     });
-    if (!r.ok) {
-      dire("Could not send (" + r.status + "). Your text is still here: try again, or copy it.", true);
-      return;
-    }
-    dire("Sent. Thank you.");
+    if (!r.ok) throw r;
+    // The dialog closing IS the confirmation (decision 0014, "l'app se tait"): no banner first.
     if (ta) ta.value = "";
     if (contactEl) contactEl.value = "";
-    setTimeout(fermerRetour, 900);
+    setTimeout(fermerRetour, 300);
   } catch (_) {
-    dire("Could not reach the server. Your text is still here: try again, or copy it.", true);
+    dire("Could not send: check your connection. Your text is still here: try again, or copy it.", true);
   } finally {
     _envoiEnCours = false;
     if (btn) btn.disabled = false;

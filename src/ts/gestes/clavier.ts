@@ -25,7 +25,7 @@ import { $ } from "../noyau/dom.ts";
 import { clamp, v5R2 } from "../noyau/nombres.ts";
 import { v5OpeningBox, v5Seg } from "../modele/murs.ts";
 import { WALL } from "../noyau/nombres.ts";
-import { v5LastFit, v5PasteWallMount, v5ResolveOpening } from "../modele/edition.ts";
+import { v5PasteWallMount, v5ResolveOpening } from "../modele/edition.ts";
 import { autoName, fabriqueOuverture, mk } from "../modele/creation.ts";
 import { wallSnapReach } from "../modele/espace.ts";
 import { v5NewId } from "../fil/identite.ts";
@@ -136,11 +136,10 @@ export function planCopy(ctx: Contexte, couper: boolean): number {
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).catch(() => { /* see above */ });
   } catch (_) { /* see above */ }
   if (couper) delSel(ctx);           // same rule as Delete: the entire selection leaves
-  const n = items.length;
-  toast(couper
-    ? (n === 1 ? "1 object cut. Ctrl+V puts it back." : `${n} objects cut. Ctrl+V puts them back.`)
-    : (n === 1 ? "1 object copied. Ctrl+V pastes it." : `${n} objects copied. Ctrl+V pastes them.`), { geste: true });
-  return n;
+  // No confirmation (decision 0014, "l'app se tait"): a cut already shows itself (the
+  // selection leaves the drawing); a copy leaves nothing to see, and stays silent anyway, on
+  // the same footing as every other confirmation this lot removed.
+  return items.length;
 }
 
 /**
@@ -175,21 +174,9 @@ export function planPaste(ctx: Contexte): number {
     ctx.etat.plan.pieces.push(p);
     meubles.push(p); voulus.push({ x: p.x, y: p.y }); neufs.push(String(p.id));
   });
-  // G-24. Two truths to measure AFTER bounding, because they don't get stated the same way:
-  //   - a TRANSLATION of the whole group keeps the promised relative layout, but moves the
-  //     paste away from the requested point;
-  //   - a DEFORMATION (each object bounded on its own) BREAKS that promise.
-  let deborde = false, recale = 0, deforme = false;
-  if (meubles.length) {
-    unstackGroup(ctx, meubles, voulus);
-    deborde = !v5LastFit();
-    const d0 = { x: meubles[0]!.x - voulus[0]!.x, y: meubles[0]!.y - voulus[0]!.y };
-    meubles.forEach((p, i) => {
-      const d = { x: p.x - voulus[i]!.x, y: p.y - voulus[i]!.y };
-      if (Math.abs(d.x - d0.x) > 1 || Math.abs(d.y - d0.y) > 1) deforme = true;
-    });
-    recale = Math.round(Math.hypot(d0.x, d0.y));
-  }
+  // Bounding a pasted group back inside a room, or shifting it to fit, is a repair: it shows in
+  // the drawing (decision 0014, "l'app se tait"), it no longer needs its own banner.
+  if (meubles.length) unstackGroup(ctx, meubles, voulus);
   v5Touch(ctx);
   ctx.selection.ids.clear(); neufs.forEach((id) => ctx.selection.ids.add(id));
   let primaire: string | null = null;
@@ -197,20 +184,17 @@ export function planPaste(ctx: Contexte): number {
   ctx.selection.primaire = primaire;
   render(ctx); if (neufs.length) ctx.crochets.openInspector?.();
   save(ctx);
-  // Nothing happens in silence: whatever got refused, unlocked or pushed back gets SAID.
+  // What has no other visible sign still gets said: a locked object born unlocked would
+  // otherwise look immovable with no explanation, and what did NOT get pasted needs a reason.
   const dits: string[] = [];
-  if (neufs.length) dits.push(neufs.length === 1 ? "1 object pasted." : `${neufs.length} objects pasted.`);
   if (planClip.verrous) dits.push(planClip.verrous === 1
     ? "The locked object was pasted UNLOCKED."
     : "The locked objects were pasted UNLOCKED.");
   if (sansMur) dits.push(sansMur === 1
     ? "1 wall-mounted object was not pasted: no wall within reach of the paste point."
     : `${sansMur} wall-mounted objects were not pasted: no wall within reach of the paste point.`);
-  if (deforme) dits.push("The layout could not be kept here: each object was brought back inside a room.");
-  else if (recale > 20) dits.push(`The paste was shifted by ${recale} cm to fit inside the plan.`);
-  if (deborde) dits.push("A pasted object sticks out of its room.");
   if (!neufs.length && !sansMur) dits.push("Nothing could be pasted.");
-  toast(dits.join(" "), { geste: true });
+  if (dits.length) toast(dits.join(" "), { geste: true });
   return neufs.length;
 }
 
@@ -323,7 +307,7 @@ export function brancherClavier(ctx: Contexte): void {
     // G-22. ARMED PLACEMENT (touch only, decision 0013): Escape abandons it. Placing at the view's
     // center through a bare Enter is gone; the object is placed where it was aimed, on the plan.
     if (!typing && poseArme() && e.key === "Escape") {
-      e.preventDefault(); annulerPoseArmee(ctx, "Drop cancelled."); return;
+      e.preventDefault(); annulerPoseArmee(ctx, "Placement cancelled."); return;
     }
     // D (held), WALL ONLY (decision 0013): show the hovered or selected wall's live length and
     // clearances. `!dTenue` makes the OS key-repeat a no-op (the guides are already up);

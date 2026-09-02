@@ -10,10 +10,8 @@
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Meuble, Ouverture } from "../partage/plan.ts";
-import { pieceById, v5OpeningById, v5Touch, v5WallById } from "../app/contexte.ts";
-import { TYPEMAP, isSideable } from "../catalogue/catalogue.ts";
-import { WALL } from "../noyau/nombres.ts";
-import { v5CellsAt, v5OpeningBox, v5Seg } from "../modele/murs.ts";
+import { pieceById, v5OpeningById, v5Touch } from "../app/contexte.ts";
+import { isSideable } from "../catalogue/catalogue.ts";
 import { v5ClampPiece, v5OpeningBlockerOnSide } from "../modele/edition.ts";
 import { autoName } from "../modele/creation.ts";
 import { prochainUid } from "../modele/lecture-v4.ts";
@@ -44,16 +42,6 @@ export function delSel(ctx: Contexte): void {
   clearSel(ctx); ctx.crochets.hideInspector?.(); render(ctx);
 }
 
-/** Do BOTH faces of the mounting wall open onto a cell? If not, the object faces outside. */
-function wallMountBothSidesLive(ctx: Contexte, p: Ouverture): boolean {
-  if (!p || p.wallId === undefined) return true;
-  const w = v5WallById(ctx, p.wallId); if (!w) return true;
-  const s = v5Seg(w), b = v5OpeningBox(ctx.etat.plan, p, (TYPEMAP[p.type] || { h: WALL }).h || WALL); if (!b) return true;
-  const off = WALL / 2 + 6;
-  return !!v5CellsAt(ctx.etat.plan, b.cx - s.uy * off, b.cy + s.ux * off)
-    && !!v5CellsAt(ctx.etat.plan, b.cx + s.uy * off, b.cy - s.ux * off);
-}
-
 /**
  * "Flip side": put the object on the OTHER face of its wall (the opening's `side`; no
  * new field, the server locks down the allowed keys).
@@ -73,9 +61,6 @@ export function flipWallMountSide(ctx: Contexte, p: Ouverture | Meuble | undefin
   }
   pushHistory(ctx);
   o.side = o.side ? 0 : 1; v5Touch(ctx);
-  if (!wallMountBothSidesLive(ctx, o)) {
-    toast("This wall faces outside: the object now looks out of the flat.", { geste: true });
-  }
   render(ctx); ctx.crochets.syncInspector?.(); save(ctx);
   return true;
 }
