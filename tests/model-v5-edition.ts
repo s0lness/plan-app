@@ -204,30 +204,27 @@ await test("v5_pointer_drag_furniture_on_layer", "", `
 // =============================================================================
 //  14. INSPECTOR: NO BUTTON THAT DOES NOTHING ON AN OPENING
 // =============================================================================
-await test("inspecteur_dup_et_devant_absents_sur_une_ouverture", seedV4(REAL_PLAN), `
+// "Bring to front" itself is GONE (decision 0013: paint order is already automatic, G-9), not
+// only on an opening; this case now covers what remains, Duplicate.
+await test("inspecteur_dup_absent_sur_une_ouverture", seedV4(REAL_PLAN), `
   var op = window.__plan.plan.openings.filter(function(o){ return o.type==="window"; })[0]
         || window.__plan.plan.openings[0];
   var furn = window.__plan.plan.pieces[0];
   var onOpening = window.__plan.inspectorButtons(op.id);
   var dupClick = window.__plan.clickInspector("iDup");
-  var frontClick = window.__plan.clickInspector("iFront");
   var onFurn = window.__plan.inspectorButtons(furn.id);
   var dupFurn = window.__plan.clickInspector("iDup");
-  return { onOpening: onOpening, onFurn: onFurn, dupClick: dupClick, frontClick: frontClick,
-           dupFurn: dupFurn };
-`, v => expect(v.onOpening.dup.hidden === true && v.onOpening.front.hidden === true,
-        "« Dupliquer » et « Devant » doivent être retirés sur une ouverture : " + JSON.stringify(v.onOpening))
+  return { onOpening: onOpening, onFurn: onFurn, dupClick: dupClick, dupFurn: dupFurn };
+`, v => expect(v.onOpening.dup.hidden === true,
+        "« Dupliquer » doit être retiré sur une ouverture : " + JSON.stringify(v.onOpening))
      && expect(v.onOpening.del.hidden === false, "« Supprimer », lui, marche : il reste offert")
      && expect(v.dupClick.after.undo === v.dupClick.before.undo
         && v.dupClick.after.pieces === v.dupClick.before.pieces,
         "un clic forcé sur « Dupliquer » ne doit plus pousser d'historique vide : " + JSON.stringify(v.dupClick))
-     && expect(v.frontClick.after.undo === v.frontClick.before.undo,
-        "ni « Devant » : " + JSON.stringify(v.frontClick))
-     && expect(v.onFurn.dup.hidden === false && v.onFurn.front.hidden === false,
-        "sur un MEUBLE les deux boutons reviennent : " + JSON.stringify(v.onFurn))
+     && expect(v.onFurn.dup.hidden === false, "sur un MEUBLE le bouton revient : " + JSON.stringify(v.onFurn))
      && expect(v.dupFurn.after.pieces === v.dupFurn.before.pieces + 1
         && v.dupFurn.after.undo === v.dupFurn.before.undo + 1,
-        "et ils font toujours leur travail : " + JSON.stringify(v.dupFurn)));
+        "et il fait toujours son travail : " + JSON.stringify(v.dupFurn)));
 
 // ---- verdict -----------------------------------------------------------------------------------
 report();

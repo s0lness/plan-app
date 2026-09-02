@@ -6,21 +6,19 @@
 //
 //   node tests/geste-ami.ts [path/to/app.html]
 //
-//   d_tenu_montre_les_cotes_du_choisi  D held (nothing selected): dimensions of the object under
-//                                      the pointer, ephemeral, nothing written, nothing saved.
-//   d_tenu_privilegie_la_selection     a selection wins over the pointer: guides appear even when
-//                                      the pointer sits over open floor.
 //   d_relache_efface_les_guides        release: the guides disappear, and only the guides, no
 //                                      trace in the model.
-//   ctrl_clic_sans_glisser_bascule_la_selection    Ctrl/Cmd press-then-release with NO movement:
+//   maj_clic_sans_glisser_bascule_la_selection     Shift press-then-release with NO movement:
 //                                      a toggle, and nothing written.
-//   ctrl_clic_deux_fois_desactive_la_selection     the same click twice in a row toggles the
+//   maj_clic_deux_fois_desactive_la_selection      the same click twice in a row toggles the
 //                                      piece back OUT of the selection.
 //
-// CTRL NO LONGER MEANS ANYTHING DURING A DRAG. It used to step the 5 cm grid down to the whole
-// centimetre; there is no grid any more, furniture moves by the centimetre and the magnets place
-// it, so the two cases that measured that modifier mid-drag are gone with the feature (decision
-// 0011).
+// CTRL NO LONGER MEANS ANYTHING, ANYWHERE (decision 0013). It first stopped meaning anything
+// during a drag (there is no grid any more, decision 0011); it now doesn't even toggle a
+// selection any more, that's Shift's job, the same modifier the lasso already used. The two
+// D-held cases that used to live here are gone too: a piece's dimensions now show on the
+// selection itself (`showDim`, `rendu/meubles.ts`), so peeking at them no longer needs a key. The
+// wall half of D-held stays (S2's territory, not this lot's, `tests/outil-mur-geste.ts`).
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -119,9 +117,10 @@ const M = (type: string, x: VerdictSonde, y: VerdictSonde, extra?: Record<string
   clickCount: 1, pointerType: "mouse",
 }, extra || {}));
 const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
-// Ctrl/Cmd held for a PLAIN CLICK: press then release at the exact same point, no movement at all.
-async function clicCtrl(p: VerdictSonde, opts?: { modifiers?: number }) {
-  const mods = (opts && opts.modifiers) || 2;
+// Shift held for a PLAIN CLICK (decision 0013: Ctrl means nothing in this app any more): press
+// then release at the exact same point, no movement at all. CDP modifiers bitmask, Shift=8.
+async function clicMaj(p: VerdictSonde, opts?: { modifiers?: number }) {
+  const mods = (opts && opts.modifiers) || 8;
   await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0, modifiers: mods });
   await M("mousePressed", p.x, p.y, { modifiers: mods });
   await pause(20);
@@ -178,67 +177,12 @@ const nUndo = () => evaluate(`String(__plan.histInfo().undo)`);
 const stockage = () => evaluate(`localStorage.getItem("room-planner-v4")||""`);
 
 // =============================================================================
-//  2. d_tenu_montre_les_cotes_du_choisi
+//  5. maj_clic_sans_glisser_bascule_la_selection
 // =============================================================================
-// Request: hold D to SEE the live dimensions without moving anything. Nothing selected: the
-// object under the pointer. Ephemeral DOM only, no history entry, no local write.
-await test("d_tenu_montre_les_cotes_du_choisi", async () => {
-  await evaluate(`__plan.clearSel(); __plan.render(); true`);
-  const p = await parNom("Homu");
-  ok(!!p, "le plan de référence doit porter « Homu »");
-  if (!p) return;
-  const S = await aptPoint(p.x + p.w / 2, p.y + p.h / 2);
-  await hover(S);
-
-  const avantEmpreinte = await empreinte();
-  const avantStockage = await stockage();
-  const avantUndo = await nUndo();
-  ok((await nGuides()) === 0, "précondition : aucune cote affichée avant d'appuyer sur D");
-
-  await kd("d");
-  await pause(150);
-  ok((await nGuides()) > 0, "D tenu doit afficher les cotes de l'objet sous le curseur");
-  ok(await evaluate(`String(__plan.selId)`) === "null", "D ne doit PAS sélectionner l'objet");
-  ok((await empreinte()) === avantEmpreinte, "D tenu ne doit RIEN écrire dans le plan");
-  ok((await stockage()) === avantStockage, "D tenu ne doit RIEN enregistrer localement");
-  ok((await nUndo()) === avantUndo, "D tenu ne doit pousser aucune entrée d'annulation");
-
-  await ku("d");
-  await pause(150);
-  ok((await nGuides()) === 0, "relâcher D doit effacer les cotes");
-});
-
-// =============================================================================
-//  3. d_tenu_privilegie_la_selection
-// =============================================================================
-// A selection wins over the pointer: hovering OPEN FLOOR (nothing there to hit-test) still shows
-// guides, because the selected piece is what's shown, not whatever sits under the cursor.
-await test("d_tenu_privilegie_la_selection", async () => {
-  const p = await parNom("Homu");
-  ok(!!p, "le plan de référence doit porter « Homu »");
-  if (!p) return;
-  await evaluate(`__plan.selReplace(${JSON.stringify(p.id)}); __plan.render(); true`);
-  await pause(120);
-  // A point just inside the viewport's own corner: "Fit" leaves a padded margin around the
-  // plan, so this is blank canvas, well outside the outline, with nothing for a pointer
-  // hit-test to find.
-  const dehors = await J(`(function(){var r=document.getElementById("viewport").getBoundingClientRect();
-    return {x:r.left+8, y:r.top+8};})()`);
-  await hover(dehors);
-
-  await kd("d");
-  await pause(150);
-  ok((await nGuides()) > 0, "la sélection doit l'emporter même si le curseur est hors du plan");
-  await ku("d");
-  await pause(120);
-});
-
-// =============================================================================
-//  5. ctrl_clic_sans_glisser_bascule_la_selection
-// =============================================================================
-// Request's negative control: Ctrl/Cmd press-then-release with NO movement at all must keep
-// doing exactly what it did before this fix, TOGGLE the selection, move nothing, write nothing.
-await test("ctrl_clic_sans_glisser_bascule_la_selection", async () => {
+// Ctrl+click is gone (decision 0013: Ctrl means nothing in this app any more). Shift is the one
+// modifier for "add/remove from the selection", the same one the lasso already used: a
+// press-then-release with NO movement at all must TOGGLE the selection, move nothing, write nothing.
+await test("maj_clic_sans_glisser_bascule_la_selection", async () => {
   await evaluate(`__plan.clearSel(); __plan.render(); true`);
   const p = await parNom("Homu");
   ok(!!p, "le plan de référence doit porter « Homu »");
@@ -250,34 +194,34 @@ await test("ctrl_clic_sans_glisser_bascule_la_selection", async () => {
   const avantUndo = await nUndo();
   ok(!(await evaluate(`__plan.isSel(${JSON.stringify(String(p.id))})`)), "précondition : Homu non sélectionné");
 
-  await clicCtrl(S);
+  await clicMaj(S);
 
   ok(await evaluate(`__plan.isSel(${JSON.stringify(String(p.id))})`),
-    "Ctrl+clic sans glissé doit SÉLECTIONNER (toggle) la pièce");
+    "Maj+clic sans glissé doit SÉLECTIONNER (toggle) la pièce");
   const apres = await posDe(p.id);
-  ok(apres.x === p.x && apres.y === p.y, "Ctrl+clic sans glissé ne doit RIEN déplacer");
-  ok((await empreinte()) === avantEmpreinte, "Ctrl+clic sans glissé ne doit RIEN écrire dans le plan");
-  ok((await stockage()) === avantStockage, "Ctrl+clic sans glissé ne doit RIEN changer au contenu enregistré");
-  ok((await nUndo()) === avantUndo, "Ctrl+clic sans glissé ne doit pousser aucune entrée d'annulation");
+  ok(apres.x === p.x && apres.y === p.y, "Maj+clic sans glissé ne doit RIEN déplacer");
+  ok((await empreinte()) === avantEmpreinte, "Maj+clic sans glissé ne doit RIEN écrire dans le plan");
+  ok((await stockage()) === avantStockage, "Maj+clic sans glissé ne doit RIEN changer au contenu enregistré");
+  ok((await nUndo()) === avantUndo, "Maj+clic sans glissé ne doit pousser aucune entrée d'annulation");
 });
 
 // =============================================================================
-//  6. ctrl_clic_deux_fois_desactive_la_selection
+//  6. maj_clic_deux_fois_desactive_la_selection
 // =============================================================================
-// The same Ctrl+click, twice in a row on the same piece: the second one toggles it back OUT.
-await test("ctrl_clic_deux_fois_desactive_la_selection", async () => {
+// The same Shift+click, twice in a row on the same piece: the second one toggles it back OUT.
+await test("maj_clic_deux_fois_desactive_la_selection", async () => {
   await evaluate(`__plan.clearSel(); __plan.render(); true`);
   const p = await parNom("Homu");
   ok(!!p, "le plan de référence doit porter « Homu »");
   if (!p) return;
   const S = await aptPoint(p.x + p.w / 2, p.y + p.h / 2);
 
-  await clicCtrl(S);
-  ok(await evaluate(`__plan.isSel(${JSON.stringify(String(p.id))})`), "premier Ctrl+clic doit sélectionner");
+  await clicMaj(S);
+  ok(await evaluate(`__plan.isSel(${JSON.stringify(String(p.id))})`), "premier Maj+clic doit sélectionner");
 
-  await clicCtrl(S);
+  await clicMaj(S);
   ok(!(await evaluate(`__plan.isSel(${JSON.stringify(String(p.id))})`)),
-    "second Ctrl+clic sur la même pièce doit la DÉSÉLECTIONNER");
+    "second Maj+clic sur la même pièce doit la DÉSÉLECTIONNER");
   ok((await evaluate(`String(__plan.selId)`)) === "null", "plus rien ne doit rester sélectionné (pièce unique)");
 });
 

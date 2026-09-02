@@ -361,18 +361,25 @@ await test("l_apercu_dit_a_l_avance_ce_qui_sera_refuse", async () => {
 });
 
 // =============================================================================
-//  8. clic_sur_la_vignette_arme_la_pose
+//  8. clic_sur_la_vignette_n_arme_rien_a_la_souris
 // =============================================================================
-// A click no longer makes the object appear somewhere other than under the hand: it ARMS.
-// The thumbnail shows it, the cursor shows it, a banner says it, Escape abandons it.
-await test("clic_sur_la_vignette_arme_la_pose", async () => {
+// Decision 0013: on a MOUSE, a plain click on a thumbnail arms nothing any more, only a drag
+// places an object (`faces-pose-copie.ts` case 7 above, and `apercu-pose.ts`). Arming by a click
+// stays reachable, through `Enter`/`Space` on a focused thumbnail, or by touch (case 9 below); the
+// probe's `armPose()` exercises that SAME path directly, without simulating a keypress or a tap.
+await test("clic_sur_la_vignette_n_arme_rien_a_la_souris", async () => {
   await seedModel([]);
   await evaluate(`__plan.setCursorApt(50,50)`);   // a "last cursor" elsewhere, on purpose
   await click(await palette("chair"));
-  const arme = await J(`({t:__plan.poseArme, vignettes:__plan.paletteArmed(), posing:__plan.posing})`);
   ok((await pieces()).length === 0, "un clic sur la vignette ne pose RIEN");
+  ok(!(await evaluate(`__plan.poseArme`)), "et n'arme rien non plus, à la souris");
+  const t0 = await toast();
+  ok(!t0, "silence : rien ne s'est passé");
+
+  // armed the same way `Enter`/`Space` or a touch tap would, then placed with a plain mouse click.
+  const arme = await J(`({t:__plan.armPose("chair"), vignettes:__plan.paletteArmed(), posing:__plan.posing})`);
   ok(arme.t === "chair" && arme.vignettes.length === 1 && arme.posing,
-    "il ARME la pose, et ça se voit : " + JSON.stringify(arme));
+    "armé (par le chemin clavier/tactile), ça se voit : " + JSON.stringify(arme));
   const t = await toast();
   ok(!!t && /plan to place/.test(t), "et ça se DIT : " + JSON.stringify(t));
 
@@ -388,7 +395,7 @@ await test("clic_sur_la_vignette_arme_la_pose", async () => {
   ok(!(await evaluate(`__plan.poseArme`)), "la pose armée se consomme");
 
   // Escape abandons it, and says so
-  await click(await palette("chair"));
+  await evaluate(`__plan.armPose("chair")`);
   await evaluate(`__plan.clearToast()`);
   await key("Escape", "Escape", 27);
   ok(!(await evaluate(`__plan.poseArme`)) && !(await evaluate(`__plan.posing`)), "Échap désarme");
@@ -584,16 +591,19 @@ await test("verrouille_colle_deverrouille_et_le_dit", async () => {
 // =============================================================================
 //  16. ctrl_c_dans_un_champ_reste_du_texte
 // =============================================================================
+// The inspector no longer carries a name field (decision 0013: renaming is a double-click on the
+// object's own label). Any text field proves the same point; the palette search box is always on
+// screen and unrelated to the selection, which is exactly what makes it a clean witness.
 await test("ctrl_c_dans_un_champ_reste_du_texte", async () => {
   await seedModel(TROIS);
   await click(await centreEcran("pa"));
-  await evaluate(`(function(){var f=document.getElementById("iName"); f.focus(); f.select(); return f.value;})()`);
+  await evaluate(`(function(){var f=document.getElementById("palSearch"); f.value="x"; f.focus(); f.select();})()`);
   await ctrl("c", "KeyC", 67);
   ok((await J(`__plan.clipInfo()`)) === null,
-    "un Ctrl+C dans le champ de nom ne doit RIEN mettre dans le presse-papiers de meubles");
-  ok(await evaluate(`document.activeElement && document.activeElement.id`) === "iName",
+    "un Ctrl+C dans un champ de texte ne doit RIEN mettre dans le presse-papiers de meubles");
+  ok(await evaluate(`document.activeElement && document.activeElement.id`) === "palSearch",
     "et le champ garde le focus");
-  // Ctrl+X must not delete the furniture under the input field either
+  // Ctrl+X must not delete the selected furniture under the input field either
   await ctrl("x", "KeyX", 88);
   ok((await pieces()).length === 3, "et Ctrl+X dans un champ ne supprime aucun meuble");
 });

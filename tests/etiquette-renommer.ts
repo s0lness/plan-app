@@ -5,10 +5,12 @@
 // Usage request: "I want to change the name of a piece of furniture or a room by
 // double-clicking on the label (except when the name is empty)".
 //
-// The gesture was ALREADY TAKEN: double-clicking on a piece of furniture rotates it by 90 degrees,
-// and on a door it flips the leaf. The request doesn't say "double-click on the object", it says
-// "on the label": those are two different TARGETS, so the two gestures can coexist. That is what
-// this suite locks down, both ways.
+// The gesture USED TO BE taken: double-clicking on a piece of furniture rotated it by 90 degrees,
+// and on a door it flipped the leaf. Decision 0013 ("one action, one path") removed that: a free
+// rotation already has its own path, the handle on the selection and "Rotate 90°", so double-click
+// no longer needs to duplicate it. The request's "on the label" therefore no longer needs to
+// coexist with anything: double-click means rename, everywhere on the object, except where there
+// is nothing to double-click (an unnamed piece paints no label).
 //
 // The "except when the name is empty" is NOT a condition written in the code, and that is
 // deliberate: the label is only painted if a name has been CHOSEN (R-3, `isChosenName`). An
@@ -19,9 +21,10 @@
 //
 //   node tests/etiquette-renommer.ts [path/to/app.html]
 //
-//   double_clic_etiquette_ouvre_le_champ_de_nom      focus in #iName, text SELECTED
-//   double_clic_etiquette_ne_fait_pas_pivoter        the angle doesn't move (that's the other gesture)
-//   double_clic_sur_le_corps_pivote_toujours         control: the old gesture survives intact
+//   double_clic_etiquette_ouvre_le_champ_de_nom      focus in the on-plan inline field, text SELECTED
+//   double_clic_etiquette_ne_fait_pas_pivoter        the angle doesn't move (renaming isn't rotating)
+//   double_clic_sur_le_corps_ne_pivote_plus          control, reversed by decision 0013: elsewhere
+//                                                     on the piece, double-click now does nothing
 //   sans_nom_choisi_il_n_y_a_pas_d_etiquette         nothing to target while the name comes from the catalog
 //   double_clic_nom_de_piece_ouvre_son_champ         same gesture on a cell -> #rcName
 import type { VerdictSonde } from "./_types.ts";
@@ -216,9 +219,10 @@ await test("double_clic_etiquette_ne_fait_pas_pivoter", async () => {
   ok(apres === avant, `l'angle ne doit pas bouger (renommer n'est pas pivoter), ${avant}° -> ${apres}°`);
 });
 
-await test("double_clic_sur_le_corps_pivote_toujours", async () => {
-  // CONTROL. The new gesture must not have eaten the old one: on the BODY of the object, away
-  // from its label, double-click still rotates it by 90 degrees.
+await test("double_clic_sur_le_corps_ne_pivote_plus", async () => {
+  // CONTROL, reversed by decision 0013: a double-click used to rotate the BODY by 90°, a second
+  // path for what the rotation handle and "Rotate 90°" already do (one action, one path). Only
+  // the LABEL still answers a double-click; elsewhere on the piece it now does nothing.
   const p = await poserNomme("sofa3");
   const b = await J(`(function(){
     var el = document.querySelector('.piece[data-id="' + __plan.cssId(${JSON.stringify(p.id)}) + '"]');
@@ -228,7 +232,7 @@ await test("double_clic_sur_le_corps_pivote_toujours", async () => {
   const avant = await rotDe(p.id);
   await dbl(b.x, b.y);
   const apres = await rotDe(p.id);
-  ok(((apres - avant) % 360 + 360) % 360 === 90, `le corps doit pivoter de 90°, ${avant}° -> ${apres}°`);
+  ok(apres === avant, `le corps ne doit plus pivoter, ${avant}° -> ${apres}° (le seul chemin est la poignée / Rotate 90°)`);
 });
 
 await test("sans_nom_choisi_il_n_y_a_pas_d_etiquette", async () => {

@@ -254,21 +254,21 @@ await test("v5_err_op_shape_still_reloads", seedAuto(REAL_PLAN), `
      && expect(v.reload === "1", "`op_shape` doit armer le rechargement, got " + JSON.stringify(v.reload)));
 
 // 10f. NAME fields are bounded to what the shared plan retains (ops.ts NAME_MAX = 80).
-// Without this bound, the user would see a name that the server silently truncated.
+// Without this bound, the user would see a name that the server silently truncated. Furniture is
+// renamed on its label now (decision 0013), through the SAME field the room sheet's #rcName once
+// shared with the inspector's #iName: the probe drives the real inline field (`.label-edit`), not
+// a copy of its logic.
 await test("v5_name_fields_are_capped_at_the_server_limit", seedAuto(REAL_PLAN), `
   var long = new Array(140).join("a") + "FIN";        // 142 characters
-  var iName = document.getElementById("iName"), rcName = document.getElementById("rcName");
+  var rcName = document.getElementById("rcName");
   var P = window.__plan.plan;
-  window.__plan.selReplace(P.pieces[0].id); window.__plan.openInspector();
   // pasting / a programmatically set value bypasses maxlength: the handler bounds it too.
-  iName.value = long;
-  iName.dispatchEvent(new Event("input", { bubbles: true }));
-  var stored = window.__plan.pieceById(P.pieces[0].id).name;
-  return { maxI: iName.getAttribute("maxlength"), maxRc: rcName.getAttribute("maxlength"),
-           stored: stored.length, tail: stored.slice(-3) };
-`, v => expect(v.maxI === "80", "#iName (meuble ET ouverture) doit être borné à 80, got " + v.maxI)
-     && expect(v.maxRc === "80", "#rcName (cellule) doit être borné à 80, got " + v.maxRc)
-     && expect(v.stored === 80, "un nom collé doit être tronqué à 80, got " + v.stored));
+  var stored = window.__plan.renameFurnitureInline(P.pieces[0].id, long);
+  var storedCell = window.__plan.renameCellInline(P.cells[0].id, long);
+  return { maxRc: rcName.getAttribute("maxlength"), stored: stored.length, storedCell: storedCell.length };
+`, v => expect(v.maxRc === "80", "#rcName (cellule) doit être borné à 80, got " + v.maxRc)
+     && expect(v.stored === 80, "un nom de meuble collé doit être tronqué à 80, got " + v.stored)
+     && expect(v.storedCell === 80, "un nom de cellule collé doit être tronqué à 80, got " + v.storedCell));
 
 // 10g. An identifier coming from the WIRE ends up in a CSS selector. A `"]` used to make
 // querySelector THROW, and that call is made from render(): the whole application would go

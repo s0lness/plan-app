@@ -479,8 +479,7 @@ await test("une_ouverture_deja_posee_bouge_pendant_le_glisser", async () => {
 //  10. un_glisser_relache_hors_du_plan_le_dit
 // =============================================================================
 // A drag started from the palette, walked over the plan and then released ELSEWHERE (the toolbar),
-// used to place nothing IN SILENCE. A plain CLICK on the thumbnail goes through the same code
-// (the pointer never left the rail) and has nothing to announce: it ARMS the placement, and says so itself.
+// used to place nothing IN SILENCE.
 await test("un_glisser_relache_hors_du_plan_le_dit", async () => {
   await seedModel();
   const pal = await palette("chair");
@@ -501,13 +500,14 @@ await test("un_glisser_relache_hors_du_plan_le_dit", async () => {
   const t = await toast();
   ok(!!t && /outside the plan/i.test(t), `et le bandeau le dit : ${JSON.stringify(t)}`);
 
-  // a plain CLICK, on the other hand, arms it and complains about nothing
+  // a plain MOUSE CLICK, on the other hand, arms NOTHING (decision 0013): the one path for a
+  // mouse is the drag just exercised above, so a click on the thumbnail is a no-op, quietly.
   await evaluate(`__plan.clearToast(); true`);
   await click(await palette("chair"));
   await pause(180);
-  ok(await evaluate(`__plan.poseArme`) === "chair", "un clic simple ARME la pose");
+  ok(!(await evaluate(`__plan.poseArme`)), "un clic SOURIS simple n'arme rien");
   const t2 = await toast();
-  ok(!t2 || !/outside the plan/i.test(t2), `et ne parle pas de renoncement : ${JSON.stringify(t2)}`);
+  ok(!t2, `et ne dit rien non plus, puisqu'il ne s'est rien passé : ${JSON.stringify(t2)}`);
 });
 
 console.log("\n=== L'APPUI LONG PASSE PAR LA SORTIE UNIQUE DES GESTES (C2) ===");
