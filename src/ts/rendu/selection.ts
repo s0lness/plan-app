@@ -1,9 +1,6 @@
-// src/ts/rendu/selection.ts: THE SELECTION MODEL. Ported from src/js/03-vue-selection.js.
-//
-// `ids` is the source of truth (a set of identifiers); `primaire` is DERIVED: it's the LAST one
-// added, the one the inspector and the rotation handle read. The old client said so in a comment
-// ("never write selId directly"); here the two fields only touch each other through these
-// functions, and the comment becomes a module boundary.
+// src/ts/rendu/selection.ts: THE SELECTION MODEL. `ids` is the source of truth (a set of
+// identifiers); `primaire` is DERIVED, the LAST one added, read by the inspector and the rotation
+// handle. The two fields only touch each other through these functions.
 
 import type { Contexte } from "../app/contexte.ts";
 

@@ -1,15 +1,9 @@
 // src/ts/rendu/arc-porte.ts: A DOOR'S SWING ARC, as standalone SVG.
-// Ported from src/js/11-icones.js (`doorArcSVG` only). The rest of js/11 (385 lines of icon
-// fabrication) gains nothing from typing and proves itself in pixels: still to be ported, in E3.
 //
-// THE ARC'S CENTER IS THE HINGE, across the FOUR hinge x direction combinations. For two
-// endpoints and a radius `r`, there are TWO candidate centers, distinguished by the single
-// `sweep` flag. We derive it by construction: sweep = sign((lx-hx)*sg) > 0. The old XOR used to
-// pick the opposite corner every time.
-//
-// `resolveColor` used to read a computed CSS variable: that was the ONLY dependency of this
-// function on the document, and it becomes an ARGUMENT. The test can therefore check it without
-// a browser (it only reads the `d` path), and the client will pass its own resolver.
+// THE ARC'S CENTER IS THE HINGE, across the FOUR hinge x direction combinations: two candidate
+// centers for two endpoints and a radius `r`, distinguished by `sweep = sign((lx-hx)*sg) > 0`.
+// `resolveColor` is an ARGUMENT (not read from a computed CSS variable), so the test can check
+// the `d` path without a browser.
 
 /**
  * @param w door width, in cm (= swing radius)

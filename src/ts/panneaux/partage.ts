@@ -1,25 +1,14 @@
-// src/ts/panneaux/partage.ts: THE OWNER-SIDE SHARE PANEL for one plan
-// (docs/decisions/0004-partage-par-lien.md, "batch 4, owner client").
+// src/ts/panneaux/partage.ts: THE OWNER-SIDE SHARE PANEL for one plan (decision 0004, batch 4).
+// Opened from a "Share" button on a plan row; talks only to `/api/invites`, never touches the
+// current document.
 //
-// Opened from a "Share" button on a plan row in `panneaux/plans.ts`. Talks only to
-// `/api/invites` (create, list, revoke): it never touches the current document, exactly like
-// the Plans panel it is opened from.
+// THE LINK'S SHAPE: a guest link is `<guest origin>/#k=<token>`. The guest origin is a different
+// hostname the module cannot invent; the server says so in every `/api/invites` response
+// (`guestHost`). `construireLienInvite` is the ONE place turning that plus a token into a URL,
+// returning `null` (raw token, honest line) rather than inventing a broken host.
 //
-// THE LINK'S SHAPE. A guest link is `<guest origin>/#k=<token>`. This module cannot invent the
-// guest origin: it is a DIFFERENT hostname from the one the owner is browsing, and this
-// repository is de-identified, so there is no constant to hardcode. The server is the only place
-// that knows `GUEST_HOST` (`functions/porte.ts`), and now says so in every `/api/invites`
-// response (`guestHost`, `functions/api/invites.ts`). `construireLienInvite` below is the ONE
-// place that turns that value plus a token into a URL; when the server has nothing to say
-// (`GUEST_HOST` unset), it returns `null` rather than inventing a host that would not work, and
-// the UI shows the raw token with an honest line instead of a broken link.
-//
-// GUESTS NEVER REACH THIS FILE'S UI: the "Share" button lives inside the Plans panel, which
-// `fil/invite.ts`'s `finirGuestOnboarding` already hides (`btnPlans`) for the life of a guest
-// tab, and `panneaux/plans.ts` already skips its own fetch off the household door. `ouvrirPartage`
-// re-checks anyway, the same belt-and-suspenders discipline `functions/api/invites.ts` itself
-// uses ("each handler here checks `porteDe()` again anyway"): a future caller of this function
-// that forgets the guard must not reopen a door the rest of the codebase keeps shut.
+// GUESTS NEVER REACH THIS FILE'S UI (hidden upstream); `ouvrirPartage` re-checks anyway, the same
+// belt-and-suspenders discipline `functions/api/invites.ts` uses.
 
 import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";

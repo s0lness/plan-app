@@ -1,17 +1,7 @@
-// src/ts/panneaux/menu-pied.ts: THE "File" MENU AT THE FOOT OF THE RAIL.
-// Ported from src/js/29-configuration.js (lines 216 to 236), without changing an id or a behavior.
-//
-// WHY IT MATTERS MORE THAN ITS SIZE. The "File" button is the ONLY access to Save,
-// Load, Furniture list, PNG, Print and Clear all. It was measured at y = 2999 px in an
-// 849 px window, i.e. 18 wheel ticks to reach it: the foot of the rail is therefore
-// `position:sticky` (css/02) and this module only OPENS and CLOSES.
-//
-// WHAT IT DOES NOT DO, DELIBERATELY: no ACTION is wired here. Export, print,
-// the furniture list and "Clear all" live in `exportation/` (a parallel batch). This module only
-// knows one thing about the menu entries: clicking on one of them closes the menu.
-//
-// THE OPEN STATE IS MARKED BY `open` (border accent + flipped chevron), plus by `pri`: a full-width
-// petrol-blue fill gave a simple menu the visual weight of a primary action.
+// src/ts/panneaux/menu-pied.ts: THE "File" MENU AT THE FOOT OF THE RAIL, the ONLY access to Save,
+// Load, Furniture list, PNG, Print and Clear all. The foot of the rail is `position:sticky`
+// (css/02), and this module only OPENS and CLOSES it: no action is wired here (export, print,
+// the furniture list live in `exportation/`); clicking an entry just closes the menu.
 
 import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";

@@ -1,14 +1,8 @@
-// src/ts/rendu/puces-rail.ts: THE ROOM CHIPS IN THE RAIL. Ported from src/js/25-enveloppe.js
-// (`roomChipsSig`, `renderRoomChips`; `computeEnvelopeHull` is elsewhere, it's reading of
-// an existing plan, not rendering).
+// src/ts/rendu/puces-rail.ts: THE ROOM CHIPS IN THE RAIL.
 //
-// R-13. THE RAIL WAS LYING: no wall edit refreshed it, neither drawing, nor deletion, nor
-// end of drag, nor remote op. It reported 10 rooms when the plan had 11, with stale
-// areas and ghost chips framing a cell that no longer existed. It is therefore called by
-// `render()`, hence by ALL edit paths, and compares itself to a SIGNATURE: the
-// reconstruction only happens if the cells (id, name, area) or the active cell have changed.
-//
-// R-12: the area goes through `fmtM2`, like the toolbar and the room sheet.
+// R-13: called by `render()`, hence by ALL edit paths (no wall edit used to refresh it on its
+// own), and compares itself to a SIGNATURE so reconstruction only happens if cells or the active
+// cell changed. R-12: the area goes through `fmtM2`, like the toolbar and the room sheet.
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5SignedArea } from "../modele/aires.ts";

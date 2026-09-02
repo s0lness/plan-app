@@ -1,19 +1,12 @@
-// src/ts/panneaux/renommer-en-ligne.ts: RENAMING ON THE LABEL ITSELF.
+// src/ts/panneaux/renommer-en-ligne.ts: RENAMING ON THE LABEL ITSELF, not the panel's name field:
+// looking away to a side panel while double-clicking a label means already losing sight of the object.
 //
-// The first version opened the panel's name field, cursor inside. It worked, and that
-// was not the ask: "I want the editable text box ON the label." Looking to the right
-// while double-clicking on the left means already having taken your eyes off the object.
-//
-// THE FIELD DOES NOT LIVE IN THE LAYER, AND THAT IS THE DELICATE PART. Labels are REBUILT
-// on every render (`renderPieces`, `renderEtiquettesCellules`), and a render can fire for any
-// reason: an op received from Elise, circulation analysis, a plain hover. An `<input>`
-// dropped into the layer would therefore be destroyed under your fingers, mid-word. It is placed
-// in the VIEWPORT, on top, at the label's SCREEN position: renders pass underneath without
-// touching it.
-//
-// The price of this choice, accepted knowingly: if the view moves (zoom, pan) during input, the
-// field does not follow. So it closes on the first wheel tick and the first view drag, VALIDATING:
-// losing three typed letters would be worse than validating a name that was going to be validated anyway.
+// THE FIELD DOES NOT LIVE IN THE LAYER: labels (`renderPieces`, `renderEtiquettesCellules`) are
+// REBUILT on every render, which can fire for any reason (a peer's op, circulation analysis, a
+// hover), so an `<input>` dropped into the layer
+// would be destroyed mid-word. It's placed in the VIEWPORT, on top, at the label's SCREEN
+// position, so renders pass underneath without touching it. Price: it doesn't follow zoom/pan, so
+// it closes and VALIDATES on the first wheel tick or view drag.
 
 import type { Contexte } from "../app/contexte.ts";
 import { pieceById, v5Touch } from "../app/contexte.ts";

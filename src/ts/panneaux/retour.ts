@@ -1,14 +1,9 @@
-// src/ts/panneaux/retour.ts: FEEDBACK: a free-text note from inside the app, no account.
-// docs/decisions/0004-partage-par-lien.md gave the guest door a name; this batch
-// ("retour-utilisateur") gives it, and the household door, a way to report something back.
+// src/ts/panneaux/retour.ts: FEEDBACK: a free-text note from inside the app, no account, on
+// either door.
 //
-// THE BUTTON IS NEVER HIDDEN. Unlike `ouvrirPartage` (Share) and the Invite button, which are
-// hidden or bounce with a toast off `!SYNC_ON` / off the household door, `#btnFeedback`
-// (html/02-scene.html) stays visible on BOTH doors and in the local-only sandbox (file://, the
-// claude.ai artifact): the button is not the thing that can fail here, SENDING is. `envoyer()`
-// below is where that distinction is made, and it NEVER clears the textarea on anything but a
-// confirmed 200, losing what someone already typed because a request failed is the one thing
-// this feature must never do (see the batch's own instructions).
+// THE BUTTON IS NEVER HIDDEN, unlike Share/Invite (hidden or toast off `!SYNC_ON`/household-only):
+// the button isn't what can fail here, SENDING is. `envoyer()` NEVER clears the textarea on
+// anything but a confirmed 200: losing what someone already typed is the one thing this must never do.
 
 import { $ } from "../noyau/dom.ts";
 import { FEEDBACK_URL, SYNC_ON, avecPlan } from "../fil/drapeaux.ts";

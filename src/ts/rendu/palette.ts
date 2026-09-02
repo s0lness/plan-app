@@ -1,16 +1,9 @@
-// src/ts/rendu/palette.ts: THE FURNITURE PALETTE.
-// Ported from src/js/08-palette.js (`buildPalette`, `normStr`, `isCatCollapsed`, `toggleCat`,
-// `applyPaletteFilter`).
+// src/ts/rendu/palette.ts: THE FURNITURE PALETTE. Placement is a DRAG-AND-DROP from a tile
+// (G-22), so search, collapsible categories and persistence all come along, since `buildPalette`
+// calls them at construction time.
 //
-// WHY THIS FILE IS HERE EVEN THOUGH THE PALETTE ISN'T PART OF THIS BATCH. Placement is a
-// DRAG-AND-DROP from a tile (G-22): without tiles, none of the placement gestures exist, and 22
-// test cases of `faces-pose-copie`, `apercu-pose` and `gestes-perte-de-travail` can't even start
-// ("tile not found"). This is the MINIMUM exposed so the gestures are provable; search, collapsible
-// categories and their persistence come along with it, because `buildPalette` calls them at
-// construction time and a half-port would have left every tile hidden.
-//
-// R-4. COLOR IS CARRIED BY THE ITEM, NEVER BY THE CATEGORY: this module reads `CATALOG`, it
-// decides no hue of its own. A batch that reorganizes categories therefore never touches `color`.
+// R-4: color is carried by the ITEM, never the CATEGORY: this module reads `CATALOG`, decides no
+// hue of its own, so a batch reorganizing categories never touches `color`.
 
 import type { Contexte } from "../app/contexte.ts";
 import { CATALOG, TYPEMAP, catalogueParNature } from "../catalogue/catalogue.ts";

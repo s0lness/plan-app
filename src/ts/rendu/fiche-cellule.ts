@@ -1,16 +1,9 @@
 // src/ts/rendu/fiche-cellule.ts: THE ROOM SHEET (name, floor, area) AND THE WALL SHEET (length).
-// Ported from src/js/54-v5-interface.js (`v5SyncCellCard`).
 //
-// R-13. BOTH ARE RESYNCED BY `render()`, NOT BY A SELECTION. Before, moving a facade left it on its
-// opening value: the toolbar announced 13.7 m², the rail's chip 13.7 m², and the sheet of the SAME
-// room 15.12 m², a few centimeters apart from each other. Worse, after merging two cells it still
-// showed a room that no longer existed.
-//
-// ONE PANEL AT A TIME (decision 0010, amended 2026-09-02). The owner, verbatim: "quand je
-// sélectionne un mur ça m'affiche aussi le menu de la pièce, je devrais juste voir le menu du
-// mur". `syncCellCard` and `syncWallCard` are now two SEPARATE cards in the same `.side-panels`
-// column (`#roomCard`, `#wallCard`); `syncWallCard` hides `#roomCard` whenever a wall is selected,
-// on every render, so the invariant holds regardless of which code path changed the selection.
+// R-13: both are resynced by `render()`, NOT by a selection, or a stale value survives past the
+// edit that invalidated it. ONE PANEL AT A TIME (decision 0010): `syncCellCard` and `syncWallCard`
+// are two SEPARATE cards; `syncWallCard` hides `#roomCard` whenever a wall is selected, on every
+// render, so the invariant holds regardless of which code path changed the selection.
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5SelectedCell, v5WallById } from "../app/contexte.ts";

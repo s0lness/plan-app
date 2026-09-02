@@ -1,16 +1,7 @@
 // src/ts/panneaux/fiche-cellule-edition.ts: THE ROOM'S CELL SHEET, EDITABLE PART (name, floor,
-// close). Ported from src/js/29-configuration.js (the cell sheet's name and floor block) and
-// from src/js/03-vue-selection.js (`activeFloor` / `setActiveFloor`).
-//
-// The READ part (area) is in `rendu/fiche-cellule.ts`: it is recalled by `render()`, never by a
-// selection (R-13). The WALL'S OWN card (`#wallCard`) and its commands are elsewhere entirely
-// (decision 0010, amended 2026-09-02): its length lives in `gestes/murs.ts` (`numField($("rcLen")`)),
-// its Delete/Split/Square-up buttons are drawn ON THE WALL by `rendu/calque.ts`'s `drawHandles`,
-// and `syncWallCard` (`rendu/fiche-cellule.ts`) resyncs it. This module never touches a wall.
-//
-// WHAT IS NOT HERE, AND IT'S DELIBERATE:
-//   . the sheet's OPENING belongs to whoever selects the cell (`v5SelectCell`),
-//     already ported in `gestes/murs.ts`. This module only knows how to CLOSE it.
+// close). The READ part (area) is in `rendu/fiche-cellule.ts` (R-13). The WALL'S OWN card
+// (`#wallCard`, decision 0010) is elsewhere entirely: this module never touches a wall, and never
+// opens the sheet either (`v5SelectCell`, `gestes/murs.ts`); it only knows how to close it.
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5SelectedCell, v5Touch } from "../app/contexte.ts";

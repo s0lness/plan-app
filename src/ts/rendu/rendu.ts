@@ -1,10 +1,6 @@
-// src/ts/rendu/rendu.ts: `render()`, THE CROSSROADS.
-// Ported from src/js/12-rendu.js (`render`).
-//
-// "`js/12-rendu.js` is the crossroads: almost every visible feature ends up touching it"
-// (src/README.md, coupling n° 1). It still is, but what is NOT rendering has moved out: persistence
-// and Circulation analysis go through `ctx.crochets`, so this module no longer depends on
-// them, and a batch that carries them does not need to reopen this file.
+// src/ts/rendu/rendu.ts: `render()`, THE CROSSROADS: almost every visible feature ends up
+// touching it. What is NOT rendering has moved out: persistence and Circulation analysis go
+// through `ctx.crochets`, so this module no longer depends on them.
 
 import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";

@@ -1,16 +1,11 @@
 // src/ts/rendu/icones.ts: THE FURNITURE ICONS SEEN FROM ABOVE, in SVG.
-// Ported from src/js/11-icones.js, byte for byte: same names, same constants, same attribute
-// order. The proof of the batch is a character-by-character comparison with the old client,
-// for each type in the catalogue and several sizes; any "cleaner" rewording of a
-// string would break that proof.
 //
-// THE ICONS ARE DRAWN IN REAL CENTIMETERS, then stretched by `preserveAspectRatio="none"`:
-// a 220 cm sofa and a 40 cm stool share the same code, and the strokes (`sw`, in cm)
-// grow with the zoom instead of staying in pixels. The front of the object is at the BOTTOM (+y).
+// THE ICONS ARE DRAWN IN REAL CENTIMETERS, then stretched by `preserveAspectRatio="none"`: a
+// 220cm sofa and a 40cm stool share the same code, and strokes (`sw`, in cm) grow with the zoom
+// instead of staying in pixels. The front of the object is at the BOTTOM (+y).
 //
-// `doorArcSVG` was ported separately, earlier, into arc-porte.ts (the swing arc is a standalone
-// SVG, it overflows the door's 12 cm box). It is re-exported here so the block of graphic
-// assets keeps ONE single entry point, but it is not duplicated.
+// `doorArcSVG` lives in `arc-porte.ts` (the swing arc overflows the door's 12cm box) and is
+// re-exported here so the block of graphic assets keeps ONE entry point, not duplicated.
 
 import { clamp } from "../noyau/nombres.ts";
 import { TYPEMAP } from "../catalogue/catalogue.ts";

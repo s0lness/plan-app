@@ -1,24 +1,10 @@
-// src/ts/rendu/meubles.ts: RECONCILING THE FURNITURE IN THE LAYER.
-// Ported from src/js/12-rendu.js (`renderPieces`, `RSZ_HANDLES`, `resizeCursor`, `stackedAt`).
+// src/ts/rendu/meubles.ts: RECONCILING THE FURNITURE IN THE LAYER, the most expensive code in the
+// repo. G-9 (paint from largest to smallest, the stack sorts on `data-paint`, not array order or
+// `.piece.sel`'s z-index), R-1 (the label is a CHILD of the rotated node, `setLabelSpin` cancels
+// its rotation), R-6 (a label never leaves its tile: horizontal chord of the rotated rectangle),
+// G-20 (handles never eat into the object's surface below 64px, only the four corners remain).
 //
-// This is the most expensive code in the repo, and three invariants live here:
-//
-//  G-9  PAINT FROM LARGEST TO SMALLEST, and the stack sorts on PAINT RANK.
-//       Paint order used to follow the ARRAY order: a 6 m² rug added after an armchair would
-//       cover it entirely and make it uncatchable. Measured at 300 objects: 20 gestures out of
-//       30 moved a different piece of furniture than the one aimed at. The rank is also written
-//       into `data-paint`, and it is THAT which `stackedAt` sorts on: `elementsFromPoint` returns
-//       the real order, but `.piece.sel` raises the selected item to `z-index:50`, so the stack
-//       reordered on every click and the cycle started over from zero (twelve clicks on five
-//       objects only reached two of them).
-//  R-1  the label is a CHILD of the rotated node: `setLabelSpin` exactly cancels its rotation.
-//  R-6  A LABEL NEVER LEAVES ITS TILE: the available room is the HORIZONTAL CHORD of the rotated
-//       rectangle through its center, `min(w/|cos|, h/|sin|)`.
-//  G-20 HANDLES NEVER EAT INTO THE OBJECT'S SURFACE: below 64 px on a side, only the four corners
-//       are kept and pushed outward.
-//
-// This module DECIDES nothing: it paints what the plan says. The gestures (drag, rotate,
-// resize, drop one level in the stack) are wired in via `ctx.gestes`.
+// This module DECIDES nothing: it paints what the plan says. Gestures wire in via `ctx.gestes`.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { BBox } from "../geometrie/polygones.ts";

@@ -1,14 +1,7 @@
-// src/ts/rendu/sol.ts: A ROOM'S FLOOR PATTERN, as an SVG <pattern>.
-// Ported from src/js/10-rendu-sol.js (`floorPatternDefs`), byte for byte: the INDENTATION
-// inside the templates is part of the rendered strings, so it is reproduced as-is
-// and does not follow the indentation of the surrounding code.
-//
-// Sizes are written in CENTIMETERS then multiplied by `sc` (px/cm), so planks and
-// tiles keep their real dimension at any zoom level.
-//
-// `sc` IS MANDATORY. The old signature accepted `null` and fell back to the global `vScale`;
-// this module has no global, and a caller that doesn't know at which scale it is drawing must
-// not get a random pattern. The caller passes its current scale (the client's old `vScale`).
+// src/ts/rendu/sol.ts: A ROOM'S FLOOR PATTERN, as an SVG <pattern>. Sizes are written in
+// CENTIMETERS then multiplied by `sc` (px/cm), so planks and tiles keep their real dimension at
+// any zoom level. `sc` IS MANDATORY: no global fallback, a caller that doesn't know its scale
+// must not get a random pattern.
 
 export interface MotifSol {
   /** the `<pattern>`s to place in <defs>; empty for a plain floor */

@@ -1,13 +1,9 @@
 // src/ts/rendu/vue.ts: THE VIEW TRANSFORM, and nothing else.
-// Ported from src/js/05-espace-appartement.js (`aptToScreen`/`screenToApt`), from
-// src/js/09-viewport-rail.js (`scaleBounds`, `fitView`, `fitCell`, `zoomAt`, `updateReadout`) and
-// from src/js/03-vue-selection.js (`renderView`).
 //
-// G-2, AND THIS IS THE POINT OF THIS MODULE: THE VIEW IS NOT THE PLAN. Panning, zooming, pinching,
-// "Fit" and window resizing repaint WITHOUT PERSISTING ANYTHING: no local write,
-// no rearming of the debounced send, no blocking of remote adoption, no analysis.
-// Measured before: a pan of 40 moves = 40 serializations and 854,520 bytes written.
-// The `ctx.viewOnly` counter carries this distinction; `renderView()` is the only one to increment it.
+// G-2, the point of this module: THE VIEW IS NOT THE PLAN. Panning, zooming, pinching, "Fit" and
+// window resizing repaint WITHOUT PERSISTING ANYTHING: no local write, no rearmed debounced send,
+// no blocked remote adoption, no analysis. The `ctx.viewOnly` counter carries this distinction;
+// `renderView()` is the only one to increment it.
 
 import type { Cellule } from "../partage/plan.ts";
 import type { BBox } from "../geometrie/polygones.ts";

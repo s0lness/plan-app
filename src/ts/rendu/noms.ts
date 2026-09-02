@@ -1,18 +1,9 @@
-// src/ts/rendu/noms.ts: ONLY A CHOSEN NAME GETS WRITTEN ON THE PLAN (R-3).
-// Ported from src/js/12-rendu.js (`isChosenName` only: it is a PURE function of three inputs,
-// its argument, the catalogue, the table of legacy labels, so it never needed a browser to be
-// verified).
-//
-// A piece of furniture is born with its TYPE's label, possibly followed by an occurrence number
-// ("Table 2", "Coffee table 3"). Writing that over the icon teaches NOTHING and clutters. A name
-// someone TYPED, on the other hand, is information that exists nowhere else on the plan.
-//
-// AND THE CATALOGUE HAS A HISTORY: the application was born in English, so a plan from before
-// translation carries "Chair", "Table", "Coffee table". Comparing only against the CURRENT label
-// mistook those for chosen names and filled the dining corner with four "Chair".
-//
-// TWO CONSUMERS, AND THEY MUST STAY IN AGREEMENT: the screen and the printed sheet / the PNG
-// (js/32). In the old client it was a convention; here it's an exported module, so a single body.
+// src/ts/rendu/noms.ts: ONLY A CHOSEN NAME GETS WRITTEN ON THE PLAN (R-3), PURE. A piece is born
+// with its TYPE's label plus an occurrence number ("Table 2"); writing that over the icon teaches
+// nothing. A name someone TYPED is information that exists nowhere else. The catalogue has a
+// history (labels once English, then translated): comparing only the CURRENT label mistook old
+// labels for chosen names (R-3). Two consumers must agree: the screen and the printed sheet/PNG,
+// hence a single exported module rather than a convention duplicated at each call site.
 
 import { baseName, LEGACY_TYPE_NAMES, TYPEMAP } from "../catalogue/catalogue.ts";
 

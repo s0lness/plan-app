@@ -1,23 +1,12 @@
-// src/ts/rendu/etiquettes-disposition.ts: WHERE a room label lands, aware of furniture and of
-// its own neighbors.
+// src/ts/rendu/etiquettes-disposition.ts: WHERE a room label lands, aware of furniture and of its
+// own neighbors (room and furniture labels used to be laid out INDEPENDENTLY, overlapping).
 //
-// Room labels and furniture labels used to be laid out INDEPENDENTLY: a chosen furniture name
-// could sit right under a room's name, and two room labels never knew about each other. Measured
-// on a real 103 m2 apartment, ten rooms: "Cuisine" buried under a furniture label, other room
-// labels landing on an appliance icon or a piece's resize footprint.
+// Not pixel-perfect text measurement: width is a character-count ESTIMATE (like `meubles.ts`'s
+// `estim`, R-6), generous enough for the monospace-tracked real box. Decides WHERE a room label
+// goes, nothing about WHAT gets written (R-2/R-3 in `meubles.ts`/`noms.ts`). A room's name also
+// lives in the rail, so a label that cannot be placed without overlap is DROPPED, never forced.
 //
-// THE FIX IS DELIBERATELY NOT PIXEL-PERFECT TEXT MEASUREMENT: like the furniture label's own
-// `estim` (`rendu/meubles.ts`, R-6), width is a character-count ESTIMATE, generous enough that the
-// real rendered box (monospace, so the estimate tracks closely) stays inside it. This module
-// decides WHERE a room label goes; it decides nothing about WHAT gets written (that stays R-2/R-3
-// in `meubles.ts` and `noms.ts`).
-//
-// A room's name ALSO lives in the rail (the sheet), so losing it on the canvas costs less than
-// painting it over something else: A LABEL THAT CANNOT BE PLACED WITHOUT OVERLAP IS DROPPED, never
-// forced on top of furniture or of another room's label.
-//
-// PURE: no DOM, no history, no save. `tests/rapide.ts` and `tests/etiquettes-disposition.ts`
-// exercise it without a browser; `rendu/calque.ts` is the only caller that touches the DOM.
+// PURE: no DOM, no history, no save; `rendu/calque.ts` is the only caller that touches the DOM.
 
 import type { BBox } from "../geometrie/polygones.ts";
 import type { Meuble } from "../partage/plan.ts";

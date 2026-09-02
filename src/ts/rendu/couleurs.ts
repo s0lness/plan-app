@@ -1,16 +1,9 @@
-// src/ts/rendu/couleurs.ts: RESOLVE A CSS COLOR TO HEX, then attach an opacity to it.
-// Ported from src/js/11-icones.js (`resolveColor`, `withAlpha`), without changing a single byte
-// of output.
+// src/ts/rendu/couleurs.ts: RESOLVE A CSS COLOR TO HEX, then attach an opacity to it. Icon fills
+// are eight-digit hex (`#rrggbbaa`), and a `var()` can't take an alpha channel without reading it
+// first (root's COMPUTED style): the icon block's only DOM dependency, isolated here.
 //
-// WHY RESOLVE RATHER THAN PASS `var(--seat)` TO THE SVG: icon fills are EIGHT-digit hexadecimals
-// (`#rrggbbaa`), and you can't attach an alpha channel to a `var()` without reading it first. The
-// read therefore goes through the root's COMPUTED style, which makes `resolveColor` dependent on
-// the document: it's the icon block's only DOM dependency, and it's isolated here so the rest can
-// be tested without a browser.
-//
-// THE CACHE IS DELIBERATELY PERMANENT (it already was in js/08-palette.js, declared high up to
-// avoid a temporal dead zone). It holds for the lifetime of the page: a theme change mid-session
-// doesn't clear it. Original defect kept, flagged, not fixed.
+// THE CACHE IS DELIBERATELY PERMANENT: holds for the page's lifetime, a theme change mid-session
+// doesn't clear it. Known, flagged, not fixed.
 
 import { clamp } from "../noyau/nombres.ts";
 
