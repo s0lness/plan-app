@@ -135,20 +135,6 @@ export interface Cellule {
   floor: CellFloor | string;
 }
 
-/**
- * Union of the four. With no discriminant at runtime (see the header): we discriminate on
- * field presence, and the guards below are the ONLY places that do.
- */
-export type Entite = Mur | Ouverture | Meuble | Cellule;
-
-export const estMeuble = (e: Entite): e is Meuble =>
-  typeof (e as Meuble).x === "number" && typeof (e as Meuble).y === "number";
-export const estOuverture = (e: Entite): e is Ouverture =>
-  typeof (e as Ouverture).wallId === "string";
-export const estMur = (e: Entite): e is Mur =>
-  Array.isArray((e as Mur).a) && Array.isArray((e as Mur).b);
-export const estCellule = (e: Entite): e is Cellule => Array.isArray((e as Cellule).poly);
-
 /** The live plan. `cells` is derived; `outline` is not an entity, it's a bare polygon. */
 export interface PlanV5 {
   outline: Pt[];
