@@ -132,6 +132,12 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
   // here would let a caller learn whether a guessed token ever existed — exactly what
   // functions/api/invite.ts's single 404 shape already refuses to leak on the guest side, so the
   // owner side must not reopen the same leak from the other direction.
+  // Did the LIVE half of the revocation actually happen? The row is revoked regardless, which is
+  // why this stays a 200; but "revoked" and "revoked, and every open socket was closed" are not
+  // the same promise, and the owner is the one who has to know which one they got. Saying nothing
+  // was the defect: the call's status was never even read, so a Worker outage looked exactly like
+  // a clean revoke, and the guest kept editing.
+  let live = false;
   if (token) {
     // The plan id BEFORE the write: needed to reach the right Durable Object, and reading it after
     // marking the row revoked would work just as well, but there is no reason to make the D1 write
@@ -148,13 +154,14 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
     if (ligne && ligne.plan_id && env.ROOM) {
       try {
         const stub = env.ROOM.get(env.ROOM.idFromName(ligne.plan_id));
-        await stub.fetch(new Request("https://plan-live-internal/revoke", {
+        const r = await stub.fetch(new Request("https://plan-live-internal/revoke", {
           method: "POST",
           headers: { "content-type": "application/json", "X-Plan-Internal": "1" },
           body: JSON.stringify({ token }),
         }));
+        live = !!(r && r.ok);
       } catch { /* best-effort, see above */ }
     }
   }
-  return json({ ok: true });
+  return json({ ok: true, live });
 };

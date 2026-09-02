@@ -25,6 +25,11 @@
 // tell "my other tab" apart from "a different guest" on the client (see `src/ts/fil/etat.ts`).
 // `X-Plan-Token` is the invite token itself: what `/revoke` matches sockets against, and what the
 // DO's per-token rate cap is keyed on (design edges 6, 15) — always empty on the household door.
+// `X-Plan-Expires` is when this guest's link stops being valid (ISO 8601, empty for the household
+// and for a row with no expiry). The door checks validity ONCE, at upgrade: without handing the
+// deadline over, an already-open socket outlived its own link, and expiry only ever stopped NEW
+// connections. Consuming it is the Durable Object's job (`live-worker/`, batch B1), for the same
+// reason `/revoke` had to exist: it is the only side still holding the socket.
 
 import type { Env } from "./env.ts";
 import { identiteFoyer, porteDe } from "./porte.ts";
@@ -58,6 +63,14 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   let name = "";
   let guestId = "";
   let token = "";
+  // WHEN THIS SOCKET STOPS BEING ALLOWED. The door checks `invitationValide()` at UPGRADE time and
+  // never again, so a link that expires at 18:00 leaves an already-open socket editing the plan
+  // for as long as it stays connected: expiry only stopped NEW connections, exactly the hole that
+  // `/revoke` had to close for revocation (design edge 6). The Durable Object is the only place
+  // that can act on it, because it is the only one still holding the socket, so the deadline is
+  // handed to it here. ISO 8601 as stored, empty when the row has no expiry at all and on the
+  // household door, where nothing expires.
+  let expires = "";
 
   if (porte === "invite") {
     const invit = await chargerInvitation(env, tokenDuCookie(request));
@@ -65,6 +78,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     planId = invit.plan_id;   // `?p=` IGNORED, forced from the invite row.
     guest = true;
     token = invit.token;
+    expires = invit.expires_at || "";
     const gBrut = (new URL(request.url).searchParams.get("g") || "").trim();
     if (GUEST_ID_RE.test(gBrut)) guestId = gBrut;
     // THE SAME DEVICE-MATCH RULE AS THE REDEMPTION ENDPOINT (`functions/api/invite.ts`), and for
@@ -101,6 +115,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   fwd.headers.set("X-Plan-Name", name);
   fwd.headers.set("X-Plan-Guest-Id", guestId);
   fwd.headers.set("X-Plan-Token", token);
+  fwd.headers.set("X-Plan-Expires", expires);
   // Never legitimate on a `/ws` upgrade: strip whatever the caller sent, defence in depth on top
   // of `functions/_middleware.ts` already stripping it (see `live-worker/worker.ts`,
   // `INTERNAL_HEADER`). `new Request(url, request)` above copies every header of the original

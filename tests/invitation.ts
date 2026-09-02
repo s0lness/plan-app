@@ -863,6 +863,129 @@ await test("plans_delete_ne_purge_pas_quand_la_ligne_n_existait_pas", async () =
 });
 
 // =================================================================================================
+//  8. EXPIRATION ET RÉVOCATION D'UN LIEN
+// =================================================================================================
+
+await test("ws_transmet_l_echeance_du_lien_au_durable_object", async () => {
+  // La porte ne vérifie la validité QU'À la bascule. Sans cette échéance, un lien qui expire à 18h
+  // laissait le socket déjà ouvert éditer le plan aussi longtemps qu'il restait connecté :
+  // l'expiration n'arrêtait que les NOUVELLES connexions.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  const echeance = new Date(Date.now() + 3 * JOUR_MS).toISOString();
+  insereInvite(db, { token: "exp1", planId: "appartement", expiresAt: echeance });
+  const { etat, room } = fakeRoom();
+  await wsUpgrade({
+    request: wsReq("https://share.example.com/ws", HOTE_INVITE, { Cookie: cookieDe("exp1") }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  return expect(etat.requete!.headers.get("X-Plan-Expires") === echeance,
+    "l'échéance ISO doit être transmise, vu " + JSON.stringify(etat.requete!.headers.get("X-Plan-Expires")));
+});
+
+await test("ws_pose_toujours_l_echeance_vide_sur_le_foyer", async () => {
+  // TOUJOURS POSÉ, jamais conditionnel, comme les cinq autres : ce que l'appelant a envoyé arrive
+  // sur la requête ENTRANTE et doit être écrasé ici, sinon il se forge une échéance.
+  const { env } = base();
+  const { etat, room } = fakeRoom();
+  await wsUpgrade({
+    request: wsReq("https://plan.example.com/ws", HOTE_FOYER, {
+      "Cf-Access-Authenticated-User-Email": "sylve@example.com",
+      "X-Plan-Expires": "2099-01-01T00:00:00.000Z",
+    }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  return expect(etat.requete!.headers.get("X-Plan-Expires") === "",
+    "sur le foyer rien n'expire, et l'en-tête envoyé par l'appelant doit être écrasé, vu "
+      + JSON.stringify(etat.requete!.headers.get("X-Plan-Expires")));
+});
+
+await test("ws_echeance_vide_quand_l_invite_n_en_a_pas", async () => {
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "sansexp1", planId: "appartement", expiresAt: null });
+  const { etat, room } = fakeRoom();
+  await wsUpgrade({
+    request: wsReq("https://share.example.com/ws", HOTE_INVITE, { Cookie: cookieDe("sansexp1") }),
+    env: { ...env, ROOM: room },
+  } as unknown as Parameters<typeof wsUpgrade>[0]);
+  return expect(etat.requete!.headers.get("X-Plan-Expires") === "",
+    "une invite sans échéance doit poser une chaîne vide, vu " + JSON.stringify(etat.requete!.headers.get("X-Plan-Expires")));
+});
+
+await test("invites_delete_dit_live_vrai_quand_le_do_a_repondu", async () => {
+  const { db, env } = CTX_FOYER();
+  insereInvite(db, { token: "live1", planId: "appartement" });
+  const { room } = fakeRoom();   // répond 200
+  const res = await invitesDelete({ ...env, ROOM: room }, HOTE_FOYER, jeton("live1"));
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200 && corps.ok === true, "doit rester 200, vu " + res.status)
+      && expect(corps.live === true, "la réponse doit dire que les sockets ont été fermés, vu " + JSON.stringify(corps));
+});
+
+await test("invites_delete_dit_live_faux_quand_le_do_echoue", async () => {
+  // « Révoqué » et « révoqué, et tous les sockets ouverts fermés » ne sont pas la même promesse.
+  // Le statut de l'appel n'était même pas lu : une panne du Worker ressemblait à une révocation
+  // propre, et l'invité continuait d'éditer.
+  const { db, env } = CTX_FOYER();
+  insereInvite(db, { token: "live2", planId: "appartement" });
+  const roomEnPanne = { idFromName: (n: string) => n, get: () => ({ fetch: async () => new Response("boom", { status: 500 }) }) };
+  const res = await invitesDelete({ ...env, ROOM: roomEnPanne }, HOTE_FOYER, jeton("live2"));
+  const corps = await res.json<DonneeDynamique>();
+  const ligne = db.prepare("SELECT revoked FROM invites WHERE token=?1").get(jeton("live2")) as DonneeDynamique;
+  return expect(res.status === 200 && corps.ok === true, "doit rester 200 (idempotent), vu " + res.status)
+      && expect(ligne.revoked === 1, "la ligne D1 est révoquée quand même")
+      && expect(corps.live === false, "mais la réponse doit dire live:false, vu " + JSON.stringify(corps));
+});
+
+await test("invite_refuse_un_corps_trop_grand_avant_de_le_lire", async () => {
+  // La SEULE route qu'un appelant non authentifié atteint avec un corps. `request.json()` met tout
+  // en mémoire avant que quoi que ce soit puisse regarder : un mégaoctet de bourrage était analysé
+  // en entier, puis jeté.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "gros1", planId: "appartement" });
+  const enorme = { token: jeton("gros1"), name: "x".repeat(20000) };
+  const res = await redeem({
+    request: req("https://share.example.com/api/invite", { method: "POST", host: HOTE_INVITE, body: enorme }),
+    env,
+  } as unknown as Parameters<typeof redeem>[0]);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 413, "doit répondre 413, vu " + res.status)
+      && expect(corps.error === "corps_trop_grand", "corps attendu corps_trop_grand, vu " + JSON.stringify(corps))
+      && expect(corps.max === 4096, "et le plafond réel, vu " + JSON.stringify(corps.max));
+});
+
+await test("invite_refuse_un_corps_trop_grand_meme_sans_content_length", async () => {
+  // `Content-Length` est une DÉCLARATION, pas un fait : absente (chunked) ou mensongère. La vraie
+  // borne s'applique au texte réellement reçu.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "gros2", planId: "appartement" });
+  const entetes = new Headers({ Host: HOTE_INVITE, "content-type": "application/json" });
+  const requete = new Request("https://share.example.com/api/invite", {
+    method: "POST", headers: entetes,
+    body: JSON.stringify({ token: jeton("gros2"), name: "y".repeat(20000) }),
+  });
+  // On EFFACE la déclaration : seul le texte reçu doit trancher.
+  const sansLongueur = new Request(requete, { headers: new Headers(entetes) });
+  const res = await redeem({ request: sansLongueur, env } as unknown as Parameters<typeof redeem>[0]);
+  return expect(sansLongueur.headers.get("Content-Length") === null, "le test doit bien partir sans Content-Length")
+      && expect(res.status === 413, "doit répondre 413 quand même, vu " + res.status);
+});
+
+await test("invite_accepte_toujours_un_corps_normal", async () => {
+  // La borne ne doit refuser RIEN de légitime : le vrai corps fait moins de 200 octets.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  insereInvite(db, { token: "petit1", planId: "appartement" });
+  const res = await redeemAvecToken(db, env, "petit1", { token: jeton("petit1"), name: "Marie", guestId: "device-marie" });
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 200, "doit répondre 200, vu " + res.status)
+      && expect(corps.name === "Marie", "et rendre le nom, vu " + JSON.stringify(corps.name));
+});
+
+// =================================================================================================
 //  VERDICT
 // =================================================================================================
 const passed = results.filter((r) => r.pass).length;
