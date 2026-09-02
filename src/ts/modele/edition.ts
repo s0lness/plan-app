@@ -24,7 +24,7 @@
 //    `{geste:true}` as the old code did; `v5ClampPieces` returns both its count AND its message
 //    (that message never carried `{geste:true}`).
 // 3. THE SLATES REMAIN MODULE-LEVEL VARIABLES, as before, but they are now read only through an
-//    exported accessor (`v5LastFit()`, `v5LastRefus()`, ...).
+//    exported accessor (`v5FlushOpeningsBorned()`, `v5FlushPlaceNarrowed()`, ...).
 // 4. WHAT DEPENDED ON THE VIEW BECOMES A PARAMETER. `wallSnapReach()` (js/05) and `vScale` depend
 //    on the zoom: `maxDist` and `echelle` are therefore REQUIRED, never guessed. The visibility
 //    layers are a PERSONAL setting: they are passed in too.
@@ -417,15 +417,6 @@ export function v5OpeningBlockerOnSide(
 // The wall inset itself (`clampCenterToInset`, and the G-6 / G-7 guards it holds) belongs to
 // `gestes/contraintes.ts` (js/19): it is IMPORTED, never recopied. A second version of that guard
 // is exactly how the 372 cm sofa comes back.
-//
-// `v5LastFit` says whether the LAST clamped piece of furniture really fit in its cell: when it
-// overflows, the gesture that just released it SAYS SO (js/17, js/16) instead of letting it go
-// silently.
-let ardoiseFit = true;
-
-export function v5LastFit(): boolean {
-  return ardoiseFit;
-}
 
 export interface OptionsClampPiece {
   /**
@@ -445,7 +436,7 @@ export function v5ClampPiece(P: PlanV5, p: Meuble, tol?: number, opts?: OptionsC
   if (!planUtilisable(P) || isWallMount(p.type)) return;
   let cx = p.x + p.w / 2, cy = p.y + p.h / 2;
   let cell: Cellule | null = v5CellsAt(P, cx, cy);
-  if (!cell && opts && opts.gardeOrphelin) { ardoiseFit = true; return; }
+  if (!cell && opts && opts.gardeOrphelin) return;
   if (!cell) {                                   // outside a cell: bring back to the nearest one
     let bd = Infinity;
     (P.cells || []).forEach((c) => {
@@ -460,9 +451,8 @@ export function v5ClampPiece(P: PlanV5, p: Meuble, tol?: number, opts?: OptionsC
       cx = np.x + ix / m * 2; cy = np.y + iy / m * 2;
     }
   }
-  if (!cell) { ardoiseFit = true; return; }
+  if (!cell) return;
   const r = clampCenterToInset(cx, cy, p.w, p.h, p.rot || 0, (cell as Cellule).poly, tol);
-  ardoiseFit = (r.fits !== false);
   p.x = Math.round(r.cx - p.w / 2); p.y = Math.round(r.cy - p.h / 2);
 }
 
@@ -515,7 +505,6 @@ export function v5ClampPieces(P: PlanV5 | null | undefined): BilanClampPieces {
   // Orphans inherited from a received op are repaired without a word: their author already said it.
   const miens = perdus.filter((p) => !v5ForeignOrphans.has(String(p.id)));
   perdus.forEach((p) => { v5ClampPiece(P, p); v5ForeignOrphans.delete(String(p.id)); });
-  ardoiseFit = true;
   let message: string | null = null;
   if (miens.length) {
     message = miens.length === 1

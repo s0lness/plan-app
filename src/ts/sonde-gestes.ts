@@ -22,7 +22,7 @@ import { v5CellsAt, v5OpeningBox, v5OpeningEdgeLimits, v5Seg, v5WallDeleteVerdic
 import { v5RebuildCells } from "./modele/cellules.ts";
 import {
   v5CanDeleteWall, v5ClampPiece, v5ClampPieces, v5FlushOpeningThinned,
-  v5FlushPlaceNarrowed, v5LastFit, v5MoveOpeningTo, v5NearestWall, v5PlaceWallMount, v5BornerAuLogement,
+  v5FlushPlaceNarrowed, v5MoveOpeningTo, v5NearestWall, v5PlaceWallMount, v5BornerAuLogement,
 } from "./modele/edition.ts";
 import { fabriqueOuverture, mk } from "./modele/creation.ts";
 import { wallSnapReach } from "./modele/espace.ts";
@@ -87,9 +87,6 @@ export interface SondeGestes {
   clampV5Piece(p: Meuble): Meuble;
   /** The clearance, in cm, a furniture piece keeps from the wall's bare face. */
   readonly WALL_INSET: number;
-  /** No suite reads it, and the probe is the only caller of `v5LastFit`: removing it would drop
-   *  an export of `modele/edition.ts`, which is not this batch's to trim. Decision 0019. */
-  readonly lastFit: boolean;
 
   readonly v5ui: { selWall: string | null; selCell: string | null; draw: boolean };
   canDeleteWall(id: unknown): boolean;
@@ -211,7 +208,6 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     cellOf: (x: number, y: number) => v5CellsAt(ctx.etat.plan, x, y),
     clampV5Piece(p: Meuble) { v5ClampPiece(ctx.etat.plan, p); return p; },
     WALL_INSET,
-    get lastFit() { return v5LastFit(); },
 
     get v5ui() {
       return { selWall: ctx.ihm.selWall, selCell: ctx.ihm.selCell, draw: ctx.ihm.draw };
