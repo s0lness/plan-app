@@ -18,8 +18,10 @@ import {
   closestOnSeg,
   pointInPoly,
   poleOfInaccessibility,
+  polyCentroid,
   simplifyRectilinear,
 } from "../geometrie/polygones.ts";
+import { memoriserOrphelins, orphelinsCellules } from "./photo-cellules.ts";
 import { v5SegInt, v5SignedArea, v5OverlapArea } from "./aires.ts";
 import { v5DedupeWalls } from "./murs.ts";
 import type { Cellule, Mur, PlanV5, Pt, RapportDetection } from "../partage/plan.ts";
@@ -37,7 +39,7 @@ export interface ResultatDetection {
 type Segment = [Pt, Pt];
 
 // =================================================================================================
-//  THE UNIFORM GRIDS — the ONLY thing that changed about detection is what it SKIPS
+//  THE UNIFORM GRIDS: the ONLY thing that changed about detection is what it SKIPS
 // =================================================================================================
 // `v5RebuildCells` runs on every frame of a geometry gesture and on every received op ("THE FLOOR
 // FOLLOWS THE HAND"), a decision taken on a 22-wall plan at 0.40 ms. The server accepts 2000.
@@ -342,6 +344,23 @@ export function v5DetectCells(
 // Matching by largest (exact) area overlap, deterministic: every pair sorted by (decreasing
 // overlap, previous index, new index) and consumed greedily.
 // Fallback rescue by pole containment. The rest gets "Room N"/parquet.
+//
+// A NAME IS NEVER LOST WHILE ITS ORIGINAL CELL CAN STILL BE FOUND, AND AN EXACT TIE IS NOT AN
+// ORDER OF ARRIVAL. When two old cells overlap a new one by exactly the same area, the tie-break
+// used to be `(a.pi - b.pi)`: the smaller previous index, i.e. wherever the room happened to sit
+// in an array. Measured on three rooms A|B|C split at x=100 and x=200 in a 400-wide outline:
+// pushing the left partition to 250 gives 30000 with A and 30000 with B, A won because it was
+// first, B became "Room 1", and bringing the partition back did NOT bring the name back.
+//
+// The tie is now settled by GEOMETRY, and only between old cells competing for the SAME new one
+// (a name choosing its cell is the other direction, and is left alone): first the old cell whose
+// POLE falls inside the new one, then the one whose area centroid is nearest. When even that ties
+// exactly, the previous index still decides, because something has to.
+//
+// AND THE LOSER IS NOT THROWN AWAY. Two rooms merging into one cannot both keep their name, so
+// the one not retained goes to `modele/photo-cellules.ts`'s purgatory and is offered back to any
+// later recomputation whose cell CONTAINS its pole. That is what makes a two-gesture round trip
+// (push, release, pull back) return all three names.
 
 /** What we keep from a cell as it was BEFORE: its label and its shape, nothing else. */
 export interface CellulePrecedente {
@@ -353,17 +372,44 @@ export interface CellulePrecedente {
 export function v5AssignNames<T extends Cellule>(
   cells: T[],
   prev: readonly CellulePrecedente[] | null | undefined,
+  secours?: readonly CellulePrecedente[] | null,
 ): T[] {
   const anciennes: readonly CellulePrecedente[] = Array.isArray(prev) ? prev : [];
-  const pairs: Array<{ ci: number; pi: number; ov: number }> = [];
+  const pairs: Array<{ ci: number; pi: number; ov: number; rang: number }> = [];
   cells.forEach((c, ci) =>
     anciennes.forEach((p, pi) => {
       if (!p || !Array.isArray(p.poly) || p.poly.length < 3) return;
       const ov = v5OverlapArea(c.poly, p.poly);
-      if (ov > V5_MIN_AREA) pairs.push({ ci, pi, ov });
+      if (ov > V5_MIN_AREA) pairs.push({ ci, pi, ov, rang: 0 });
     }),
   );
-  pairs.sort((a, b) => (b.ov - a.ov) || (a.pi - b.pi) || (a.ci - b.ci));
+  // `rang` only ever moves for a group of at least two old cells overlapping ONE new cell by
+  // EXACTLY the same area: everywhere else it stays 0 and the order is the one that shipped.
+  // Paying a pole and a centroid per pair would otherwise cost as much as the overlap itself.
+  const groupes = new Map<string, Array<{ ci: number; pi: number; ov: number; rang: number }>>();
+  for (const pr of pairs) {
+    const k = pr.ci + "|" + pr.ov;
+    const g = groupes.get(k);
+    if (g) g.push(pr); else groupes.set(k, [pr]);
+  }
+  for (const g of groupes.values()) {
+    if (g.length < 2) continue;
+    const cible = cells[g[0]!.ci]!.poly;
+    const centre = polyCentroid(cible);
+    const mesure = g.map((pr) => {
+      const p = anciennes[pr.pi]!.poly!;
+      const pole = poleOfInaccessibility(p);
+      const c = polyCentroid(p);
+      return {
+        pr,
+        dedans: pointInPoly(pole.x, pole.y, cible) ? 0 : 1,
+        dist: Math.hypot(c.x - centre.x, c.y - centre.y),
+      };
+    });
+    mesure.sort((a, b) => (a.dedans - b.dedans) || (a.dist - b.dist) || (a.pr.pi - b.pr.pi));
+    mesure.forEach((m, i) => { m.pr.rang = i; });
+  }
+  pairs.sort((a, b) => (b.ov - a.ov) || (a.rang - b.rang) || (a.pi - b.pi) || (a.ci - b.ci));
   const takenC = new Set<number>(), takenP = new Set<number>();
   pairs.forEach((pr) => {
     if (takenC.has(pr.ci) || takenP.has(pr.pi)) return;
@@ -372,19 +418,27 @@ export function v5AssignNames<T extends Cellule>(
     cells[pr.ci]!.floor = anciennes[pr.pi]!.floor || "parquet";
   });
   // rescue: does the old cell's pole fall inside a new one that is still free?
-  anciennes.forEach((p, pi) => {
-    if (takenP.has(pi) || !p || !Array.isArray(p.poly) || p.poly.length < 3) return;
-    const q = poleOfInaccessibility(p.poly);
-    for (let ci = 0; ci < cells.length; ci++) {
-      if (takenC.has(ci)) continue;
-      if (pointInPoly(q.x, q.y, cells[ci]!.poly)) {
-        takenC.add(ci); takenP.add(pi);
-        cells[ci]!.name = p.name || "";
-        cells[ci]!.floor = p.floor || "parquet";
-        break;
+  const secourir = (liste: readonly CellulePrecedente[], marque: ((pi: number) => void) | null): void => {
+    liste.forEach((p, pi) => {
+      if (!p || !Array.isArray(p.poly) || p.poly.length < 3) return;
+      if (marque && takenP.has(pi)) return;
+      const q = poleOfInaccessibility(p.poly);
+      for (let ci = 0; ci < cells.length; ci++) {
+        if (takenC.has(ci)) continue;
+        if (pointInPoly(q.x, q.y, cells[ci]!.poly)) {
+          takenC.add(ci);
+          if (marque) marque(pi);
+          cells[ci]!.name = p.name || "";
+          cells[ci]!.floor = p.floor || "parquet";
+          break;
+        }
       }
-    }
-  });
+    });
+  };
+  secourir(anciennes, (pi) => { takenP.add(pi); });
+  // Then, and only then, the names no earlier recomputation managed to place: a room swept away by
+  // one gesture and reopened by the next comes back named instead of coming back "Room N".
+  if (secours && secours.length) secourir(secours, null);
   // Defaults: "Room N" with the smallest free N, in order (deterministic).
   //
   // THIS NAME NOW SHIPS IN ENGLISH, DELIBERATELY, AND IT MOVED DATA. It used to stay "Pièce N"
@@ -435,7 +489,14 @@ export function v5RebuildCells(
       ? plan.cells.map((c) => ({ name: c.name, floor: c.floor, poly: c.poly }))
       : []);
   const { cells, report } = v5DetectCells(plan.outline, plan.walls);
-  plan.cells = v5AssignNames(cells, prev).map((c) => ({ id: c.id, poly: c.poly, name: c.name, floor: c.floor }));
+  const secours = orphelinsCellules(plan);
+  v5AssignNames(cells, prev, secours);
+  // What the recomputation could NOT place goes to the purgatory, so the gesture that reopens the
+  // room finds the name again. It is deliberately read from `prev` only: a name already waiting
+  // stays waiting (`memoriserOrphelins` keeps it), and one that came back leaves the list.
+  const gardes = new Set(cells.map((c) => c.name).filter(Boolean) as string[]);
+  memoriserOrphelins(plan, prev.filter((p) => !!p.name && !gardes.has(p.name)), gardes);
+  plan.cells = cells.map((c) => ({ id: c.id, poly: c.poly, name: c.name, floor: c.floor }));
   plan._report = report;
   return plan;
 }

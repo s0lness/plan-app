@@ -52,6 +52,30 @@ export function polyArea(poly: readonly Pt[]): number {
   return Math.abs(a / 2);
 }
 
+/**
+ * AREA centroid of a polygon (the centre of mass of the surface, not the average of the corners:
+ * a long wall cut into many vertices would drag that one). Falls back to the average of the
+ * corners for a degenerate (zero-area) polygon, which is the only case where it is undefined.
+ * Used to break an EXACT tie of overlap area when a room's name has to choose a cell.
+ */
+export function polyCentroid(poly: readonly Pt[]): { x: number; y: number } {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const pi = poly[i]!, pj = poly[j]!;
+    const f = pj[0] * pi[1] - pi[0] * pj[1];
+    a += f;
+    cx += (pj[0] + pi[0]) * f;
+    cy += (pj[1] + pi[1]) * f;
+  }
+  if (Math.abs(a) < 1e-9) {
+    let sx = 0, sy = 0;
+    for (const p of poly) { sx += p[0]; sy += p[1]; }
+    const n = poly.length || 1;
+    return { x: sx / n, y: sy / n };
+  }
+  return { x: cx / (3 * a), y: cy / (3 * a) };
+}
+
 export interface PointProche {
   x: number;
   y: number;

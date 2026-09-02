@@ -36,6 +36,7 @@ import { CATALOG, KIND_BY_TYPE, KIND_ORDER, catalogueParNature, kindOf } from ".
 import { FL } from "../src/ts/circulation/etat.ts";
 import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
+import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
 
 type OpBanc = Operation & {
   piece?: Partial<Piece>;
@@ -292,6 +293,84 @@ test("rapide_cellules_pavent_le_contour", () => {
   CLIENT.v5RebuildCells(P);
   const somme = P.cells.reduce((s, c) => s + aire(c.poly), 0);
   return expect(near(somme, 240000, 800), "la somme des cellules doit valoir l'aire du contour (240000), vu " + somme);
+});
+
+// LE RECOUVREMENT RESTE EXACT SUR UN PAN COUPÉ. Deux triangles rectangles à 45 degrés, dont
+// l'intersection vaut exactement 2500: leurs seules abscisses de sommet sont 0 et 100, donc le
+// balayage n'avait qu'UNE tranche et lisait la section du milieu comme si elle valait pour toute
+// la largeur, soit 5000, le double. C'est l'appariement des noms qui s'en sert.
+test("rapide_recouvrement_exact_sur_un_pan_coupe", () => {
+  const A: Point[] = [[0, 0], [100, 0], [0, 100]];
+  const B: Point[] = [[0, 0], [100, 0], [100, 100]];
+  const ov = CLIENT.v5OverlapArea(A, B);
+  return expect(Math.abs(ov - 2500) < 1e-6, "l'intersection des deux triangles vaut 2500, vu " + ov)
+      && expect(Math.abs(CLIENT.v5OverlapArea(A, A) - 5000) < 1e-6,
+         "un triangle recouvre exactement sa propre aire (5000), vu " + CLIENT.v5OverlapArea(A, A));
+});
+
+// À ÉGALITÉ EXACTE DE RECOUVREMENT, C'EST LA GÉOMÉTRIE QUI TRANCHE, PAS L'ORDRE DU TABLEAU.
+// Une cellule de 0 à 250 recouvre EXACTEMENT 30000 de A (0-100) et 30000 de B (100-200). Le
+// départage était « le plus petit index précédent », donc A. C'est B qu'elle contient le plus
+// franchement: son centroïde est à 25 du centre de la nouvelle cellule, celui de A à 75.
+test("rapide_egalite_de_recouvrement_tranchee_par_la_geometrie", () => {
+  const cellules = [
+    { id: "c1", poly: [[0, 0], [250, 0], [250, 300], [0, 300]] as Point[], name: "", floor: "parquet" },
+    { id: "c2", poly: [[250, 0], [400, 0], [400, 300], [250, 300]] as Point[], name: "", floor: "parquet" },
+  ];
+  const avant = [
+    { name: "A", floor: "parquet", poly: [[0, 0], [100, 0], [100, 300], [0, 300]] as Point[] },
+    { name: "B", floor: "tile", poly: [[100, 0], [200, 0], [200, 300], [100, 300]] as Point[] },
+    { name: "C", floor: "parquet", poly: [[200, 0], [400, 0], [400, 300], [200, 300]] as Point[] },
+  ];
+  CLIENT.v5AssignNames(cellules, avant);
+  return expect(cellules[1].name === "C", "la cellule de droite garde C, vu " + cellules[1].name)
+      && expect(cellules[0].name === "B",
+         "à égalité d'aire, le nom dont le centroïde est le plus proche l'emporte (B), vu " + cellules[0].name)
+      && expect(cellules[0].floor === "tile", "et son sol vient avec, vu " + cellules[0].floor);
+});
+
+// UN NOM N'EST JAMAIS PERDU TANT QUE SA CELLULE D'ORIGINE PEUT ÊTRE RETROUVÉE.
+//
+// Trois pièces A|B|C séparées à x=100 et x=200 dans un contour large de 400. Pousser la cloison de
+// gauche jusqu'à 250 fusionne deux pièces, et le recouvrement de la cellule fusionnée vaut
+// EXACTEMENT 30000 avec A comme avec B. Le départage était `(a.pi - b.pi)`, c'est-à-dire « le plus
+// petit index précédent gagne » : un pur artefact d'ordre de tableau. Le nom perdu devenait
+// « Room 1 », et RAMENER la cloison à 100 ne le ramenait pas, parce que la photo du geste
+// (`modele/photo-cellules.ts`) ne couvre qu'un geste et que le suivant repart d'un plan où le nom
+// n'existe plus. Une « Chambre d'Élise » tapée à la main disparaissait pour un aller-retour en
+// DEUX gestes, ce que la suite sol-suit-la-main ne voit pas : elle tient dans un seul.
+test("rapide_un_nom_revient_apres_un_aller_retour_en_deux_gestes", () => {
+  const P: PlanV5 = {
+    outline: [[0, 0], [400, 0], [400, 300], [0, 300]],
+    walls: [{ id: "wg", a: [100, 0], b: [100, 300], t: 12 },
+            { id: "wd", a: [200, 0], b: [200, 300], t: 12 }],
+    openings: [], pieces: [], cells: [],
+  };
+  CLIENT.v5RebuildCells(P);
+  const parX = (x: number) => P.cells.find((c) => CLIENT.pointInPoly(x, 150, c.poly));
+  expect(P.cells.length === 3, "3 cellules attendues au départ, vu " + P.cells.length);
+  parX(50)!.name = "A"; parX(150)!.name = "B"; parX(300)!.name = "C";
+  const wg = P.walls[0]!;
+  // geste 1 : la cloison de gauche est poussée jusqu'à 250, deux pièces fusionnent
+  photographierCellules(P);
+  wg.a = [250, 0]; wg.b = [250, 300];
+  CLIENT.v5RebuildCells(P, { depuis: photoCellules(P) });
+  oublierPhotoCellules();
+  const apresPoussee = P.cells.map((c) => c.name).sort();
+  // La poussée écrase une pièce contre l'autre: une cellule ne porte qu'un nom, donc un des trois
+  // n'a plus de cellule. C'est CE nom-là qui doit revenir, pas la géométrie (elle revient déjà).
+  expect(["A", "B", "C"].filter((n) => apresPoussee.indexOf(n) < 0).length === 1,
+    "la poussée doit coûter exactement un des trois noms, vu " + JSON.stringify(apresPoussee));
+  // geste 2 : elle revient exactement où elle était
+  photographierCellules(P);
+  wg.a = [100, 0]; wg.b = [100, 300];
+  CLIENT.v5RebuildCells(P, { depuis: photoCellules(P) });
+  oublierPhotoCellules();
+  const noms = P.cells.map((c) => c.name).sort();
+  return expect(noms.length === 3, "3 cellules après le retour, vu " + noms.length)
+      && expect(JSON.stringify(noms) === JSON.stringify(["A", "B", "C"]),
+         "les trois noms doivent revenir après l'aller-retour, vu " + JSON.stringify(noms)
+         + " (après la poussée : " + JSON.stringify(apresPoussee) + ")");
 });
 
 test("rapide_detection_est_deterministe", () => {

@@ -42,13 +42,43 @@ function v5SpansAt(poly: readonly Pt[], xm: number): Array<[number, number]> {
   return out;
 }
 
+/** A polygon whose every edge is axial. The common case, and the one the sweep alone settles. */
+function estRectilineaire(poly: readonly Pt[]): boolean {
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const pi = poly[i]!, pj = poly[j]!;
+    if (Math.abs(pi[0] - pj[0]) > 1e-9 && Math.abs(pi[1] - pj[1]) > 1e-9) return false;
+  }
+  return true;
+}
+
 /**
- * EXACT intersection area of two rectilinear polygons: vertical sweep, the section is constant
- * between two consecutive abscissas, so the midpoint rule is exact.
+ * EXACT intersection area of two polygons: vertical sweep, one slab between two consecutive
+ * abscissas, midpoint rule per slab.
  * It is this area matching that lets a room's name survive a wall being moved.
+ *
+ * WHY THE MIDPOINT RULE IS EXACT, AND WHAT IT NEEDED TO STAY EXACT. Inside a slab with no vertex,
+ * every span boundary follows ONE edge, so it is linear in x, and the midpoint rule integrates a
+ * linear function without error. That was the whole argument, and it held only for RECTILINEAR
+ * polygons: the moment an edge is oblique (a 45-degree cut corner, which AGENTS.md plans for), two
+ * span boundaries can CROSS inside a slab, the overlapping length changes formula halfway through,
+ * and the midpoint reads one of the two halves as if it lasted the whole slab. The matching then
+ * became approximate exactly where the shape is unusual, i.e. where a name is hardest to re-find.
+ * The fix is to cut the slab there: the abscissas where an edge of A meets an edge of B are added
+ * to the sweep, so no crossing is ever left inside one. They are only looked for when at least one
+ * of the two polygons is oblique, so the ordinary case computes the same bytes as before.
  */
 export function v5OverlapArea(A: readonly Pt[], B: readonly Pt[]): number {
-  const xs = Array.from(new Set(A.map((p) => p[0]).concat(B.map((p) => p[0])))).sort((a, b) => a - b);
+  const coupes = A.map((p) => p[0]).concat(B.map((p) => p[0]));
+  if (!estRectilineaire(A) || !estRectilineaire(B)) {
+    for (let i = 0, j = A.length - 1; i < A.length; j = i++) {
+      for (let k = 0, l = B.length - 1; k < B.length; l = k++) {
+        const p = v5SegInt(A[j]!, A[i]!, B[l]!, B[k]!);
+        if (p) coupes.push(p[0]);
+      }
+    }
+  }
+  const xs = Array.from(new Set(coupes)).sort((a, b) => a - b);
   let area = 0;
   for (let i = 0; i + 1 < xs.length; i++) {
     const x0 = xs[i]!, x1 = xs[i + 1]!, dx = x1 - x0;
