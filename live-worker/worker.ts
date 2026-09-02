@@ -279,6 +279,15 @@ const ORPHAN_KEY_OLD = "orphan";
 // end screen instead of quietly retrying forever.
 const REVOKE_CLOSE_CODE = 4001;
 const REVOKE_CLOSE_REASON = "invite_revoked";
+// ---- A DELETED PLAN STAYS DELETED --------------------------------------------------------------
+// The DELETE in `functions/api/plans.ts` only erases the D1 row. This object's snapshot being an
+// `INSERT … ON CONFLICT`, it recreated that row on the next alarm, and its sockets stayed open on
+// a plan that no longer exists. `POST /purge` is what the DELETE calls: sockets closed, alarm
+// disarmed, storage erased, and a marker so a message arriving late on a straggling socket is
+// refused instead of rewriting anything.
+const PURGE_CLOSE_CODE = 4004;
+const PURGE_CLOSE_REASON = "plan_deleted";
+const PURGED_KEY = "purged";
 
 // Will the plan fit into the DO's storage and into D1? Checked BEFORE any write: a mutation
 // accepted then rejected by storage.put() used to let the exception escape from
@@ -390,6 +399,9 @@ export class PlanRoom {
   chat: ChatEntry[];
   seq: Map<string, SequenceEntry>;
   d1Seen: string | null;
+  // The plan this room served was DELETED (see PURGE_CLOSE_CODE). Cached in memory, but the
+  // authority is the storage marker: a fresh instance must find it there.
+  purged: boolean;
   // Per-token rate window (design edge 15): token -> timestamps of `op` messages accepted within
   // the rolling window. Memory only, same reasoning as `seq` (cf. RATE_MAX_ENTRIES): losing it on
   // an eviction just resets the counter, which is harmless.
@@ -415,7 +427,16 @@ export class PlanRoom {
     // Fingerprint of the bytes of the D1 row that this DO last wrote or adopted. Persisted:
     // without this, an eviction would re-adopt the same REST write over and over.
     this.d1Seen = null;
+    this.purged = false;
     this.rateSeen = new Map();
+  }
+
+  /** Was the plan deleted? Read from storage the first time, so a fresh instance woken on a
+   *  straggling socket refuses too. */
+  async isPurged(): Promise<boolean> {
+    if (this.purged) return true;
+    if (await this.storage.get<boolean>(PURGED_KEY)) this.purged = true;
+    return this.purged;
   }
 
   // Lazy load: DO storage first, otherwise D1, otherwise an empty plan.
@@ -644,6 +665,9 @@ export class PlanRoom {
     const url = new URL(request.url);
     if (url.pathname === "/revoke") return this.handleRevoke(request);
     if (url.pathname === "/orphans") return this.handleOrphans(request);
+    if (url.pathname === "/purge") return this.handlePurge(request);
+    // A deleted plan does not open a wire again: 410, and the client stops retrying.
+    if (await this.isPurged()) return new Response("plan deleted", { status: 410 });
 
     await this.adoptPlanId(request.headers.get("X-Plan-Id"));
     // Nothing routable: refuse the upgrade rather than open a socket onto an object that would
@@ -689,6 +713,36 @@ export class PlanRoom {
         closed++;
       }
     }
+    return Response.json({ ok: true, closed });
+  }
+
+  /**
+   * `POST /purge` (internal route, same guard and same reachability as `/revoke`): the plan this
+   * room served has been deleted. Everything this object could use to write that row again goes:
+   * the sockets (closed with a distinguishable code, so the client shows a dead end instead of
+   * retrying), the alarm, and the whole storage. The `purged` marker is written LAST, over the
+   * emptied storage, and is what makes a straggling message harmless.
+   * Response contract: `{ok:true, closed:<n>}`.
+   */
+  async handlePurge(request: Request): Promise<Response> {
+    if (request.headers.get(INTERNAL_HEADER) !== "1") return new Response("forbidden", { status: 403 });
+    if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let closed = 0;
+    for (const ws of this.state.getWebSockets()) {
+      try { ws.close(PURGE_CLOSE_CODE, PURGE_CLOSE_REASON); } catch (_) { /* already gone */ }
+      closed++;
+    }
+    try { await this.storage.deleteAlarm(); } catch (_) { /* none armed */ }
+    await this.storage.deleteAll();
+    await this.storage.put(PURGED_KEY, true);
+    this.purged = true;
+    // In memory too: `loaded` false with no plan means nothing can be snapshotted back.
+    this.loaded = false;
+    this.plan = null;
+    this.chat = [];
+    this.d1Seen = null;
+    this.seq.clear();
+    this.rateSeen.clear();
     return Response.json({ ok: true, closed });
   }
 
@@ -884,6 +938,8 @@ export class PlanRoom {
   // has unsnapshotted work (dirty = true). We RECONCILE before writing: without this, the
   // snapshot silently overwrites everything the REST fallback deposited during the outage.
   async alarm() {
+    // A deleted plan is never snapshotted back into existence.
+    if (await this.isPurged()) { try { await this.storage.deleteAlarm(); } catch (_) {} return; }
     await this.ensureLoaded();
     const v = await this.reconcileD1(true);
     await this.snapshot(v.rev);
@@ -979,6 +1035,13 @@ export class PlanRoom {
 
   // ---- Hibernation handlers ----
   async webSocketMessage(ws: WebSocket, raw: string) {
+    // The plan was DELETED: a message arriving on a socket that has not noticed yet is refused
+    // BEFORE `ensureLoaded`, which would otherwise cold-load from D1 and reinstall the row.
+    if (await this.isPurged()) {
+      this.send(ws, { t: "err", reason: PURGE_CLOSE_REASON });
+      try { ws.close(PURGE_CLOSE_CODE, PURGE_CLOSE_REASON); } catch (_) { /* already gone */ }
+      return;
+    }
     await this.ensureLoaded();
     let msg: WireMessage;
     try { msg = JSON.parse(raw); } catch { return this.send(ws, { t: "err", reason: "bad_json" }); }
@@ -1220,6 +1283,8 @@ export class PlanRoom {
 
   async webSocketClose(ws: WebSocket) {
     try { ws.close(); } catch (_) {}
+    // A purge closed every socket at once: the departure flush would only rewrite the deleted row.
+    if (await this.isPurged()) return;
     // The deduplication window dies with the socket: it's indexed by the device label, which is
     // unique per socket and never reused. Nothing to purge later.
     const att = this.attOf(ws);

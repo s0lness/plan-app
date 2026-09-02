@@ -2342,4 +2342,50 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   ok(res2.status === 200 && corps2.ok === true, "un second appel sur le meme jeton reste 200");
 }
 
+// ---- 8. SUPPRIMER UN PLAN FERME LE FIL ET NE RESSUSCITE PAS LA LIGNE ------------------------------
+// Le DELETE de `functions/api/plans.ts` n'efface que D1. Le snapshot du Durable Object etant un
+// `INSERT ... ON CONFLICT`, il recreait la ligne au tour suivant, et ses sockets restaient ouverts
+// sur un plan qui n'existe plus.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const ws = f.mkWs("a@example.com", "aaa111");
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", op: { kind: "cell.set", cellId: "c1", name: "Live" } }));
+  ok(f.alarm() !== null, "une alarme est armee avant la suppression");
+
+  const purgeReq = (headers: Record<string, string> = { "X-Plan-Internal": "1" }) =>
+    new Request("https://plan-live-internal/purge", { method: "POST", headers });
+  const refuse = await f.room.fetch(purgeReq({}));
+  ok(refuse.status === 403, "sans l'en-tete interne, /purge est refuse (meme garde que /revoke)");
+  ok(!ws.closed, "et rien n'est ferme");
+
+  const res = await f.room.fetch(purgeReq());
+  const corps = await res.json<DonneeDynamique>();
+  ok(res.status === 200 && corps.ok === true && corps.closed === 1,
+    "contrat de reponse {ok:true, closed:<n>}, vu " + JSON.stringify(corps));
+  ok(ws.closed && ws.closeCode === 4004 && ws.closeReason === "plan_deleted",
+    "les sockets sont fermes avec un code distinguable, vu " + ws.closeCode + " " + ws.closeReason);
+  ok(f.alarm() === null, "l'alarme est desarmee");
+  ok(!f.kv.has("plan") && !f.kv.has("chat"), "le storage du Durable Object est efface");
+
+  const ecritesAvant = f.world.writes.length;
+  await f.room.alarm();
+  ok(f.world.writes.length === ecritesAvant, "apres /purge, une alarme n'ecrit RIEN en D1");
+
+  // Un message arrive en retard sur un socket attarde ne reecrit rien.
+  ws.sent.length = 0;
+  await messageSocket(f.room, ws, JSON.stringify({ t: "op", n: 9, op: { kind: "cell.set", cellId: "c1", name: "Zombie" } }));
+  ok(ws.sent.some((m: DonneeDynamique) => m.t === "err" && m.reason === "plan_deleted"),
+    "un message retardataire est refuse, vu " + JSON.stringify(ws.sent));
+  ok(f.world.writes.length === ecritesAvant && !f.kv.has("plan"), "et il ne reecrit ni D1 ni le storage");
+
+  // Une NOUVELLE instance sur le meme storage (eviction apres la suppression) refuse aussi.
+  const revenu = nouvelleRoom(
+    { storage: f.room.storage, getWebSockets: () => [], acceptWebSocket: () => {} },
+    (f.room as unknown as { env: unknown }).env,
+  );
+  const up = await revenu.fetch(new Request("https://plan-live-internal/ws", { headers: { Upgrade: "websocket", "X-Plan-Id": "main" } }));
+  ok(up.status === 410, "un plan supprime ne rouvre pas de fil, vu " + up.status);
+}
+
 console.log("OK " + n + " assertions");

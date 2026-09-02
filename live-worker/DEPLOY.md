@@ -298,9 +298,23 @@ Function, never from the network-facing `fetch` (which serves `/ws` only). The F
 exposes it to the household door is `/api/orphans`. A version whose bytes exceeded the storage
 ceiling is listed with `data: null`: the trace is kept even when the content could not be.
 
+### Deleting a plan (`purge`)
+
+Deleting the D1 row is not enough: the DO would snapshot the row straight back
+(`INSERT … ON CONFLICT`), and its sockets would stay open on a plan that no longer exists.
+
+```
+POST /purge    on the PlanRoom stub, header X-Plan-Internal: 1
+-> {"ok":true,"closed":<number of sockets closed>}
+```
+
+It closes every socket with code **4004** / `plan_deleted`, disarms the alarm, erases the storage,
+and leaves a `purged` marker so a late message on a straggling socket is refused without rewriting
+anything (and a later upgrade answers **410**). Call it from the DELETE that removes the row.
+
 DO storage keys: `planId` (WHICH row is this object's own), `plan`, `rev`/`opCount`, `chat`,
 `d1seen` (fingerprint of D1 bytes already written or adopted), `orphans` (the last 5 unmerged REST
-writes).
+writes), `purged` (the plan was deleted).
 
 ### Client/server deployment order
 
