@@ -2352,6 +2352,39 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   ok(res2.status === 200 && corps2.ok === true, "un second appel sur le meme jeton reste 200");
 }
 
+// ---- 10. L'EXPIRATION EST VERIFIEE A CHAQUE MESSAGE, PAS SEULEMENT A L'OUVERTURE -----------------
+// `functions/ws.ts` refuse l'upgrade d'une invitation perimee, mais un socket deja ouvert ne
+// repassait plus jamais par cette porte : un lien expirait pendant la session sans que rien ne
+// l'arrete, et la revocation avait le meme trou avant `/revoke`.
+{
+  const f = fakeD1Room({ data: JSON.stringify(v5State()) });
+  await f.room.ensureLoaded();
+  const perime = f.mkWs("", "xxx111", { guest: true, name: "Marie", guestId: "gx", token: "tokExp", expiresAt: Date.now() - 1000 });
+  await messageSocket(f.room, perime, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "Apres expiration" } }));
+  ok(perime.closed && perime.closeCode === 4003 && perime.closeReason === "link_expired",
+    "un message sur un lien perime ferme le socket, vu " + perime.closeCode + " " + perime.closeReason);
+  ok(f.room.plan.cells[0].name !== "Apres expiration", "et l'op n'est PAS appliquee");
+
+  const encore = f.mkWs("", "xxx222", { guest: true, name: "Leo", guestId: "gy", token: "tokOk", expiresAt: Date.now() + 60_000 });
+  await messageSocket(f.room, encore, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "Avant expiration" } }));
+  ok(!encore.closed && f.room.plan.cells[0].name === "Avant expiration", "un lien encore valide travaille normalement");
+
+  // Compatibilite : sans en-tete d'expiration (foyer, ou forwardeur plus ancien), aucune verification.
+  const menage = f.mkWs("a@example.com", "xxx333");
+  await messageSocket(f.room, menage, JSON.stringify({ t: "op", n: 1, op: { kind: "cell.set", cellId: "c1", name: "Foyer" } }));
+  ok(!menage.closed && f.room.plan.cells[0].name === "Foyer", "sans expiration connue, rien ne change");
+}
+{
+  const reqH = (headers: Record<string, string>) => new Request("https://x/ws", { headers });
+  const iso = "2027-09-03T10:00:00.000Z";
+  ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1", "X-Plan-Expires": iso }), "tagX").expiresAt === Date.parse(iso),
+    "X-Plan-Expires en ISO est lu");
+  ok(attachmentFromRequest(reqH({ "X-Plan-Guest": "1", "X-Plan-Expires": "1788000000000" }), "tagX2").expiresAt === 1788000000000,
+    "X-Plan-Expires en millisecondes est lu aussi");
+  ok(attachmentFromRequest(reqH({}), "tagY").expiresAt === 0, "en-tete absent = aucune verification (compatibilite)");
+  ok(attachmentFromRequest(reqH({ "X-Plan-Expires": "n'importe quoi" }), "tagZ").expiresAt === 0, "en-tete illisible = aucune verification");
+}
+
 // ---- 9. PLAFONDS DE SOCKETS, DE DEBIT ET DE TAILLE, ET ENVELOPPE RECONSTRUITE ---------------------
 // L'enveloppe d'une op n'etait derriere AUCUNE liste blanche : le serveur rediffusait l'objet
 // RECU, cle inconnue comprise.

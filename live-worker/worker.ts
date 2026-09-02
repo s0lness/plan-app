@@ -39,6 +39,9 @@ interface SocketAttachment {
   // survives hibernation and eviction: an object woken by `webSocketMessage` on a socket opened
   // before the eviction can read back the row that is its own even if nothing else remains.
   planId: string;
+  // When this GUEST's invite stops being valid, in milliseconds since the epoch. 0 = unknown, so
+  // nothing is checked (a household socket, or a forwarder that predates `X-Plan-Expires`).
+  expiresAt: number;
 }
 
 // Same shape as functions/ws.ts's `?g=` cleaning: a guest's OWN second tab identifier, not a
@@ -75,7 +78,21 @@ export function attachmentFromRequest(request: Request, tag: string): SocketAtta
   // a fallback here would be a silent licence to write into somebody else's row.
   const idBrut = request.headers.get("X-Plan-Id");
   const planId = idBrut === null ? "" : (cleanPlanId(idBrut) || "");
-  return { email, color, tag, name, guest, guestId, token, planId };
+  return { email, color, tag, name, guest, guestId, token, planId, expiresAt: expiresFromHeader(request) };
+}
+
+/**
+ * `X-Plan-Expires`: when this socket's invite stops being valid. Accepts the ISO 8601 form the
+ * `invites.expires_at` column holds (what `functions/ws.ts` has at hand) and a plain millisecond
+ * epoch. ABSENT or unreadable answers 0, which means "do not check": a socket opened by a
+ * forwarder that predates this header must keep working exactly as before, and a household socket
+ * has no expiry to have.
+ */
+function expiresFromHeader(request: Request): number {
+  const brut = (request.headers.get("X-Plan-Expires") || "").trim();
+  if (!brut) return 0;
+  const ms = /^[0-9]+$/.test(brut) ? Number(brut) : Date.parse(brut);
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
 interface SequenceEntry {
@@ -324,6 +341,13 @@ const REVOKE_CLOSE_REASON = "invite_revoked";
 const PURGE_CLOSE_CODE = 4004;
 const PURGE_CLOSE_REASON = "plan_deleted";
 const PURGED_KEY = "purged";
+// ---- AN EXPIRY IS CHECKED WHILE THE SOCKET LIVES, NOT ONLY WHEN IT OPENS -----------------------
+// `functions/ws.ts` refuses the upgrade of an expired invite, but an ALREADY OPEN socket never
+// passed that door again: a link could expire mid-session and keep writing, which is the very hole
+// `/revoke` was built to close for revocation. Same close-code family, same reason: the client can
+// tell this apart from an ordinary drop and stop retrying.
+const EXPIRE_CLOSE_CODE = 4003;
+const EXPIRE_CLOSE_REASON = "link_expired";
 
 // Will the plan fit into the DO's storage and into D1? Checked BEFORE any write: a mutation
 // accepted then rejected by storage.put() used to let the exception escape from
@@ -813,7 +837,7 @@ export class PlanRoom {
   // ---- presence ----
   attOf(ws: WebSocket): SocketAttachment {
     return (ws.deserializeAttachment() as SocketAttachment | null)
-      || { email: "inconnu", color: colorFor("inconnu"), tag: "000000", name: "", guest: false, guestId: "", token: "", planId: "" };
+      || { email: "inconnu", color: colorFor("inconnu"), tag: "000000", name: "", guest: false, guestId: "", token: "", planId: "", expiresAt: 0 };
   }
 
   // ---- TECHNICAL IDENTITY IS THE DEVICE, NOT THE EMAIL ADDRESS -----------------------------------
@@ -1104,6 +1128,13 @@ export class PlanRoom {
     const att = this.attOf(ws);
 
     // ---- EXPIRY AND THE RATE CAP ARE CHECKED ON EVERY MESSAGE, NOT ONLY AT THE DOOR -------------
+    // An invite that expires while its socket is open stops here. `expiresAt === 0` means the
+    // forwarder said nothing, so nothing is checked (compatibility).
+    if (att.guest && att.expiresAt > 0 && Date.now() > att.expiresAt) {
+      this.send(ws, { t: "err", reason: EXPIRE_CLOSE_REASON });
+      try { ws.close(EXPIRE_CLOSE_CODE, EXPIRE_CLOSE_REASON); } catch (_) { /* already gone */ }
+      return;
+    }
     // One budget per KIND, for every socket, guest and household alike (see RATE_BUDGETS).
     const genre = (msg && typeof msg.t === "string") ? msg.t : "";
     if (genre && !this.rateOk(att, genre)) {
