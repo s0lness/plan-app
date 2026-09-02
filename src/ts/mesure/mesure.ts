@@ -167,7 +167,6 @@ export function setMeasureMode(ctx: Contexte, on: boolean): void {
   // `.measuring` on `.app` makes furniture and handles inert to the pointer (CSS): that's what
   // lets the click bubble up to the viewport and become a measurement.
   document.querySelector(".app")?.classList.toggle("measuring", v);
-  if (v) ctx.crochets.showHint?.("measure");   // first-entry hint for Measure mode
   if (v) { clearSel(ctx); ctx.crochets.hideInspector?.(); }
   if (!v) { clearMeasures(ctx); clearCursorGuides(); } else { drawMeasures(ctx); }
 }

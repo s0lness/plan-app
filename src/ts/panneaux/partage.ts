@@ -120,16 +120,15 @@ function peindreListe(): void {
 
 async function chargerInvites(): Promise<void> {
   if (!_planId) return;
-  dire("Loading…");
   try {
     const r = await fetch(INVITES_URL + "?p=" + encodeURIComponent(_planId), { headers: { accept: "application/json" } });
-    if (!r.ok) { dire("Could not load the links (" + r.status + ")."); return; }
+    if (!r.ok) throw r;
     const j = await r.json() as { invites?: InviteApi[]; guestHost?: string | null };
     _invites = Array.isArray(j.invites) ? j.invites : [];
     _guestHost = j.guestHost ?? null;
     dire("");
     peindreListe();
-  } catch (_) { dire("Could not reach the server. The link list needs the network."); }
+  } catch (_) { dire("Could not load the links: check your connection."); }
 }
 
 /** The just-created link (or, absent a configured guest host, its raw token) shown ALREADY
@@ -154,7 +153,6 @@ async function creerLien(): Promise<void> {
   if (!_planId) return;
   const btn = $("shareCreate") as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
-  dire("Creating…");
   try {
     const r = await fetch(INVITES_URL, {
       method: "POST",
@@ -164,7 +162,7 @@ async function creerLien(): Promise<void> {
     const j = await r.json() as { invite?: InviteApi; guestHost?: string | null; error?: string; max?: number };
     if (!r.ok || !j.invite) {
       dire(j.error === "trop_d_invitations" ? `That plan already has ${j.max} live links. Revoke one first.`
-        : "Could not create a link (" + r.status + ").");
+        : "Could not create a link: check your connection.");
       return;
     }
     _guestHost = j.guestHost ?? null;
@@ -172,7 +170,7 @@ async function creerLien(): Promise<void> {
     peindreListe();
     afficherLienCree(j.invite.token);
     dire("");
-  } catch (_) { dire("Could not create a link: no network."); }
+  } catch (_) { dire("Could not create a link: check your connection."); }
   finally { if (btn) btn.disabled = false; }
 }
 
@@ -185,20 +183,19 @@ const confirmerRevocation = (): boolean => {
 
 async function revoquer(token: string): Promise<void> {
   if (!token || !confirmerRevocation()) return;
-  dire("Revoking…");
   try {
     const r = await fetch(INVITES_URL, {
       method: "DELETE",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ token }),
     });
-    if (!r.ok) { dire("Revoke failed (" + r.status + ")."); return; }
+    if (!r.ok) throw r;
     // THE ROW DISAPPEARS: a revoked link is no longer "live", so it leaves the list it came
-    // from instead of lingering there looking like it still works (design doc's edge case).
+    // from instead of lingering there looking like it still works (design doc's edge case). That
+    // is the confirmation (decision 0014, "l'app se tait"): no banner on top of it.
     _invites = _invites.filter((i) => i.token !== token);
     peindreListe();
-    dire("Link revoked.");
-  } catch (_) { dire("Revoke failed: no network."); }
+  } catch (_) { dire("Revoke failed: check your connection."); }
 }
 
 export function ouvrirPartage(planId: string, planNom: string): void {

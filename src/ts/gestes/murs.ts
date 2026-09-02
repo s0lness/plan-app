@@ -117,10 +117,9 @@ export function v5SelectCell(ctx: Contexte, id: unknown, openCard?: boolean): vo
 }
 
 /**
- * G-8. Mass bounding recalibrates ONLY orphaned furniture, and it SAYS SO. The old
- * `v5ClampPieces()` used to call `toast` itself; the model now returns the text, and this is where
- * it gets spoken, without `{geste:true}`, exactly as before (this particular banner describes a
- * REPAIR, not a gesture's refusal).
+ * G-8. Mass bounding recalibrates ONLY orphaned furniture, and it SAYS SO: a piece that MOVED
+ * on its own, with nobody's hand on it, is not the kind of thing the drawing alone explains
+ * (decision 0014, "l'app se tait" keeps this one, unlike a gesture's own visible result).
  */
 export function bornerLesMeubles(ctx: Contexte): number {
   const bilan = v5ClampPieces(ctx.etat.plan);
@@ -875,10 +874,9 @@ function v5RedresserMurSelectionne(ctx: Contexte): void {
   v5Touch(ctx);
   render(ctx);
   save(ctx);
-  // Le message porte les deux chiffres: un déplacement d'1 cm est indistinguable d'un clic qui n'a
-  // rien fait.
-  toast(`Wall squared up: it was ${r.deg.toFixed(2)}° off, and its end moved by ${r.cm.toFixed(1)} cm.`,
-    { geste: true });
+  // Le résultat se voit dans le dessin (décision 0014, "l'app se tait"): plus de bandeau de
+  // confirmation ici. Un redressement de moins d'un centimètre peut rester indistinguable d'un
+  // clic qui n'a rien fait, c'est le compromis assumé.
 }
 
 /** SPLIT: the selected wall becomes two halves meeting at its midpoint. */
@@ -1105,17 +1103,14 @@ function v5OutilMurSuivi(ctx: Contexte, e: PointerEvent): void {
 
 /**
  * END OF A CHAIN: double-click, Enter, or Escape. The tool STAYS armed so several runs can be
- * drawn one after another; Escape on a chain that holds nothing is what puts it away, and it says
- * so (G-13: a gesture that produces nothing says why).
+ * drawn one after another; Escape on a chain that holds nothing is what puts it away. The
+ * toolbar button losing its pressed state already shows it (decision 0014, "l'app se tait").
  */
 function v5OutilMurFin(ctx: Contexte): void {
   const r = outilMurFin(chaine);
   chaine = r.etat; saisieLongueur = ""; visee = null;
   v5ClearDraft(ctx); v5ClearDims(ctx); cacherLongueur();
-  if (r.quitter) {
-    v5SetDraw(ctx, false);
-    toast("Wall tool off.", { geste: true });
-  }
+  if (r.quitter) v5SetDraw(ctx, false);
   render(ctx);
 }
 

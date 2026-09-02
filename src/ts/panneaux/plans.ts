@@ -44,16 +44,15 @@ function ouvrirPlan(id: string): void {
 }
 
 async function charger(): Promise<void> {
-  dire("Loading…");
   try {
     const r = await fetch(PLANS_URL, { headers: { accept: "application/json" } });
-    if (!r.ok) { dire("Could not load the plan list (" + r.status + ")."); return; }
+    if (!r.ok) throw r;
     const j = await r.json() as { plans?: PlanListe[] };
     _plans = Array.isArray(j.plans) ? j.plans : [];
     dire("");
     peindre();
   } catch (_) {
-    dire("Could not reach the server. The plan list needs the network.");
+    dire("Could not load the plan list: check your connection.");
   }
 }
 
@@ -101,11 +100,11 @@ function editerNom(span: HTMLElement): void {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, name: nom }),
       });
-      if (!r.ok) { dire("Rename refused (" + r.status + ")."); peindre(); return; }
+      if (!r.ok) throw r;
       const p = _plans.find((q) => q.id === id);
       if (p) p.name = nom;
       peindre(); peindreTitre();
-    } catch (_) { dire("Rename failed: no network."); peindre(); }
+    } catch (_) { dire("Rename failed: check your connection."); peindre(); }
   };
   inp.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); void finir(true); }
@@ -118,7 +117,6 @@ async function creer(): Promise<void> {
   const inp = $("plansNewName") as HTMLInputElement | null;
   const nom = (inp?.value || "").trim();
   if (!nom) { dire("Give the new plan a name first."); inp?.focus(); return; }
-  dire("Creating…");
   try {
     const r = await fetch(PLANS_URL, {
       method: "POST",
@@ -129,14 +127,14 @@ async function creer(): Promise<void> {
     if (!r.ok || !j.ok || !j.id) {
       dire(j.error === "too_many_plans" ? `That is the ${j.max}-plan limit.`
          : j.error === "plan_exists" ? "A plan with that address already exists."
-         : "Could not create the plan (" + r.status + ").");
+         : "Could not create the plan: check your connection.");
       return;
     }
     if (inp) inp.value = "";
     // A NEW PLAN IS EMPTY: we open it, and the outline wizard opens on its own, exactly as on the
     // very first startup. Nothing is copied from the current plan.
     ouvrirPlan(j.id);
-  } catch (_) { dire("Could not create the plan: no network."); }
+  } catch (_) { dire("Could not create the plan: check your connection."); }
 }
 
 async function supprimer(id: string): Promise<void> {
@@ -148,10 +146,10 @@ async function supprimer(id: string): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    if (!r.ok) { dire("Delete refused (" + r.status + ")."); return; }
+    if (!r.ok) throw r;
     _plans = _plans.filter((q) => q.id !== id);
     peindre();
-  } catch (_) { dire("Delete failed: no network."); }
+  } catch (_) { dire("Delete failed: check your connection."); }
 }
 
 /** A single confirmation, isolated so it stays replaceable by the in-house modal later. */

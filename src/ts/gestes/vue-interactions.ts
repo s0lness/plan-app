@@ -188,7 +188,6 @@ function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
       let primaire: string | null = null;
       for (const id of ctx.selection.ids) primaire = id;   // the last one inserted wins
       ctx.selection.primaire = primaire;
-      if (ctx.selection.ids.size > 1) ctx.crochets.showHint?.("multi");
       // `render()` reapplies the class from `isSel`: the live marks and the acquired selection
       // reconcile here, in a single paint, and nothing can stay marked by mistake.
       render(ctx);

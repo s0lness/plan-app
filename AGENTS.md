@@ -569,16 +569,13 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   and a rejected op **does not enter the undo log** (otherwise the first Ctrl+Z would replay it).
   Divergence is resolved from ABOVE, by returning to the other person what they lost. Covered by
   `tests/collab-annuler.ts`.
-- **Banners are throttled by TEXT**, not only by server error pattern (`js/24`): 22 banners in 371 s,
-  including the same sentence 8 times, no longer informs anyone, it hides the next one. **But
-  throttling applies ONLY TO SYSTEM MESSAGES.** A banner that RESPONDS to a deliberate gesture goes
-  through `toast(msg, {geste:true})` and returns for EVERY gesture: someone who did not understand
-  repeats the gesture, and that is exactly when silence is intolerable (measured:
-  "That partition is already there." appeared only on the first of five attempts, while the next four
-  failed without a word). The grouping unit is the GESTURE (`_gesteEpoch`, advanced by `pointerdown`
-  and `keydown`), so a burst within the same gesture does not repeat, and a gesture message never
-  accumulates "fatigue". Accepted tradeoff: repeating the same rejected gesture ten times produces
-  ten banners. That is the price of always saying why a gesture had no effect.
+- **The app is silent unless a message exists to say why a gesture had no effect, or that
+  something the person cannot see happened to their work** (decision 0014, "l'app se tait"): no
+  confirmations, no information already visible in the drawing, no tips.
+- A refusal goes through `toast(msg, {geste:true})` and returns on EVERY repeat of the gesture,
+  never throttled: someone who did not understand repeats the gesture, and that is exactly when
+  silence is intolerable. A system message (`toast(msg)`, no `geste`) shows once and stays
+  throttled by its own TEXT until it would have faded on screen; a different text never waits on it.
 - **Ctrl+Z undoes only its author's work.** History is a stack of past SHARED states: ops received
   from peers since a snapshot was taken are replayed over it during undo, and the undo is published
   by DIFF, never as `plan5.replace`. A `plan5.replace` received from a peer (import, conversion)
