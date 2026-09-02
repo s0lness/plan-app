@@ -28,7 +28,7 @@ import { isSel, selReplace } from "../rendu/selection.ts";
 import { render } from "../rendu/rendu.ts";
 import { toast } from "../app/toast.ts";
 
-export const STACK_TOL = 6, STACK_MS = 2500;
+const STACK_TOL = 6, STACK_MS = 2500;
 
 let _stkAt: { x: number; y: number } | null = null;
 let _stkKey = "";

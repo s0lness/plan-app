@@ -352,7 +352,7 @@ export function renderOuvertures(ctx: Contexte, layer: HTMLElement, bb: BBox, S:
  * No state here: everything comes from `modele/projection.ts`, which is pure and proven without
  * a browser.
  */
-export function renderFaisceaux(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
+function renderFaisceaux(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number): void {
   const P = ctx.etat.plan;
   const vieux = layer.querySelector("svg.v5beams");
   if (vieux) vieux.remove();

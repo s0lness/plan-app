@@ -499,6 +499,6 @@ function wsEnsureGhostLoop(ctx: Contexte, fil: Fil): void {
 }
 
 /** When the corresponding `piece.set` arrives: the ghost no longer has a reason to exist. */
-export function wsClearGhost(fil: Fil, pieceId: unknown): void {
+function wsClearGhost(fil: Fil, pieceId: unknown): void {
   fil.ghosts.delete(String(pieceId));
 }

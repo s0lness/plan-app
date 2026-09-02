@@ -38,7 +38,6 @@ import type { Fil } from "./etat.ts";
 import type {
   CelluleFil, Id, MeublePartiel, Miroir, MurPartiel, Op, OuvertureFil, OuverturePartielle, Pt,
 } from "../partage/plan.ts";
-import { wsLive } from "./etat.ts";
 import { ws5DiffOps, wsShadowApplyOpInto, wsShadowCopy, wsShadowFromServerInto } from "./miroir.ts";
 import { serialiseursPour, v5StateWire } from "./pseudo-fil.ts";
 
@@ -148,7 +147,7 @@ function wsShadowGet<T>(map: Map<Id, string>, id: unknown): T | null {
  * `[]` = nothing to undo (the server did not know the entity and the op was a deletion).
  * `null` = we do not know how to undo: the caller will request the full state instead.
  */
-export function wsUndoOpsFor(fil: Fil, op: Op | null | undefined): Op[] | null {
+function wsUndoOpsFor(fil: Fil, op: Op | null | undefined): Op[] | null {
   if (!op || !op.kind) return null;
   switch (op.kind) {
     case "wall.set": {
@@ -235,7 +234,7 @@ export function wsAckOp(fil: Fil, n: number | null | undefined): boolean {
   return fil.unacked.delete(n);
 }
 
-export function wsAckArm(ctx: Contexte, fil: Fil): void {
+function wsAckArm(ctx: Contexte, fil: Fil): void {
   if (!fil.ackTimer && fil.wsAcksOn) fil.ackTimer = setInterval(() => wsAckTick(ctx, fil), 1000);
 }
 
@@ -293,7 +292,7 @@ export function wsSendOp(ctx: Contexte, fil: Fil, op: Op): void {
  * mutation points at once: end of drag, inspector, rotation, lock, rename, duplication, deletion,
  * floor, outline, wall drawn / moved / deleted, clearing, import.
  */
-export function ws5OnSave(ctx: Contexte, fil: Fil): void {
+function ws5OnSave(ctx: Contexte, fil: Fil): void {
   ws5DiffOps(etatFilCourant(ctx), fil.ws5).forEach((op) => wsSendOp(ctx, fil, op));
   wsShadowSync(ctx, fil);
 }
@@ -335,6 +334,3 @@ export function wsRequestFullSync(fil: Fil): void {
 /** What the server has NEVER received: the diff against the ACKNOWLEDGED mirror (C-3, resume). */
 export const opsNonAcquittees = (ctx: Contexte, fil: Fil): Op[] =>
   ws5DiffOps(etatFilCourant(ctx), fil.ws5Ack);
-
-/** The D1 fallback takes back over: nothing more goes out on the wire (read by `rest.ts` via `wsLive`). */
-export const filEstVivant = wsLive;

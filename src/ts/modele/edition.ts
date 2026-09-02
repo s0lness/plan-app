@@ -114,7 +114,7 @@ const idsMursExclus = (excludeId: ExclusionMurs): Set<string> => new Set(
   Array.isArray(excludeId) ? excludeId.map(String) : (excludeId == null ? [] : [String(excludeId)]),
 );
 
-export function v5Barriers(P: PlanV5 | null | undefined, excludeId: ExclusionMurs): Barriere[] {
+function v5Barriers(P: PlanV5 | null | undefined, excludeId: ExclusionMurs): Barriere[] {
   const out: Barriere[] = [];
   if (!P) return out;
   const exclus = idsMursExclus(excludeId);
@@ -176,7 +176,7 @@ export function v5RayHits(
 /** cm: an overshoot of less than 2 cm snaps back to the junction it crossed */
 export const V5_JOIN_TOL = 2;
 
-export function v5ThroughEnd(
+function v5ThroughEnd(
   P: PlanV5 | null | undefined,
   w: Mur,
   s: SegmentMur,
@@ -407,11 +407,6 @@ function v5RelogerOuverturesContour(P: PlanV5, contour: readonly Mur[], disparus
 // rule itself lives in `v5ClampOpeningsOfWall` (modele/murs.ts): PURE, MONOTONIC, NARROW.
 
 let ardoiseBorned: ChangementOuverture[] | null = null;
-
-/** The last clamping's slate, without clearing it (the old `v5LastBorned`). */
-export function v5LastBorned(): ChangementOuverture[] | null {
-  return ardoiseBorned;
-}
 
 export function v5ClampOpenings(P: PlanV5 | null | undefined): void {
   if (!P) return;
@@ -787,15 +782,11 @@ export interface AmincissementOuverture {
 let ardoiseRefus: RefusOuverture | null = null;
 let ardoiseThinned: AmincissementOuverture | null = null;
 
-export function v5LastRefus(): RefusOuverture | null {
-  return ardoiseRefus;
-}
-
 export function v5LastThinned(): AmincissementOuverture | null {
   return ardoiseThinned;
 }
 
-export function v5OpeningFitsWall(op: Pick<Ouverture, "w">, w: Pick<Mur, "a" | "b">): boolean {
+function v5OpeningFitsWall(op: Pick<Ouverture, "w">, w: Pick<Mur, "a" | "b">): boolean {
   return v5Seg(w).L + 0.5 >= op.w;
 }
 
@@ -871,10 +862,6 @@ export interface PoseRabotee {
 }
 
 let ardoiseNarrowed: PoseRabotee | null = null;
-
-export function v5LastNarrowed(): PoseRabotee | null {
-  return ardoiseNarrowed;
-}
 
 export function v5FlushPlaceNarrowed(): string | null {
   const r = ardoiseNarrowed;

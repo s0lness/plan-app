@@ -87,7 +87,7 @@ export function buildFurnitureData(ctx: Contexte): SectionListe[] {
  * electrics. Duplicates aggregated by (type,w,h) with a counter. Returns SORTED rows, in
  * French (`localeCompare(…, "fr")`, without which "Étagère" would sort after "Zone").
  */
-export function groupPieces(list: readonly ObjetListe[] | null | undefined): { furn: LigneListe[]; open: LigneListe[] } {
+function groupPieces(list: readonly ObjetListe[] | null | undefined): { furn: LigneListe[]; open: LigneListe[] } {
   const furn = new Map<string, LigneListe>(), open = new Map<string, LigneListe>();
   (list || []).forEach((p) => {
     const t: Partial<ItemCatalogue> = TYPEMAP[p.type] || {};
@@ -104,7 +104,7 @@ export function groupPieces(list: readonly ObjetListe[] | null | undefined): { f
 }
 
 /** The HTML of a section, THE ONLY ONE: the screen (modal) and printing both call it. */
-export function furnitureSectionHTML(sec: SectionListe): string {
+function furnitureSectionHTML(sec: SectionListe): string {
   let h = `<div class="furni-room"><h3><span>${escapeHtml(sec.name)}</span><span class="fa">${fmtM2(sec.area * 10000)} · ${sec.total} piece${sec.total > 1 ? "s" : ""}</span></h3>`;
   if (sec.furn.length) {
     h += `<table class="furni-tbl"><tbody>`;

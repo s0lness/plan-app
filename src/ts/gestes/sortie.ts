@@ -44,7 +44,7 @@ export function brancherSortieGestes(ctx: Contexte): void { _ctx = ctx; }
 export const gesteActif = (): boolean => gestureActive;
 export const gesteArme = (): boolean => !!gFinish;
 
-export function gPoke(): void { gSeen = Date.now(); }
+function gPoke(): void { gSeen = Date.now(); }
 export function gestureStale(): boolean { return !!gSeen && (Date.now() - gSeen) > GESTURE_IDLE_MS; }
 
 /** Test probe: artificially age the current gesture to exercise the watchdog. */
@@ -184,7 +184,7 @@ export function fileEnAttente(): { state: boolean; op: string | null } {
   return { state: !!gQueuedState, op: gQueuedOp ? String(gQueuedOp.kind) : null };
 }
 
-export function flushQueuedRemote(): void {
+function flushQueuedRemote(): void {
   const st = gQueuedState, so = gQueuedStateOpts, op = gQueuedOp;
   gQueuedState = null; gQueuedStateOpts = null; gQueuedOp = null;
   if (st) _ctx?.crochets.appliquerEtatFile?.(st, so);

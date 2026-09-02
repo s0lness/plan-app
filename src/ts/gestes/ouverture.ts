@@ -322,8 +322,8 @@ export function v5StartOpeningDrag(ctx: Contexte, e: PointerEvent, op: Ouverture
 // The DEPTH (the thickness within the wall) has no handle: it belongs to the wall, not to
 // the opening (G-16). It stays in the card (`#iH`).
 
-export const OP_RSZ_MIN = 5;               // cm, interface floor (the server accepts 1)
-export const OP_RSZ_MAX = 600;             // cm, OPENING_W_MAX (live-worker/ops.ts): beyond that, op refused
+const OP_RSZ_MIN = 5;               // cm, interface floor (the server accepts 1)
+const OP_RSZ_MAX = 600;             // cm, OPENING_W_MAX (live-worker/ops.ts): beyond that, op refused
 /** The two handles, in WALL coordinates: "lo" = the edge on the t0 side (corner A), "hi" = the other. */
 const OP_RSZ_ENDS = ["lo", "hi"] as const;
 export type BordOuverture = (typeof OP_RSZ_ENDS)[number];
@@ -398,19 +398,17 @@ export function v5DrawOpeningResize(ctx: Contexte): void {
 // (`endGesture` -> `save` -> the `opening.set` diff).
 
 /** Bound reached during the current gesture, stated at the end. Private to the module (it was to
- *  the single closure before): the only way to read it is this getter, the only way to clear it is the flush. */
+ *  the single closure before): the only way to clear it is the flush. */
 let _opRszBute: string | null = null;
 
-export function v5OpRszBute(): string | null { return _opRszBute; }
-
-export function v5FlushOpeningRszBute(): string | null {
+function v5FlushOpeningRszBute(): string | null {
   const b = _opRszBute;
   _opRszBute = null;
   if (b) toast(b, { geste: true });
   return b;
 }
 
-export function v5StartOpeningResize(
+function v5StartOpeningResize(
   ctx: Contexte,
   e: PointerEvent,
   op: Ouverture,

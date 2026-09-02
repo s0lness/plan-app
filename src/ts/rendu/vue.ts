@@ -18,7 +18,7 @@ import { clamp, fmtM2 } from "../noyau/nombres.ts";
 import { $ } from "../noyau/dom.ts";
 
 /** Margin (px) left around the plan by "Fit". */
-export const FIT_PAD = 56;
+const FIT_PAD = 56;
 
 export interface Point {
   x: number;

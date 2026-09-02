@@ -55,7 +55,7 @@ export interface StatsTempsReel {
 /** PER-SECOND counters: we remember the cumulative values from one second ago. */
 let _prev = { t: 0, inC: 0, outC: 0, dragC: 0 };
 
-export function rtStats(fil: Fil): StatsTempsReel {
+function rtStats(fil: Fil): StatsTempsReel {
   const now = performance.now();
   if (!_prev.t) _prev = { t: now, inC: fil.curIn, outC: fil.curOut, dragC: fil.dragOut };
   const dt = (now - _prev.t) / 1000 || 1;

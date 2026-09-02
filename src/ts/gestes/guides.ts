@@ -66,7 +66,7 @@ export function pieceAABB(p: Pick<Meuble, "x" | "y" | "w" | "h" | "rot">): AABB 
 // =====================================================================
 // Ray from (ox,oy) along unit (dx,dy) to the nearest edge of the CELL that contains the point
 // (the outline as a fallback); dist in cm or null. Everything is in apartment cm.
-export function rayToPoly(
+function rayToPoly(
   P: PlanV5 | null | undefined,
   ox: number, oy: number, dx: number, dy: number,
 ): number | null {
@@ -94,7 +94,7 @@ export function clearGuides(ctx: Contexte): void {
 // and top/center/bottom (y) to every other visible non-wall-mounted piece's same lines.
 // Within ALIGN_TOL cm, snap the piece (alignment wins over grid) and report the nearest line
 // per axis for drawing. `excludeIds` = dragged piece + chairs it drags along.
-export const ALIGN_TOL = 1.5;
+const ALIGN_TOL = 1.5;
 
 export interface LigneAlignX {
   delta: number;
@@ -280,7 +280,7 @@ export function drawWallGuides(ctx: Contexte, w: Mur): void {
 }
 
 /** Draw one dashed line (a->b, axis-aligned) plus a centered cm chip. axis "x"=horizontal line. */
-export function addGuideLine(
+function addGuideLine(
   ctx: Contexte, cont: HTMLElement, a: PointCm, b: PointCm, text: string, axis: "x" | "y",
 ): void {
   const sa = aptToLayerPx(ctx, a.x, a.y), sbp = aptToLayerPx(ctx, b.x, b.y);

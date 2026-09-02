@@ -55,6 +55,3 @@ export function selToggle(ctx: Contexte, id: unknown): boolean {
  * selection whatever just became invisible). `selRecomputePrimary` in the old client.
  */
 export function selRecomputePrimary(ctx: Contexte): void { recalculerPrimaire(ctx); }
-
-/** The PRIMARY identifier, or null. */
-export const selPrimaire = (ctx: Contexte): string | null => ctx.selection.primaire;

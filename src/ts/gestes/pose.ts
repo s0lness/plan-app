@@ -52,7 +52,7 @@ import {
 import { v5NewId } from "../fil/identite.ts";
 import { snapPos } from "./contraintes.ts";
 import { armGesture } from "./sortie.ts";
-import { isTouchEvt, lastCursorApt, measureMode, spaceHeld } from "./etat-pointeur.ts";
+import { isTouchEvt, measureMode, spaceHeld } from "./etat-pointeur.ts";
 import { pushHistory, undo } from "../historique/pile.ts";
 import { save, saveOpts } from "../app/persistance.ts";
 import { toast } from "../app/toast.ts";
@@ -135,7 +135,7 @@ export function ensureLayerVisible(ctx: Contexte, type: string): boolean {
 // furniture list counted ten, and the occupied area lied. So we offset each successive placement at the
 // same point, in a ring around the cursor (as a duplicate does) rather than refusing the
 // placement: ten clicks on "Chair" really are ten chairs, simply all visible.
-export const STACK_RING: readonly (readonly [number, number])[] = [
+const STACK_RING: readonly (readonly [number, number])[] = [
   [0, 0], [20, 20], [-20, 20], [-20, -20], [20, -20], [40, 0], [0, 40], [-40, 0], [0, -40],
   [40, 40], [-40, 40], [-40, -40], [40, -40], [60, 20], [20, 60], [-60, -20], [-20, -60],
   [60, 60], [-60, 60], [-60, -60], [60, -60], [80, 0], [0, 80], [-80, 0],
@@ -143,7 +143,7 @@ export const STACK_RING: readonly (readonly [number, number])[] = [
 
 // We offset AFTER the bounding to the cell: in a narrow room the clamp pulls all
 // placements back to the same spot, and an offset decided before it wouldn't show.
-export function unstackPiece(ctx: Contexte, p: Meuble, c: { x: number; y: number }): Meuble {
+function unstackPiece(ctx: Contexte, p: Meuble, c: { x: number; y: number }): Meuble {
   const P = ctx.etat.plan;
   const taken = (): boolean =>
     (P.pieces || []).some((q) => q !== p && !isWallMount(q.type) && q.x === p.x && q.y === p.y);
@@ -225,12 +225,6 @@ export function placeNewPieceAt(
   return p;
 }
 
-// ---- add at the LAST KNOWN CURSOR position over the canvas. Falls back to the view center when
-// the cursor has never been over / has left the canvas. Remains the KEYBOARD path (Enter on an
-// armed thumbnail) and the `addAtCursor` test probe. ----
-export function addCentered(ctx: Contexte, type: string): Meuble | Ouverture | null {
-  return placeNewPieceAt(ctx, type, lastCursorApt());
-}
 
 // ---- SHARED PLACEMENT PREVIEW ------------------------------------------------------------------
 // YOU SEE THE OBJECT, NOT A BOX. The ghost used to be a plain rectangle: 1.5 px border,
@@ -380,7 +374,7 @@ let poseHoverOn = false;               // is armed hover listening to the pointe
 /** The armed type, or null. Read by the keyboard (Escape / Enter) and by test probes. */
 export const poseArme = (): string | null => _poseArme;
 
-export function poseArmeLabel(): string {
+function poseArmeLabel(): string {
   const t: Partial<ItemCatalogue> = TYPEMAP[_poseArme || ""] || {};
   return t.name || _poseArme || "";
 }
@@ -394,7 +388,7 @@ export function poseArmeLabel(): string {
 // `window` cannot receive it as an argument.
 let _hoverMove: ((ev: PointerEvent) => void) | null = null;
 
-export function poseHoverMove(ctx: Contexte, ev: PointerEvent): void {
+function poseHoverMove(ctx: Contexte, ev: PointerEvent): void {
   if (!posePreview) return;
   const vr = ctx.viewport.getBoundingClientRect();
   const dedans = ev.clientX >= vr.left && ev.clientX <= vr.right && ev.clientY >= vr.top && ev.clientY <= vr.bottom;
@@ -402,7 +396,7 @@ export function poseHoverMove(ctx: Contexte, ev: PointerEvent): void {
   if (dedans) posePreview.move(ev.clientX, ev.clientY);
 }
 
-export function setPoseArme(ctx: Contexte, type: string | null): string | null {
+function setPoseArme(ctx: Contexte, type: string | null): string | null {
   _poseArme = type || null;
   document.querySelectorAll<HTMLElement>("#palette .pitem").forEach((el) =>
     el.classList.toggle("armed", !!_poseArme && el.dataset["type"] === _poseArme));
@@ -508,7 +502,7 @@ function brancherPoseArmeeSurLePlan(ctx: Contexte): void {
 }
 
 // ---- palette drag-to-place ----
-export function startPaletteDrag(
+function startPaletteDrag(
   ctx: Contexte,
   e: PointerEvent,
   type: string,

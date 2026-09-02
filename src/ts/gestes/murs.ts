@@ -197,7 +197,7 @@ export function v5ClearDims(ctx: Contexte): void {
  * showing the one measurement that raises no question: you push a wall to adjust the room
  * NEXT TO IT, and that room is bounded by the neighboring walls.
  */
-export function v5MursTouchant(P: PlanV5 | null | undefined, w: Pick<Mur, "id" | "a" | "b">): Mur[] {
+function v5MursTouchant(P: PlanV5 | null | undefined, w: Pick<Mur, "id" | "a" | "b">): Mur[] {
   if (!P) return [];
   const TOL = 3;   // cm: two ends within 3 cm are the same junction (V5_JOIN_TOL + margin)
   const proche = (p: Pt, q: Pt): boolean => Math.hypot(p[0] - q[0], p[1] - q[1]) <= TOL;
@@ -227,7 +227,7 @@ export function v5DrawWallDims(ctx: Contexte, walls: ReadonlyArray<Pick<Mur, "a"
   if (cont.children.length) ctx.canvas.appendChild(cont);
 }
 
-export function v5DrawDraft(ctx: Contexte, seg: readonly [Pt, Pt] | null): void {
+function v5DrawDraft(ctx: Contexte, seg: readonly [Pt, Pt] | null): void {
   v5ClearDraft(ctx);
   if (!seg) return;
   const cont = document.createElement("div");
@@ -248,7 +248,7 @@ export function v5DrawDraft(ctx: Contexte, seg: readonly [Pt, Pt] | null): void 
   ctx.canvas.appendChild(cont);
 }
 
-export function v5ClearDraft(ctx: Contexte): void {
+function v5ClearDraft(ctx: Contexte): void {
   ctx.canvas.querySelectorAll(".v5draftwrap").forEach((n) => n.remove());
 }
 
@@ -577,7 +577,7 @@ function v5PontsDeJonction(ctx: Contexte, g: ContexteGlisserMur, ponts: Map<Suiv
   }
 }
 
-export function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
+function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
   const P = ctx.etat.plan;
   const w = v5WallById(ctx, wallId);
   if (!P || !w || w.isOutline) return;
@@ -1575,7 +1575,7 @@ export function v5StartOutlineEdgeDrag(
 
 /** The OUTLINE wall that mirrors edge `i` of the outline (`v5SyncOutlineWalls` keeps them paired). */
 /** The INDEX of the outline edge carried by this outline wall, or -1. Reverse of `v5OutlineWallAt`. */
-export function v5OutlineIndexOf(ctx: Contexte, w: Mur | null | undefined): number {
+function v5OutlineIndexOf(ctx: Contexte, w: Mur | null | undefined): number {
   const P = ctx.etat.plan;
   if (!P || !w || !w.isOutline || !Array.isArray(P.outline)) return -1;
   const poly = P.outline;
@@ -1587,7 +1587,7 @@ export function v5OutlineIndexOf(ctx: Contexte, w: Mur | null | undefined): numb
   return -1;
 }
 
-export function v5OutlineWallAt(ctx: Contexte, i: number): Mur | null {
+function v5OutlineWallAt(ctx: Contexte, i: number): Mur | null {
   const P = ctx.etat.plan;
   if (!P) return null;
   const poly = P.outline, a = poly[i], b = poly[(i + 1) % poly.length];
@@ -1625,7 +1625,7 @@ export function v5StartInsertHandle(ctx: Contexte, e: PointerEvent, i: number): 
   armGesture(up, null, cancel);
 }
 
-export function v5InsertVertex(ctx: Contexte, i: number): void {
+function v5InsertVertex(ctx: Contexte, i: number): void {
   const poly = ctx.etat.plan.outline, n = poly.length;
   const a = poly[i], b = poly[(i + 1) % n];
   if (!a || !b) return;

@@ -38,8 +38,6 @@ export function installerToasts(viewport: HTMLElement): void {
   document.addEventListener("keydown", () => { _gesteEpoch++; }, true);
 }
 
-export const gesteEpoch = (): number => _gesteEpoch;
-
 export interface OptionsToast {
   /** True = this banner RESPONDS to a deliberate gesture: once per gesture, never final silence. */
   geste?: boolean;

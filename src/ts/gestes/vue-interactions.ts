@@ -31,7 +31,7 @@ import {
 } from "./etat-pointeur.ts";
 
 /** px of travel before a drag becomes a band (below: it's a click). */
-export const RUBBER_THRESH = 4;
+const RUBBER_THRESH = 4;
 
 /**
  * True when a wheel event's target sits inside a panel that scrolls its OWN overflow (today, only
@@ -65,7 +65,7 @@ let rubberLive = false;
 export const lassoVivant = (): boolean => rubberLive;
 
 /** Starts a pan from a client point. The VIEW persists nothing (G-2). */
-export function startPan(ctx: Contexte, e: PointerEvent): void {
+function startPan(ctx: Contexte, e: PointerEvent): void {
   const r0 = ctx.viewport.getBoundingClientRect();
   const start = screenToApt(ctx, e.clientX - r0.left, e.clientY - r0.top);
   ctx.viewport.classList.add("panning");
@@ -116,7 +116,7 @@ export function piecesInClientRect(
  * selection, not a third state: what the screen shows during the gesture is what you'll get on
  * release, and the rectangle alone already says the gesture is in progress.
  */
-export function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
+function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
   // CTRL/CMD ADDS, AND SHIFT NO LONGER DOES, because Shift is now what OPENS the lasso at all:
   // an ordinary drag over empty space draws a wall. Leaving Shift in this set made every lasso
   // additive and no lasso could ever replace a selection again, so the two modifiers stopped
@@ -209,7 +209,7 @@ export function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
  * pan; below it, it stays a tap that deselects. Two fingers are caught by the
  * pinch layer during the CAPTURE phase, which cancels this one via a synthetic `pointerup`.
  */
-export function startTouchPanOrTap(ctx: Contexte, e: PointerEvent): void {
+function startTouchPanOrTap(ctx: Contexte, e: PointerEvent): void {
   if (spaceHeld()) return;
   const rect0 = ctx.viewport.getBoundingClientRect();
   const start = screenToApt(ctx, e.clientX - rect0.left, e.clientY - rect0.top);

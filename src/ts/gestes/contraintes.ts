@@ -34,9 +34,9 @@ import type { Meuble, PlanV5, Pt } from "../partage/plan.ts";
 /** 6cm: furniture face rests here, off the wall centerline */
 export const WALL_INSET = WALL / 2;
 /** don't nudge for <1cm of penetration (avoid jitter / legacy jumps) */
-export const INSET_TOL = 1;
+const INSET_TOL = 1;
 
-export function pieceCorners(cx: number, cy: number, w: number, h: number, rotDeg: number): Pt[] {
+function pieceCorners(cx: number, cy: number, w: number, h: number, rotDeg: number): Pt[] {
   const a = (rotDeg || 0) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), hw = w / 2, hh = h / 2;
   const c: Pt[] = [];
   for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as Pt[]) {
@@ -47,7 +47,7 @@ export function pieceCorners(cx: number, cy: number, w: number, h: number, rotDe
 }
 
 /** Worst penetration of the 4 rotated corners (0 = everything is within the inset). */
-export function insetWorst(
+function insetWorst(
   cx: number, cy: number, w: number, h: number, rotDeg: number, poly: readonly Pt[],
 ): number {
   let worst = 0;
@@ -223,7 +223,7 @@ export function deltaScaleMax(
 // The old code kept `(typeof v5CellsAt==="function") ? v5CellsAt(cx,cy) : null`: a TEMPORAL
 // DEAD-ZONE guard, not a business guard. The import graph makes it moot; what the
 // guard was really protecting (a plan with no cells) stays covered by the `if(!cell) return 0`.
-export function piecePenetration(P: PlanV5 | null | undefined, p: Meuble | null | undefined): number {
+function piecePenetration(P: PlanV5 | null | undefined, p: Meuble | null | undefined): number {
   if (!p || isWallMount(p.type)) return 0;
   const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
   const cell = v5CellsAt(P, cx, cy);
@@ -253,14 +253,6 @@ export function pieceTol(P: PlanV5 | null | undefined, p: Meuble | null | undefi
 }
 
 /**
- * Clears the slate. EXISTS ONLY FOR TESTS: in a real session, forgetting an acquired penetration
- * would make the furniture jump again on the next gesture, which is to say, undo G-7.
- */
-export function oublierPieceTol(): void {
-  _pieceTol.clear();
-}
-
-/**
  * The grid. `snap` replaces reading `state.opts.snap`: personal settings are passed
  * as an argument, they do not travel (D-7).
  */
@@ -276,11 +268,11 @@ export const TABLE_TYPES = new Set<string>(["dining", "desk", "coffee", "side"])
  * A snapped chair slides ~22cm UNDER the tabletop edge (real chairs tuck); clamped so at
  * least ~8cm of seat stays outside on shallow chairs. Shared by snapChairToTable + dockedChairs.
  */
-export const CHAIR_TUCK = 22;
+const CHAIR_TUCK = 22;
 /** cm: reach of the chair->table snap (beyond it, no movement) */
-export const CHAIR_SNAP_MAX = 40;
+const CHAIR_SNAP_MAX = 40;
 
-export const chairTuck = (h: number): number => Math.max(0, Math.min(CHAIR_TUCK, h - 16));
+const chairTuck = (h: number): number => Math.max(0, Math.min(CHAIR_TUCK, h - 16));
 
 /** A candidate edge of the table, in the table's LOCAL frame. */
 interface AreteTable {

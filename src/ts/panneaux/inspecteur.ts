@@ -45,9 +45,9 @@ import { save } from "../app/persistance.ts";
 
 // ---- INPUT BOUNDS: one single truth --------------------------------------------------------
 /** cm; the server accepts 1, but a 1 cm piece of furniture doesn't exist. */
-export const DIM_MIN = 10;
+const DIM_MIN = 10;
 /** cm; live-worker/ops.ts, PIECE_WH_MAX. */
-export const DIM_MAX = 3000;
+const DIM_MAX = 3000;
 
 /**
  * The two families have the same field NAMES (`w`, `h`, `name`) but not the same shape: an
@@ -75,7 +75,7 @@ const vue = (p: Meuble | Ouverture | undefined): ObjetInspecte | undefined =>
   p as unknown as ObjetInspecte | undefined;
 
 /** The longest side of the outline, upper bound for a piece of furniture (never more than the server bound). */
-export function aptLongestSide(ctx: Contexte): number {
+function aptLongestSide(ctx: Contexte): number {
   const b = aptBBox(ctx);
   const m = Math.round(Math.max(Number(b.w) || 0, Number(b.l) || 0));
   return (isFinite(m) && m >= DIM_MIN) ? Math.min(m, DIM_MAX) : DIM_MAX;

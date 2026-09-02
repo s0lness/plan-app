@@ -19,7 +19,7 @@ import { escapeHtml } from "../noyau/nombres.ts";
 import { pieceIconSVG, pieceIconViewH } from "./icones.ts";
 
 /** Accent + case normalization for search. */
-export const normStr = (s: unknown): string =>
+const normStr = (s: unknown): string =>
   String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /** Search query: TRANSIENT, never persisted. */

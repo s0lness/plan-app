@@ -38,8 +38,8 @@ const E = (id: string): HTMLElement => $(id) as HTMLElement;
 // =====================================================================
 // `scoreFromFindings` / `scoreFromCounts` are in etat.ts: js/36 calls the former, and an
 // ES module can't loop. Their bodies haven't changed by a single line.
-export function scoreOf(): number { return scoreFromCounts(FL.findingCounts); }
-export function bandOf(s: number): { label: string; color: string } {
+function scoreOf(): number { return scoreFromCounts(FL.findingCounts); }
+function bandOf(s: number): { label: string; color: string } {
   if (s >= 85) return { label: "Flows well", color: "#3f7a4f" };
   if (s >= 60) return { label: "Needs tuning", color: "#b8860b" };
   return { label: "Needs review", color: "var(--danger)" };
@@ -59,7 +59,7 @@ function anyAptPieces(): boolean { return ((FL.ctx.etat.plan && FL.ctx.etat.plan
 // Comfort tips alone don't light it up: they don't describe a plan that wouldn't
 // work, and the "Circulation" button is still there for whoever wants to read them.
 // The counts come from the WHOLE list (before the display cap), see js/36.
-export function pillState(): { n: number; cls: string } | null {
+function pillState(): { n: number; cls: string } | null {
   const c = FL.findingCounts || ({} as typeof FL.findingCounts);
   if (c.error > 0) return { n: c.error, cls: "bad" };
   if (c.warn > 0) return { n: c.warn, cls: "warn" };

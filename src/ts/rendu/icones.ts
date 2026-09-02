@@ -41,7 +41,7 @@ export type SorteMarqueur = "plug" | "rj45" | "sconce";
 // `_S` IS NOT USED: the old code already passed it without ever using it (the three
 // tracers round on their own). The parameter is KEPT, in its place, so the calls
 // stay byte-identical; it is prefixed to say it is dead.
-export function wallMountMarker(
+function wallMountMarker(
   cx: number, h: number, w: number, kind: SorteMarqueur, open: string,
   _S: Arrondi, ln: TraceLigne, ci: TraceCercle, rr: TraceRect,
 ): string {

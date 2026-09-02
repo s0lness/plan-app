@@ -235,7 +235,7 @@ function apiFetch(opts?: RequestInit): Promise<ReponsePlan | null> {
  * have been adopted (adoption forces `setupDone`). And a state that does not pass back through
  * `migrate()` never goes out: D-2, an unreadable plan does not get to pass for a plan.
  */
-export function putableState(ctx: Contexte): ReturnType<typeof serialize> | null {
+function putableState(ctx: Contexte): ReturnType<typeof serialize> | null {
   if (SYNC_ON && ctx.etat.setupDone !== true) return null;
   const s = serialize(ctx);
   const m = migrate(JSON.parse(JSON.stringify(s)));
@@ -267,7 +267,7 @@ const mirrorOf = (s: unknown): string | null => {
  * `applyReplacedState` QUEUES instead: `serialize()` then still describes the local state and the
  * mirror would lie in the one dangerous direction, the one that SILENCES real local work.
  */
-export function noteServerMirror(ctx: Contexte, fil: Fil): void {
+function noteServerMirror(ctx: Contexte, fil: Fil): void {
   if (gesteActif()) { fil.serverMirror = null; return; }
   try { fil.serverMirror = mirrorOf(serialize(ctx)); } catch (_) { fil.serverMirror = null; }
 }
@@ -294,14 +294,14 @@ export function adoptServerState(ctx: Contexte, fil: Fil, ns: ReturnType<typeof 
  *   announced yet. A DATA guard. After a revision refusal it NO LONGER holds: the local version
  *   has been set aside AND announced, waiting for it would leave the screen lying for 4 more seconds.
  */
-export function adoptSafe(ctx: Contexte): boolean {
+function adoptSafe(ctx: Contexte): boolean {
   void ctx;
   const setup = $("setup"), xfer = $("xfer");
   return !gesteActif()
     && !!(setup && setup.hidden) && !!(xfer && xfer.hidden);
 }
 
-export function pullSafe(ctx: Contexte, fil: Fil): boolean {
+function pullSafe(ctx: Contexte, fil: Fil): boolean {
   return adoptSafe(ctx) && (Date.now() - fil.lastLocalChange > POLL_FRESH_GUARD);
 }
 
@@ -310,7 +310,7 @@ export function pullSafe(ctx: Contexte, fil: Fil): boolean {
  * refusal. `pushHistory()` FIRST, it is THIS CALL that makes Ctrl+Z able to bring back onto the
  * screen the local version that is about to be replaced. Returns true if the adoption happened.
  */
-export function adoptPayload(
+function adoptPayload(
   ctx: Contexte, fil: Fil, rev: number, data: unknown, opts?: { refus?: boolean } | null,
 ): boolean {
   if (!data || typeof data !== "object") return false;
@@ -332,7 +332,7 @@ export function adoptPayload(
 
 interface EntreeConflit { at: string; par: string; rev: number | undefined; state: unknown }
 
-export function conflitList(): EntreeConflit[] {
+function conflitList(): EntreeConflit[] {
   try {
     const l = JSON.parse(localStorage.getItem(CONFLIT_KEY) || "[]") as EntreeConflit[];
     return Array.isArray(l) ? l : [];
@@ -352,7 +352,7 @@ function stashConflit(mine: unknown, info: RefusRevision): number {
  * is (same envelope as an export); `ecartes` carries EVERY version that has been set aside, so
  * nothing gets lost along the way.
  */
-export function downloadConflits(): boolean {
+function downloadConflits(): boolean {
   const list = conflitList();
   if (!list.length) return false;
   telechargerEnveloppe("plan-ma-version-ecartee.json", list[list.length - 1]!.state, list);
@@ -568,7 +568,7 @@ function onPutRefused(ctx: Contexte, fil: Fil, mine: unknown, p: ReponsePlan | n
 //  THE THREE LOOPS: PUSH, POLL, BOOTSTRAP
 // =================================================================================================
 
-export function doPut(ctx: Contexte, fil: Fil): void {
+function doPut(ctx: Contexte, fil: Fil): void {
   // WS alive: the Durable Object owns the D1 snapshot, the PUT has nothing to do there.
   if (!SYNC_ON || fil.detached || fil.putInFlight || wsLive(fil)) return;
   // D-8. The first read has not answered: we publish nothing, we retry. (We do not touch the
@@ -627,7 +627,7 @@ export function doPut(ctx: Contexte, fil: Fil): void {
   });
 }
 
-export function schedulePush(ctx: Contexte, fil: Fil): void {
+function schedulePush(ctx: Contexte, fil: Fil): void {
   if (!SYNC_ON || fil.detached || wsLive(fil)) return;   // WS alive: ops replace the PUT
   if (fil.putInFlight) { fil.dirtySincePut = true; return; }   // no overlap
   if (fil.pushTimer) clearTimeout(fil.pushTimer);

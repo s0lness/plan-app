@@ -41,9 +41,6 @@ export function serialize(ctx: Contexte): { setupDone: boolean; model: "v5"; pla
 }
 
 let persistFailed = false;
-/** Counter of REAL local writes. Test probe: this is what proves G-1 and G-2. */
-let _saveCount = 0;
-export const saveCount = (): number => _saveCount;
 
 function setStoreChip(on: boolean): void {
   const c = $("storeChip"); if (!c) return;
@@ -90,7 +87,6 @@ export function save(ctx: Contexte): void {
     // plan a `?p=` might name — see `noyau/nombres.ts`'s `keyPourMode` for why `main`'s bare-key
     // exemption cannot survive off the household door (design edge 13).
     localStorage.setItem(keyPourMode(modeCourant(), planIdInvite() || planCourant()), JSON.stringify(serialize(ctx)));
-    _saveCount++;
     notePersistOk();
   } catch (e) { notePersistFailed(ctx, e); }
   saveOpts(ctx);

@@ -78,6 +78,3 @@ export const FLOORS: ReadonlySet<string> = new Set<string>(CELL_FLOORS);
 export function estSolConnu(v: unknown): v is CellFloor {
   return typeof v === "string" && FLOORS.has(v);
 }
-export function estTypeOuverture(v: unknown): v is OpeningType {
-  return typeof v === "string" && (OPENING_TYPES as readonly string[]).includes(v);
-}

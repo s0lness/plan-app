@@ -43,7 +43,7 @@ export function histInfo(): { undo: number; redo: number; log: number } {
   return { undo: undoStack.length, redo: redoStack.length, log: histLog.length };
 }
 
-export function updateHistBtns(): void {
+function updateHistBtns(): void {
   const u = $("btnUndo") as HTMLButtonElement | null;
   const r = $("btnRedo") as HTMLButtonElement | null;
   if (u) u.disabled = !undoStack.length;

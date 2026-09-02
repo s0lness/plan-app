@@ -20,7 +20,7 @@ import { measureMode } from "../gestes/etat-pointeur.ts";
 import { aptToScreen } from "../rendu/vue.ts";
 
 /** cm: beyond this, we no longer read anything in that direction. */
-export const CURSOR_GUIDE_MAX = 500;
+const CURSOR_GUIDE_MAX = 500;
 
 export interface BoiteObstacle {
   x0: number;
@@ -51,7 +51,7 @@ export function allBlockerAABBsApt(ctx: Contexte): BoiteObstacle[] {
 }
 
 /** Ray from (ox,oy) in the unit direction (dx,dy) to the nearest cell edge. */
-export function rayToAnyPolyApt(ctx: Contexte, ox: number, oy: number, dx: number, dy: number): number | null {
+function rayToAnyPolyApt(ctx: Contexte, ox: number, oy: number, dx: number, dy: number): number | null {
   let best = Infinity;
   const scan = (poly: readonly Pt[]): void => {
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {

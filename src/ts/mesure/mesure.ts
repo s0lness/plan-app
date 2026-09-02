@@ -46,7 +46,7 @@ export const mesuresPosees = (): Segment[] => measures;
 export const mesureEnAttente = (): PointMesure | null => measurePend;
 
 /** Tolerance in cm equivalent to ~14 screen px at the current zoom (6 cm minimum, zoomed-out view). */
-export function measureTol(ctx: Contexte): number { return Math.max(6, 14 / (ctx.vue.scale || 1)); }
+function measureTol(ctx: Contexte): number { return Math.max(6, 14 / (ctx.vue.scale || 1)); }
 
 /** Every furniture corner in APARTMENT cm, rotation included. */
 export function allPieceCornersApt(ctx: Contexte): PointMesure[] {
@@ -63,7 +63,7 @@ export function allPieceCornersApt(ctx: Contexte): PointMesure[] {
 }
 
 /** Every vertex of the outline and the cells, in APARTMENT cm. */
-export function allVerticesApt(ctx: Contexte): PointMesure[] {
+function allVerticesApt(ctx: Contexte): PointMesure[] {
   const out: PointMesure[] = []; const P = ctx.etat.plan;
   if (!P) return out;
   (P.outline || []).forEach(([x, y]) => out.push({ x, y }));
@@ -131,7 +131,7 @@ export function drawMeasures(ctx: Contexte): void {
   if (measureMode() && measurePend && measureCur) seg(measurePend, measureCur, null);
 }
 
-export function setMeasureCursor(ctx: Contexte, ax: number | null, ay?: number): void {
+function setMeasureCursor(ctx: Contexte, ax: number | null, ay?: number): void {
   measureCur = (ax == null) ? null : snapMeasurePoint(ctx, ax, ay as number);
 }
 

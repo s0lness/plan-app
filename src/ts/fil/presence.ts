@@ -61,7 +61,7 @@ const initial = (o: unknown): string => {
 //  PRESENCE: ONE DOT PER DEVICE, NOT ONE PER PERSON (C-7)
 // =================================================================================================
 
-export function wsRenderPeers(fil: Fil): void {
+function wsRenderPeers(fil: Fil): void {
   const box = $("peers");
   if (!box) return;
   // We exclude OUR own socket only. Filtering on email used to erase the person's second device:

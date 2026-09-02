@@ -39,7 +39,7 @@ export function crumb(kind: string, info?: unknown): void {
 }
 
 /** Compact, serializable copy (RELATIVE milliseconds, so the payload stays short). */
-export function crumbsSnapshot(): { dt: number; k: string; i: unknown }[] {
+function crumbsSnapshot(): { dt: number; k: string; i: unknown }[] {
   try { const now = Date.now(); return _crumbs.map((c) => ({ dt: c.t - now, k: c.k, i: c.i })); }
   catch (_) { return []; }
 }
@@ -66,7 +66,7 @@ function errToast(msg: string): void {
 }
 
 /** The local ring of the last 10 errors. This is what every suite reads. */
-export function errRing(entry: EntreeErreur): void {
+function errRing(entry: EntreeErreur): void {
   try {
     let arr: EntreeErreur[] = [];
     try { arr = (JSON.parse(localStorage.getItem(ERR_KEY) || "[]") as EntreeErreur[]) || []; } catch (_) { arr = []; }
@@ -126,7 +126,7 @@ function _degenerateEls(): { tag: string; cls: string; w: unknown; h: unknown }[
   return bad;
 }
 
-export function whitePageSentinel(ctx: Contexte, reason: string, recadrer: () => void): void {
+function whitePageSentinel(ctx: Contexte, reason: string, recadrer: () => void): void {
   if (_sentinelBusy) return;
   _sentinelBusy = true;
   try {

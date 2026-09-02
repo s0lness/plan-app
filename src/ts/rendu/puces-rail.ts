@@ -59,6 +59,3 @@ export function renderRoomChips(ctx: Contexte, force?: boolean): void {
     el.appendChild(chip);
   });
 }
-
-/** Rendering is a module, not a closure: the memoized signature is rearmed explicitly. */
-export function oublierSignatureDesPuces(): void { _chipsSig = null; }

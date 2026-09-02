@@ -228,8 +228,3 @@ export function peindreCurseurPair(ctx: Contexte, msg: MessageCurseur): HTMLElem
   el.style.display = "";
   return el;
 }
-
-export function effacerCurseursPairs(): void {
-  curseurs.forEach((el) => el.remove());
-  curseurs.clear();
-}
