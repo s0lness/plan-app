@@ -20,8 +20,7 @@
 
 import type { Env } from "../env.ts";
 import { porteDe } from "../porte.ts";
-
-const PLAN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+import { PLAN_ID_RE } from "../plan-id.ts";
 
 const json = (o: unknown, status?: number) => new Response(JSON.stringify(o),
   { status: status || 200, headers: { "content-type": "application/json" } });

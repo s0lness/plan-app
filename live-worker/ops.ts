@@ -386,26 +386,32 @@ const BIDI_MIN_1 = 0x202a, BIDI_MAX_1 = 0x202e;
 const BIDI_MIN_2 = 0x2066, BIDI_MAX_2 = 0x2069;
 
 /**
- * SAME RULE AS `functions/nom.ts`, deliberately COPIED rather than imported: this Worker is
- * bundled separately from the Pages Functions (see the header note on `colorFor`/`hoteAutorise`
- * in worker.ts — one repository, two independent bundles). A plain `c < 32` filter lets bidi
- * override code points through; those do not corrupt the name itself, they visually reorder the
- * TEXT AROUND it (a chat line, a cursor label, a peer-dot tooltip). Unlike `cleanName` above (used
- * for plan entities, which THROWS on a non-string so a malformed op is refused outright), this
- * never throws: a guest's `{t:"name"}` message is not an op, and a malformed one should just
- * produce an empty name rather than drop the whole socket.
+ * SAME RULE AS `functions/nom.ts`'s `cleanName`, deliberately COPIED rather than imported: this
+ * Worker is bundled separately from the Pages Functions (see the header note on
+ * `colorFor`/`hoteAutorise` in worker.ts, one repository, two independent bundles). A plain
+ * `c < 32` filter lets bidi override code points through; those do not corrupt the name itself,
+ * they visually reorder the TEXT AROUND it (a chat line, a cursor label, a peer-dot tooltip).
+ * Unlike `cleanName` above (used for plan entities, which THROWS on a non-string so a malformed
+ * op is refused outright), this never throws: a guest's `{t:"name"}` message is not an op, and a
+ * malformed one should just produce an empty string rather than drop the whole socket. Both
+ * `cleanGuestName` and `cleanCursorSay` below share this one implementation (same bundle, so
+ * nothing forces a second copy the way `functions/nom.ts` does): only the cap differs per caller.
  */
-export function cleanGuestName(v: unknown): string {
+function cleanTexteBornee(v: unknown, max: number): string {
   if (typeof v !== "string") return "";
   let out = "";
   for (const ch of v.trim()) {
     const c = ch.codePointAt(0) as number;
     if (c < CONTROLE_BAS || c === DEL) continue;
     if ((c >= BIDI_MIN_1 && c <= BIDI_MAX_1) || (c >= BIDI_MIN_2 && c <= BIDI_MAX_2)) continue;
-    if (out.length + ch.length > GUEST_NAME_MAX) break;
+    if (out.length + ch.length > max) break;
     out += ch;
   }
   return out;
+}
+
+export function cleanGuestName(v: unknown): string {
+  return cleanTexteBornee(v, GUEST_NAME_MAX);
 }
 
 // ---- CURSOR CHAT ("/", docs pending): the SECOND untrusted string this client renders --------
@@ -414,23 +420,8 @@ export function cleanGuestName(v: unknown): string {
 // `textContent` only, never `innerHTML`) long before anyone submits anything.
 export const CURSOR_SAY_MAX = 140;
 
-/**
- * SAME RULE AS `cleanGuestName` (control characters and bidi overrides stripped, never throws),
- * a DELIBERATE COPY rather than a shared helper for the same reason `cleanGuestName` itself is
- * a copy of `functions/nom.ts`'s rule: two independent bundles, and a name's cap (40) has nothing
- * to do with a cursor bubble's cap (140) beyond sharing the same shape of danger.
- */
 export function cleanCursorSay(v: unknown): string {
-  if (typeof v !== "string") return "";
-  let out = "";
-  for (const ch of v.trim()) {
-    const c = ch.codePointAt(0) as number;
-    if (c < CONTROLE_BAS || c === DEL) continue;
-    if ((c >= BIDI_MIN_1 && c <= BIDI_MAX_1) || (c >= BIDI_MIN_2 && c <= BIDI_MAX_2)) continue;
-    if (out.length + ch.length > CURSOR_SAY_MAX) break;
-    out += ch;
-  }
-  return out;
+  return cleanTexteBornee(v, CURSOR_SAY_MAX);
 }
 
 /**

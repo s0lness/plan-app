@@ -35,8 +35,8 @@ import type { Env } from "./env.ts";
 import { identiteFoyer, porteDe } from "./porte.ts";
 import { chargerInvitation, invitationValide, tokenDuCookie } from "./invitation.ts";
 import { cleanName } from "./nom.ts";
+import { PLAN_ID_RE } from "./plan-id.ts";
 
-const PLAN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 // Same shape as the DO's own re-check (`live-worker/worker.ts`, `GUEST_ID_RE`): letters, digits,
 // `_`/`-`, 1 to 64 of them. Not a credential, so no cryptographic requirement — just narrow enough
 // that it can never carry anything but itself.

@@ -14,7 +14,8 @@
 // The column is added by `ALTER TABLE plans ADD COLUMN name TEXT` (additive: no existing row is
 // touched, `main` simply ends up with `name = NULL` and falls back to its id).
 
-const PLAN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+import { PLAN_ID_RE } from "../plan-id.ts";
+
 const NAME_MAX = 60;
 const MAX_PLANS = 40;   // safety guard: this is not a plan-hosting service
 

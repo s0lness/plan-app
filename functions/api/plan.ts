@@ -51,6 +51,7 @@ import type { Porte } from "../porte.ts";
 import { identiteFoyer, porteDe } from "../porte.ts";
 import { auteurPourInvite, cleanName } from "../nom.ts";
 import { chargerInvitation, invitationValide, tokenDuCookie } from "../invitation.ts";
+import { PLAN_ID_RE } from "../plan-id.ts";
 
 interface PlanRow {
   data: string;
@@ -61,7 +62,6 @@ interface PlanRow {
 
 // WHICH plan. `main` by default (the household's historical plan); a malformed identifier is an
 // ERROR and never a silent fallback, otherwise a broken URL would write into the wrong plan.
-const PLAN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 const planIdDe = (request: Request) => {
   // NO REQUEST = NO URL = the household's plan. This is not the same thing as a MALFORMED
   // identifier, which remains an error: here nobody asked for anything, there somebody asked for

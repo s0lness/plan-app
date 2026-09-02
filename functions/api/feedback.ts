@@ -15,8 +15,7 @@ import type { Env } from "../env.ts";
 import { identiteFoyer, porteDe } from "../porte.ts";
 import { cleanName, cleanTexte } from "../nom.ts";
 import { chargerInvitation, invitationValide, tokenDuCookie } from "../invitation.ts";
-
-const PLAN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+import { PLAN_ID_RE } from "../plan-id.ts";
 
 // A report, not a novel: 2000 characters comfortably fits "the wall snapped back when I let go of
 // the handle" with room to spare, while still bounding what an unauthenticated caller can write.

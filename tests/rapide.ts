@@ -37,6 +37,11 @@ import { FL } from "../src/ts/circulation/etat.ts";
 import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
+import { PLAN_ID_RE as PLAN_ID_RE_FN } from "../functions/plan-id.ts";
+import { cleanName as cleanNameFn } from "../functions/nom.ts";
+import { porteDe } from "../functions/porte.ts";
+import { cleanCursorSay, cleanGuestName } from "../live-worker/ops.ts";
+import { hoteAutorise } from "../live-worker/worker.ts";
 
 type OpBanc = Operation & {
   piece?: Partial<Piece>;
@@ -172,6 +177,64 @@ function copieDe(m: Miroir): Miroir { const d = {} as Miroir; FIL.wsShadowCopy(m
 const RECT = (): PlanV5 => ({
   outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
   walls: [], openings: [], pieces: [], cells: [],
+});
+
+// =================================================================================================
+//  2bis. DELIBERATE COPIES ACROSS BUNDLES, VERIFIED IDENTICAL (E2, same spirit as C-5 above)
+// =================================================================================================
+// `functions/` (Pages Functions) and `live-worker/` (the realtime Worker) are two independent
+// bundles: neither can import from the other. Three small rules used to be copied THREE or FOUR
+// times across them with no mechanism holding the copies together; each now lives in exactly ONE
+// place per bundle (functions/plan-id.ts for the six functions/*.ts files; live-worker/ops.ts's
+// own `cleanTexteBornee` for its two exports), and the remaining cross-bundle pair is compared
+// here so a drift fails this fast suite instead of surfacing as a silently rejected id or a
+// differently-cleaned name on one side of the wire.
+test("e2_plan_id_re_identique_functions_live_worker", () =>
+  expect(PLAN_ID_RE_FN.source === SRV.PLAN_ID_RE.source && PLAN_ID_RE_FN.flags === SRV.PLAN_ID_RE.flags,
+    "functions/plan-id.ts et live-worker/ops.ts doivent accepter EXACTEMENT les mêmes identifiants\n  "
+    + PLAN_ID_RE_FN + " vs " + SRV.PLAN_ID_RE));
+
+test("e2_nettoyage_de_nom_identique_functions_live_worker", () => {
+  const cas = [
+    "Elise", "  padded  ", "", "a".repeat(200),
+    "avant" + String.fromCharCode(7) + "milieu" + String.fromCharCode(127) + "apres",
+    "avant" + String.fromCodePoint(0x202e) + "milieu" + String.fromCodePoint(0x202c) + "apres",
+    "avant" + String.fromCodePoint(0x2066) + "milieu" + String.fromCodePoint(0x2069) + "apres",
+    "Mélanie", "\t\ttabs\t\t", "juste un nom normal",
+  ];
+  const ecarts: string[] = [];
+  for (const c of cas) {
+    const guest = cleanNameFn(c, SRV.GUEST_NAME_MAX);
+    const via = cleanGuestName(c);
+    if (guest !== via) ecarts.push(`cleanName(${JSON.stringify(c)},${SRV.GUEST_NAME_MAX})=${JSON.stringify(guest)} vs cleanGuestName=${JSON.stringify(via)}`);
+    const say = cleanNameFn(c, SRV.CURSOR_SAY_MAX);
+    const viaSay = cleanCursorSay(c);
+    if (say !== viaSay) ecarts.push(`cleanName(${JSON.stringify(c)},${SRV.CURSOR_SAY_MAX})=${JSON.stringify(say)} vs cleanCursorSay=${JSON.stringify(viaSay)}`);
+  }
+  // A non-string never throws on either side, and both come back empty.
+  if (cleanNameFn(42, 40) !== cleanGuestName(42)) ecarts.push("un non-string doit rendre '' des deux côtés");
+  return expect(ecarts.length === 0, ecarts.join("\n  "));
+});
+
+test("e2_hoteAutorise_identique_a_porteDe_pour_le_foyer", () => {
+  const cas: { hosts?: string; host: string }[] = [
+    { host: "plan.example.com" },
+    { hosts: "plan.example.com", host: "plan.example.com" },
+    { hosts: "plan.example.com", host: "autre.example.com" },
+    { hosts: "*.plan-x.pages.dev", host: "abc123.plan-x.pages.dev" },
+    { hosts: "*.plan-x.pages.dev", host: "plan-x.pages.dev" },
+    { hosts: "PLAN.example.com , autre.example.com", host: "plan.example.com" },
+    { hosts: "", host: "plan.example.com" },
+  ];
+  const ecarts: string[] = [];
+  for (const c of cas) {
+    const env = c.hosts === undefined ? {} : { HOUSEHOLD_HOSTS: c.hosts };
+    const request = new Request("https://" + c.host + "/ws", { headers: { Host: c.host } });
+    const attendu = porteDe(request, env) === "foyer";
+    const vu = hoteAutorise(request, env);
+    if (attendu !== vu) ecarts.push(`host=${c.host} hosts=${JSON.stringify(c.hosts)} : porteDe=foyer? ${attendu}, hoteAutorise=${vu}`);
+  }
+  return expect(ecarts.length === 0, ecarts.join("\n  "));
 });
 
 // =================================================================================================

@@ -21,8 +21,8 @@
 import type { Env } from "../env.ts";
 import { hoteInviteDe, identiteFoyer, porteDe } from "../porte.ts";
 import { jetonInvitation } from "../invitation.ts";
+import { PLAN_ID_RE } from "../plan-id.ts";
 
-const PLAN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 // In the spirit of MAX_PLANS (functions/api/plans.ts): a live invite list, not a distribution
 // list. Brute-forcing a 128-bit token is not the threat this bounds (design edge 15); a link
 // handed around too widely and never revoked is, and this keeps a runaway loop from filling the

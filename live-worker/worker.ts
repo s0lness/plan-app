@@ -162,7 +162,7 @@ interface WireMessage {
 // Kept as an independent copy, not an import from `functions/`: this file is bundled and
 // deployed as its own Worker (`live-worker/build-worker.ts`), a separate unit from the Pages
 // Functions it happens to share a repository with.
-function hoteAutorise(request: Request, env: Env): boolean {
+export function hoteAutorise(request: Request, env: Pick<Env, "HOUSEHOLD_HOSTS">): boolean {
   const hotes = (env.HOUSEHOLD_HOSTS || "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
   // ABSENT VARIABLE = trust the header, exactly as before this door existed:
   // live-worker/test-local.ts has no such configuration and must stay green.
