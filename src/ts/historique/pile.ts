@@ -43,13 +43,6 @@ export function histInfo(): { undo: number; redo: number; log: number } {
   return { undo: undoStack.length, redo: redoStack.length, log: histLog.length };
 }
 
-function updateHistBtns(): void {
-  const u = $("btnUndo") as HTMLButtonElement | null;
-  const r = $("btnRedo") as HTMLButtonElement | null;
-  if (u) u.disabled = !undoStack.length;
-  if (r) r.disabled = !redoStack.length;
-}
-
 /**
  * Logs an op COMING FROM A PEER. `plan5.replace` replaces the whole shared plan (import,
  * conversion, old client): none of our snapshots describe a past of THIS plan anymore, so we clear
@@ -58,7 +51,7 @@ function updateHistBtns(): void {
 export function histNoteRemoteOp(op: Op | null | undefined): void {
   if (!op || !op.kind) return;
   if (op.kind === "plan5.replace") {
-    histLog.length = 0; undoStack.length = 0; redoStack.length = 0; updateHistBtns(); return;
+    histLog.length = 0; undoStack.length = 0; redoStack.length = 0; return;
   }
   // Nothing to undo: nobody will ever replay what follows, the log starts over from zero.
   if (!undoStack.length && !redoStack.length) { histLog.length = 0; return; }
@@ -72,7 +65,6 @@ export function histNoteRemoteOp(op: Op | null | undefined): void {
     const keep = (e: Entree): boolean => e.m >= cut;
     undoStack = undoStack.filter(keep); redoStack = redoStack.filter(keep);
     undoStack.forEach((e) => { e.m -= cut; }); redoStack.forEach((e) => { e.m -= cut; });
-    updateHistBtns();
   }
 }
 
@@ -95,11 +87,10 @@ function histReplay(ctx: Contexte, entry: Entree): ReturnType<typeof migrate> {
 export function pushHistory(ctx: Contexte): void {
   const snap = snapshot(ctx);
   const dernier = undoStack[undoStack.length - 1];
-  if (dernier && dernier.s === snap) { redoStack.length = 0; updateHistBtns(); return; }
+  if (dernier && dernier.s === snap) { redoStack.length = 0; return; }
   undoStack.push({ s: snap, m: histLog.length });
   if (undoStack.length > HIST_MAX) undoStack.shift();
   redoStack.length = 0;
-  updateHistBtns();
 }
 
 /**
@@ -115,7 +106,7 @@ export function pushHistory(ctx: Contexte): void {
  */
 export function jeterHistoriqueVide(ctx: Contexte): void {
   const top = undoStack[undoStack.length - 1];
-  if (top && top.s === snapshot(ctx)) { undoStack.pop(); updateHistBtns(); }
+  if (top && top.s === snapshot(ctx)) { undoStack.pop(); }
 }
 
 export interface OptionsRemplacement {
@@ -177,19 +168,21 @@ export function undo(ctx: Contexte): void {
   if (!undoStack.length) return;
   redoStack.push({ s: snapshot(ctx), m: histLog.length });
   restore(ctx, undoStack.pop()!);
-  updateHistBtns();
 }
 
 export function redo(ctx: Contexte): void {
   if (!redoStack.length) return;
   undoStack.push({ s: snapshot(ctx), m: histLog.length });
   restore(ctx, redoStack.pop()!);
-  updateHistBtns();
 }
 
-/** Wiring for the two toolbar buttons. Called once at startup. */
+/**
+ * Wiring for the two File-menu entries (decision 0015: Undo/Redo left the toolbar, `Ctrl+Z` /
+ * `Ctrl+Y` unchanged in `gestes/clavier.ts`). No disabled-state tracking any more: `undo()` and
+ * `redo()` already no-op on an empty stack, so a menu entry that sometimes does nothing needs no
+ * separate bookkeeping to say so up front.
+ */
 export function brancherBoutonsHistorique(ctx: Contexte): void {
-  $("btnUndo")?.addEventListener("click", () => undo(ctx));
-  $("btnRedo")?.addEventListener("click", () => redo(ctx));
-  updateHistBtns();
+  $("btnMenuUndo")?.addEventListener("click", () => undo(ctx));
+  $("btnMenuRedo")?.addEventListener("click", () => redo(ctx));
 }

@@ -69,7 +69,7 @@ import { screenToApt } from "../rendu/vue.ts";
 import { selReplace, selToggle } from "../rendu/selection.ts";
 import { addGuideSeg, clearGuides } from "./guides.ts";
 import { armGesture, beginGesture, endGesture } from "./sortie.ts";
-import { measureMode, spaceHeld, pointSuivi } from "./etat-pointeur.ts";
+import { measureMode, spaceHeld } from "./etat-pointeur.ts";
 
 // =================================================================================================
 //  THE CLEARANCE GUIDES ALONG THE WALL (js/53)
@@ -230,8 +230,7 @@ export function v5StartOpeningDrag(ctx: Contexte, e: PointerEvent, op: Ouverture
       const wT = v5WallById(ctx.etat.plan, op.wallId);
       if (!wT) return;
       const sT = v5Seg(wT);
-      const spT = pointSuivi(ev, ev.clientX, ev.clientY, px0, py0);
-      const bT = screenToApt(ctx, spT.x - vr.left, spT.y - vr.top);
+      const bT = screenToApt(ctx, ev.clientX - vr.left, ev.clientY - vr.top);
       const tc = (bT.x - wT.a[0]) * sT.ux + (bT.y - wT.a[1]) * sT.uy - prise;
       const d = borneDelta(v5R2(tc - op.w / 2) - tOp0);
       op.t0 = v5R2(tOp0 + d);
@@ -243,8 +242,7 @@ export function v5StartOpeningDrag(ctx: Contexte, e: PointerEvent, op: Ouverture
       for (const m of wagons) ctx.crochets.emitDrag?.(m.o);
       return;
     }
-    const sp = pointSuivi(ev, ev.clientX, ev.clientY, px0, py0);
-    const brut = screenToApt(ctx, sp.x - vr.left, sp.y - vr.top);
+    const brut = screenToApt(ctx, ev.clientX - vr.left, ev.clientY - vr.top);
     const w0 = String(op.wallId);
     // direction of the movement along the CURRENT wall (for the anti-overlap snap)
     const wc = v5WallById(ctx.etat.plan, op.wallId);

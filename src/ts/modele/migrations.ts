@@ -259,11 +259,12 @@ export function normalizeOpeningFacing<T extends PlanV5>(plan: T | null | undefi
 // THE `snap` KEY IS GONE (decision 0012, after 0011 for furniture). Walls and openings were the
 // last readers of the 5 cm step; they move at the centimetre now, magnets and all. An old stored
 // setting still carrying `snap` is read without complaint and simply dropped by `cleanOpts`,
-// which never writes it back.
+// which never writes it back. `overlay` is GONE THE SAME WAY (decision 0015): the shaded floor is
+// now a state of `flow` (one Circulation button opens the panel and paints the layer together),
+// so an old value is read and dropped too.
 export interface Options {
   labels: boolean;
   flow: boolean;
-  overlay: boolean;
   tvIn: number | string | null;
   collapsedCats: string[];
   layFurn: boolean;
@@ -278,14 +279,15 @@ export interface Options {
 }
 
 const DEFAULT_OPTS: Options = {
-  labels: true, flow: false, overlay: false, tvIn: null, collapsedCats: [],
+  labels: true, flow: false, tvIn: null, collapsedCats: [],
   layFurn: true, layLight: true, layPlug: true, palBy: "room",
 };
 
 export function cleanOpts(opts: Partial<Options> | null | undefined): Options {
-  const o: Options & { floor?: unknown; snap?: unknown } = Object.assign({}, DEFAULT_OPTS, opts || {});
-  delete o.floor; // the floor is a CELL property, never a setting
-  delete o.snap;  // the 5 cm step: read from an old save, never kept and never written back
+  const o: Options & { floor?: unknown; snap?: unknown; overlay?: unknown } = Object.assign({}, DEFAULT_OPTS, opts || {});
+  delete o.floor;   // the floor is a CELL property, never a setting
+  delete o.snap;    // the 5 cm step: read from an old save, never kept and never written back
+  delete o.overlay; // the shaded floor is now a STATE of `flow` (decision 0015), not its own key
   o.collapsedCats = Array.isArray(o.collapsedCats) ? o.collapsedCats.filter((c) => typeof c === "string") : [];
   // An unknown value (old setting, hand-edited file) falls back to the default instead of
   // breaking the palette's construction.

@@ -211,13 +211,6 @@ export interface Fil {
   curRafId: number;
   curRafLoop: number;
   lastDrag: number;
-  /**
-   * CURSOR CHAT ("/", `fil/dire.ts`): the LOCAL author's own live text, or `null` when the box
-   * is closed. Rides the `cursor` message (`wsFlushCursor`) at the SAME cadence as an ordinary
-   * position ping, never a message of its own, never a second throttle. Purely a piece of WIRE
-   * state: the DOM box that edits it lives in `fil/dire.ts`, not here.
-   */
-  sayText: string | null;
 
   // ---- js/45: the latency HUD --------------------------------------------------------------------
   curIn: number;
@@ -286,7 +279,6 @@ export function creerFil(): Fil {
     curRafId: 0,
     curRafLoop: 0,
     lastDrag: 0,
-    sayText: null,
 
     curIn: 0,
     curOut: 0,

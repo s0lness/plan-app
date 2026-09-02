@@ -72,7 +72,6 @@ in `AGENTS.md`, section "The barrier runs at LOW PRIORITY".
 | `tests/artefact-autonome.ts` | 6/6 | The deliverable is a self-contained file and triggers no external request. |
 | `tests/etiquette-renommer.ts` | browser | Inline renaming of a label, without a detour through the inspector. |
 | `tests/train-ouvertures.ts` | browser | Grouped movement of openings without destroying the selection. |
-| `tests/repartir-espacement.ts` | pure | Even distribution of selected furniture. |
 | `tests/fenetre-battement.ts` | pure | Geometry of window swing. |
 | `tests/projection.ts` | pure | Optical calculation of the projector. |
 | `tests/exports-morts.ts` | 2/2 | Every suite is registered in the barrier and no new export goes without a caller. |

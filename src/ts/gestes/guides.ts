@@ -257,14 +257,13 @@ export function drawGuides(
 }
 
 /**
- * Hold-`D` ON A WALL. Wall geometry is S2's territory (`gestes/murs.ts`, `modele/edition.ts`), not
- * this lot's (decision 0013 removed the furniture half of this feature, `pieceSousD`, because
- * dimensions now show on the selection itself; the wall half stays wired here on purpose, so as
- * not to reach into files this lot must not touch). The same LOOK-never-WRITE guide as
- * `drawGuides` gives a piece of furniture: its length, and its distance to what surrounds it.
- * Cleared by the SAME `clearGuides` (same `.guides` container class), so a running drag's own
- * dimensions (`v5DrawWallDims`/`v5ClearDims` in `gestes/murs.ts`, a DIFFERENT overlay for a
- * DIFFERENT moment: while the wall is actually moving) are never fought over.
+ * A SELECTED WALL'S LENGTH AND CLEARANCES (decision 0015, replacing D-held: the key is gone
+ * entirely now, both halves of it, furniture (decision 0013) and wall). Wired from the wall's own
+ * selection, not a key, exactly the way a piece of furniture's `.pdim` shows its size once it is
+ * selected (`rendu/meubles.ts`): "at selection", not "while a key is down", is the one path left
+ * for dimensions anywhere in the app. Called from `gestes/murs.ts`'s `apresRendu` hook, skipped
+ * while the wall itself is being dragged (its own live overlay, `v5DrawWallDims`/`v5ClearDims`,
+ * a DIFFERENT `.guides`-less container, owns that moment instead).
  *
  * A wall can run at any angle (a diagonal drawn with Alt), so both the length and the two gap
  * lines go through `addGuideSeg` (arbitrary-angle segment + label), not `addGuideLine` (which
@@ -272,9 +271,9 @@ export function drawGuides(
  * AABB's own edges are always axis-aligned.
  *
  * "Distance to what surrounds it": from the wall's MIDPOINT, one ray cast on each side along its
- * NORMAL, stopping at the first wall or outline edge (`v5RayHits`, the exact primitive
- * `v5ThroughWall` already uses to decide how far a THROUGH wall would reach), read here without
- * writing anything back. Reads `ctx.etat.plan`; touches no history, no save, no op.
+ * NORMAL, stopping at the first wall or outline edge (`v5RayHits`, `modele/edition.ts`, shared
+ * with the outline trim, `v5RognerAuContour`), read here without writing anything back. Reads
+ * `ctx.etat.plan`; touches no history, no save, no op.
  */
 export function drawWallGuides(ctx: Contexte, w: Mur): void {
   clearGuides(ctx);

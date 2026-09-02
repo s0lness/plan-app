@@ -153,15 +153,17 @@ export function drawOverlay(): void {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, flowCanvas.width, flowCanvas.height);
-  if (!FL.ctx.etat.opts.overlay && !FL.hoverFinding) return;
+  if (!FL.ctx.etat.opts.flow && !FL.hoverFinding) return;
   if (!FL.lastGrid || !FL.lastGrid.g) return;
   const g = FL.lastGrid.g, clear = FL.lastGrid.clear as Float64Array;
   // `SC`: the view's scale. js/38 named this local `S`; here `S` would have shadowed something
   // else, and a LOCAL variable name is part of no contract.
   const cs = g.cs, SC = FL.ctx.vue.scale;
   const M = aptCmToVp;   // the single global grid lives in apartment cm
-  // shade clearance across the WHOLE apartment (one grid)
-  if (FL.ctx.etat.opts.overlay) {
+  // shade clearance across the WHOLE apartment (one grid): the panel and the overlay are the
+  // SAME state since decision 0015 (`Show circulation` was a separate button, now the Circulation
+  // button's own click paints this too).
+  if (FL.ctx.etat.opts.flow) {
     for (let gy = 0; gy < g.gh; gy++) for (let gx = 0; gx < g.gw; gx++) {
       const i = gy * g.gw + gx; if (g.blocked[i]) continue;
       const width = clear[i]! * 2;
@@ -306,13 +308,16 @@ let liveLast = 0, liveT: ReturnType<typeof setTimeout> | null = null, liveRaf = 
 function runAnalyzeRaf(): void { if (liveRaf) return; liveRaf = requestAnimationFrame(() => { liveRaf = 0; liveLast = Date.now(); analyze(); }); }
 export function liveAnalyze(): void {
   // deliberately NOT ungated: see the block above, it's the cost of the drag that decides.
-  if (!FL.ctx.etat.opts.flow && !FL.ctx.etat.opts.overlay) return;
+  if (!FL.ctx.etat.opts.flow) return;
   const now = Date.now(), wait = LIVE_MS - (now - liveLast);
   if (wait <= 0) { if (liveT) clearTimeout(liveT); liveT = null; runAnalyzeRaf(); }
   else if (!liveT) { liveT = setTimeout(() => { liveT = null; runAnalyzeRaf(); }, wait); }
 }
 
 // ---- flow toolbar / panel wiring ----
+// ONE state now drives both the panel AND the shaded overlay (decision 0015: the "Show
+// circulation" button is gone, its layer is a state of THIS button). A click opens the panel and
+// paints the layer together; a second click closes both.
 export function setFlowOpen(on: boolean): void {
   FL.ctx.etat.opts.flow = on;
   E("flowpanel").hidden = !on;
@@ -325,13 +330,6 @@ export function setFlowOpen(on: boolean): void {
   render(FL.ctx);   // keep transform; stage width changed but we don't force a refit
   if (on) analyzeNow(); else renderFlow();
 }
-export function setOverlay(on: boolean): void {
-  FL.ctx.etat.opts.overlay = on;
-  E("btnOverlay").setAttribute("aria-pressed", on ? "true" : "false");
-  E("btnOverlay").classList.toggle("pri", on);
-  save(FL.ctx);
-  if (on) analyzeNow(); else drawOverlay();
-}
 
 /**
  * What js/12 (`render()`) used to do for Circulation, and which doesn't belong to rendering: the
@@ -343,7 +341,7 @@ function apresRenduFlow(): void {
   // reschedule the 180ms debounce on EVERY move (it thrashed). Gesture exit finalizes it.
   if (!gesteActif() && !ctx.viewOnly) scheduleAnalysis();
   // the circulation overlay follows pan/zoom: reproject only when the VIEW has changed
-  if ((ctx.etat.opts.overlay || FL.hoverFinding) && FL.lastGrid) {
+  if ((ctx.etat.opts.flow || FL.hoverFinding) && FL.lastGrid) {
     const sig = ctx.vue.scale + "|" + ctx.vue.ox + "|" + ctx.vue.oy;
     if (sig !== _ovSig) { _ovSig = sig; scheduleOverlayDraw(); }
   }
@@ -374,7 +372,6 @@ export function brancherCirculation(ctx: Contexte): void {
 
   E("btnFlow").addEventListener("click", () => setFlowOpen(!ctx.etat.opts.flow));
   E("flowClose").addEventListener("click", () => setFlowOpen(false));
-  E("btnOverlay").addEventListener("click", () => setOverlay(!ctx.etat.opts.overlay));
   // TV inches: same guard as dimension fields. Clearing the field RESETS the rule
   // to its default (it's an optional setting), a value outside 10..120 inches is refused
   // and stated, never silently defaulted.
@@ -393,12 +390,10 @@ export function brancherCirculation(ctx: Contexte): void {
   (document.querySelector(".app") as HTMLElement).classList.toggle("flow-open", !!ctx.etat.opts.flow);
   E("btnFlow").setAttribute("aria-pressed", ctx.etat.opts.flow ? "true" : "false");
   E("btnFlow").classList.toggle("pri", !!ctx.etat.opts.flow);
-  E("btnOverlay").setAttribute("aria-pressed", ctx.etat.opts.overlay ? "true" : "false");
-  E("btnOverlay").classList.toggle("pri", !!ctx.etat.opts.overlay);
   // The two floating panels are STACKED in a column: it's that column we shift when the
   // Circulation panel takes the right side of the screen, versus the inspector alone.
   E("sidePanels").style.right = ctx.etat.opts.flow ? "296px" : "16px";
   // Panel open: we analyze right away (the panel would be empty for 180 ms). Panel closed: the
   // pill can wait for the first render()'s debounce, startup doesn't pay the 30-50 ms.
-  if (ctx.etat.opts.flow || ctx.etat.opts.overlay) analyzeNow(); else scheduleAnalysis();
+  if (ctx.etat.opts.flow) analyzeNow(); else scheduleAnalysis();
 }

@@ -44,7 +44,6 @@ import { v5PlaceWallMount } from "../src/ts/modele/edition.ts";
 // Le lot « un mur va d'un point à un point » (0012) éprouve le PIPELINE, pas un helper: le module
 // entier est importé une fois, plutôt que six symboles nommés dont aucun n'a d'autre lecteur ici.
 import * as MURS from "../src/ts/gestes/murs.ts";
-import { pointSuivi, RATIO_PRECIS } from "../src/ts/gestes/etat-pointeur.ts";
 import { empilables, passeAuDessus } from "../src/ts/catalogue/catalogue.ts";
 import { PLAN_ID_RE as PLAN_ID_RE_FN } from "../functions/plan-id.ts";
 import { cleanName as cleanNameFn } from "../functions/nom.ts";
@@ -1475,18 +1474,6 @@ test("free_est_lu_en_entree_ignore_et_jamais_reecrit", () => {
       "le fil ne porte plus la clé `free`, vu " + JSON.stringify(w));
 });
 
-test("maj_ralentit_le_point_suivi", () => {
-  // Repris de `tests/mur-libre.ts`, supprimée avec la cloison libre: ce cas-là n'avait rien à voir
-  // avec elle. Sans MAJ le point suivi EST le pointeur; avec, il avance cinq fois moins vite,
-  // ancré au point de départ du geste, ce qui rend le centimètre atteignable au zoom de travail.
-  const sans = pointSuivi({ shiftKey: false }, 300, 200, 100, 100);
-  const avec = pointSuivi({ shiftKey: true }, 300, 200, 100, 100);
-  const nul = pointSuivi({ shiftKey: true }, 100, 100, 100, 100);
-  return expect(sans.x === 300 && sans.y === 200, "sans MAJ, le point est inchangé, vu " + JSON.stringify(sans))
-      && expect(avec.x === 100 + 200 * RATIO_PRECIS && avec.y === 100 + 100 * RATIO_PRECIS,
-      "avec MAJ, l'écart est réduit d'un facteur " + RATIO_PRECIS + ", vu " + JSON.stringify(avec))
-      && expect(nul.x === 100 && nul.y === 100, "au point de départ, MAJ ne décale rien, vu " + JSON.stringify(nul));
-});
 
 // =================================================================================================
 //  ROTATION HANDLE: PURE GEOMETRY (decision 0013)

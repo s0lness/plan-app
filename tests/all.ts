@@ -106,8 +106,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/repli-conflit.ts",           chrome: 2 },
   { f: "tests/faces-pose-copie.ts",        chrome: 1 },
   { f: "tests/deux-appareils.ts",          chrome: 1 },
-  { f: "tests/curseur-dire.ts",            chrome: 1 },   // cursor chat ("/"), real mouse + keyboard: opens, follows the pointer, closes on Escape, plan untouched
-  { f: "tests/curseur-dire-deux-appareils.ts", chrome: 1 },   // cursor chat's WIRE half, style of deux-appareils.ts: letter-by-letter, disappears on close, XSS
   { f: "tests/collab-accuses.ts",          chrome: 1 },
   { f: "tests/garde-fous.ts",              chrome: 1 },
   { f: "tests/gestes-perte-de-travail.ts", chrome: 1 },
@@ -139,7 +137,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/rapide.ts",                  chrome: 0 },                        // src/ts, by import
   // THE DATA ORACLE directly confronts a reading of src/ts against the frozen fingerprints.
   { f: "tests/compat-donnees.ts",          chrome: 0 },
-  { f: "tests/repartir-espacement.ts",     chrome: 0 },   // PURE computation: no browser
   { f: "tests/fenetre-battement.ts",       chrome: 0 },   // PURE tracing: no browser
   { f: "tests/cellules-perf.ts",           chrome: 0 },   // PURE: what cell detection COSTS, and that it still returns the same bytes as before the grids
   { f: "tests/jonction-glisser-mur.ts",    chrome: 0 },   // PURE geometry: junctions carried by a wall drag, outline left alone, one-hop chains, exact round trip, the wire diff

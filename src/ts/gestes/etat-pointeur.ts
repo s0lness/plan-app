@@ -21,35 +21,13 @@ let _spaceHeld = false;
 export const spaceHeld = (): boolean => _spaceHeld;
 export function setSpaceHeld(v: boolean): void { _spaceHeld = v; }
 
-/**
- * PRECISE MODE: SHIFT held while sliding an OPENING along its wall. The hand moves ten pixels, the
- * object one or two. We do NOT change the unit (the plan stays in whole cm), we change the RATIO
- * between the gesture and the movement: the exact centimeter becomes reachable at working scale.
- *
- * FURNITURE LOST IT (decision 0011): a piece of furniture moves by the whole centimetre and the
- * magnets place it, so there is nothing left to slow down. Shift keeps its OTHER meanings, which
- * are all "constrain": 15° on the rotation handle, the axis when editing the outline, the 10 cm
- * step on the keyboard arrows.
- */
-export const RATIO_PRECIS = 0.2;
-const estPrecis = (e: { shiftKey?: boolean }): boolean => !!e.shiftKey;
-
 // THERE IS NO "NO GRID" MODIFIER ANY MORE. `sansGrille` (Ctrl or Cmd) existed to escape the 5 cm
 // step; furniture lost that step with decision 0011, walls and openings with 0012, and a key that
 // escapes nothing is one more thing to explain in the help. `Alt` remains the one modifier that
-// suspends the magnets, and `Shift` the one that constrains.
-
-/**
- * The point to TRACK: the pointer as-is, or a slowed-down version around the starting point.
- * Returning a POINT (and not a factor) applies precise mode in one line, without the rest of the
- * gesture knowing it exists: snapping, bounds and messages all stay on the same path.
- */
-export function pointSuivi(
-  e: { shiftKey?: boolean }, x: number, y: number, x0: number, y0: number,
-): { x: number; y: number } {
-  if (!estPrecis(e)) return { x, y };
-  return { x: x0 + (x - x0) * RATIO_PRECIS, y: y0 + (y - y0) * RATIO_PRECIS };
-}
+// suspends the magnets, and `Shift` the one that constrains: axis, 15° rotation, 10 cm keyboard
+// step. AN OPENING'S OWN PRECISE MODE IS GONE TOO (decision 0015): Shift used to also slow the
+// hand down five-fold while sliding an opening along its wall (`pointSuivi`, `RATIO_PRECIS=0.2`);
+// it now means the same one thing everywhere in the app, "constrain", nothing app-specific left.
 
 let _measureMode = false;
 /** Tape measure armed: furniture is frozen, the event bubbles up to the viewport. */

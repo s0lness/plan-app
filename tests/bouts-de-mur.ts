@@ -16,8 +16,8 @@
 // already exercised by `tests/jonction-glisser-mur.ts`.
 //
 // WHAT THIS SUITE DOES NOT COVER, DELIBERATELY: "a press-release without movement writes
-// nothing" needs the REAL gesture wiring (`armGesture`, `pushHistory` -> `$("btnUndo")` ->
-// `document`), which this repository never drives outside a real browser (see
+// nothing" needs the REAL gesture wiring (`armGesture`, `pushHistory` -> `document`), which this
+// repository never drives outside a real browser (see
 // `tests/jonction-glisser-mur-geste.ts` and every other `*-geste.ts` suite). That case, and
 // "the handle is actually hittable", live in `tests/outil-mur-geste.ts` instead.
 //

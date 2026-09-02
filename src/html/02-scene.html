@@ -1,16 +1,13 @@
   <section class="stage">
     <div class="toolbar">
       <button class="btn sm hbtn railtoggle" id="btnRail" title="Menu" aria-label="Open the menu" aria-expanded="false">☰</button>
-      <button class="btn sm hbtn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">↩</button>
-      <button class="btn sm hbtn" id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo">↪</button>
       <button class="btn sm tb-collapsible" id="btnDrawWall" aria-pressed="false" title="Draw walls (W): click to start, click to place, double-click or Escape to stop"><span class="tb-ico" aria-hidden="true">▤</span><span class="tb-label">Draw a wall</span></button>
-      <button class="btn sm tb-collapsible" id="btnFit" title="Fit the whole flat in view"><span class="tb-ico" aria-hidden="true">▣</span><span class="tb-label">Fit</span></button>
       <button class="btn sm tb-collapsible" id="btnMeasure" aria-pressed="false" title="Measure a distance between two points (walls, furniture, corners)"><span class="tb-ico" aria-hidden="true">📏</span><span class="tb-label">Measure</span></button>
+      <button class="btn sm tb-collapsible" id="btnFit" title="Fit the whole flat in view"><span class="tb-ico" aria-hidden="true">▣</span><span class="tb-label">Fit</span></button>
       <span class="scale" id="scaleReadout">–</span>
       <span class="area-chip" id="areaChip"></span>
       <span class="spacer"></span>
-      <button class="btn sm tb-collapsible" id="btnOverlay" aria-pressed="false" title="Shade the walkable floor and draw the circulation paths"><span class="tb-ico" aria-hidden="true">◧</span><span class="tb-label">Show circulation</span></button>
-      <button class="btn sm flowtoggle" id="btnFlow" aria-pressed="false" title="Circulation"><span class="tb-ico" aria-hidden="true">↹</span><span class="tb-label">Circulation</span> <span class="pill" id="flowPill" hidden></span></button>
+      <button class="btn sm flowtoggle tb-collapsible" id="btnFlow" aria-pressed="false" title="Circulation: shade the walkable floor and flag what's in the way"><span class="tb-ico" aria-hidden="true">↹</span><span class="tb-label">Circulation</span> <span class="pill" id="flowPill" hidden></span></button>
       <span class="peers" id="peers" hidden></span>
       <!-- Local write refused (private browsing, quota at zero). Stays shown for as long as it
            lasts: the write exception used to be swallowed silently and the person thought they
@@ -27,9 +24,6 @@
            to others. Hidden everywhere else. -->
       <button class="btn sm hbtn" id="btnGuestName" type="button" hidden title="Change how your name appears to others">Name…</button>
       <span class="sync-chip" id="syncChip" hidden></span>
-      <!-- Reachable from EITHER door, and never hidden by one, unlike Invite/Share above
-           (`panneaux/retour.ts`): a visitor can flag something too. -->
-      <button class="btn sm hbtn" id="btnFeedback" type="button" title="Send feedback about the app" aria-label="Feedback">✉</button>
       <button class="btn sm hbtn" id="btnHelp" title="Help (?)" aria-label="Help">?</button>
     </div>
     <div class="viewport" id="viewport">

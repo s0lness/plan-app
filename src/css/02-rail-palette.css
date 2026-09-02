@@ -112,6 +112,10 @@
   /* What is DANGEROUS shows apart: a rule line, not a sentence. The same rule line separates what
      brings the plan in/out from what prints it. */
   .fm-sep{border:0;border-top:1px solid var(--line);margin:4px 8px;height:0}
+  /* Undo/Redo's own shortcut, written on the right of the entry (decision 0015): the button is
+     already a flex row (`justify-content:flex-start` above), so pushing this span to the far
+     edge is `margin-left:auto`, nothing more. */
+  .fm-key{margin-left:auto;color:var(--faint);font-family:var(--mono);font-size:11px}
 
   /* room chips (multi-room) */
   .rooms{display:flex;flex-direction:column;gap:6px;margin-bottom:9px}

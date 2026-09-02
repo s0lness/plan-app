@@ -18,7 +18,7 @@
 // did was clear the selection out from under the finger.
 //
 import type { Contexte } from "../app/contexte.ts";
-import type { Meuble, Mur, Ouverture } from "../partage/plan.ts";
+import type { Meuble, Ouverture } from "../partage/plan.ts";
 import { pieceById, v5OpeningById, v5Touch, v5WallById } from "../app/contexte.ts";
 import { TYPEMAP, isSideable, isWallMount } from "../catalogue/catalogue.ts";
 import { $ } from "../noyau/dom.ts";
@@ -31,13 +31,13 @@ import { wallSnapReach } from "../modele/espace.ts";
 import { v5NewId } from "../fil/identite.ts";
 import { render } from "../rendu/rendu.ts";
 import { clearSel } from "../rendu/selection.ts";
-import { aptToScreen, screenToApt } from "../rendu/vue.ts";
+import { screenToApt } from "../rendu/vue.ts";
 import { save } from "../app/persistance.ts";
 import { toast } from "../app/toast.ts";
 import { pushHistory, redo, undo } from "../historique/pile.ts";
 import { escapeActiveGesture, gesteActif } from "./sortie.ts";
 import { lastCursorApt, measureMode } from "./etat-pointeur.ts";
-import { clearGuides, drawGuides, drawWallGuides } from "./guides.ts";
+import { clearGuides, drawGuides } from "./guides.ts";
 import { cur, delSel, dupliquerSelection, flipWallMountSide } from "./selection-actions.ts";
 import { unstackGroup } from "./pose.ts";
 import { annulerPoseArmee, poseArme } from "./pose.ts";
@@ -79,29 +79,6 @@ function clipCenterOf(ctx: Contexte, id: string): { x: number; y: number; piece?
 function viewCenterApt(ctx: Contexte): { x: number; y: number } {
   const r = ctx.viewport.getBoundingClientRect();
   return screenToApt(ctx, r.width / 2, r.height / 2);
-}
-
-/**
- * D key (held), WALL ONLY: which wall to show the live length and clearances of. This is the
- * remaining half of D-held (decision 0013 removed the furniture half, `pieceSousD`: a piece's
- * dimensions now show on the selection itself, so peeking at them no longer needs a key). The
- * wall half stays: a wall carries no such always-on readout (S2's territory, `gestes/murs.ts`,
- * not touched here), so this is the one path left to it. Hover is geometric, so wall bodies stay
- * ordinary drawing space and no transparent hit band can cover furniture.
- */
-function murSousD(ctx: Contexte): Mur | null {
-  if (ctx.ihm.selWall) return v5WallById(ctx, ctx.ihm.selWall);
-  if (ctx.ihm.hoverWall) return v5WallById(ctx, ctx.ihm.hoverWall);
-  const c = lastCursorApt();
-  if (!c || !document.elementsFromPoint) return null;
-  const s = aptToScreen(ctx, c.x, c.y);
-  const vr = ctx.viewport.getBoundingClientRect();
-  for (const el of document.elementsFromPoint(vr.left + s.x, vr.top + s.y)) {
-    const hit = (el as Element).closest ? (el as Element).closest<HTMLElement>("[data-w]") : null;
-    const id = hit && hit.dataset["w"];
-    if (id) return v5WallById(ctx, id);
-  }
-  return null;
 }
 
 /** Copy (or cut) the selection. Returns the number of objects taken. */
@@ -282,21 +259,6 @@ export function brancherClavier(ctx: Contexte): void {
   // previous one survived to clear the guides of a SUBSEQUENT keystroke.
   let nudgeGuideTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // D (held), WALL ONLY (decision 0013): a LOOK, never a WRITE. `dTenue` tracks whether THIS key
-  // is the one holding the guides open, so releasing it never claims guides it didn't paint (a
-  // live drag repaints the same `.guides` container every frame; we must not rip that out from
-  // under it). Nothing here pushes history, calls `save`, touches the model, or changes the
-  // selection: `drawWallGuides`/`clearGuides` are already ephemeral DOM, exactly like a hover.
-  let dTenue = false;
-  const finirDTenue = (): void => {
-    dTenue = false;
-    if (!gesteActif()) clearGuides(ctx);   // a running gesture cleans up its OWN guides on exit
-  };
-  window.addEventListener("keyup", (e) => {
-    if ((e.key === "d" || e.key === "D") && dTenue) finirDTenue();
-  });
-  window.addEventListener("blur", () => { if (dTenue) finirDTenue(); });
-
   window.addEventListener("keydown", (e) => {
     const tgt = (e.target || {}) as HTMLElement;
     const typing = /INPUT|TEXTAREA|SELECT/.test(tgt.tagName || "") || tgt.isContentEditable;
@@ -324,26 +286,6 @@ export function brancherClavier(ctx: Contexte): void {
     // center through a bare Enter is gone; the object is placed where it was aimed, on the plan.
     if (!typing && poseArme() && e.key === "Escape") {
       e.preventDefault(); annulerPoseArmee(ctx, "Drop cancelled."); return;
-    }
-    // D (held), WALL ONLY (decision 0013): show the hovered or selected wall's live length and
-    // clearances. `!dTenue` makes the OS key-repeat a no-op (the guides are already up);
-    // `!gesteActif()` keeps this from starting while a real drag owns the guides.
-    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !measureMode() && !poseArme()
-      && !dTenue && !gesteActif() && (e.key === "d" || e.key === "D")) {
-      const w = murSousD(ctx);
-      if (w) { dTenue = true; drawWallGuides(ctx, w); }
-      return;
-    }
-    // CURSOR CHAT ("/", FigJam-style, `fil/dire.ts`). REUSES `typing` rather than inventing a
-    // second guard (own header note in AGENTS.md): while the chat box itself has focus it IS an
-    // `<input>`, so `typing` is already true and a "/" typed into it lands as an ordinary
-    // character, never reopening the box. Blocked during an armed placement or an active gesture:
-    // Enter/Escape already mean something else there, and opening a second floating box on top of
-    // one already following the pointer would confuse both.
-    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !gesteActif() && !poseArme() && e.key === "/") {
-      e.preventDefault();
-      ctx.crochets.direOuvrir?.();
-      return;
     }
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !typing) {

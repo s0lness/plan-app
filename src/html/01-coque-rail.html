@@ -40,11 +40,17 @@
     </div>
 
     <div class="rail-foot">
-      <!-- THREE BLOCKS, and nothing more: the file, the paper/image output, and the destructive
-           gesture. Two entries left the menu because they were ALREADY duplicates, down to the
-           same handler: "Help & shortcuts" (that's the "?" in the toolbar, js/31 → openHelp) and
-           "Export as PDF" (js/32 → printPlan, same as "Print / PDF"). -->
+      <!-- FIVE BLOCKS, and nothing more: history, the file, the paper/image output, the
+           destructive gesture, and feedback. Two entries left the menu because they were ALREADY
+           duplicates, down to the same handler: "Help & shortcuts" (that's the "?" in the
+           toolbar, js/31 → openHelp) and "Export as PDF" (js/32 → printPlan, same as "Print /
+           PDF"). Undo/Redo and Feedback joined it from the toolbar (decision 0015): seven items
+           was already the bar's budget, and none of these three is reached often enough to earn a
+           permanent icon. -->
       <div class="foot-menu" id="footMenu" hidden role="menu" aria-label="Plan actions">
+        <button class="btn" id="btnMenuUndo" role="menuitem">Undo<span class="fm-key">Ctrl+Z</span></button>
+        <button class="btn" id="btnMenuRedo" role="menuitem">Redo<span class="fm-key">Ctrl+Y</span></button>
+        <hr class="fm-sep" role="separator">
         <button class="btn" id="btnExport" role="menuitem">Save to file</button>
         <button class="btn" id="btnImport" role="menuitem">Open from file</button>
         <hr class="fm-sep" role="separator">
@@ -54,6 +60,8 @@
         <button class="btn" id="btnPrint" role="menuitem">Print / PDF</button>
         <hr class="fm-sep" role="separator">
         <button class="btn dgr" id="btnClear" role="menuitem">Remove all furniture</button>
+        <hr class="fm-sep" role="separator">
+        <button class="btn" id="btnFeedback" role="menuitem" title="Send feedback about the app">Feedback</button>
       </div>
       <input type="file" id="fileImport" accept=".json,application/json" hidden>
       <!-- `#btnExportPDF` carried the same action as "Print / PDF" (js/32: both call

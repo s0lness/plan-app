@@ -318,6 +318,36 @@ await test("un_mur_selectionne_porte_trois_controles_le_survol_aucun", async () 
 });
 
 // =============================================================================
+//  7bis. A SELECTED WALL SHOWS ITS LENGTH AND CLEARANCES (decision 0015, replaces D-held)
+// =============================================================================
+// WRITTEN, NOT RUN (owner tests browser suites himself): the D key is gone from the whole app;
+// what used to show only while it was held (`drawWallGuides`, `gestes/guides.ts`) now shows at
+// SELECTION, the same "at selection, not behind a key" rule furniture's own `.pdim` already
+// follows. `.guides .glab` is the SAME container `drawGuides` uses for a piece of furniture's own
+// alignment labels: the length ("240 cm" for a wall drawn 240 cm long) proves the overlay is the
+// wall's own guide, not a stale one left by something else.
+await test("un_mur_selectionne_affiche_sa_longueur_et_ses_degagements", async () => {
+  await rectangleVierge();
+  await armer();
+  await click(await aptPoint(200, 60));
+  await click(await aptPoint(200, 300));
+  await key("Escape", "Escape"); await key("Escape", "Escape");
+  const avant = await evaluate(`document.querySelectorAll(".guides .glab").length`);
+  ok(avant === 0, `avant sélection, aucune cote affichée, vu ${avant}`);
+
+  await click(await aptPoint(200, 180));
+  await pause(50);
+  const labels = await evaluate(`JSON.stringify([...document.querySelectorAll(".guides .glab")].map(e=>e.textContent))`);
+  const liste: string[] = JSON.parse(labels);
+  ok(liste.some((t) => t.includes("240 cm")), `la longueur du mur (240 cm) est affichée, vu ${labels}`);
+
+  await key("Escape", "Escape");
+  await pause(50);
+  const apres = await evaluate(`document.querySelectorAll(".guides .glab").length`);
+  ok(apres === 0, `la désélection efface la cote, vu ${apres}`);
+});
+
+// =============================================================================
 //  8. THE SHEET CARRIES THE COMMANDS
 // =============================================================================
 await test("la_fiche_du_mur_porte_couper_supprimer_et_redresser_au_besoin", async () => {

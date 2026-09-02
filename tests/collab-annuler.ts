@@ -416,12 +416,10 @@ await test("un_remplacement_global_distant_vide_l_historique", seedV4(REAL_PLAN)
   var w = window.__plan.wire(); w.cells[0].name = "Plan importé par Device B";
   window.__plan.wsFeed({t:"op", by:"b@example.com", rev:9, fp:"FP-9",
                         op:{kind:"plan5.replace", plan:w}});
-  return { avant: avant, apres: window.__plan.histInfo(),
-           bouton: document.getElementById("btnUndo").disabled };
+  return { avant: avant, apres: window.__plan.histInfo() };
 `, (v: VerdictSonde) => expect(v.avant.undo >= 1, "l'historique doit d'abord être garni : " + JSON.stringify(v.avant))
      && expect(v.apres.undo === 0 && v.apres.log === 0,
-        "un plan5.replace distant rend les instantanés caducs : " + JSON.stringify(v.apres))
-     && expect(v.bouton === true, "et le bouton Annuler doit le dire"));
+        "un plan5.replace distant rend les instantanés caducs (Annuler n'a plus de bouton à barrer depuis 0015, l'historique lui-même suffit à le dire) : " + JSON.stringify(v.apres)));
 
 // =============================================================================
 //  8. CLAMPING BELONGS TO THE AUTHOR OF THE GESTURE

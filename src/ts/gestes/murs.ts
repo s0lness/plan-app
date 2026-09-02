@@ -71,8 +71,9 @@ import { save } from "../app/persistance.ts";
 import { toast } from "../app/toast.ts";
 import { numField } from "../noyau/champ-numerique.ts";
 import { pushHistory } from "../historique/pile.ts";
-import { armGesture, beginGesture, endGesture } from "./sortie.ts";
+import { armGesture, beginGesture, endGesture, gesteActif } from "./sortie.ts";
 import { measureMode, spaceHeld } from "./etat-pointeur.ts";
+import { clearGuides, drawWallGuides } from "./guides.ts";
 // THE WALL TOOL'S GRAMMAR, pure and testable without a browser: what a click MEANS in a chain.
 // Where the point lands (the magnets) stays here, because that needs the plan.
 import type { OutilMur } from "./outil-mur.ts";
@@ -1547,6 +1548,19 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
 // To be called ONCE at bootstrap, after `brancherGestes`.
 
 export function brancherOutilsMurs(ctx: Contexte): void {
+  // A SELECTED WALL SHOWS ITS LENGTH AND CLEARANCES (decision 0015, replacing D-held): wired
+  // through the shared `apresRendu` slot, like Circulation's own overlay, rather than reaching
+  // into `rendu/calque.ts` (a rendering module that must not import a gesture one back). Skipped
+  // during an active gesture: dragging the SAME wall already paints its own live dims
+  // (`v5DrawWallDims`, a different container), and no other gesture leaves a wall selected while
+  // it runs.
+  const apresRenduPrecedent = ctx.crochets.apresRendu;
+  ctx.crochets.apresRendu = () => {
+    apresRenduPrecedent?.();
+    if (gesteActif()) return;
+    const w = ctx.ihm.selWall ? v5WallById(ctx, ctx.ihm.selWall) : null;
+    if (w) drawWallGuides(ctx, w); else clearGuides(ctx);
+  };
   // G-14. IN CAPTURE, on the canvas: an armed tool passes BEFORE all handles.
   ctx.canvas.addEventListener("pointerdown", (e) => v5CaptureDown(ctx, e as PointerEvent), true);
   // THE SEGMENT FOLLOWS THE POINTER while a chain is open. One listener for the life of the app,

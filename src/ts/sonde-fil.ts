@@ -45,7 +45,7 @@ import {
   WS_ACK_RTO, etatFilCourant, wsAckTick, wsOnSave, wsShadowFromServer, wsShadowSync,
 } from "./fil/emission.ts";
 import { wsApplyGhostsToDOM, wsApplyRemoteOp, wsRevertRefused } from "./fil/reception.ts";
-import { direArreter, direTexte, wsFlushCursor, wsOnDown, wsOnMessage } from "./fil/presence.ts";
+import { wsOnDown, wsOnMessage } from "./fil/presence.ts";
 import { puceTexte, serverHasPlan } from "./fil/rest.ts";
 
 type FamilleMiroir = "walls" | "openings" | "pieces" | "cells";
@@ -97,14 +97,9 @@ export interface SondeFil {
   wsMeInfo(): { email: string | null; tag: string | null; name: string | null; guest: boolean; guestId: string | null };
   wsPeerKeys(): string[];
   peerDots(): { txt: string | null; title: string; self: boolean; bg: string }[];
-  peerCursors(): { label: string | null; hidden: boolean; transform: string; say: string | null; sayHidden: boolean | null }[];
+  peerCursors(): { label: string | null; hidden: boolean; transform: string }[];
   ghostIds(): string[];
   ghostPose(pieceId: unknown): { left: string; top: string; ghost: boolean; outline: string } | null;
-  // ---- cursor chat ("/"): the WIRE half, bypassing the DOM box (`fil/dire.ts` is UI only) -------
-  direTexte(s: string): true;
-  direArreter(): true;
-  direFlush(): true;
-  readonly sayText: string | null;
 
   // ---- what the sync suites ask of the MODEL ----------------------------------------
   readonly model: string;
@@ -213,18 +208,11 @@ export function sondeFil(ctx: Contexte, fil: Fil): SondeFil {
         txt: d.textContent, title: d.title, self: d.classList.contains("self"), bg: d.style.background,
       }));
     },
-    peerCursors: () => [...document.querySelectorAll<HTMLElement>("#peerCursors .peer-cur")].map((e) => {
-      const say = e.querySelector<HTMLElement>(".pc-say");
-      return {
-        label: e.querySelector(".pc-name")?.textContent ?? null,
-        hidden: e.style.display === "none",
-        transform: e.style.transform,
-        say: say ? say.textContent : null,
-        // null when the node doesn't even exist (should never happen, `creerNoeudCurseur` always
-        // builds it): callers compare `=== true` / `=== false`, never `!sayHidden`.
-        sayHidden: say ? !!say.hidden : null,
-      };
-    }),
+    peerCursors: () => [...document.querySelectorAll<HTMLElement>("#peerCursors .peer-cur")].map((e) => ({
+      label: e.querySelector(".pc-name")?.textContent ?? null,
+      hidden: e.style.display === "none",
+      transform: e.style.transform,
+    })),
     // The ghosts' DOM render goes through an rAF loop: it is forced before counting.
     ghostIds(): string[] { wsApplyGhostsToDOM(ctx, fil); return [...fil.ghosts.keys()]; },
     ghostPose(pieceId: unknown) {
@@ -235,12 +223,6 @@ export function sondeFil(ctx: Contexte, fil: Fil): SondeFil {
         ghost: el.classList.contains("peer-ghost"), outline: el.style.outlineColor,
       };
     },
-    // Cursor chat ("/"): the WIRE half, exercised directly (the DOM box in `fil/dire.ts` is UI
-    // only, same reasoning as `setPos` bypassing a drag gesture entirely).
-    direTexte(s: string): true { direTexte(fil, s); return true; },
-    direArreter(): true { direArreter(fil); return true; },
-    direFlush(): true { wsFlushCursor(fil); return true; },
-    get sayText() { return fil.sayText; },
 
     get model() { return String(ctx.etat.model); },
     rebuildCells(plan?: PlanV5 | null): Cellule[] | undefined {

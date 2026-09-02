@@ -14,9 +14,9 @@
   @media (max-width:1240px){ .toolbar .scale{display:none} }
   @media (max-width:1120px){
     /* icon-only for the wordy action buttons; keep the seg (Meubles/Murs) readable */
-    #btnFit .tb-label,#btnMeasure .tb-label,#btnOverlay .tb-label,#btnFlow .tb-label{display:none}
-    #btnFit .tb-ico,#btnMeasure .tb-ico,#btnOverlay .tb-ico,#btnFlow .tb-ico{display:inline}
-    #btnFit,#btnMeasure,#btnOverlay,#btnFlow{padding:6px 9px}
+    #btnFit .tb-label,#btnMeasure .tb-label,#btnFlow .tb-label{display:none}
+    #btnFit .tb-ico,#btnMeasure .tb-ico,#btnFlow .tb-ico{display:inline}
+    #btnFit,#btnMeasure,#btnFlow{padding:6px 9px}
   }
   @media (max-width:960px){ .toolbar .area-chip{display:none} }
   @media (max-width:900px){

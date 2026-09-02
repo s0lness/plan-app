@@ -13,7 +13,7 @@ import { buildAptContext, isBlocker } from "./circulation/contexte.ts";
 import { buildGrid } from "./circulation/grille.ts";
 import { analyzeApt } from "./circulation/regles.ts";
 import {
-  analyze, analyzeNow, drawOverlay, renderFlow, scheduleAnalysis, setFlowOpen, setOverlay,
+  analyze, analyzeNow, drawOverlay, renderFlow, scheduleAnalysis, setFlowOpen,
 } from "./circulation/circulation.ts";
 import { $ } from "./noyau/dom.ts";
 
@@ -40,7 +40,6 @@ export interface SondeFlow {
   renderFlow(): void;
   drawOverlay(): void;
   setFlowOpen(on: boolean): void;
-  setOverlay(on: boolean): void;
 
   /** THE DISPLAYED FINDINGS (14 at most). LIVE: `analyze()` replaces the list. */
   readonly findings: Constat[];
@@ -67,7 +66,6 @@ export function sondeFlow(_ctx: Contexte): SondeFlow {
     renderFlow,
     drawOverlay,
     setFlowOpen,
-    setOverlay,
 
     get findings() { return FL.findings; },
     // Circulation: the counts for the WHOLE list (before the display cap) and what the

@@ -15,10 +15,10 @@
 //
 // CTRL NO LONGER MEANS ANYTHING, ANYWHERE (decision 0013). It first stopped meaning anything
 // during a drag (there is no grid any more, decision 0011); it now doesn't even toggle a
-// selection any more, that's Shift's job, the same modifier the lasso already used. The two
-// D-held cases that used to live here are gone too: a piece's dimensions now show on the
-// selection itself (`showDim`, `rendu/meubles.ts`), so peeking at them no longer needs a key. The
-// wall half of D-held stays (S2's territory, not this lot's, `tests/outil-mur-geste.ts`).
+// selection any more, that's Shift's job, the same modifier the lasso already used. The `D` key
+// is gone from the app entirely now (decision 0015): a piece's dimensions show on the selection
+// itself (`showDim`, `rendu/meubles.ts`), and so does a wall's (`drawWallGuides`,
+// `gestes/guides.ts`), neither needs a key held down any more.
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
