@@ -110,6 +110,12 @@ pseudo-suite.
 
 - `--next` and `--legacy` are rejected by `build.ts`: `src/js` no longer exists, and the archived
   pre-cutover build is not part of this repository.
+- **The CSS and the HTML are compacted into the deliverable** (comments, indentation, blank lines
+  removed), the JS is minified by esbuild at target `es2020`. A source line stays one line: no line
+  is merged, no selector rewritten, so the whitespace the rendering counts is untouched. `--dev`
+  compacts nothing. Two guards fail the build if a `url(...)` appears in the CSS or if HTML where
+  whitespace matters (`<pre>`, an inline `<script>`, a non-empty `<textarea>`) enters a fragment:
+  the compaction would no longer be safe (decision 0017).
 - The build path requires `node_modules` (`typescript@7.0.2`, `esbuild@0.28.1`, pinned versions).
   They are build tools, never runtime dependencies.
 - The deliverable remains self-contained. The esbuild metafile must contain only `src/ts/`, and the
