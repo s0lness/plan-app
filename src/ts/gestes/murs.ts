@@ -1616,7 +1616,7 @@ export function brancherOutilsMurs(ctx: Contexte): void {
       const s2 = v5Seg(w);
       if (!s2.L) return;
       const bout = v5BoutLibre(P, w);
-      if (!bout) return;                          // both ends joined: the field is disabled, C-2
+      if (!bout) return;                          // both ends joined: the field is disabled, G-13
       pushHistory(ctx);
       if (bout === "b") w.b = [v5R2(w.a[0] + s2.ux * v), v5R2(w.a[1] + s2.uy * v)];
       else w.a = [v5R2(w.b[0] - s2.ux * v), v5R2(w.b[1] - s2.uy * v)];

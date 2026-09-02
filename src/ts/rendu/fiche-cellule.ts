@@ -67,15 +67,15 @@ export function syncCellCard(ctx: Contexte): void {
       inp.value = String(Math.round(Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1])));
     }
     // A TYPED LENGTH STRETCHES THE FREE END, so a partition held at BOTH ends has no end to give:
-    // the field is disabled and says why, rather than picking a junction to tear open (C-2, what
-    // cannot be done says so). A facade is never in that case: it is resized by sliding the next
+    // the field is disabled and says why, rather than picking a junction to tear open (G-13, a
+    // gesture that produces nothing says why). A facade is never in that case: it is resized by the next
     // one, which is why it keeps the field.
     const bloque = !!w && !w.isOutline && !v5BoutLibre(ctx.etat.plan, w);
-    const note = $("rcLenNote");
+    const noteLen = $("rcLenNote");
     if (inp) {
       inp.disabled = bloque;
       inp.title = bloque ? "Both ends of this wall are junctions." : "";
     }
-    if (note) note.hidden = !bloque;
+    if (noteLen) noteLen.hidden = !bloque;
   }
 }
