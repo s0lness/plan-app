@@ -59,7 +59,7 @@ not a local convenience.
 | State, migration, old formats | `ts/modele/etat.ts`, `lecture-v4.ts`, `migrations.ts` |
 | Walls, cells, openings | `ts/modele/murs.ts`, `cellules.ts`, `edition.ts` |
 | Room names during a gesture | `ts/modele/photo-cellules.ts` (why the photo exists, and what it protects) |
-| Geometry gestures | `ts/gestes/murs.ts`, `ouverture.ts`, `edition-murs.ts` |
+| Geometry gestures | `ts/gestes/murs.ts`, `outil-mur.ts` (the wall tool's chain, pure), `ouverture.ts`, `edition-murs.ts` |
 | Furniture and placement | `ts/gestes/meuble.ts`, `pose.ts`, `rendu/meubles.ts` |
 | Floor plan rendering | `ts/rendu/rendu.ts`, `calque.ts`, `vue.ts` |
 | Collaboration | `ts/fil/`, then `live-worker/ops.ts` for the server contract |

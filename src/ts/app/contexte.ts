@@ -35,11 +35,10 @@ export interface Vue {
 /** The UI state of the walls-only model (`v5UI()` in the old client). */
 export interface EtatIHM {
   selWall: string | null;
-  /** Wall whose band or handle is under a mouse, or the last wall tapped by a finger. */
+  /** Wall under the mouse: a light highlight and the pointer cursor, never a button (decision 0010). */
   hoverWall: string | null;
   selCell: string | null;
-  /** THE draw tool is armed. One tool, one flag: the second one that used to pick the freehand
-   * trace went with it. */
+  /** THE wall tool is armed: a click lays a point, the chain follows (`gestes/outil-mur.ts`). */
   draw: boolean;
 }
 
@@ -82,15 +81,9 @@ export interface Gestes {
   contourInsertionPointerDown?: (e: PointerEvent, i: number) => void;
   contourSommetPointerDown?: (e: PointerEvent, i: number) => void;
   contourSommetSupprimer?: (e: PointerEvent, i: number) => void;
-  supprimerMurSelectionne?: (e: PointerEvent, id?: string) => void;
-  fusionnerMurPointerDown?: (e: PointerEvent, id: string, bout: "a" | "b") => void;
   /** A selected interior wall's own ENDPOINT handle (owner's report: "choper les extrémités des
    * murs et pouvoir étendre et relier à d'autres murs"), `gestes/murs.ts`'s `v5StartWallEndDrag`. */
   boutMurPointerDown?: (e: PointerEvent, wallId: string, bout: "a" | "b") => void;
-  /** A selected interior wall's offset midpoint handle, which splits it and drags the new joint. */
-  coudeMurPointerDown?: (e: PointerEvent, wallId: string) => void;
-  /** L'ÉQUERRE: elle n'est dessinée que sur un mur de travers (`v5MurDeTravers`), et le redresse au clic. */
-  redresserMurPointerDown?: (e: PointerEvent, wallId: string) => void;
   /** A wall's central move handle. Facades use the same visible target for selection only. */
   deplacerMurPointerDown?: (e: PointerEvent, wallId: string) => void;
   /** Placing an object turns its layer back on (G-22, gestes/pose.ts): the toggles follow (js/28). */

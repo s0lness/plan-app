@@ -42,7 +42,7 @@ import { clearGuides, drawGuides, drawWallGuides, rotatePieceWithChairs } from "
 import { cur, delSel, flipWallMountSide } from "./selection-actions.ts";
 import { unstackGroup } from "./pose.ts";
 import { annulerPoseArmee, poseArme, poserAuCentre } from "./pose.ts";
-import { v5DeleteSelectedWall, v5DeleteVertex, v5SelectWall, v5SetDraw } from "./murs.ts";
+import { v5DeleteSelectedWall, v5DeleteVertex, v5OutilMurTouche, v5SelectWall, v5SetDraw } from "./murs.ts";
 import { v5DrawOpeningGuides } from "./ouverture.ts";
 
 // Identifier written into the clipboard to recognize a copy/paste coming from THIS app
@@ -322,6 +322,22 @@ export function brancherClavier(ctx: Contexte): void {
     if (measureMode() && !typing) return;
     // G-12. As long as a gesture is armed, Escape ONLY cancels it.
     if (e.key === "Escape" && !typing && escapeActiveGesture()) { e.preventDefault(); return; }
+    // THE WALL TOOL OWNS THE KEYBOARD WHILE IT IS ARMED, and only the four keys of its own grammar:
+    // digits and Backspace type a length, Enter applies it (or ends the chain), Escape ends the
+    // chain then puts the tool away. Everything else falls through to the rules below.
+    if (!typing && !e.ctrlKey && !e.metaKey && ctx.ihm.draw && v5OutilMurTouche(ctx, e)) {
+      e.preventDefault();
+      return;
+    }
+    // W ARMS THE WALL TOOL, the way one letter arms a tool in every comparable planner. Same
+    // toggle as the toolbar button, so there is one armed state and one place that shows it.
+    if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && !gesteActif() && !poseArme()
+      && (e.key === "w" || e.key === "W")) {
+      e.preventDefault();
+      v5SetDraw(ctx, !ctx.ihm.draw);
+      render(ctx);
+      return;
+    }
     // G-22. ARMED PLACEMENT: Escape abandons it, Enter places it at the center of the view. The latter is the
     // ONLY remaining path to place something without a pointer.
     if (!typing && poseArme()) {
@@ -382,8 +398,7 @@ export function brancherClavier(ctx: Contexte): void {
         if (ctx.ihm.selWall) v5DeleteSelectedWall(ctx);
         else if (ctx.selVtx >= 0) v5DeleteVertex(ctx, ctx.selVtx);
       } else if (e.key === "Escape") {
-        if (ctx.ihm.draw) { v5SetDraw(ctx, false); render(ctx); }
-        else if (ctx.ihm.selWall) { v5SelectWall(ctx, null); render(ctx); }
+        if (ctx.ihm.selWall) { v5SelectWall(ctx, null); render(ctx); }
         else { ctx.selVtx = -1; render(ctx); }
       }
       return;
@@ -391,7 +406,6 @@ export function brancherClavier(ctx: Contexte): void {
     // The cell card closes on Escape when no selected object owns the key.
     if (!p) {
       if (e.key === "Escape") {
-        if (ctx.ihm.draw) { v5SetDraw(ctx, false); render(ctx); return; }
         ctx.crochets.hideInspector?.();
         const rc = $("roomCard"); if (rc) rc.hidden = true;
       }

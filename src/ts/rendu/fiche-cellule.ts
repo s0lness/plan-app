@@ -8,6 +8,7 @@
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5SelectedCell, v5WallById } from "../app/contexte.ts";
+import { v5MurDeTravers } from "../modele/edition.ts";
 import { v5SignedArea } from "../modele/aires.ts";
 import { fmtM2 } from "../noyau/nombres.ts";
 import { $ } from "../noyau/dom.ts";
@@ -49,6 +50,13 @@ export function syncCellCard(ctx: Contexte): void {
     del.hidden = !w;
     if (note) note.hidden = true;
   }
+  // SPLIT AND SQUARE UP, the two commands that used to float over the wall itself. Split works on
+  // a facade too (it inserts an outline corner); square up only exists where the model says the
+  // wall is crooked (`v5MurDeTravers`), so the button never appears just to refuse.
+  const split = $("rcSplit") as HTMLButtonElement | null;
+  if (split) split.hidden = !w;
+  const square = $("rcSquare") as HTMLButtonElement | null;
+  if (square) square.hidden = !(w && !w.isOutline && v5MurDeTravers(ctx.etat.plan, w.id));
   // Through-wall or free-standing: only on a PARTITION. A facade has no ends to leave dangling,
   // and a room is not a wall.
   const lenRow = $("rcLenRow");

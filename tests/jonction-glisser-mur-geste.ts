@@ -167,12 +167,14 @@ async function dessinerTroisMurs(): Promise<VerdictSonde[]> {
     walls:[], openings:[], pieces:[], cells:[]}); true`);
   await pause(150);
   if (await armed() !== "true") await click(await centerOf("#btnDrawWall"));
-  // wA: (200,0) -> (200,150)
-  await drag(await aptPoint(200, 0), await aptPoint(200, 150));
-  // wB: starts EXACTLY at wA's end -> (300,150)
-  await drag(await aptPoint(200, 150), await aptPoint(300, 150));
-  // wC: starts EXACTLY at wB's end -> (300,360), reaching the bottom facade (apartment is 420x360)
-  await drag(await aptPoint(300, 150), await aptPoint(300, 360));
+  // CLICK-CLICK, and the chain is what makes the three walls SHARE their endpoints exactly: each
+  // click closes a segment and reopens the next one at that same point (decision 0010). The tool
+  // is left armed with the chain open on purpose; the caller disarms it through the button, which
+  // is the path bug #1 lived in.
+  await click(await aptPoint(200, 0));     // wA starts
+  await click(await aptPoint(200, 150));   // wA closes, wB starts here
+  await click(await aptPoint(300, 150));   // wB closes, wC starts here
+  await click(await aptPoint(300, 360));   // wC closes on the bottom facade (apartment is 420x360)
   return interiorWalls();
 }
 const near = (p: VerdictSonde, q: VerdictSonde) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1;
@@ -197,7 +199,8 @@ await test("trois_murs_relies_bout_a_bout_le_glissement_garde_les_jonctions", as
   ok(await armed() === "false", "l'outil doit être désarmé avant le glissement");
 
   const mi = await aptPoint(250, 150), mf = await aptPoint(250, 190);
-  await M("mouseMoved", mi.x, mi.y, { button: "none", buttons: 0 }); await pause(80);
+  // A WALL IS SELECTED BY CLICKING IT, and only then does it carry its move handle (decision 0010).
+  await click(mi); await pause(80);
   const poignee = await centerOf(`.v5wmove[data-w="${wB.id}"]`);
   ok(!!poignee, "la poignée move du mur doit être atteignable une fois l'outil éteint");
   if (!poignee) return;
@@ -226,7 +229,8 @@ await test("un_seul_ctrl_z_restaure_les_trois_murs", async () => {
   const undoAvant = await undoCount();
 
   const mi = await aptPoint(250, 150), mf = await aptPoint(250, 190);
-  await M("mouseMoved", mi.x, mi.y, { button: "none", buttons: 0 }); await pause(80);
+  // A WALL IS SELECTED BY CLICKING IT, and only then does it carry its move handle (decision 0010).
+  await click(mi); await pause(80);
   const poignee = await centerOf(`.v5wmove[data-w="${wB.id}"]`);
   if (!ok(poignee, "poignée move introuvable")) return;
   await drag(poignee, mf);

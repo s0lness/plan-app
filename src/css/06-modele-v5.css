@@ -16,71 +16,22 @@
   .v5beams{position:absolute;left:0;top:0;pointer-events:none;z-index:1}
   .v5layer.drawing{pointer-events:auto;cursor:crosshair}
   .v5band.sel{stroke:var(--accent)!important}
-  .v5wx{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;z-index:60;
-        background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 13px/16px var(--mono);
-        text-align:center;cursor:pointer;pointer-events:auto;box-shadow:0 1px 3px rgba(0,0,0,.3)}
-  /* a selected interior wall's own ENDPOINT handles: drag to extend or connect (owner's report) */
-  .v5wend,.v5wmid,.v5wmove{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
-        background:var(--room-bg);border:2px solid var(--accent);z-index:41;cursor:grab;
-        pointer-events:auto;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.3)}
-  /* The SPLIT control is a "+" and it is dressed exactly like the delete "x": same disc, same
-     size, same filled accent. They are the two commands that ACT on a click, one adding a joint
-     and one removing the wall, so they read as a pair sitting on either side of the segment. The
-     pale outlined discs are the ones you DRAG (the move handle and the two ends). */
-  .v5wmid{width:20px;height:20px;margin:-10px 0 0 -10px;text-align:center;cursor:pointer;
-        background:var(--accent);color:#fff;border-color:var(--room-bg);
-        font:700 15px/16px var(--mono)}
-  .v5wmove{width:20px;height:20px;margin:-10px 0 0 -10px;background:var(--accent);border-color:var(--room-bg)}
-  /* L'icone est un SVG, donc la boite doit le porter sans padding ni ligne de base de texte. */
-  /* Les trois boutons portent un SVG: meme boite, meme centrage, aucune metrique de police. */
-  /* CHAQUE BOUTON EST UNE BOITE TRANSPARENTE QUI CONTIENT SON DISQUE. Le fond, la bordure et
-     l'ombre sont dans le SVG, donc la surface saisissable peut etre plus large que le dessin sans
-     que rien ne grossisse a l'oeil: rater la prise de deux pixels ne doit pas tomber sur le corps
-     du mur, qui trace. Le dessin garde son ombre portee via un filtre CSS, qui suit la forme. */
-  .v5wmove,.v5wend,.v5wmid,.v5wx,.v5wjoin,.v5wdroit{background:none;border:none;box-shadow:none;padding:0;
+  /* SURVOL: le mur sous le pointeur s'annonce cliquable, et rien de plus (decision 0010). Aucun
+     bouton n'apparait au survol, donc rien n'a plus a s'arbitrer le clic avec un meuble, une
+     etiquette ou le mur d'a cote. */
+  .v5band.survol{stroke:var(--accent-ink)!important;opacity:.85}
+  /* LES DEUX PRISES DU MUR SELECTIONNE, et ce sont des PRISES: on les tire. Chacune est une boite
+     transparente qui porte son disque en SVG, donc la surface saisissable est plus large que le
+     dessin sans que rien ne grossisse a l'oeil. Elles passent au-dessus des meubles (2100, et pas
+     70: la bande des meubles vaut 10 + son rang de peinture, plafonnee par MAX_ENTITIES = 2000): un
+     controle qu'autre chose peut recouvrir n'est pas un controle. Le cout pour le meuble est nul
+     hors selection, puisque rien n'est dessine tant qu'aucun mur n'est selectionne. */
+  .v5wend,.v5wmove{position:absolute;z-index:2100;cursor:grab;pointer-events:auto;touch-action:none;
+        background:none;border:none;box-shadow:none;padding:0;
         filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
-  .v5wmove > svg,.v5wend > svg,.v5wmid > svg,.v5wx > svg,.v5wjoin > svg,.v5wdroit > svg{display:block}
-  .v5wend:hover > svg circle,.v5wmid:hover > svg circle,.v5wmove:hover > svg circle{opacity:.85}
-  .v5wjoin{position:absolute;border-radius:50%;cursor:pointer;pointer-events:auto;
-        display:flex;align-items:center;justify-content:center;padding:2px;box-sizing:border-box;
-        background:var(--accent);color:#fff;border:2px solid var(--room-bg);font:700 15px/16px var(--mono);
-        box-shadow:0 1px 3px rgba(0,0,0,.3)}
-  /* LA PILE, ET CHAQUE ETAGE EST UNE REGLE. Un tapis (2 a 5) passe SOUS les murs (6), parce qu'il
-     est au sol et qu'un mur s'eleve depuis ce sol. Une ouverture (7) est PART du mur. Une ETIQUETTE
-     DE PIECE (8) passe au-dessus d'elle, parce que c'est du texte a lire et qu'elle se lisait deja
-     ainsi. Un MEUBLE (10 et au-dessus, `10 + rang de peinture`) passe au-dessus des trois: c'est
-     lui l'objet, et il n'appartient a aucun mur.
-
-     ET LES COMMANDES DU MUR PASSENT AU-DESSUS DE TOUT LE MONDE (2100). Elles etaient a 9, donc
-     sous les meubles, et c'est la troisieme famille d'objets a qui on applique la meme regle,
-     apres le tapis puis l'etiquette de piece: un controle qu'autre chose peut recouvrir n'est pas
-     un controle. Mesure a la vraie souris sur le plan reel a 77 objets, au zoom d'ajustement:
-     18 boutons sur 60 rendaient un MEUBLE au test de clic, dont la croix de w13 sous la machine a
-     laver, peinte en pale et morte au clic; 0 apres. Dezoome de moitie: 16 sur 58, puis 0.
-
-     2100, ET PAS 70: la bande des meubles est `10 + rang de peinture`, donc son plafond est le
-     nombre de meubles du plan, borne par `MAX_ENTITIES` (2000, `live-worker/ops.ts`). Un 70
-     marchait sur ce plan-ci (47 meubles, plafond 56) et cassait en silence au 61e meuble pose.
-     Tout ceci vit dans le contexte d'empilement de `.v5layer` (position + z-index 1), donc rien
-     ici ne dispute son etage aux surcouches de la page.
-
-     ET CE QUE CA COUTE AU MEUBLE, MESURE ET ASSUME. Un bouton n'existe QUE pendant le survol de
-     SON mur, et un meuble ne DEMARRE aucun survol (`brancherSurvolMurs`, `rendu/calque.ts`):
-     venir prendre un meuble depuis le sol libre, ce qui est le geste ordinaire, ne perd donc
-     rien. Mesure, vraie souris, 25 points de prise par meuble: 0 point vole au zoom
-     d'ajustement comme dezoome de moitie. En revanche, la main qui TRAVERSE la cloison avant de
-     saisir garde les boutons sous elle et leur cede leurs pixels: 143 points sur 600 au zoom
-     d'ajustement (24 %, 24 meubles exposes), 370 sur 975 dezoome de moitie (38 %), et 2 meubles
-     sur 47 (deux chaises plus petites qu'une boite de bouton, posees sur le milieu d'un mur)
-     perdent TOUS leurs points sur ce trajet-la, 4 en dezoomant. C'est le prix, il est reversible
-     d'un geste (s'ecarter du mur rend le meuble), et l'alternative testee etait pire: laisser un
-     meuble reveler les commandes du mur qu'il recouvre rend ces memes meubles inatteignables par
-     TOUS les chemins. */
-  .v5wend,.v5wmid,.v5wmove,.v5wx,.v5wjoin,.v5wdroit{z-index:2100}
-  /* L'EQUERRE: meme disque plein que le « + » et la croix, parce qu'elle AGIT au clic elle aussi. */
-  .v5wdroit{position:absolute;border-radius:50%;cursor:pointer;pointer-events:auto;touch-action:none}
-  .v5wend:hover,.v5wmid:hover,.v5wmove:hover{background:var(--accent-soft)}
-  .v5wend:active,.v5wmid:active,.v5wmove:active{cursor:grabbing}
+  .v5wend > svg,.v5wmove > svg{display:block}
+  .v5wend:hover > svg circle,.v5wmove:hover > svg circle{opacity:.85}
+  .v5wend:active,.v5wmove:active{cursor:grabbing}
   .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;
          font:600 11px/1 var(--mono);color:var(--accent-ink);background:var(--room-bg);
          border:1px solid var(--accent);border-radius:3px;padding:2px 5px;white-space:nowrap}

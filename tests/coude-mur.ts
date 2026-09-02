@@ -4,7 +4,7 @@
 // =============================================================================
 // A wall elbow starts as a data operation: split the selected interior wall at its midpoint while
 // preserving every opening's absolute position. The real pointer threshold and hit targets live
-// in tests/coude-mur-geste.ts.
+// in tests/outil-mur-geste.ts.
 //
 //   node tests/coude-mur.ts
 import type { DonneeDynamique } from "./_types.ts";

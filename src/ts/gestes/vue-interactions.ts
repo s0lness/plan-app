@@ -25,7 +25,8 @@ import { fitView, renderView, scaleBounds, screenToApt, zoomAt } from "../rendu/
 import { render } from "../rendu/rendu.ts";
 import { clearSel } from "../rendu/selection.ts";
 import { armGesture } from "./sortie.ts";
-import { v5StartDraw } from "./murs.ts";
+import { v5StartWallMove } from "./murs.ts";
+import { murSousLePointeur } from "../rendu/calque.ts";
 import {
   TOUCH_DRAG_THRESH, isTouchEvt, measureMode, setCursorApt, setSpaceHeld, spaceHeld, touchPts,
 } from "./etat-pointeur.ts";
@@ -117,12 +118,10 @@ export function piecesInClientRect(
  * release, and the rectangle alone already says the gesture is in progress.
  */
 function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
-  // CTRL/CMD ADDS, AND SHIFT NO LONGER DOES, because Shift is now what OPENS the lasso at all:
-  // an ordinary drag over empty space draws a wall. Leaving Shift in this set made every lasso
-  // additive and no lasso could ever replace a selection again, so the two modifiers stopped
-  // meaning different things. Caught by `selection-visible.ts`, which states the replacing half of
-  // the rule on its new base rather than dropping it when the unmodified gesture disappeared.
-  const additiveMod = e.ctrlKey || e.metaKey;
+  // CTRL/CMD OR SHIFT ADD to the selection; an unmodified lasso REPLACES it. The lasso is back to
+  // being the plain drag over empty space (decision 0010), so Shift is free again to mean what it
+  // means everywhere else in a canvas: add to what is already selected.
+  const additiveMod = e.ctrlKey || e.metaKey || e.shiftKey;
   const vr = ctx.viewport.getBoundingClientRect();
   const sx = e.clientX, sy = e.clientY;
   const rb = $("rubber");
@@ -384,18 +383,21 @@ export function brancherInteractionsVue(ctx: Contexte): void {
     const t = e.target as HTMLElement | null;
     const pieceEl = t && t.closest && t.closest(".piece");
     const nameEl = t && t.closest && t.closest(".ov-name");
-    const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove,.v5wdroit");
+    const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wend,.v5wmove");
     if (pieceEl || nameEl || handleEl) return;   // pieces and handles have their own gestures
-    // Empty space and a wall body are ordinary drawing space. A selected facade only keeps its
-    // perimeter controls until the next press elsewhere, so those large controls do not linger.
+    // A WALL IS SELECTED BY PRESSING IT, and the press that selects it also moves it: G-3's 3 px
+    // threshold means a clean click only ever selects. The hit test is GEOMETRIC (`murSousLePointeur`),
+    // never a transparent DOM band: a band would join the hit-test stack and cover the furniture
+    // painted above the wall.
+    const mur = murSousLePointeur(ctx, e);
+    if (mur) { v5StartWallMove(ctx, e, mur); return; }
+    // Nothing under the pointer: the press drops the structural selection, then draws a lasso.
     if (ctx.ihm.selWall || ctx.selVtx >= 0) {
       ctx.ihm.selWall = null; ctx.selVtx = -1; render(ctx);
     }
-    // TOUCH: a finger over empty space = PAN (the rubber band and wall drawing are mouse only).
+    // TOUCH: a finger over empty space = PAN (the rubber band is mouse only).
     if (isTouchEvt(e)) { startTouchPanOrTap(ctx, e); return; }
-    if (e.shiftKey) { startRubberOrClick(ctx, e); return; }
-    ctx.crochets.showHint?.("draw");
-    v5StartDraw(ctx, e, () => { clearSel(ctx); ctx.crochets.hideInspector?.(); });
+    startRubberOrClick(ctx, e);
   });
 
   $("btnFit")?.addEventListener("click", () => fitView(ctx));

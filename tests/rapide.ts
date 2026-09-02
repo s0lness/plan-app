@@ -38,6 +38,7 @@ import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
 import { radiatorWallSnap } from "../src/ts/modele/espace.ts";
+import { outilMurALongueur, outilMurFin, outilMurNeuf, outilMurPoint } from "../src/ts/gestes/outil-mur.ts";
 import { v5PlaceWallMount } from "../src/ts/modele/edition.ts";
 import { empilables, passeAuDessus } from "../src/ts/catalogue/catalogue.ts";
 import { PLAN_ID_RE as PLAN_ID_RE_FN } from "../functions/plan-id.ts";
@@ -1276,6 +1277,46 @@ test("rapide_ranger_par_nature_ne_perd_ni_ne_duplique_aucun_objet", () => {
       "les deux axes doivent contenir les mêmes types (pièce " + parPiece.length + ", nature " + parNature.length + ")")
       && expect(doublons.length === 0, "objet en double dans le rangement par nature : " + JSON.stringify(doublons))
       && expect(kindOf("type_inconnu_venu_d_un_import") === "Other", "un type inconnu doit retomber sur « Other »");
+});
+
+// =================================================================================================
+//  L'OUTIL MUR : LA CHAINE, SANS NAVIGATEUR
+// =================================================================================================
+// La grammaire du tracé clic-clic, isolée dans `gestes/outil-mur.ts` pour être testable: ce qu'un
+// clic VEUT DIRE, sans plan, sans DOM et sans aimant. Où le point atterrit reste la décision de
+// l'appelant.
+
+test("outil_mur_le_premier_clic_pose_un_depart_sans_creer_de_segment", () => {
+  const r = outilMurPoint(outilMurNeuf(), [10, 20]);
+  return expect(r.segment === null, "le premier clic ne doit fermer aucun segment")
+      && expect(JSON.stringify(r.etat.depart) === "[10,20]", "il doit retenir le départ, vu " + JSON.stringify(r.etat.depart));
+});
+
+test("outil_mur_chaque_clic_suivant_ferme_un_segment_et_rouvre_la_chaine", () => {
+  const a = outilMurPoint(outilMurNeuf(), [0, 0]);
+  const b = outilMurPoint(a.etat, [300, 0]);
+  const c = outilMurPoint(b.etat, [300, 200]);
+  return expect(JSON.stringify(b.segment) === "[[0,0],[300,0]]", "segment 1, vu " + JSON.stringify(b.segment))
+      && expect(JSON.stringify(c.segment) === "[[300,0],[300,200]]", "segment 2, vu " + JSON.stringify(c.segment))
+      && expect(JSON.stringify(c.etat.depart) === "[300,200]", "l'arrivée devient le départ du suivant");
+});
+
+test("outil_mur_finir_une_chaine_ouverte_ne_quitte_pas_l_outil_et_ne_cree_rien", () => {
+  const a = outilMurPoint(outilMurNeuf(), [0, 0]);
+  const f = outilMurFin(a.etat);
+  return expect(f.quitter === false, "une chaîne commencée: Échap la termine, il ne quitte pas l'outil")
+      && expect(f.etat.depart === null, "et la chaîne est vide après")
+      // deuxième Échap, plus rien dans la main: là seulement on quitte
+      && expect(outilMurFin(f.etat).quitter === true, "Échap sur un premier point non posé quitte l'outil");
+});
+
+test("outil_mur_une_longueur_tapee_pose_le_point_dans_la_direction_visee", () => {
+  const p = outilMurALongueur([0, 0], [500, 0], 120);
+  const q = outilMurALongueur([100, 100], [100, 900], 50);
+  return expect(p !== null && p[0] === 120 && p[1] === 0, "120 cm vers la droite, vu " + JSON.stringify(p))
+      && expect(q !== null && q[0] === 100 && q[1] === 150, "50 cm vers le bas, vu " + JSON.stringify(q))
+      && expect(outilMurALongueur([0, 0], [0, 0], 120) === null, "sans direction visée, rien n'est posé")
+      && expect(outilMurALongueur([0, 0], [500, 0], 0) === null, "une longueur nulle ne pose rien");
 });
 
 // =================================================================================================

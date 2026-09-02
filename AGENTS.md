@@ -334,6 +334,7 @@ repository.
 | `tests/gestes-precision.ts` | 1 | 7 REAL MOUSE tests: click target and idempotence, up to 300 objects. |
 | `tests/apercu-pose.ts` | 1 | 10 REAL MOUSE + REAL FINGER tests: what is being placed is VISIBLE during the gesture (actually painted background, icon, targeted wall, rejection). |
 | `tests/ouverture-redim.ts` | 1 | 11 REAL MOUSE tests: resize an opening from its handle (opposite edge fixed, wall/neighbor/server bounds, and STATED). |
+| `tests/outil-mur-geste.ts` | 1 | 9 REAL MOUSE + KEYBOARD tests: the click-click wall chain, double-click and Escape, the floor lassoes instead of drawing, a selected wall carries three controls at most and its sheet carries the rest. |
 | `tests/selection-visible.ts` | 1 | 7 REAL MOUSE tests: the lasso also takes OPENINGS, and what it catches is marked DURING the gesture, without writing anything. |
 | `tests/faces-pose-copie.ts` | 1 | Faces of a wall-mounted object: placement, copy, side change. |
 | `tests/textes-lisibles.ts` | 1 | 5 tests, NO UPSIDE-DOWN TEXT: the semicircle rule across every text family, screen + PNG + print. |
@@ -692,7 +693,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   orientations by `tests/textes-lisibles.ts` (measured angle = 0 everywhere, screen + PNG + print).
 
 ## Gestures: ONE exit point
-- Every gesture (drag furniture, rotate, resize, drag a wall / vertex / edge / opening, draw a wall,
+- Every gesture (drag furniture, rotate, resize, drag a wall / vertex / edge / opening,
   pan, rubber band) is armed through **`armGesture(finish[, onUp])`**
   (`src/ts/gestes/sortie.ts`) and NEVER listens for `pointerup` itself. The shared exit attaches the
   finish to `pointerup`, `pointercancel`, `lostpointercapture`, **window focus loss**, and a
@@ -755,6 +756,44 @@ Four rules born from a real-use session where a simple click rewrote the floor p
   step in the stack (`pickStacked`, js/12, shared with openings from js/54), and says so.
 Covered by `tests/gestes-usage-reel.ts` (9 tests, real mouse).
 
+## THE WALL IS A TOOL, THE FLOOR IS A LASSO
+Decision [0010](docs/decisions/0010-le-mur-est-un-outil-le-sol-un-lasso.md), which reverses PR #25
+("wall mode no longer exists"). Read this section before touching `gestes/murs.ts`,
+`gestes/outil-mur.ts` or `rendu/calque.ts`'s `drawHandles`.
+
+- **The wall is drawn with an ARMED TOOL, click by click.** The toolbar button (`btnDrawWall`) or
+  **W** arms it, `aria-pressed` follows, the layer wears a crosshair. A click lays the start, the
+  segment follows the pointer with its length shown next to it, and the next click closes that
+  segment AND starts the following one. **Double-click, Enter or Escape** ends the run; the tool
+  stays armed for the next one, and a further **Escape** puts it away and says so.
+- **Digits then Enter** place the arrival at that exact length in the direction aimed at, the same
+  grammar the resize readout already uses (`#rszReadout`, reused, not reinvented).
+- **The magnets are on by default and ONE key cuts them.** A junction wins (another wall's end, an
+  outline corner, a point on a wall's face, `v5SnapWallEnd` through `v5WallEndDrop`), otherwise the
+  direction quantises to 45° from the chain's start. **Shift** narrows that to the two axes,
+  **Alt** cuts every magnet while held.
+- **The chain's grammar is PURE** and lives in `src/ts/gestes/outil-mur.ts` (`outilMurPoint`,
+  `outilMurFin`, `outilMurALongueur`), tested without a browser in `tests/rapide.ts`. Where a point
+  LANDS needs the plan, so it stays in `gestes/murs.ts`. Do not merge the two back together: the
+  reason the old shape was untestable is that its rule lived inside a `pointerdown` closure.
+- **Dragging over empty space is a LASSO**, as in every comparable planner, and it draws nothing.
+  Shift or Ctrl/Cmd make it ADD to the selection. Right button and Space+drag still pan.
+- **A wall carries NO button on hover**: a light highlight (`.v5band.survol`) and the pointer cursor,
+  nothing more. That absence is the point of the whole batch: the seven pull requests of 32 px
+  boxes, tiers and anti-theft rules existed only to arbitrate between buttons that appeared under a
+  moving hand.
+- **Pressing a wall SELECTS it, and the same press moves it.** The hit test is GEOMETRIC
+  (`murSousLePointeur`, `rendu/calque.ts`), never a transparent DOM band: a band would join the
+  hit-test stack and cover the furniture painted above the wall. G-3's 3 px threshold keeps a clean
+  click from writing anything.
+- **A selected wall carries THREE controls at most**: a move disc at its middle and one handle per
+  FREE end (`v5BoutJoint` removes an end that a junction already holds). A facade carries only the
+  disc: its ends are the outline's corners, which already have their own `.vtx` at the same pixel.
+- **Split, Square up and Delete are COMMANDS, so they live in the wall's sheet**
+  (`#rcSplit`, `#rcSquare`, `#rcDel`, `src/html/05-fiche-piece.html`), next to Length. Only what has
+  to be DRAGGED stays on the plan, because dragging is the one thing a sheet cannot do.
+- Covered by `tests/outil-mur-geste.ts` (browser) and by the four pure cases of `tests/rapide.ts`.
+
 ## Pushing a wall: A FOLLOWER NEVER TILTS
 Two rules, decided ONCE at `pointerdown` (`v5WallDragCtx`) and never re-evaluated during the
 gesture. **A follower never tilts**: it keeps its own direction, so its touching point either slides
@@ -779,19 +818,18 @@ because the wall is no longer parallel to its neighbours.
 
 **A MAGNET COULD NOT HAVE HELPED THOSE TWO, AND THAT IS THE WHOLE POINT.** Their four ends are
 JUNCTIONS, so `v5BoutJoint` removes every endpoint handle (deliberate, from `771bab5`: pulling an
-end that something already holds would tear the junction open). Hovered, they carry only the disc
-that MOVES them (a translation: it cannot change a direction), the "+" that splits and the "×" that
-deletes. No gesture of theirs could fix their direction, so no magnet hung on a gesture had
-anything to bite. And the three gestures that DO fix a direction are already square: drawing
-projects onto the nearest axis (`v5StartDraw`), an endpoint drag quantises to 45° from the fixed end
-(`v5WallEndDrop`/`DIR8`), the outline vertex has `orthoSnapVertex`. What was missing was not a
-fourth magnet, it was a GESTURE.
+end that something already holds would tear the junction open). Selected, they carry only the disc
+that MOVES them, and a translation cannot change a direction. No gesture of theirs could fix it, so
+no magnet hung on a gesture had anything to bite. And the three gestures that DO fix a direction
+are already square: the wall tool quantises to 45° from the chain's start, an endpoint drag does the
+same from the fixed end (`v5WallEndDrop`/`DIR8`), the outline vertex has `orthoSnapVertex`. What was
+missing was not a fourth magnet, it was a COMMAND.
 
-**THE RULE**: a button that exists ONLY on a crooked wall (`v5MurDeTravers`, `modele/edition.ts`)
-and squares it up on a click, exactly as the "+" splits on a click. Same doctrine as the "-": a
-control that appears and then refuses teaches nothing; one that is simply absent says "not here"
-without a word. And unlike a magnet, **it takes away no angle at all**: a deliberate oblique stays
-exactly as reachable, it merely carries no button.
+**THE RULE**: **Square up**, a button of the WALL'S SHEET that exists ONLY on a crooked wall
+(`v5MurDeTravers`, `modele/edition.ts`) and squares it up on a click. A control that appears and
+then refuses teaches nothing; one that is simply absent says "not here" without a word. And unlike
+a magnet, **it takes away no angle at all**: a deliberate oblique stays exactly as reachable, it
+merely carries no button.
 
 - **Three thresholds, each answering one question.** Beyond **2°** the oblique is a CHOICE (a
   chamfered corner is at 45°, twenty times further out). Under **0,5 cm** of end displacement there
@@ -818,10 +856,10 @@ exactly as reachable, it merely carries no button.
   from a click that did nothing.
 - Facades are out of scope: a facade is DERIVED from the outline, squaring it up would mean moving a
   polygon vertex, which is the vertex's gesture and not this wall's.
-- Covered by `tests/mur-droit-geste.ts` (6 cases, real mouse, one of them on the REAL floor plan).
-  Four negative controls, and they are not the same one: removing the button (4 of 6 suites red),
-  removing the three thresholds (2 red), removing the freeze (`w3` runs to 716 cm), and adding a
-  mass pass to `v5ResoudreGeometrie` (`[0,0]` instead of `[0,373 · 0,392]`).
+- The three thresholds are covered without a browser by the model's own suites; the sheet button
+  itself is covered by `tests/outil-mur-geste.ts` (it stays hidden on a wall that is already
+  square). The measurements above were taken with `tests/mur-droit-geste.ts`, removed with the
+  hover controls it was written against (decision 0010).
 
 ## A click lands on what is visible, and repeating gives EXACTLY the same number
 Four rules born from a second real-use session (1 500 gestures, real floor plan then 300 objects).
@@ -856,9 +894,10 @@ Covered by `tests/gestes-precision.ts` (7 tests, real mouse).
   ran on every release, even motionless, and shifted furniture already flush with the wall by 11 cm).
   `pushHistory()` is no longer pushed on `pointerdown`, only on the first real movement (exception:
   Alt+drag, whose duplicate is born on pointerdown).
-- **ESC EXITS WALL MODE, AND SAYS SO** (js/33). Without a word, the result is indistinguishable from
-  a failure: no wall can be selected by clicking. A real session clicked 16 walls in a row with no
-  effect and the incident was classified as « non reproductible ».
+- **ESC PUTS THE WALL TOOL AWAY, AND SAYS SO.** Without a word, the result is indistinguishable
+  from a failure: no wall can be selected by clicking. A real session clicked 16 walls in a row with
+  no effect and the incident was classified as « non reproductible ». The first Esc ends the run
+  being drawn, the second one disarms the tool and states it (`toast({geste:true})`).
 
 ## Traps
 - No `wrangler` on this machine (win32-arm64): every Cloudflare API operation goes through REST

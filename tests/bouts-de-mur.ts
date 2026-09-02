@@ -19,7 +19,7 @@
 // nothing" needs the REAL gesture wiring (`armGesture`, `pushHistory` -> `$("btnUndo")` ->
 // `document`), which this repository never drives outside a real browser (see
 // `tests/jonction-glisser-mur-geste.ts` and every other `*-geste.ts` suite). That case, and
-// "the handle is actually hittable", live in `tests/bouts-de-mur-geste.ts` instead.
+// "the handle is actually hittable", live in `tests/outil-mur-geste.ts` instead.
 //
 //   node tests/bouts-de-mur.ts
 import type { DonneeDynamique } from "./_types.ts";
