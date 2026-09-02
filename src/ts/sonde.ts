@@ -34,7 +34,7 @@ import { isChosenName } from "./rendu/noms.ts";
 import { clearSel, isSel, selAdd, selReplace, selToggle } from "./rendu/selection.ts";
 import { aptBBox, aptToScreen, evtApt, fitCell, fitView, renderView, screenToApt, zoomAt } from "./rendu/vue.ts";
 import { render } from "./rendu/rendu.ts";
-import { renderV5 } from "./rendu/calque.ts";
+import { drawHandles as dessinerPoignees, renderV5 } from "./rendu/calque.ts";
 import { renderRoomChips } from "./rendu/puces-rail.ts";
 import { doorArcSVG } from "./rendu/arc-porte.ts";
 import { pieceIconSVG } from "./rendu/icones.ts";
@@ -98,6 +98,13 @@ export interface SondePlan {
   renderView(): void;
   /** The layer ALONE, without the rest of the render (rail, card, empty-plan message). */
   renderV5(): void;
+  /**
+   * LES POIGNEES SEULES, sur le calque deja monte. Elles sont refaites a CHAQUE image (elles
+   * portent des fermetures, elles ne se reconcilient pas), donc leur cout se mesure a part du
+   * reste du rendu: c'est le seul moyen de dire si un `walls.find` par arete pese ou non.
+   * Sans calque monte, ne fait rien (lue par `tests/rendu-perf.ts`).
+   */
+  drawHandles(): void;
   /** What the layer ACTUALLY painted: the only measure that distinguishes a plan from a drawing. */
   v5RenderStats(): StatsCalque;
   renderRoomChips(force?: boolean): void;
@@ -181,6 +188,12 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
 
     render: () => render(ctx),
     renderV5: () => renderV5(ctx),
+    drawHandles(): void {
+      const l = ctx.canvas.querySelector<HTMLElement>(".v5layer");
+      const P = ctx.etat.plan;
+      if (!l || !P || !Array.isArray(P.outline) || P.outline.length < 3) return;
+      dessinerPoignees(ctx, l, bboxOfPoly(P.outline), ctx.vue.scale);
+    },
     // COUNTS WHAT IS PAINTED, never what the model claims. A duplicated wall band, a floor
     // that was not cut out, an opening that does not come out: none of that shows in the plan,
     // and all of it shows here. The selectors are the old hook's, to the letter, otherwise

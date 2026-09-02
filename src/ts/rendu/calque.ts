@@ -12,7 +12,7 @@
 
 import type { BBox } from "../geometrie/polygones.ts";
 import type { Contexte } from "../app/contexte.ts";
-import type { PlanV5, Pt } from "../partage/plan.ts";
+import type { Mur, PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
@@ -29,6 +29,7 @@ import { renderPieces } from "./meubles.ts";
 import { isSel } from "./selection.ts";
 import type { CandidatEtiquetteCellule } from "./etiquettes-disposition.ts";
 import { disposerEtiquettesCellules, obstaclesMeubles } from "./etiquettes-disposition.ts";
+import { indexerParId } from "./index-noeuds.ts";
 
 /** The layer, if mounted. */
 export const focusEl = (ctx: Contexte): HTMLElement | null =>
@@ -211,12 +212,14 @@ export function renderOuvertures(ctx: Contexte, layer: HTMLElement, bb: BBox, S:
   const X = (x: number): number => v5R2((x - bb.minX) * S);
   const Y = (y: number): number => v5R2((y - bb.minY) * S);
   const seen: Record<string, 1> = {};
+  // UN SEUL PARCOURS DU CALQUE, au lieu d'un `querySelector` par ouverture (`index-noeuds.ts`).
+  const index = indexerParId(layer, '.piece[data-op="1"]');
   (P.openings || []).forEach((op) => {
     const t = TYPEMAP[op.type];
     if (!t || !pieceVisible(op, ctx.etat.opts)) return;
     const box = v5OpeningBox(P, op, t.h || WALL);
     if (!box) return;
-    let el = layer.querySelector<HTMLElement>(`.piece[data-op="1"][data-id="${cssId(op.id)}"]`);
+    let el = index.get(String(op.id)) || null;
     if (!el) {
       el = document.createElement("div");
       el.className = "piece opening";
@@ -230,6 +233,7 @@ export function renderOuvertures(ctx: Contexte, layer: HTMLElement, bb: BBox, S:
         ctx.gestes.ouvertureDblClick?.(ev as MouseEvent, String(noeud.dataset["id"]));
       });
       layer.appendChild(el);
+      index.set(String(op.id), el);
     }
     seen[String(op.id)] = 1;
     const w = box.w, h = box.h, rot = box.rot;
@@ -278,9 +282,8 @@ export function renderOuvertures(ctx: Contexte, layer: HTMLElement, bb: BBox, S:
       }
     }
   });
-  layer.querySelectorAll<HTMLElement>('.piece[data-op="1"]').forEach((n) => {
-    if (!seen[String(n.dataset["id"])]) n.remove();
-  });
+  // Le balayage relit l'INDEX deja construit: le calque n'est parcouru qu'une fois par image.
+  index.forEach((n, id) => { if (!seen[id]) n.remove(); });
 }
 
 /**
@@ -402,12 +405,22 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   // was missing: the merge controls were never removed, so they piled up and survived the deletion
   // of the very wall they belonged to. Reported from real use as two "-" floating in mid-air.
   layer.querySelectorAll(".vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit,.v5wjoin").forEach((n) => n.remove());
-  if (ctx.ihm.hoverWall && !(ctx.etat.plan.walls || []).some((w) => String(w.id) === String(ctx.ihm.hoverWall))) {
+  // LES MURS SONT INDEXES UNE FOIS PAR IMAGE. Cette fonction faisait trois `walls.find` de plus un
+  // `find` par arete de contour, a chaque image d'un geste; sur un plan qui approche le plafond du
+  // serveur (2000 murs) c'est le balayage qui coute, pas les poignees.
+  const murs = ctx.etat.plan.walls || [];
+  const murParId = new Map<string, Mur>();
+  const murContour: Mur[] = [];
+  for (const q of murs) {
+    if (!murParId.has(String(q.id))) murParId.set(String(q.id), q);
+    if (q.isOutline) murContour.push(q);
+  }
+  if (ctx.ihm.hoverWall && !murParId.has(String(ctx.ihm.hoverWall))) {
     ctx.ihm.hoverWall = null;
   }
   const poly = ctx.etat.plan.outline, np = poly.length;
   const toC = (x: number, y: number): { x: number; y: number } => ({ x: (x - bb.minX) * S, y: (y - bb.minY) * S });
-  const selectionMur = (ctx.etat.plan.walls || []).find((w) => String(w.id) === String(ctx.ihm.selWall));
+  const selectionMur = murParId.get(String(ctx.ihm.selWall));
   const contourVisible = !!selectionMur?.isOutline || ctx.selVtx >= 0;
   for (let i = 0; i < np && contourVisible; i++) {
     const a = poly[i]!, b = poly[(i + 1) % np]!;
@@ -417,8 +430,8 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     const ang = Math.atan2(sb.y - sa.y, sb.x - sa.x) * 180 / Math.PI;
     const eb = document.createElement("div");
     eb.className = "edge";
-    const ow = (ctx.etat.plan.walls || []).find((w) => w.isOutline
-      && (Math.hypot(w.a[0] - a[0], w.a[1] - a[1]) + Math.hypot(w.b[0] - b[0], w.b[1] - b[1]) < 2
+    const ow = murContour.find((w) =>
+      (Math.hypot(w.a[0] - a[0], w.a[1] - a[1]) + Math.hypot(w.b[0] - b[0], w.b[1] - b[1]) < 2
        || Math.hypot(w.a[0] - b[0], w.a[1] - b[1]) + Math.hypot(w.b[0] - a[0], w.b[1] - a[1]) < 2));
     if (ow) eb.dataset["w"] = String(ow.id);
     eb.style.width = Math.max(10, lenpx - 36) + "px";
@@ -467,7 +480,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   // bring back. No hover, no arbitration between a wall and its neighbor's buttons (only the
   // SELECTED wall ever carries any), no 32 px anti-overlap placement, no tiered fallback: a button
   // is drawn at fixed size or not drawn at all (commit 5e8c334, "un bouton garde sa taille").
-  const w = (ctx.etat.plan.walls || []).find((q) => String(q.id) === String(ctx.ihm.selWall));
+  const w = selectionMur;
   if (!w) return;
   const sMid = toC((w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2);
   const disque = (r: number, remplissage: string, contour: string, dedans = ""): string =>
