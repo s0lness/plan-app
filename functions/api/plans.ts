@@ -148,5 +148,35 @@ export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
   const res = await env.DB.prepare("DELETE FROM plans WHERE id=?1").bind(id).run();
   const touche = (res && res.meta && typeof res.meta.changes === "number") ? res.meta.changes : 0;
   if (!touche) return json({ error: "plan_not_found", id }, 404);
-  return json({ ok: true, id });
+  // DELETING THE ROW IS NOT DELETING THE PLAN. The Durable Object holds the live copy AND keeps
+  // snapshotting it back into D1 on its alarm: without this call, a deleted plan reappears at the
+  // next snapshot, and whoever was connected keeps editing a plan that no longer exists, live,
+  // with no way to be told. `/purge` closes those sockets (4004 `plan_deleted`) and wipes the
+  // object's storage so nothing is ever written back.
+  //
+  // BEST-EFFORT, exactly like `/revoke` in functions/api/invites.ts: the row is gone either way,
+  // so a Worker hiccup must never turn a successful deletion into an error. What the caller gets
+  // instead is `live:false`, which says the live copy could not be reached, and `closed` when it
+  // could (how many sockets were shown the door).
+  let live = false;
+  let closed = 0;
+  if (env.ROOM) {
+    try {
+      const stub = env.ROOM.get(env.ROOM.idFromName(id));
+      const r = await stub.fetch(new Request("https://plan-live-internal/purge", {
+        method: "POST",
+        headers: { "content-type": "application/json", "X-Plan-Internal": "1" },
+        body: JSON.stringify({ id }),
+      }));
+      // A 500 from the object is NOT a purge: reading `closed` off it would report work that was
+      // never done. Only a 2xx counts, and only then is `live` true.
+      if (r && r.ok) {
+        live = true;
+        let corps: { closed?: number } | null = null;
+        try { corps = await r.json<{ closed?: number }>(); } catch { corps = null; }
+        closed = (corps && typeof corps.closed === "number") ? corps.closed : 0;
+      }
+    } catch { /* best-effort, see above */ }
+  }
+  return json({ ok: true, id, live, closed });
 };

@@ -797,6 +797,72 @@ await test("plan_colonne_data_vide_se_lit_comme_une_ligne_absente", async () => 
 });
 
 // =================================================================================================
+//  7. SUPPRIMER UN PLAN SUPPRIME AUSSI SA COPIE VIVANTE
+// =================================================================================================
+// Effacer la ligne D1 ne suffit pas : le Durable Object garde le plan en mémoire ET le réécrit en
+// D1 à chaque alarme, donc le plan « supprimé » revient, et les gens connectés continuent d'éditer
+// un plan qui n'existe plus. Le DELETE appelle donc `/purge` sur le stub ROOM du plan.
+
+/** Un stub ROOM qui répond comme le DO à `/purge`, et retient la requête reçue. */
+function fauxRoomPurge(closed: number) {
+  const etat: { requete: Request | null } = { requete: null };
+  const stub = {
+    fetch: async (r: Request) => {
+      etat.requete = r;
+      return new Response(JSON.stringify({ ok: true, closed }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  };
+  return { etat, room: { idFromName: (n: string) => n, get: () => stub } };
+}
+
+async function plansDeleteVia(env: DonneeDynamique, id: string) {
+  return plansDelete({
+    request: req("https://plan.example.com/api/plans", { method: "DELETE", host: HOTE_FOYER, body: { id } }), env,
+  } as unknown as Parameters<typeof plansDelete>[0]);
+}
+
+await test("plans_delete_purge_la_copie_vivante", async () => {
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  const { etat, room } = fauxRoomPurge(3);
+  const res = await plansDeleteVia({ ...env, ROOM: room }, "appartement");
+  const corps = await res.json<DonneeDynamique>();
+  const vue = etat.requete;
+  const restante = db.prepare("SELECT id FROM plans WHERE id=?1").get("appartement");
+  return expect(res.status === 200 && corps.ok === true, "la suppression doit rester 200, vu " + res.status)
+      && expect(!restante, "la ligne D1 doit avoir disparu")
+      && expect(!!vue, "le DO doit avoir reçu un appel (par le binding ROOM, jamais le réseau)")
+      && expect(new URL(vue!.url).pathname === "/purge", "l'appel doit cibler /purge, vu " + vue!.url)
+      && expect(vue!.headers.get("X-Plan-Internal") === "1", "et porter le marqueur interne")
+      && expect(corps.live === true, "la réponse doit dire que la copie vivante a été atteinte, vu " + JSON.stringify(corps))
+      && expect(corps.closed === 3, "et combien de sockets ont été fermés, vu " + JSON.stringify(corps.closed));
+});
+
+await test("plans_delete_reste_200_et_dit_live_faux_si_le_do_echoue", async () => {
+  // Même règle que `/revoke` : la ligne est effacée quoi qu'il arrive, donc une panne du Worker ne
+  // doit jamais transformer une suppression réussie en erreur. Ce qui change, c'est ce qu'on DIT.
+  const { db, env } = base();
+  inserePlan(db, "appartement", "Chez nous");
+  const roomEnPanne = { idFromName: (n: string) => n, get: () => ({ fetch: async () => { throw new Error("DO indisponible"); } }) };
+  const res = await plansDeleteVia({ ...env, ROOM: roomEnPanne }, "appartement");
+  const corps = await res.json<DonneeDynamique>();
+  const restante = db.prepare("SELECT id FROM plans WHERE id=?1").get("appartement");
+  return expect(res.status === 200 && corps.ok === true, "doit rester 200, vu " + res.status)
+      && expect(!restante, "la ligne D1 est effacée quand même")
+      && expect(corps.live === false, "et la réponse doit dire live:false, vu " + JSON.stringify(corps));
+});
+
+await test("plans_delete_ne_purge_pas_quand_la_ligne_n_existait_pas", async () => {
+  // 404 : rien n'a été supprimé, donc rien à purger. Purger quand même fermerait les sockets d'un
+  // plan bien vivant sur un simple identifiant mal tapé.
+  const { env } = base();
+  const { etat, room } = fauxRoomPurge(0);
+  const res = await plansDeleteVia({ ...env, ROOM: room }, "fantome");
+  return expect(res.status === 404, "doit répondre 404, vu " + res.status)
+      && expect(etat.requete === null, "aucun appel au DO ne doit partir pour un plan inexistant");
+});
+
+// =================================================================================================
 //  VERDICT
 // =================================================================================================
 const passed = results.filter((r) => r.pass).length;
