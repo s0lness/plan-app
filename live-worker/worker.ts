@@ -293,8 +293,12 @@ const RATE_MAX_ENTRIES = 512;
 interface RateBudget { max: number; win: number; foyer?: number }
 const RATE_BUDGETS: Record<string, RateBudget> = {
   op: { max: RATE_MAX_OPS, win: RATE_WINDOW_MS, foyer: 600 },
-  cursor: { max: 30, win: 1_000 },
-  drag: { max: 30, win: 1_000 },
+  // The client sends the cursor once per animation frame (`curPending`/rAF in presence.ts): a
+  // 60 Hz screen is 60/s, a 120 Hz one twice that. The ghost of a drag is throttled to ~40 ms
+  // (25/s). Both budgets sit ABOVE the honest cadence, otherwise the cap silently eats frames of
+  // ordinary use and the peer's cursor stutters.
+  cursor: { max: 150, win: 1_000 },
+  drag: { max: 60, win: 1_000 },
   chat: { max: 5, win: 10_000 },
   name: { max: 3, win: 60_000 },
   ping: { max: 60, win: 60_000 },

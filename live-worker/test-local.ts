@@ -2449,9 +2449,10 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   const pair = f.mkWs("z@example.com", "zzz999");
   pair.sent.length = 0;
   invite.sent.length = 0;
-  for (let i = 0; i < 40; i++) await messageSocket(f.room, invite, JSON.stringify({ t: "cursor", room: "__apt__", x: i, y: 1 }));
-  ok(pair.sent.filter((m: DonneeDynamique) => m.t === "cursor").length === 30,
-    "le curseur est plafonne a 30 par seconde, vu " + pair.sent.filter((m: DonneeDynamique) => m.t === "cursor").length);
+  // 150/s sits above a 120 Hz screen's rAF cadence: ordinary use never hits it, a loop does.
+  for (let i = 0; i < 160; i++) await messageSocket(f.room, invite, JSON.stringify({ t: "cursor", room: "__apt__", x: i, y: 1 }));
+  ok(pair.sent.filter((m: DonneeDynamique) => m.t === "cursor").length === 150,
+    "le curseur est plafonne a 150 par seconde, vu " + pair.sent.filter((m: DonneeDynamique) => m.t === "cursor").length);
   ok(invite.sent.length === 0, "un depassement de curseur est ignore en SILENCE, vu " + JSON.stringify(invite.sent));
 
   // Un `name` change trois fois par minute au plus.
