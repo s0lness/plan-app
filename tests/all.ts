@@ -58,7 +58,10 @@ const NODE = process.execPath;
 
 const sansPermis: WithBrowserPermits = async <T>(_n: number, _owner: string, fn: () => T | Promise<T>) => await fn();
 let withBrowserPermits: WithBrowserPermits = sansPermis;
-const clientPermis = process.env.PLAN_SEM_CLIENT?.trim();
+// Default: the supervisor's client where the reference workstation keeps it, derived from the
+// home directory (never a hard-coded user path in a public repository). Absent = no machine cap.
+const clientParDefaut = path.join(os.homedir(), "projects", "local-agent", "sem-client.ts");
+const clientPermis = process.env.PLAN_SEM_CLIENT?.trim() || (fs.existsSync(clientParDefaut) ? clientParDefaut : "");
 if (!clientPermis) {
   console.warn("[barriere] PLAN_SEM_CLIENT absent: les suites tournent sans plafond machine.");
 } else {
