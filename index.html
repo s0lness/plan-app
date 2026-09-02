@@ -57,6 +57,16 @@
      furniture piece: typing a value there did nothing. A dozen `.x[hidden]{display:none}` rules
      patched it case by case; this one closes the door for good. */
   [hidden]{display:none!important}
+  /* iOS zooms the WHOLE page on focus of any text input under 16px, and does not zoom back out on
+     blur: one small field turns every screen after it into a zoomed-in one, until the person finds
+     the manual pinch. ONE rule, under `pointer:coarse` only, so DESKTOP RENDERING NEVER CHANGES: a
+     fine pointer never reaches this block, and every panel keeps its own smaller sizes there.
+     `!important`, for the SAME reason as `[hidden]` two lines up: a bare element selector has zero
+     specificity, so every per-panel `.x input{font-size:…}` rule (the palette search, the name
+     fields, the circulation field, the chat box) would otherwise win and this would fix nothing. */
+  @media (pointer:coarse){
+    input,textarea,select{font-size:16px!important}
+  }
   /* The app is a fixed 100vh surface: the DOCUMENT must never scroll (only .rail /
      .flow-list / .chat-list scroll internally). html needs its own overflow:hidden,
      body's alone doesn't stop programmatic focus() from scrolling the root scroller. */
