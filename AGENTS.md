@@ -402,6 +402,15 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   05/08/2026 (playbook, `guides/temps-reel.md` §1.4). If a `wrangler.toml` ever becomes necessary
   here, it must declare `DB` and `ROOM` BEFORE it is committed, three times: at root level, under
   `[env.preview]`, and under `[env.production]`, because a named environment inherits nothing.
+- **`_headers` (repo root) is a Cloudflare Pages response-header file, NOT a `wrangler.toml`**: it
+  carries no binding and cannot touch `DB` or `ROOM`, the trap described just above does not apply
+  to it. It serves a Content-Security-Policy (`default-src 'none'`, with the narrow allowances the
+  client actually needs: `'unsafe-inline'` script/style for the single inlined `<script>`/`<style>`
+  block `build.ts` produces, `data:`/`blob:` for the PNG export and the favicon, `connect-src 'self'
+  wss:` for `/api/*` and the realtime socket), plus `X-Content-Type-Options: nosniff` and
+  `Referrer-Policy: no-referrer` (the invite token lives in the URL fragment and is never sent to a
+  server, but a referrer header is one more thing that doesn't need to leak). No automated suite
+  reads response headers: verify on a deployed preview, not in a test.
 
 ## Backend (shared floor plan, live sync)
 - D1 `plan` (uuid `<d1_database_id>`, get your own from the Cloudflare dashboard), `plans` table with one `main` row
