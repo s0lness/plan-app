@@ -166,8 +166,9 @@ async function seedModel(walls: VerdictSonde, pieces?: VerdictSonde) {
     ]), openings:[], pieces:${JSON.stringify(pieces || [])}, cells:[]}); true`);
   await pause(150);
 }
+// A wall carries its move handle once SELECTED, and a click is what selects it (decision 0010).
 const handleMur = async (x: VerdictSonde, y: VerdictSonde, id?: string) => {
-  const p = await aptPoint(x, y); await M("mouseMoved", p.x, p.y, { button: "none", buttons: 0 }); await pause(100);
+  const p = await aptPoint(x, y); await click(p); await pause(100);
   return centerOf(id ? `.v5wmove[data-w="${id}"]` : ".v5wmove");
 };
 const revelerContour = async () => {
@@ -183,10 +184,10 @@ const armDraw = async () => {
 // =============================================================================
 //  1. tracer_gagne_sur_les_poignees
 // =============================================================================
-// The button's tooltip says "drag from one wall to another". A facade handle (`.edge`, 12 px
-// wide on screen) cut off its pointerdown's propagation: the trace never reached v5StartDraw
-// and the user DRAGGED the FACADE instead. Measured: 15.1 m2 reduced to a 20 cm strip, without
-// a word. An ARMED tool must win over every handle.
+// A facade handle (`.edge`, 12 px wide on screen) cut off its pointerdown's propagation: the
+// wall being drawn never reached the tool and the user DRAGGED THE FACADE instead. Measured:
+// 15.1 m2 reduced to a 20 cm strip, without a word. An ARMED tool must win over every handle.
+// Since decision 0010 the tool draws click by click, so the two presses below are two clicks.
 await test("tracer_gagne_sur_les_poignees", async () => {
   for (const dy of [0, 3, 6, 20]) {
     await seedModel([]);
@@ -195,7 +196,7 @@ await test("tracer_gagne_sur_les_poignees", async () => {
     const cible = await evaluate(`(function(){var p=__plan.aptToScreen(140,${dy});
       var r=document.getElementById("viewport").getBoundingClientRect();
       var e=document.elementFromPoint(r.left+p.x, r.top+p.y); return e?String(e.className||e.tagName):"";})()`);
-    await drag(await aptPoint(140, dy), await aptPoint(140, 340), 14);
+    await click(await aptPoint(140, dy)); await click(await aptPoint(140, 340));
     const P = await plan();
     ok(P.walls.length === 1, `départ à ${dy} cm du mur (sur « ${cible} ») : ${P.walls.length} cloison(s) tracée(s) au lieu d'une`);
     // LE CONTOUR NE DOIT PAS ÊTRE TRAÎNÉ, ce qui n'est pas la même chose que « ne doit pas
@@ -218,7 +219,7 @@ await test("tracer_gagne_sur_les_poignees", async () => {
   ok(await armDraw(), "l'outil de tracé ne s'arme pas (départ sur le « + »)");
   const mid = await centerOf(".v5layer .mid");
   if (ok(mid, "poignée « + » absente")) {
-    await drag({ x: mid.x, y: mid.y }, await aptPoint(210, 340), 14);
+    await click({ x: mid.x, y: mid.y }); await click(await aptPoint(210, 340));
     const P = await plan();
     ok(P.walls.length === 1, `départ sur le « + » : ${P.walls.length} cloison(s) au lieu d'une`);
     // Même distinction qu'au-dessus: ce qu'on interdit est un ANGLE, pas un sommet aligné. Le
@@ -355,15 +356,20 @@ await test("meuble_trop_grand_ne_saute_pas", async () => {
 await test("pas_de_mur_en_double", async () => {
   await seedModel([]);
   const a = await aptPoint(210, 20), b = await aptPoint(210, 340);
-  for (let k = 0; k < 2; k++) { ok(await armDraw(), "l'outil de tracé ne s'arme pas"); await drag(a, b, 14); }
+  // Deux fois le MÊME trait: on range l'outil entre les deux, ce qui referme la chaîne, sinon le
+  // second trait repartirait du point d'arrivée du premier au lieu de le redoubler.
+  for (let k = 0; k < 2; k++) {
+    ok(await armDraw(), "l'outil de tracé ne s'arme pas");
+    await click(a); await click(b);
+    await click(await centerOf("#btnDrawWall"));
+  }
   const P = await plan();
   ok(P.walls.length === 1, `deux traits au même endroit = un seul mur, obtenu ${P.walls.length}`);
   ok((await evaluate(`String(__plan.dupWalls())`)) === "0", "aucun mur superposé ne doit subsister");
   ok(/already there/.test(String(await evaluate(`String(__plan.toastText)`))), "le refus doit être DIT à l'écran");
-  // Deletion follows the wall selection exposed by hover.
-  await click(await centerOf("#btnDrawWall"));
+  // Deletion follows the wall SELECTION, which a click on the wall gives.
   const h = await handleMur(210, 120);
-  if (ok(h, "poignée move absente au survol")) {
+  if (ok(h, "poignée move absente sur le mur sélectionné")) {
     await click(h); await key("Delete", "Delete", 46); await pause(120);
     const Q = await plan();
     ok(Q.walls.length === 0 && Q.cells === 1, `un seul clic doit refusionner (${JSON.stringify(Q.walls)}, ${Q.cells} cellule(s))`);
