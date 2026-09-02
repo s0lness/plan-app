@@ -139,10 +139,22 @@ try {
   let putCount = 0;
   const putLog: VerdictSonde[] = [];
 
+  // A TOKEN THE SERVER NEVER ANSWERS FOR (défaut C1): the request is accepted and then simply
+  // never gets a response, `res` is neither written to nor ended. This is what "a mute server"
+  // means for a `fetch()` call: it hangs until something aborts it, which is exactly the failure
+  // mode `src/ts/fil/invite.ts`'s `REDEEM_TIMEOUT` exists to bound. The connection is left open on
+  // purpose; the suite forces the process to exit at the end regardless (`process.exit`, below).
+  const jetonMuet = jeton("muet1");
+
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://" + req.headers.host);
     let body = "";
     for await (const c of req) body += c;
+    if (url.pathname === "/api/invite" && req.method === "POST") {
+      let corpsMuet: VerdictSonde = {};
+      try { corpsMuet = JSON.parse(body); } catch (_) { corpsMuet = {}; }
+      if ((corpsMuet as { token?: string }).token === jetonMuet) return;   // no response, ever
+    }
     const requete = new Request("https://" + HOTE_INVITE + url.pathname + url.search, {
       method: req.method,
       headers: { "content-type": "application/json", "Host": HOTE_INVITE, ...(req.headers.cookie ? { Cookie: String(req.headers.cookie) } : {}) },
@@ -342,6 +354,25 @@ try {
     "attendu « Salon local seul », vu " + JSON.stringify(nomCellule));
   const errsD2 = await D.evaluate(`JSON.stringify((JSON.parse(localStorage.getItem("plan-errors")||"[]")||[]).map(function(e){return e&&e.msg;}))`);
   check("aucune erreur JS à la deuxième visite", errsD2 === "[]", "vu " + errsD2);
+
+  // ============================================================================================
+  //  6. UN SERVEUR MUET (défaut C1) : jamais de page blanche, un message et un bouton Réessayer
+  //     sous 10 s, PAS un onglet qui attend indéfiniment un `fetch("/api/invite")` sans délai.
+  // ============================================================================================
+  const E = await openBrowser("muet", URL_OF("/#k=" + jetonMuet));
+  opened.push(E);
+  const echecReseau = await attendre(async () => (await E.J(`(function(){
+    var b = document.getElementById("bootNotice");
+    return !!(b && !b.hidden && (document.getElementById("bootNoticeText")||{}).textContent
+      && document.getElementById("inviteRetry"));})()`)), 10000);
+  check("un /api/invite muet affiche le bandeau ET un bouton Réessayer sous 10 s (jamais une page blanche)",
+    echecReseau);
+  const jetonEncoreLa = await E.evaluate(`localStorage.getItem("plan-invite-token")`);
+  check("le jeton n'est PAS oublié sur un échec réseau (contrairement à un jeton invalide)",
+    jetonEncoreLa === jetonMuet, "vu " + JSON.stringify(jetonEncoreLa));
+  const impasseAbsente = await E.J(`(document.getElementById("inviteDeadEnd")||{}).hidden`);
+  check("un échec réseau ne bascule pas sur l'écran plein d'impasse (transitoire, pas définitif)",
+    impasseAbsente !== false, "vu hidden=" + impasseAbsente);
 
   server.close();
 } catch (e) {

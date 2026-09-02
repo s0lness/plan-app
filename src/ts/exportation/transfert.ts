@@ -10,6 +10,7 @@
 
 import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
+import { nomFichierExport } from "../noyau/nombres.ts";
 import { migrate } from "../modele/etat.ts";
 import { serialize } from "../app/persistance.ts";
 import { applyReplacedState, pushHistory } from "../historique/pile.ts";
@@ -93,7 +94,8 @@ export function brancherTransfert(ctx: Contexte): void {
     if (EMBEDDED) { openXfer("export"); return; }
     const blob = new Blob([exportPayload(ctx)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "plan-appartement.json";
+    // `#planName`, the SAME source `impression.ts`'s PNG export reads (C-6): one filename rule.
+    const a = document.createElement("a"); a.href = url; a.download = nomFichierExport($("planName")?.textContent, "json");
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   });

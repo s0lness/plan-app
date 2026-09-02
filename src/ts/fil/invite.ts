@@ -144,7 +144,25 @@ interface ReponseInvite {
   name?: string | null;
 }
 
+// 8 s, the SAME delay `fil/rest.ts`'s `apiFetch` bounds every other request to (not imported: this
+// module takes nothing from `rest.ts` but `setSyncChip`, see the header). Without it, a server
+// that never answers left `redeemerInvite()`, and therefore `preparerAccueil()`, and therefore the
+// entire boot, waiting forever: a definitive blank page, never a message, never a chance to retry.
+const REDEEM_TIMEOUT = 8000;
+
+/**
+ * Set by `redeemerInvite()` on its OWN failure branch: true when the fetch itself never reached a
+ * verdict (no network, DNS failure, or the timeout above aborting it), false when the server
+ * answered and said no (403/404). The two are NOT the same failure: a 403/404 is a verdict about
+ * the TOKEN (forget it, dead-end); a transitory failure is a verdict about the NETWORK, and the
+ * token may still be perfectly good a moment later.
+ */
+let _echecTransitoire = false;
+
 async function redeemerInvite(token: string, nom?: string): Promise<ReponseInvite | null> {
+  _echecTransitoire = false;
+  const ac = new AbortController();
+  const to = setTimeout(() => ac.abort(), REDEEM_TIMEOUT);
   try {
     // `guestId` is what lets the SERVER tell "this device already named itself on this link" apart
     // from "a different visitor just opened the same link" (functions/api/invite.ts). Sent on
@@ -156,12 +174,20 @@ async function redeemerInvite(token: string, nom?: string): Promise<ReponseInvit
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(corps),
+      signal: ac.signal,
     });
     if (!res.ok) return null;   // 403 (household door), 404 (unknown/revoked/expired/deleted): one dead end
     const j = await res.json() as ReponseInvite;
     if (!j || !j.planId) return null;
     return j;
-  } catch (_) { return null; }   // no network: cannot be told apart from a dead link, same screen
+  } catch (_) {
+    // no network, or the 8 s abort above: the server was never actually asked, so this is worth
+    // trying again, unlike the 403/404 branch above which IS the server's answer.
+    _echecTransitoire = true;
+    return null;
+  } finally {
+    clearTimeout(to);
+  }
 }
 
 // =================================================================================================
@@ -229,6 +255,27 @@ function afficherImpasse(sauvegarde: boolean | null): void {
   // step floating ON TOP of the dead end: the dead end is the ONLY thing on screen, ever.
   const nomDlg = $("inviteNameDlg");
   if (nomDlg) nomDlg.hidden = true;
+}
+
+/**
+ * A TRANSITORY redemption failure (network error, or the 8 s timeout above): unlike the dead end,
+ * NOTHING here is forgotten and NOTHING dead-ends, because the token may still be good. Reuses `#bootNotice`
+ * (the same persistent banner `fil/rest.ts`'s `showConflitNotice` writes to, same one
+ * dynamically-inserted-button pattern) rather than inventing a second banner element for one more
+ * kind of failure.
+ */
+function afficherEchecReseauInvite(reessayer: () => void): void {
+  const ban = $("bootNotice"), txt = $("bootNoticeText");
+  if (!ban || !txt) return;
+  txt.textContent = "Could not reach the server to accept this invitation. Check your connection and retry.";
+  ban.hidden = false;
+  $("inviteRetry")?.remove();   // a repeated failure must not stack a second button behind the first
+  const x = $("bootNoticeX");
+  const btn = document.createElement("button");
+  btn.type = "button"; btn.className = "btn sm pri"; btn.id = "inviteRetry";
+  btn.textContent = "Retry";
+  btn.addEventListener("click", () => { ban.hidden = true; btn.remove(); reessayer(); }, { once: true });
+  ban.insertBefore(btn, x || null);
 }
 
 let _impasseAffichee = false;
@@ -374,25 +421,23 @@ export function finirGuestOnboarding(ctx: Contexte, fil: Fil): void {
 //  BOOT ORCHESTRATION: WHAT `main.ts` CALLS BEFORE `amorcer()`
 // =================================================================================================
 /**
- * Resolves `true` when `amorcer()` may run (ordinary household boot, local-only-to-be-discovered,
- * or an invitation that is ALREADY named and ready to go); `false` when the dead end already
- * covers the whole screen and nothing else should start. Blocks on the name step, if one is shown:
- * nobody reaches the wire unnamed.
+ * The redemption attempt, PULLED OUT of `preparerAccueil()` so a transitory failure (see
+ * `_echecTransitoire`) can retry itself without `preparerAccueil()` needing to be called again:
+ * the Retry button's handler is this same function, closed over `jeton`. Resolves exactly like
+ * `preparerAccueil()` did before this batch: `true` = `amorcer()` may run, `false` = the dead end
+ * already covers the whole screen.
  */
-export async function preparerAccueil(): Promise<boolean> {
-  if (!SYNC_ON) return true;   // file:// / the claude.ai artifact: no token was ever meant to reach here
-  const jeton = captureJetonInvite();
-  if (!jeton) {
-    // AUCUN JETON, MAIS DÉJÀ VENU ICI SANS INVITATION : on reprend le mode local-seul TOUT DE
-    // SUITE, avant qu'`amorcer()` ne lise le stockage, sinon il lirait la clé du foyer et
-    // afficherait un appartement vide à la place du plan dessiné la dernière fois (puis
-    // l'écraserait à la première modification). Le 403 d'amorçage confirmera, sans rien changer.
-    if (litStockage(PORTE_LOCALE_KEY) === "1") definirModeLocalSeul();
-    return true;               // ordinary path otherwise: `fil/rest.ts` may still discover local-only later
-  }
-
+async function tenterRedemption(jeton: string): Promise<boolean> {
   const rep = await redeemerInvite(jeton, nomInviteStocke());
   if (!rep || !rep.planId) {
+    if (_echecTransitoire) {
+      // NEVER a blank page: the server was never actually asked, so nothing about the token is
+      // known yet. Hand control back with a visible message and a way to try again, exactly the
+      // rule this branch exists to satisfy.
+      return new Promise<boolean>((resolve) => {
+        afficherEchecReseauInvite(() => { resolve(tenterRedemption(jeton)); });
+      });
+    }
     // A dead token found IN STORAGE (not just a freshly-broken link) should not dead-end this
     // origin FOREVER: forget it, so the next visit to the bare guest URL falls through to
     // local-only instead of retrying a link that can never work again.
@@ -414,4 +459,25 @@ export async function preparerAccueil(): Promise<boolean> {
       })();
     });
   });
+}
+
+/**
+ * Resolves `true` when `amorcer()` may run (ordinary household boot, local-only-to-be-discovered,
+ * or an invitation that is ALREADY named and ready to go); `false` when the dead end already
+ * covers the whole screen and nothing else should start. Blocks on the name step, if one is shown:
+ * nobody reaches the wire unnamed. ALWAYS resolves, even against a server that never answers
+ * (`redeemerInvite`'s 8 s timeout) or one reachable only after a Retry click (`tenterRedemption`).
+ */
+export async function preparerAccueil(): Promise<boolean> {
+  if (!SYNC_ON) return true;   // file:// / the claude.ai artifact: no token was ever meant to reach here
+  const jeton = captureJetonInvite();
+  if (!jeton) {
+    // AUCUN JETON, MAIS DÉJÀ VENU ICI SANS INVITATION : on reprend le mode local-seul TOUT DE
+    // SUITE, avant qu'`amorcer()` ne lise le stockage, sinon il lirait la clé du foyer et
+    // afficherait un appartement vide à la place du plan dessiné la dernière fois (puis
+    // l'écraserait à la première modification). Le 403 d'amorçage confirmera, sans rien changer.
+    if (litStockage(PORTE_LOCALE_KEY) === "1") definirModeLocalSeul();
+    return true;               // ordinary path otherwise: `fil/rest.ts` may still discover local-only later
+  }
+  return tenterRedemption(jeton);
 }

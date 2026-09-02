@@ -541,14 +541,21 @@ export function brancherInspecteur(ctx: Contexte): void {
 
   $("iDel")?.addEventListener("click", () => delSel(ctx));
   $("iSpreadGo")?.addEventListener("click", () => { if (repartirSelection(ctx)) syncInspector(ctx); });
-  // Typing a value FORCES the gap. Enter validates; we don't react on every keystroke, otherwise
-  // "1" then "10" would move everything twice and leave two undo steps.
-  $("iGapSet")?.addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key !== "Enter") { e.stopPropagation(); return; }
-    e.preventDefault();
-    const inp = $("iGapSet") as HTMLInputElement | null;
-    const v = Number(inp?.value);
-    if (!inp || !isFinite(v) || v < 0 || v > 500) return;
-    if (repartirSelection(ctx, Math.round(v))) syncInspector(ctx);
+  // Typing a value FORCES the gap, through the SAME `numField()` every other numeric field in this
+  // panel goes through: an impossible or out-of-bounds value is REJECTED with a message and the
+  // field reverts, instead of the silent no-op this used to be (defect C3).
+  numField($("iGapSet"), {
+    label: "The gap", unit: "cm",
+    bounds: () => ({ min: 0, max: 500 }),
+    // No persisted value to read back: `get()` returns the SAME proposed gap `syncInspector`
+    // already primes the field with ("what Even would give"), so a rejection hands back exactly
+    // what was showing, never a stale or invented number.
+    get: () => {
+      const sel: Meuble[] = [];
+      for (const id of ctx.selection.ids) { const q = pieceById(ctx, id); if (q) sel.push(q); }
+      const res = repartirEgalement(sel);
+      return res.ok ? Math.max(0, Math.round(res.r.ecart)) : null;
+    },
+    set: (v) => { if (repartirSelection(ctx, Math.round(v))) syncInspector(ctx); },
   });
 }

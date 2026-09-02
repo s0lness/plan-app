@@ -54,7 +54,6 @@
     "src/ts/gestes/pile.ts → STACK_TOL",
     "src/ts/gestes/pose.ts → STACK_RING",
     "src/ts/gestes/pose.ts → addCentered",
-    "src/ts/gestes/pose.ts → brancherVignettePalette",
     "src/ts/gestes/pose.ts → poseArmeLabel",
     "src/ts/gestes/pose.ts → poseHoverMove",
     "src/ts/gestes/pose.ts → setPoseArme",
