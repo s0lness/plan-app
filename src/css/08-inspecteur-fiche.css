@@ -25,26 +25,10 @@
     border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--shadow);padding:14px}
   .insp-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
   .insp-head .sw{width:12px;height:12px;border-radius:3px;flex:none}
-  .insp-head input{flex:1;min-width:0;border:0;background:transparent;font-size:14px;font-weight:600;color:var(--ink);padding:2px 0;border-bottom:1px solid transparent}
-  .insp-head input:focus{outline:none;border-bottom-color:var(--accent)}
   /* "N selected" chip when a multi-selection is active */
   .insp-multi{font-family:var(--mono);font-size:11px;font-weight:650;color:var(--accent-ink);
     background:var(--accent-soft);border-radius:var(--radius-control);padding:4px 8px;margin-bottom:10px;text-align:center}
   .insp-multi[hidden]{display:none}
-  .insp-spread{display:flex;align-items:center;gap:8px;margin:4px 0 2px}
-  .insp-spread[hidden]{display:none}
-  .insp-spread .gaps{font-family:var(--mono);font-size:11px;color:var(--faint);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-  .insp-spread .btn{flex:none}
-  .insp-spread .gapset{flex:none;width:74px;display:flex;align-items:center;
-    background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius-control)}
-  .insp-spread .gapset:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-  .insp-spread .gapset input{width:100%;border:0;background:transparent;padding:4px 6px;
-    font-family:var(--mono);font-size:11px;color:var(--ink)}
-  .insp-spread .gapset input:focus{outline:none}
-  .insp-spread .gapset input::-webkit-outer-spin-button,
-  .insp-spread .gapset input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-  .insp-spread .gapset .unit{padding:0 6px 0 0;color:var(--faint);font-family:var(--mono);font-size:10px}
   .insp-proj{margin:2px 0 8px}
   .insp-proj[hidden]{display:none}
   .insp-proj select{width:100%;font:inherit;font-size:12px;padding:6px 8px;color:var(--ink);
@@ -126,12 +110,9 @@
   .insp-grid .field .in{background:var(--panel-2)}
   /* locked piece: greyed-out, non-interactive edit controls */
   .insp-grid .field .in.disabled,.rotrow .disabled{opacity:.45;pointer-events:none}
+  /* No angle slider any more (decision 0013): every button in the row shares the width equally. */
   .rotrow{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-  .rotrow input[type=range]{flex:1;accent-color:var(--accent)}
-  /* An opening's row carries buttons only (its angle belongs to the wall): they share the width
-     equally and stay on one line, instead of wrapping into three-line labels beside a dead slider. */
-  .rotrow.sans-angle .btn{flex:1;white-space:nowrap}
-  .rotrow .rv{font-family:var(--mono);font-size:12px;color:var(--muted);width:38px;text-align:right;font-variant-numeric:tabular-nums}
+  .rotrow .btn{flex:1;white-space:nowrap}
   .insp-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 
 /* ---------- room card: same visual family as the inspector ---------- */

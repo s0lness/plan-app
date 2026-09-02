@@ -11,7 +11,6 @@
 
 import type { Contexte } from "../app/contexte.ts";
 import { pieceById, v5OpeningById, v5Touch } from "../app/contexte.ts";
-import { isWallMount } from "../catalogue/catalogue.ts";
 import { cssId } from "../noyau/dom.ts";
 import { render } from "../rendu/rendu.ts";
 import { selReplace } from "../rendu/selection.ts";
@@ -21,7 +20,6 @@ import { renommerCelluleEnLigne, renommerMeubleEnLigne } from "../panneaux/renom
 import { pickStacked } from "./pile.ts";
 import { startPieceDrag } from "./meuble.ts";
 import { startPieceResize } from "./redimension.ts";
-import { rotatePieceWithChairs } from "./guides.ts";
 import { v5StartOpeningDrag } from "./ouverture.ts";
 import {
   v5DeleteVertex, v5SelectCell, v5StartInsertHandle,
@@ -48,21 +46,15 @@ export function brancherGestes(ctx: Contexte): void {
     if (cp) startPieceDrag(ctx, e, cp);
   };
 
-  // Double-click: rotate 90° (not wall-mounted, not locked); on a door, flip the leaf.
-  // EXCEPT if the pointer is over the LABEL: that's a rename (see `etiquetteSous`).
+  // Double-click: ONE meaning left (decision 0013), rename. It used to also rotate 90° (or flip a
+  // door's leaf) everywhere ELSE on the piece, a second path for what the rotation handle and
+  // "Rotate 90°" already do; that branch is gone. Only the LABEL still answers a double-click
+  // (see `etiquetteSous`); elsewhere on the piece it now does nothing.
   ctx.gestes.meubleDblClick = (e, id) => {
     const cp = pieceById(ctx, id); if (!cp) return;
+    if (!etiquetteSous(e, ".plabel")) return;
     e.preventDefault(); e.stopPropagation();
-    if (etiquetteSous(e, ".plabel")) { ctx.gestes.etiquetteDblClick?.(e, id, "piece"); return; }
-    selReplace(ctx, cp.id);
-    const bat = cp as typeof cp & { hinge?: unknown };
-    if (cp.type === "door" || cp.type === "sdoor") {
-      if (cp.locked) return;
-      pushHistory(ctx); bat.hinge = bat.hinge ? 0 : 1; render(ctx); ctx.crochets.openInspector?.(); return;
-    }
-    if (cp.locked || isWallMount(cp.type)) return;
-    pushHistory(ctx); rotatePieceWithChairs(ctx.etat.plan, cp, (cp.rot || 0) + 90);
-    render(ctx); ctx.crochets.openInspector?.();
+    ctx.gestes.etiquetteDblClick?.(e, id, "piece");
   };
 
   /**

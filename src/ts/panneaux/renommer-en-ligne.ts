@@ -64,7 +64,10 @@ function ouvrir(ctx: Contexte, c: Cible): void {
   const finir = (valider: boolean): void => {
     if (fini) return;
     fini = true;
-    const nom = inp.value.trim();
+    // `maxLength` bounds TYPING; the `.slice` bounds a value set PROGRAMMATICALLY (a paste, a
+    // test probe): the field's old panel counterpart (`#iName`) had the same two-layer bound,
+    // and a name is truncated at 80 server-side (`ops.ts`, `NAME_MAX`) regardless.
+    const nom = inp.value.trim().slice(0, NAME_MAX);
     inp.remove();
     _fermer = null;
     window.removeEventListener("wheel", surVue, true);
@@ -102,8 +105,8 @@ export function renommerMeubleEnLigne(ctx: Contexte, id: string, etiquette: HTML
       if (!nom || nom === avant) return false;
       pushHistory(ctx);
       p.name = nom;
-      // NOTHING is emitted by hand here: publication happens via diff at the next `save`, exactly
-      // like the panel's `#iName` field. Emitting here too would send the op TWICE.
+      // NOTHING is emitted by hand here: publication happens via diff at the next `save`.
+      // Emitting here too would send the op TWICE.
       return true;
     },
   });

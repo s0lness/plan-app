@@ -9,24 +9,13 @@
      lost as soon as the inspector is hidden, since `:first-child` ignores `display:none`). -->
 <div class="side-spacer" aria-hidden="true"></div>
 <div class="inspector" id="inspector" hidden>
+  <!-- The name is not edited HERE any more (decision 0013): double-click the object's own label,
+       on the plan, to rename it. The swatch is the only thing left in the head: a quiet
+       reminder of which catalogue colour is selected. -->
   <div class="insp-head">
     <span class="sw" id="iSw"></span>
-    <!-- Same field for a piece of FURNITURE and for an OPENING. 80 = what the shared plan
-         keeps (live-worker/ops.ts, NAME_MAX); beyond that it truncates silently. -->
-    <input id="iName" type="text" maxlength="80" aria-label="Object name">
   </div>
   <div class="insp-multi" id="iMulti" hidden></div>
-  <!-- The MEASURED GAPS of the selection, then the button that evens them out. Showing the gaps
-       next to the button is what makes the action predictable: you see "12 · 8" before clicking,
-       so you know what "even out" is going to do, and you can also decide not to do it. -->
-  <!-- READ AND WRITE IN THE SAME PLACE. The measured gaps read on the left; the field imposes a
-       value, the button evens them out without picking one. These are two different operations:
-       "the same" doesn't say which, "10" says nothing about the others. -->
-  <div class="insp-spread" id="iSpread" hidden>
-    <span class="gaps" id="iGaps"></span>
-    <div class="in gapset"><input id="iGapSet" type="number" min="0" max="500" step="1" placeholder="gap"><span class="unit">cm</span></div>
-    <button class="btn sm" id="iSpreadGo" title="Give every gap the same size (the two end objects stay put)">Even</button>
-  </div>
   <div class="insp-grid">
     <div class="field">
       <label for="iW">Width</label>
@@ -73,18 +62,17 @@
     </div>
     <p class="proj-out" id="iProjOut"></p>
   </div>
+  <!-- No angle slider (decision 0013): the rotation handle on the selection is the one path for a
+       free rotation, this row carries buttons only. -->
   <div class="rotrow">
     <button class="btn sm" id="iRot90" title="Rotate 90°">Rotate 90°</button>
     <button class="btn sm" id="iSwing" title="Opens inwards / outwards" hidden>Swing direction</button>
     <button class="btn sm" id="iHinge" title="Hinge on the left or on the right" hidden>Hinge side</button>
     <button class="btn sm" id="iSide" title="Put on the other face of the wall (R key)" hidden>Flip side</button>
-    <input id="iRot" type="range" min="0" max="359" step="1" aria-label="Rotation">
-    <span class="rv" id="iRotV">0°</span>
   </div>
   <div class="insp-actions">
-    <button class="btn sm" id="iDup">Duplicate</button>
+    <button class="btn sm" id="iDup" title="Duplicate (Ctrl+D)">Duplicate</button>
     <button class="btn sm" id="iLock">Lock</button>
-    <button class="btn sm" id="iFront">Bring to front</button>
     <button class="btn sm dgr" id="iDel">Delete</button>
   </div>
 </div>

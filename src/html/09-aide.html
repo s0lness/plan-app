@@ -8,108 +8,42 @@
       <div class="help-body">
         <div class="help-cols">
           <section class="help-sec">
-            <h3>Placing an object</h3>
+            <h3>Placing &amp; moving</h3>
             <dl class="help-dl">
-              <dt>Drag and drop</dt><dd>This is THE gesture: grab a thumbnail on the left and drop it where you want it. The preview shows where the object lands; on a wall-mounted object the target wall is highlighted, and the preview fades when no wall is within reach.</dd>
-              <dt>Click the thumbnail</dt><dd>Arms the drop (the thumbnail lights up): the next click on the plan places the object <b>under the pointer</b>. <kbd>Enter</kbd> puts it at the centre of the view, <kbd>Esc</kbd> cancels.</dd>
-              <dt>By finger</dt><dd>Tap the thumbnail (the drawer closes), then tap the spot on the plan: the object lands under your finger.</dd>
-            </dl>
-          </section>
-
-          <section class="help-sec">
-            <h3>Copy &amp; paste</h3>
-            <dl class="help-dl">
-              <dt><kbd>Ctrl</kbd>+<kbd>C</kbd></dt><dd>Copies the selection, one object or many, keeping their layout.</dd>
-              <dt><kbd>Ctrl</kbd>+<kbd>X</kbd></dt><dd>Cuts the selection: it leaves the plan and waits in the clipboard.</dd>
-              <dt><kbd>Ctrl</kbd>+<kbd>V</kbd></dt><dd>Pastes under the cursor (otherwise offset from the original). One paste = one <kbd>Ctrl</kbd>+<kbd>Z</kbd>. A copy is always born unlocked, and a wall-mounted object reattaches to the wall nearest the paste point.</dd>
-              <dt>Another tab</dt><dd>The copy also goes to the system clipboard: <kbd>Ctrl</kbd>+<kbd>V</kbd> in another tab of the plan finds it again.</dd>
-            </dl>
-          </section>
-
-          <section class="help-sec">
-            <h3>Moving &amp; selecting</h3>
-            <dl class="help-dl">
-              <dt>Drag</dt><dd>Grab a piece of furniture and move it, by the centimetre. Its back sticks to a wall it comes close to and takes the wall's orientation; it also lines up with the other furniture. Chairs tucked under a table follow it.</dd>
-              <dt>Marquee</dt><dd>Drag on empty space to select several pieces (rubber band). Hold <kbd>Shift</kbd> or <kbd>Ctrl</kbd> to add to what is already selected.</dd>
-              <dt><kbd>Ctrl</kbd>+click</dt><dd>Adds or removes a piece from the selection.</dd>
-              <dt>Group</dt><dd>Drag a selected piece to move the whole group. <kbd>Del</kbd> deletes them all.</dd>
-              <dt>Long press</dt><dd>Touch: hold your finger on a piece to add it to the selection.</dd>
-              <dt><kbd>Alt</kbd>+drag</dt><dd><b>No magnet.</b> Hold it and nothing attracts the piece: not the wall, not the other furniture, not the table under a chair. It goes exactly where your hand puts it, even across a wall. Use the inspector's Duplicate button to copy a piece.</dd>
-              <dt>Double-click</dt><dd>Rotates the piece by 90°. On a door, flips the hinge side.</dd>
-              <dt>Double-click the name</dt><dd>Renames instead of rotating, <b>on the label itself</b>: the box opens where the name is, with the text selected, so typing replaces it. <kbd>Enter</kbd> keeps it, <kbd>Esc</kbd> throws it away. A piece still carrying its catalogue name paints no label, so there is nothing to double-click until you have named it.</dd>
-              <dt><kbd>D</kbd> (hold)</dt><dd>Shows the live dimensions of the selected piece without moving it, or of whatever is under the pointer if nothing is selected. Release to hide them again; nothing is written or saved.</dd>
-              <dt>Even spacing</dt><dd>Select <b>three or more</b> objects lined up in one direction: the inspector shows the measured gaps and a button that makes them equal. The two end objects stay put, so on a bed between two bedside tables it is the bed that centres itself. With only two objects there is a single gap and nothing to even out. To set an exact gap instead, type it in the small box and press <kbd>Enter</kbd>: that keeps the first object where it is and pushes the rest along, because the block has to change size for the gap to be the one you asked for.</dd>
-            </dl>
-          </section>
-
-          <section class="help-sec">
-            <h3>Resizing</h3>
-            <dl class="help-dl">
-              <dt>Handles</dt><dd>Pull the handles of a selected piece, or an opening's width handles; the opposite side stays put. A size follows your hand by the whole centimetre.</dd>
-              <dt>By keyboard</dt><dd>While dragging, type the dimension in cm then <kbd>Enter</kbd>. <kbd>Tab</kbd> switches to the other side (corner), <kbd>Esc</kbd> cancels.</dd>
-              <dt>Inspector</dt><dd>Set width and depth to the exact figure in the right-hand panel.</dd>
+              <dt>Place</dt><dd>Drag a thumbnail onto the plan. On a touch screen: tap the thumbnail, then tap the plan.</dd>
+              <dt>Move</dt><dd>Drag it by the centimetre. Its back sticks to a wall it nears, and it lines up with other furniture; <kbd>Alt</kbd> frees it of every magnet.</dd>
+              <dt>Rotate</dt><dd>The handle above the selection (<kbd>Shift</kbd> = 15° steps), or <b>Rotate 90°</b>.</dd>
+              <dt>Rename / duplicate</dt><dd>Double-click the name to rename it. <b>Duplicate</b> (or <kbd>Ctrl</kbd>+<kbd>D</kbd>) copies the selection.</dd>
             </dl>
           </section>
 
           <section class="help-sec">
             <h3>Walls</h3>
             <dl class="help-dl">
-              <dt>Select a wall</dt><dd>Click it. It highlights, its card opens, and it carries at most three grips: one disc at its middle to move it, and one at each free end to stretch it. Hovering only tells you it is clickable. Selecting a facade reveals the outline controls.</dd>
-              <dt>Move a wall</dt><dd>Pull a partition: the two rooms it separates adjust together. Hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on a Mac) to move it by the whole centimetre instead of the 5 cm grid; <kbd>Alt</kbd> keeps its own meaning below.</dd>
-              <dt>Draw a wall</dt><dd>The <b>Draw a wall</b> button (or <kbd>W</kbd>), then click to start and click to place. Each click chains into the next segment, and the length shows next to the pointer as you go. Type digits then <kbd>Enter</kbd> to place the point at an exact length. Double-click, <kbd>Enter</kbd> or <kbd>Esc</kbd> ends the run; the tool stays armed for the next one, a second <kbd>Esc</kbd> puts it away.</dd>
-              <dt>Magnets while drawing</dt><dd>Points snap to the corners and faces of the walls already there, and the direction snaps to 0°, 45° and 90°. Hold <kbd>Shift</kbd> to keep only the two axes, and <kbd>Alt</kbd> to cut every magnet for as long as you hold it.</dd>
-              <dt>Length</dt><dd>On a selected wall, type the exact length in centimetres. It stretches the <b>free end</b> only: the other one is usually a junction, and moving it would break the room on the far side. A facade works too, by sliding the next facade along, so the corners stay square. Setting a length also makes a partition <b>Free</b>, otherwise it would immediately stretch back out.</dd>
-              <dt>Neighbour lengths</dt><dd>While you drag a wall, every wall touching it is measured too: you move a wall to size the room next to it, and that room is bounded by its neighbours.</dd>
-              <dt>Through / Free</dt><dd>On a selected partition, switches between the two: <b>Through</b> extends both ends until they meet something, <b>Free</b> leaves them alone. A free wall is still trimmed at the facade: free does not mean allowed to leave the flat.</dd>
-              <dt>Split, square up, delete</dt><dd>Select the wall: its card carries <b>Split in two</b>, <b>Delete wall</b> (the two rooms merge), and <b>Square up</b> when the wall is slightly off square. <kbd>Del</kbd> deletes the selected wall too.</dd>
-              <dt>Facades</dt><dd>Pull an edge or a corner of the outline; <kbd>Shift</kbd> forces the horizontal/vertical axis, <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on a Mac) moves it by the whole centimetre instead of the 5 cm grid.</dd>
-              <dt>Rooms</dt><dd>A room is not drawn: it is COMPUTED from the walls. Click its name to open its card, or double-click the name to rename it straight away.</dd>
+              <dt>Draw</dt><dd><kbd>W</kbd> (or the <b>Wall</b> button) arms it: click to start, click to place, it chains into the next segment. Digits then <kbd>Enter</kbd> place an exact length.</dd>
+              <dt>Magnets</dt><dd>Points snap to corners and existing walls, else to 0°, 45°, 90°. <kbd>Shift</kbd> keeps the two axes, <kbd>Alt</kbd> cuts every magnet.</dd>
+              <dt>Select</dt><dd>Click a wall: a disc moves it, one handle per free end stretches it. Hold <kbd>D</kbd> to see its length and clearances.</dd>
+              <dt>Split, square up, delete</dt><dd>Live on the wall's own card, next to its length.</dd>
             </dl>
           </section>
 
           <section class="help-sec">
-            <h3>Doors &amp; wall fittings</h3>
+            <h3>Doors &amp; windows</h3>
             <dl class="help-dl">
-              <dt>Leaf</dt><dd>The arc shows the swing. Double-click (or <b>Rotate 90°</b>) flips the hinge side.</dd>
-              <dt>Swing direction</dt><dd>The <b>Swing direction</b> button: opens inwards or outwards.</dd>
-              <dt>From the corner</dt><dd>In the inspector, place the door at an exact distance from the corner of the wall.</dd>
-              <dt>Windows, sockets, wall lights</dt><dd>They stick to the nearest wall and slide along it; the arrow keys nudge them.</dd>
-              <dt>How a window opens</dt><dd>On a selected window: <b>None</b> (fixed, or top-hung: it opens vertically, so nothing is drawn on the floor), <b>Single</b> (one casement, with <b>Hinge side</b> and <b>Swing direction</b> like a door), or <b>Double</b> (two casements meeting in the middle). Windows start as <b>None</b>, so nothing on your plan changes until you set one.</dd>
-              <dt>Several at once</dt><dd>Select several openings on the <b>same wall</b> and drag one: they all move together, keeping their spacing. If one hits a limit the whole train stops, so the gaps are never crushed.</dd>
-              <dt>Wall face</dt><dd>A wall light, a socket or an RJ45 lands on the face the cursor is on: drop it from the hallway and it faces the hallway. Drag it through its wall to move it to the other face, or use <b>Flip side</b> (<kbd>R</kbd> key).</dd>
-              <dt>Back to back</dt><dd>Two sockets (or two wall lights) can occupy the SAME spot on BOTH faces of a wall: those are two different surfaces. On the same face, they push each other apart. A door or a window, on the other hand, goes through the wall: it is in the way on both sides.</dd>
-              <dt>Radiator</dt><dd>Drag or drop it near a wall and it snaps to it, back flush against the face. A radiator is low, so a window, a wall light, a socket or an RJ45 above it is never flagged as sharing its spot; a door still is, since you don't pass over a radiator to walk through one.</dd>
+              <dt>Place</dt><dd>Drag one from the palette onto a wall: it orients itself and slides along it.</dd>
+              <dt>Turn</dt><dd><b>Rotate 90°</b> flips the hinge or the leaf's swing; <b>Flip side</b> (or <kbd>R</kbd>) puts it on the other face.</dd>
+              <dt>Inspector</dt><dd>Sets width, depth, and the distance from the corner.</dd>
+              <dt>How it opens</dt><dd>A window's <b>Opens</b> buttons choose None, Single, or Double.</dd>
             </dl>
           </section>
 
           <section class="help-sec">
-            <h3>Projector</h3>
+            <h3>View</h3>
             <dl class="help-dl">
-              <dt>Throw ratio</dt><dd>The number on the spec sheet: <b>image width = distance ÷ ratio</b>. Enter it and the beam appears on the plan. 1.5 is typical; an ultra-short-throw is around 0.25, which puts a 120 cm image 30 cm from the wall.</dd>
-              <dt>Aimed at</dt><dd>Pair the projector with a projection screen. It then shows the real distance, the image width you will get, and whether the image is wider or narrower than the screen.</dd>
-              <dt>Min. distance</dt><dd>The closest the projector can still focus, from its spec sheet. Below it the beam turns red. Leave it empty and nothing is claimed: a short-throw sitting close to the wall is correct, not a mistake.</dd>
-            </dl>
-          </section>
-
-          <section class="help-sec">
-            <h3>Measuring</h3>
-            <dl class="help-dl">
-              <dt>Tape measure</dt><dd>The <b>📏 Measure</b> button, then click two points; the distance appears.</dd>
-              <dt>Probe cursor</dt><dd>The cursor shows the distances to the surrounding walls live.</dd>
-              <dt>Exact dimension</dt><dd>Points snap to walls, corners and furniture so the measurement is true.</dd>
-            </dl>
-          </section>
-
-          <section class="help-sec">
-            <h3>Display</h3>
-            <dl class="help-dl">
-              <dt>Zoom</dt><dd>The wheel (or a two-finger pinch) zooms around the cursor.</dd>
-              <dt>Pan the view</dt><dd>Right-click drag, or <kbd>Space</kbd>+drag, or two fingers.</dd>
-              <dt>Fit</dt><dd>The <b>Fit</b> button: reframes on the whole flat.</dd>
+              <dt>Zoom / pan</dt><dd>The wheel (or a pinch) zooms around the cursor; <kbd>Space</kbd>+drag, the right button, or two fingers pan.</dd>
+              <dt>Fit</dt><dd>Reframes on the whole flat.</dd>
               <dt>Layers</dt><dd>The Furniture / Lighting / Sockets boxes show or hide each family.</dd>
-              <dt>By room / By kind</dt><dd>Above the furniture list: group it by room (Bedroom, Kitchen…) or by kind (Seating, Storage, Lighting…). Your own setting; it does not follow the plan.</dd>
-              <dt>Plans</dt><dd><b>File → Plans</b> lists your plans, creates one, and renames one by double-clicking its name. A new plan starts empty, and switching reloads the page.</dd>
-              <dt>Circulation</dt><dd><b>Show circulation</b> shades the walkable floor; <b>Circulation</b> scores the layout. It also flags two objects left sitting in the same place, except a tumble dryer stacked on a washing machine, a rug under furniture, or anything mounted at height.</dd>
+              <dt>Circulation</dt><dd>Shades the walkable floor and flags an overlap left in the way.</dd>
             </dl>
           </section>
 
@@ -117,7 +51,7 @@
             <h3>Together</h3>
             <dl class="help-dl">
               <dt>Cursors</dt><dd>The other person's cursor and selection show up live.</dd>
-              <dt>Chat</dt><dd>The 💬 button at the bottom right, to talk inside the plan.</dd>
+              <dt>Chat</dt><dd>The 💬 button, to talk inside the plan.</dd>
               <dt>Sync</dt><dd>Changes are shared automatically; the status chip in the bar says so.</dd>
             </dl>
           </section>
@@ -126,24 +60,16 @@
             <h3>Keyboard shortcuts</h3>
             <table class="help-kbd"><tbody>
               <tr><td class="k"><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></td><td class="d">Move (1 cm; <kbd>Shift</kbd> = 10 cm)</td></tr>
-              <tr><td class="k"><kbd>R</kbd></td><td class="d">Rotate the piece by 90°; on a wall light / socket / RJ45, flip to the other wall face</td></tr>
               <tr><td class="k"><kbd>Del</kbd></td><td class="d">Delete the selection</td></tr>
-              <tr><td class="k"><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td class="d">Copy the selection</td></tr>
-              <tr><td class="k"><kbd>Ctrl</kbd>+<kbd>X</kbd></td><td class="d">Cut the selection</td></tr>
-              <tr><td class="k"><kbd>Ctrl</kbd>+<kbd>V</kbd></td><td class="d">Paste under the cursor (a single undo step)</td></tr>
-              <tr><td class="k"><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td class="d">Undo</td></tr>
-              <tr><td class="k"><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td class="d">Redo</td></tr>
-              <tr><td class="k"><kbd>Esc</kbd></td><td class="d">Deselect / leave the current mode</td></tr>
-              <tr><td class="k"><kbd>?</kbd></td><td class="d">Open this help</td></tr>
-              <tr><td class="k">digits, <kbd>Enter</kbd></td><td class="d">Exact dimension while resizing, exact length while drawing a wall</td></tr>
-              <tr><td class="k"><kbd>Shift</kbd>+slide an opening</td><td class="d">Fine mode: five times slower along the wall</td></tr>
-              <tr><td class="k"><kbd>Ctrl</kbd>+drag a wall (<kbd>Cmd</kbd> on a Mac)</td><td class="d">No grid: moves it by the whole centimetre</td></tr>
-              <tr><td class="k"><kbd>D</kbd> (hold)</td><td class="d">Show the selected (or pointed-at) piece's dimensions without moving it</td></tr>
+              <tr><td class="k"><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td class="d">Copy / cut / paste</td></tr>
+              <tr><td class="k"><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd></td><td class="d">Undo / redo</td></tr>
+              <tr><td class="k"><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td class="d">Duplicate the selection</td></tr>
+              <tr><td class="k"><kbd>Esc</kbd></td><td class="d">Cancel the current gesture or tool</td></tr>
               <tr><td class="k"><kbd>W</kbd></td><td class="d">Arm (or put away) the wall tool</td></tr>
-              <tr><td class="k"><kbd>Alt</kbd>+drag</td><td class="d">On furniture: no magnet. While drawing a wall: cuts every magnet</td></tr>
-              <tr><td class="k">double-click a label</td><td class="d">Rename, in place</td></tr>
-              <tr><td class="k"><kbd>Shift</kbd>+rotate</td><td class="d">Snap the rotation to 15°</td></tr>
-              <tr><td class="k"><kbd>Shift</kbd>+drag a corner</td><td class="d">Outline: lock to the horizontal or vertical axis</td></tr>
+              <tr><td class="k"><kbd>?</kbd></td><td class="d">Open this help</td></tr>
+              <tr><td class="k">digits, <kbd>Enter</kbd></td><td class="d">Exact length or dimension, while resizing or drawing a wall</td></tr>
+              <tr><td class="k"><kbd>Shift</kbd></td><td class="d">Constrain: axis, 15° rotation, 10 cm step</td></tr>
+              <tr><td class="k"><kbd>Alt</kbd></td><td class="d">Cut every magnet for the gesture</td></tr>
             </tbody></table>
           </section>
         </div>

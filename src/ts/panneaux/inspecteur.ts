@@ -18,26 +18,25 @@
 //   HISTORY COALESCES BY FOCUS SESSION: ONE entry on the first change after gaining focus, not
 //   one per keystroke.
 //
-// WHAT IS NOT HERE, AND IT'S DELIBERATE: `cur`, `delSel` and `flipWallMountSide` are actions on
-// the SELECTION (the keyboard calls them too), they live in `gestes/selection-actions.ts`.
+// WHAT IS NOT HERE, AND IT'S DELIBERATE: `cur`, `delSel`, `flipWallMountSide` and
+// `dupliquerSelection` are actions on the SELECTION (the keyboard calls them too), they live in
+// `gestes/selection-actions.ts`. Renaming is not here either (decision 0013): it happens on a
+// double-click on the object's own label (`panneaux/renommer-en-ligne.ts`), never through a field
+// of this panel.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Meuble, Ouverture } from "../partage/plan.ts";
-import { pieceById, v5OpeningById, v5Touch, v5WallById } from "../app/contexte.ts";
+import { v5OpeningById, v5Touch, v5WallById } from "../app/contexte.ts";
 import { TYPEMAP, isSideable, isWallMount } from "../catalogue/catalogue.ts";
 import { WALL, clamp, v5R2, escapeHtml } from "../noyau/nombres.ts";
 import { $ } from "../noyau/dom.ts";
 import { numField, syncBounds } from "../noyau/champ-numerique.ts";
 import type { Bornes } from "../noyau/champ-numerique.ts";
 import { v5OpeningDepthMax, v5Seg } from "../modele/murs.ts";
-import { v5ClampPiece, v5ResolveOpening } from "../modele/edition.ts";
-import { autoName } from "../modele/creation.ts";
-import { repartirEgalement } from "../modele/repartir.ts";
+import { v5ResolveOpening } from "../modele/edition.ts";
 import { projection, verdictProjection } from "../modele/projection.ts";
-import { prochainUid } from "../modele/lecture-v4.ts";
 import { openingWallInfo, rotatePieceWithChairs } from "../gestes/guides.ts";
-import { cur, delSel, flipWallMountSide, repartirSelection } from "../gestes/selection-actions.ts";
-import { clearSel, selAdd } from "../rendu/selection.ts";
+import { cur, delSel, dupliquerSelection, flipWallMountSide } from "../gestes/selection-actions.ts";
 import { aptBBox } from "../rendu/vue.ts";
 import { render } from "../rendu/rendu.ts";
 import { pushHistory } from "../historique/pile.ts";
@@ -132,30 +131,8 @@ export function syncInspector(ctx: Contexte): void {
     if (ctx.selection.ids.size > 1) { iMulti.hidden = false; iMulti.textContent = ctx.selection.ids.size + " selected"; }
     else iMulti.hidden = true;
   }
-  // The gaps row only appears when it makes sense: at least three objects, aligned on an axis.
-  // Below that there's only one gap, and "equalize a single gap" means nothing.
-  const iSpread = $("iSpread"), iGaps = $("iGaps");
-  if (iSpread && iGaps) {
-    const sel: Meuble[] = [];
-    for (const id of ctx.selection.ids) { const q = pieceById(ctx, id); if (q) sel.push(q); }
-    const res = repartirEgalement(sel);
-    if (res.ok) {
-      iSpread.hidden = false;
-      const memes = res.r.ecartsAvant.every((v) => Math.abs(v - res.r.ecart) < 0.5);
-      iGaps.textContent = res.r.ecartsAvant.map((v) => Math.round(v)).join(" · ") + " cm"
-        + (memes ? " ✓" : " → " + Math.round(res.r.ecart));
-      // The field proposes the gap that "Even" would give: start from the most likely value,
-      // and correct it rather than typing it from scratch. Never while typing in it.
-      const gs = $("iGapSet") as HTMLInputElement | null;
-      if (gs && document.activeElement !== gs) gs.value = String(Math.max(0, Math.round(res.r.ecart)));
-    } else {
-      iSpread.hidden = true;
-    }
-  }
   const t = TYPEMAP[p.type];
   const sw = $("iSw"); if (sw) sw.style.background = (t && t.color) || "var(--seat)";
-  const iName = $("iName") as HTMLInputElement | null;
-  if (iName && document.activeElement !== iName) iName.value = p.name;
   // The min/max attributes follow the selected object: the field no longer announces a bound
   // different from the one the code applies.
   const iW = $("iW") as HTMLInputElement | null;
@@ -164,28 +141,14 @@ export function syncInspector(ctx: Contexte): void {
   syncBounds(iW); syncBounds(iH); syncBounds(iWallPos);
   if (iW && document.activeElement !== iW) iW.value = String(p.w);
   if (iH && document.activeElement !== iH) iH.value = String(p.h);
-  const iRot = $("iRot") as HTMLInputElement | null;
-  const iRotV = $("iRotV");
-  if (iRot) iRot.value = String(p.rot || 0);
-  if (iRotV) iRotV.textContent = (p.rot || 0) + "°";
   // Objects driven by the wall (openings + sconce/outlet): no manual rotation.
   // Locked objects: no editing at all anymore.
   const op = isWallMount(p.type), lk = !!p.locked;
   if (iW) { iW.disabled = lk; iW.closest(".in")?.classList.toggle("disabled", lk); }
   if (iH) { iH.disabled = lk; iH.closest(".in")?.classList.toggle("disabled", lk); }
-  // AN OPENING HAS NO ANGLE OF ITS OWN: it belongs to its wall. The slider and its readout used
-  // to stay in the row, disabled and dimmed, and squeezed the door's two real buttons into
-  // three-line labels. They leave the row instead, and the buttons that remain share it equally
-  // (`.rotrow.sans-angle`).
-  if (iRot) {
-    iRot.hidden = op;
-    iRot.disabled = op || lk;
-    iRot.classList.toggle("disabled", op || lk);
-    iRot.style.opacity = (op || lk) ? ".45" : "";
-  }
-  const rotV = $("iRotV");
-  if (rotV) rotV.hidden = op;
-  iRot?.closest(".rotrow")?.classList.toggle("sans-angle", op);
+  // AN OPENING HAS NO ANGLE OF ITS OWN: it belongs to its wall. Decision 0013 removed the angle
+  // slider entirely: the rotation handle on the selection, and Rotate 90°, are the one path left
+  // for a piece of furniture, and this row now carries buttons only, on every kind of object.
   // "Rotate 90°" is for FURNITURE. On a door it used to read "Flip the leaf" and toggle the hinge,
   // which is exactly what "Hinge side" next to it does (and does properly: persisted, sent to the
   // peers). Two buttons for one action, with different labels, is one button too many. Sconce /
@@ -286,13 +249,12 @@ export function syncInspector(ctx: Contexte): void {
     sd.style.opacity = lk ? ".45" : "";
   }
   // An OPENING is not a piece of furniture: it lives in `openings[]`, parametric on ITS wall.
-  // "Duplicate" and "Bring to front" can only read `pieces[]`: on a window, the first one pushed a
-  // history entry and did nothing, the second did nothing at all, with no feedback whatsoever.
-  // They are REMOVED rather than reinvented.
+  // "Duplicate" can only read `pieces[]`: on a window it used to push a history entry and do
+  // nothing, with no feedback whatsoever. It is HIDDEN rather than reinvented. "Bring to front" is
+  // GONE entirely (decision 0013): paint order is already automatic, largest to smallest (G-9).
   const isOpening = !!v5OpeningById(ctx, p.id);
-  const iDup = $("iDup"), iFront = $("iFront"), iLock = $("iLock");
+  const iDup = $("iDup"), iLock = $("iLock");
   if (iDup) iDup.hidden = isOpening;
-  if (iFront) iFront.hidden = isOpening;
   if (iLock) { iLock.textContent = lk ? "Unlock" : "Lock"; iLock.classList.toggle("pri", lk); }
   // "From the corner": distance from the wall's starting corner (A) to the nearest edge.
   const wallRow = $("iWallRow");
@@ -343,14 +305,10 @@ export function setDim(ctx: Contexte, which: string, val: unknown): void {
   const cx = (p.x || 0) + p.w / 2, cy = (p.y || 0) + p.h / 2;
   if (which === "w") { p.w = v; } else { p.h = v; }
   p.x = Math.round(cx - p.w / 2); p.y = Math.round(cy - p.h / 2);
-  clampPiece(ctx, p as unknown as Meuble);
+  // NOTHING BOUNDS THIS ANY MORE (decision 0011/0013): a resize from the inspector may leave the
+  // piece straddling a wall, exactly like the drag it mirrors. `v5Touch` marks the plan dirty.
+  v5Touch(ctx);
   render(ctx);
-}
-
-/** `clampPiece` (js/19): a wall-mounted object is parametric, nothing to bound. */
-function clampPiece(ctx: Contexte, p: Meuble): void {
-  if (isWallMount(p.type)) return;
-  v5ClampPiece(ctx.etat.plan, p); v5Touch(ctx);
 }
 
 export function brancherInspecteur(ctx: Contexte): void {
@@ -359,24 +317,15 @@ export function brancherInspecteur(ctx: Contexte): void {
   ctx.crochets.syncInspector = () => syncInspector(ctx);
   ctx.crochets.hideInspector = () => hideInspector();
 
-  const iName = $("iName") as HTMLInputElement | null;
-  const iW = $("iW"), iH = $("iH"), iRot = $("iRot") as HTMLInputElement | null;
+  const iW = $("iW"), iH = $("iH");
   const iWallPos = $("iWallPos");
 
-  // One focus session = one history entry.
-  ["iName", "iW", "iH", "iRot", "iWallPos"].forEach((id) => {
+  // One focus session = one history entry. Renaming is no longer one of this panel's fields
+  // (decision 0013): it happens on a double-click on the object's own label, on the plan.
+  ["iW", "iH", "iWallPos"].forEach((id) => {
     const e = $(id); if (!e) return;
     e.addEventListener("focus", () => { inspEdited = false; });
     e.addEventListener("blur", () => { inspEdited = false; });
-  });
-
-  // `maxlength="80"` bounds TYPING; the `.slice(0,80)` bounds the programmatic PASTE and any
-  // value set on the field another way (the shared plan truncates at 80, see ops.ts NAME_MAX).
-  iName?.addEventListener("input", () => {
-    const p = vue(cur(ctx)); if (!p) return;
-    if (!inspEdited) { inspEdited = true; pushHistory(ctx); }
-    p.name = String(iName.value || "").slice(0, 80);
-    render(ctx);
   });
 
   numField(iW, {
@@ -397,14 +346,6 @@ export function brancherInspecteur(ctx: Contexte): void {
       return `This wall is ${Math.round(Number(w.t) || WALL)} cm thick: any deeper and the opening would go through both rooms.`;
     },
     set: (v) => setDim(ctx, "h", v),
-  });
-
-  iRot?.addEventListener("input", () => {
-    const p = vue(cur(ctx)); if (!p || p.locked) return;
-    if (!inspEdited) { inspEdited = true; pushHistory(ctx); }
-    rotatePieceWithChairs(ctx.etat.plan, p as unknown as Meuble, parseInt(iRot.value, 10) || 0);
-    const iRotV = $("iRotV"); if (iRotV) iRotV.textContent = p.rot + "°";
-    render(ctx);
   });
 
   // Reposition a wall-mounted object along its wall, by "distance from the corner".
@@ -514,56 +455,13 @@ export function brancherInspecteur(ctx: Contexte): void {
 
   $("iSide")?.addEventListener("click", () => { const p = cur(ctx); if (p) flipWallMountSide(ctx, p); });
 
-  // Duplicate: a multi-selection duplicates ALL selected furniture (offset, fresh ids), and the
-  // copies become the new selection.
-  $("iDup")?.addEventListener("click", () => {
-    if (!ctx.selection.ids.size) return;
-    // Nothing duplicable (openings-only selection): do NOT push history. A pushHistory() without
-    // a mutation used to offer an "undo" that undid nothing.
-    const src = [...ctx.selection.ids].map((id) => pieceById(ctx, id)).filter((p): p is Meuble => !!p);
-    if (!src.length) return;
-    pushHistory(ctx);
-    const newIds: string[] = [];
-    src.forEach((p) => {
-      const n: Meuble = {
-        ...p, id: String(prochainUid()), x: p.x + 15, y: p.y + 15,
-        locked: false, name: autoName(ctx.etat.plan, p.name),
-      };
-      ctx.etat.plan.pieces.push(n); v5ClampPiece(ctx.etat.plan, n); newIds.push(String(n.id));
-    });
-    v5Touch(ctx); clearSel(ctx); newIds.forEach((i) => selAdd(ctx, i));
-    render(ctx); openInspector(ctx);
-  });
+  // Duplicate: ONE path (decision 0013), shared with `Ctrl+D` (`gestes/clavier.ts`).
+  $("iDup")?.addEventListener("click", () => dupliquerSelection(ctx));
 
   $("iLock")?.addEventListener("click", () => {
     const p = vue(cur(ctx)); if (!p) return;
     pushHistory(ctx); p.locked = !p.locked; save(ctx); render(ctx); syncInspector(ctx);
   });
 
-  $("iFront")?.addEventListener("click", () => {
-    const p = cur(ctx); if (!p) return;
-    const L = ctx.etat.plan.pieces, i = L.indexOf(p as Meuble);
-    if (i < 0) return;                    // opening: no stacking order, and no empty history entry
-    pushHistory(ctx); L.splice(i, 1); L.push(p as Meuble); v5Touch(ctx); render(ctx);
-  });
-
   $("iDel")?.addEventListener("click", () => delSel(ctx));
-  $("iSpreadGo")?.addEventListener("click", () => { if (repartirSelection(ctx)) syncInspector(ctx); });
-  // Typing a value FORCES the gap, through the SAME `numField()` every other numeric field in this
-  // panel goes through: an impossible or out-of-bounds value is REJECTED with a message and the
-  // field reverts, instead of the silent no-op this used to be (defect C3).
-  numField($("iGapSet"), {
-    label: "The gap", unit: "cm",
-    bounds: () => ({ min: 0, max: 500 }),
-    // No persisted value to read back: `get()` returns the SAME proposed gap `syncInspector`
-    // already primes the field with ("what Even would give"), so a rejection hands back exactly
-    // what was showing, never a stale or invented number.
-    get: () => {
-      const sel: Meuble[] = [];
-      for (const id of ctx.selection.ids) { const q = pieceById(ctx, id); if (q) sel.push(q); }
-      const res = repartirEgalement(sel);
-      return res.ok ? Math.max(0, Math.round(res.r.ecart)) : null;
-    },
-    set: (v) => { if (repartirSelection(ctx, Math.round(v))) syncInspector(ctx); },
-  });
 }

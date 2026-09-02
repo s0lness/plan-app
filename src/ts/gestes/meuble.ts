@@ -30,7 +30,7 @@ import { v5OpeningBox } from "../modele/murs.ts";
 import { meubleWallSnap, wallSnapReach } from "../modele/espace.ts";
 import { v5MoveOpeningTo } from "../modele/edition.ts";
 import { dockedChairs, snapChairToTable, TABLE_TYPES } from "./contraintes.ts";
-import { alignSnap, clearGuides, drawAlignLines, drawGuides } from "./guides.ts";
+import { alignSnap, angleVersPointeur, clearGuides, drawAlignLines, drawGuides } from "./guides.ts";
 import { armGesture, endActiveGesture } from "./sortie.ts";
 import { LONGPRESS_MS, TOUCH_DRAG_THRESH, isTouchEvt, measureMode, spaceHeld, touchPts } from "./etat-pointeur.ts";
 import { pushHistory } from "../historique/pile.ts";
@@ -49,10 +49,9 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
   e.preventDefault();   // otherwise the browser starts a text selection on the label
   const p = p0;
 
-  // Ctrl/Cmd held AT PRESS = multi-selection toggle, decided right here. Ctrl no longer has any
-  // meaning during a drag (the grid it used to suppress is gone), so there is nothing left to
-  // defer to the release: the press is a toggle, full stop.
-  if (e.ctrlKey || e.metaKey) {
+  // SHIFT HELD AT PRESS = multi-selection toggle, decided right here (decision 0013: Ctrl means
+  // nothing in this app any more, and Shift already reads "add to the selection" on the lasso).
+  if (e.shiftKey) {
     selToggle(ctx, p.id);
     render(ctx);
     if (ctx.selection.primaire != null) ctx.crochets.openInspector?.();
@@ -164,10 +163,9 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     let lastRot = p.rot || 0;
     const move = (ev: PointerEvent): void => {
       pousseHist();
-      let a = Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180 / Math.PI + 90;
-      a = (a + 360) % 360;
-      if (ev.shiftKey) a = Math.round(a / 15) * 15 % 360;   // Shift still constrains the rotation
-      a = Math.round(a);
+      // G-13 (decision 0013): the pure geometry lives in `gestes/guides.ts`, so it is provable
+      // without a browser (`tests/rapide.ts`). Shift still quantizes to 15° steps.
+      const a = angleVersPointeur(cx, cy, ev.clientX, ev.clientY, ev.shiftKey);
       const dRot = a - lastRot;
       if (dRot && riders.length) {
         const rad = dRot * Math.PI / 180, cr = Math.cos(rad), sr = Math.sin(rad);
