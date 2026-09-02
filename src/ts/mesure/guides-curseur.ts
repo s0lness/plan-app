@@ -38,7 +38,7 @@ export interface DistanceCurseur {
 }
 
 /** Every SOLID piece of furniture (not an opening, not wall-mounted, not soft) as a bounding box, apartment cm. */
-export function allBlockerAABBsApt(ctx: Contexte): BoiteObstacle[] {
+function allBlockerAABBsApt(ctx: Contexte): BoiteObstacle[] {
   const out: BoiteObstacle[] = [];
   ((ctx.etat.plan && ctx.etat.plan.pieces) || []).forEach((p: Meuble) => {
     const t: Partial<ItemCatalogue> = TYPEMAP[p.type] || {};
@@ -76,7 +76,7 @@ function rayToAnyPolyApt(ctx: Contexte, ox: number, oy: number, dx: number, dy: 
  * (with overlap on the cross axis) OR the wall, in each direction. A direction with no
  * hit within `CURSOR_GUIDE_MAX` is omitted.
  */
-export function cursorDistances(ctx: Contexte, ax: number, ay: number): DistanceCurseur[] {
+function cursorDistances(ctx: Contexte, ax: number, ay: number): DistanceCurseur[] {
   const cands = allBlockerAABBsApt(ctx);
   const specs = [
     { dir: "up" as const, axis: "y" as const, sign: -1 },

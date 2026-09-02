@@ -145,7 +145,7 @@ function highlightPieces(f: Constat): void {
 // coalesced reprojection (1 per frame max): the overlay no longer "trails" behind pan/zoom
 let _ovRaf = 0, _ovSig = "";
 function scheduleOverlayDraw(): void { if (_ovRaf) return; _ovRaf = requestAnimationFrame(() => { _ovRaf = 0; drawOverlay(); }); }
-export function drawOverlay(): void {
+function drawOverlay(): void {
   const flowCanvas = FL.flowCanvas;
   if (!flowCanvas) return;
   sizeFlowCanvas();
@@ -291,7 +291,7 @@ export function analyze(force?: boolean): void {
 // A call that lands on an unchanged signature (`aptFlowSig`, js/34) recomputes nothing.
 // js/38's `anaPending` isn't carried over: it was read nowhere (esbuild would say so too).
 let anaT: ReturnType<typeof setTimeout> | null = null;
-export function scheduleAnalysis(): void {
+function scheduleAnalysis(): void {
   if (!E("flowpanel").hidden) { E("flowChecking").textContent = "checking…"; }
   if (anaT) clearTimeout(anaT);
   anaT = setTimeout(() => { analyze(); }, 180);
@@ -318,7 +318,7 @@ export function liveAnalyze(): void {
 // ONE state now drives both the panel AND the shaded overlay (decision 0015: the "Show
 // circulation" button is gone, its layer is a state of THIS button). A click opens the panel and
 // paints the layer together; a second click closes both.
-export function setFlowOpen(on: boolean): void {
+function setFlowOpen(on: boolean): void {
   FL.ctx.etat.opts.flow = on;
   E("flowpanel").hidden = !on;
   (document.querySelector(".app") as HTMLElement).classList.toggle("flow-open", on);

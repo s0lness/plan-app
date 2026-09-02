@@ -20,22 +20,20 @@
 
 import type { Contexte } from "./app/contexte.ts";
 import type { BBox } from "./geometrie/polygones.ts";
-import type { Cellule, Meuble, Ouverture, PlanV5 } from "./partage/plan.ts";
-import type { PoigneeRedim } from "./rendu/meubles.ts";
-import { pieceById, v5CellById, v5OpeningById, v5SelectedCell, v5Touch, v5WallById } from "./app/contexte.ts";
-import { TYPEMAP, isWallMount, layerOf, pieceVisible } from "./catalogue/catalogue.ts";
+import type { Meuble, Ouverture, PlanV5 } from "./partage/plan.ts";
+import { pieceById, v5OpeningById, v5Touch, v5WallById } from "./app/contexte.ts";
+import { TYPEMAP, isWallMount, pieceVisible } from "./catalogue/catalogue.ts";
 import { bboxOfPoly, poleOfInaccessibility } from "./geometrie/polygones.ts";
 import { v5OpeningBox } from "./modele/murs.ts";
 import { v5SignedArea } from "./modele/aires.ts";
-import { WALL, fmtM2, safeDim } from "./noyau/nombres.ts";
-import { $, cssId, setLabelSpin } from "./noyau/dom.ts";
-import { RSZ_BYKEY, RSZ_HANDLES, resizeCursor, stackedAt } from "./rendu/meubles.ts";
+import { WALL, fmtM2 } from "./noyau/nombres.ts";
+import { cssId, setLabelSpin } from "./noyau/dom.ts";
+import { stackedAt } from "./rendu/meubles.ts";
 import { isChosenName } from "./rendu/noms.ts";
-import { clearSel, isSel, selAdd, selReplace, selToggle } from "./rendu/selection.ts";
-import { aptBBox, aptToScreen, evtApt, fitCell, fitView, renderView, screenToApt, zoomAt } from "./rendu/vue.ts";
+import { clearSel, isSel, selAdd, selReplace } from "./rendu/selection.ts";
+import { aptBBox, aptToScreen, fitView, renderView, screenToApt, zoomAt } from "./rendu/vue.ts";
 import { render } from "./rendu/rendu.ts";
 import { drawHandles as dessinerPoignees, renderV5 } from "./rendu/calque.ts";
-import { renderRoomChips } from "./rendu/puces-rail.ts";
 import { doorArcSVG } from "./rendu/arc-porte.ts";
 import { pieceIconSVG } from "./rendu/icones.ts";
 import type { SondeGestes } from "./sonde-gestes.ts";
@@ -95,7 +93,6 @@ export interface SondePlan {
 
   // ---- rendering ----
   render(): void;
-  renderView(): void;
   /** The layer ALONE, without the rest of the render (rail, card, empty-plan message). */
   renderV5(): void;
   /**
@@ -107,25 +104,19 @@ export interface SondePlan {
   drawHandles(): void;
   /** What the layer ACTUALLY painted: the only measure that distinguishes a plan from a drawing. */
   v5RenderStats(): StatsCalque;
-  renderRoomChips(force?: boolean): void;
   fitView(): void;
-  fitCell(c: Cellule | null): void;
   zoomAt(x: number, y: number, f: number): void;
   setZoom(s: number): Transformee;
   viewTransform(): Transformee;
   aptBBox(): BBox;
   bboxOfPoly: typeof bboxOfPoly;
   aptToScreen(x: number, y: number): { x: number; y: number };
-  screenToApt(x: number, y: number): { x: number; y: number };
-  evtApt(ev: { clientX: number; clientY: number }): { x: number; y: number };
   viewCenterApt(): { x: number; y: number };
 
   // ---- reading the model ----
   pieceById(id: unknown): Meuble | null;
   v5OpeningById(id: unknown): Ouverture | null;
   v5WallById(id: unknown): ReturnType<typeof v5WallById>;
-  v5CellById(id: unknown): Cellule | null;
-  v5SelectedCell(): Cellule | null;
   /**
    * HISTORICAL SIGNATURE, AND IT MUST BE KEPT: the old hook exposed the RAW function
    * `v5OpeningBox(P, op)`, and the suites call it with the plan as the first argument
@@ -136,13 +127,11 @@ export interface SondePlan {
   v5SignedArea: typeof v5SignedArea;
   poleOfInaccessibility: typeof poleOfInaccessibility;
   fmtM2: typeof fmtM2;
-  safeDim: typeof safeDim;
   cssId: typeof cssId;
 
   // ---- selection ----
   selReplace(id: unknown): void;
   selAdd(id: unknown): void;
-  selToggle(id: unknown): boolean;
   clearSel(): void;
   isSel(id: unknown): boolean;
   readonly selCount: number;
@@ -153,13 +142,9 @@ export interface SondePlan {
   setLabelSpin: typeof setLabelSpin;
   isChosenName: typeof isChosenName;
   pieceVisible(p: { type: string }): boolean;
-  layerOf: typeof layerOf;
   isWallMount: typeof isWallMount;
   doorArcSVG: typeof doorArcSVG;
   pieceIconSVG: typeof pieceIconSVG;
-  resizeCursor: typeof resizeCursor;
-  RSZ_BYKEY: Record<string, PoigneeRedim>;
-  RSZ_HANDLES: PoigneeRedim[];
   stackedAt: typeof stackedAt;
   rszHandleCount(pieceId: unknown): number;
   handleCount(): {
@@ -167,7 +152,6 @@ export interface SondePlan {
     del: number; split: number; square: number;
   };
   textesDuPlan(): TexteDuPlan[];
-  empreinteRendu(): unknown;
 
   v5Touch(): void;
 }
@@ -215,10 +199,7 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
         left: l.style.left, top: l.style.top, width: l.style.width,
       };
     },
-    renderView: () => renderView(ctx),
-    renderRoomChips: (force?: boolean) => renderRoomChips(ctx, force),
     fitView: () => fitView(ctx),
-    fitCell: (c: Cellule | null) => fitCell(ctx, c),
     zoomAt: (x: number, y: number, f: number) => zoomAt(ctx, x, y, f),
     setZoom(s: number) { ctx.vue.scale = s; renderView(ctx); return this.viewTransform(); },
     // HISTORICAL SIGNATURE, ROUNDING INCLUDED, AND IT TOOK A SUITE TO SEE IT. The old hook
@@ -236,8 +217,6 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
     aptBBox: () => aptBBox(ctx),
     bboxOfPoly,
     aptToScreen: (x: number, y: number) => aptToScreen(ctx, x, y),
-    screenToApt: (x: number, y: number) => screenToApt(ctx, x, y),
-    evtApt: (ev: { clientX: number; clientY: number }) => evtApt(ctx, ev),
     viewCenterApt: () => {
       const r = ctx.viewport.getBoundingClientRect();
       return screenToApt(ctx, r.width / 2, r.height / 2);
@@ -246,19 +225,15 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
     pieceById: (id: unknown) => pieceById(ctx, id),
     v5OpeningById: (id: unknown) => v5OpeningById(ctx, id),
     v5WallById: (id: unknown) => v5WallById(ctx, id),
-    v5CellById: (id: unknown) => v5CellById(ctx, id),
-    v5SelectedCell: () => v5SelectedCell(ctx),
     v5OpeningBox: (P: PlanV5 | null | undefined, op: Ouverture) =>
       v5OpeningBox(P || ctx.etat.plan, op, (TYPEMAP[op.type] || { h: WALL }).h || WALL),
     v5SignedArea,
     poleOfInaccessibility,
     fmtM2,
-    safeDim,
     cssId,
 
     selReplace: (id: unknown) => selReplace(ctx, id),
     selAdd: (id: unknown) => selAdd(ctx, id),
-    selToggle: (id: unknown) => selToggle(ctx, id),
     clearSel: () => clearSel(ctx),
     isSel: (id: unknown) => isSel(ctx, id),
     get selCount() { return ctx.selection.ids.size; },
@@ -283,13 +258,9 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
     setLabelSpin,
     isChosenName,
     pieceVisible: (p: { type: string }) => pieceVisible(p, ctx.etat.opts),
-    layerOf,
     isWallMount,
     doorArcSVG,
     pieceIconSVG,
-    resizeCursor,
-    RSZ_BYKEY,
-    RSZ_HANDLES,
     stackedAt,
     rszHandleCount(pieceId: unknown): number {
       const n = ctx.canvas.querySelector<HTMLElement>(`.piece[data-id="${cssId(pieceId)}"]`);
@@ -338,86 +309,6 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
       }));
       return out;
     },
-    /**
-     * THE RENDER FINGERPRINT, taken INSIDE the page. It lives here and not in the measurement
-     * script so that both clients render exactly the same structure: the script just calls it
-     * on both sides and compares. For each object: what the model says, and what the screen
-     * does (box, paint rank, CALCULATED colors, label actually written).
-     */
-    empreinteRendu(): unknown {
-      const P = ctx.etat.plan || ({} as PlanV5);
-      const noeud = (id: unknown): HTMLElement | null =>
-        document.querySelector<HTMLElement>(`.piece[data-id="${cssId(id)}"]:not([data-op])`);
-      const boite = (n: HTMLElement | null): string | null => {
-        if (!n) return null;
-        const r = n.getBoundingClientRect();
-        return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)].join(",");
-      };
-      const meubles = (P.pieces || []).map((p) => {
-        const n = noeud(p.id);
-        const cs = n ? getComputedStyle(n) : null;
-        const lab = n ? n.querySelector<HTMLElement>(".plabel") : null;
-        const dim = n ? n.querySelector<HTMLElement>(".pdim") : null;
-        return {
-          id: String(p.id), type: p.type, name: p.name,
-          x: p.x, y: p.y, w: p.w, h: p.h, rot: p.rot || 0,
-          rendu: !!n,
-          bord: cs ? cs.borderColor : null,
-          fond: cs ? cs.backgroundColor : null,
-          largeurBord: cs ? cs.borderTopWidth : null,
-          rayon: cs ? cs.borderTopLeftRadius : null,
-          transform: cs ? cs.transform : null,
-          css: boite(n),
-          paint: n ? n.getAttribute("data-paint") : null,
-          z: cs ? cs.zIndex : null,
-          etiquette: (lab && lab.style.display !== "none") ? String(lab.textContent || "") : "",
-          cote: (dim && dim.style.display !== "none") ? String(dim.textContent || "") : "",
-        };
-      }).sort((a, b) => (a.id < b.id ? -1 : 1));
-      const ouvertures = (P.openings || []).map((o) => {
-        const n = document.querySelector<HTMLElement>(`.piece[data-op="1"][data-id="${cssId(o.id)}"]`);
-        const cs = n ? getComputedStyle(n) : null;
-        return {
-          id: String(o.id), type: o.type, name: o.name, wallId: String(o.wallId),
-          t0: o.t0, w: o.w, h: o.h, side: o.side ? 1 : 0,
-          rendu: !!n,
-          bord: cs ? cs.borderColor : null,
-          fond: cs ? cs.backgroundColor : null,
-          transform: cs ? cs.transform : null,
-          css: boite(n),
-          paint: n ? n.getAttribute("data-paint") : null,
-          texte: n ? String(n.textContent || "") : null,
-        };
-      }).sort((a, b) => (a.id < b.id ? -1 : 1));
-      const murs = (P.walls || []).map((x) => ({ id: String(x.id), a: x.a, b: x.b, t: x.t, isOutline: !!x.isOutline }))
-        .sort((a, b) => (a.id < b.id ? -1 : 1));
-      const cellules = (P.cells || []).map((c) => {
-        const n = document.querySelector<HTMLElement>(`.ov-name[data-c="${cssId(c.id)}"]`);
-        return {
-          id: String(c.id), name: c.name, floor: c.floor,
-          aire: Math.round(Math.abs(v5SignedArea(c.poly))),
-          etiquette: n ? String(n.textContent || "") : null,
-          pos: n ? (Math.round(parseFloat(n.style.left)) + "," + Math.round(parseFloat(n.style.top))) : null,
-        };
-      }).sort((a, b) => (a.id < b.id ? -1 : 1));
-      const calque = ctx.canvas.querySelector<HTMLElement>(".v5layer");
-      const fonds = calque ? [...calque.querySelectorAll("svg.v5svg")] : [];
-      const barre = $("scaleReadout"), puce = $("areaChip");
-      return {
-        nbMeubles: meubles.length, nbOuvertures: ouvertures.length, nbMurs: murs.length,
-        contour: P.outline,
-        vue: { scale: +ctx.vue.scale.toFixed(6), ox: ctx.vue.ox, oy: ctx.vue.oy },
-        calque: calque ? [calque.style.left, calque.style.top, calque.style.width, calque.style.height].join("|") : null,
-        fond: fonds.length ? fonds.map((s) => s.innerHTML).join("") : null,
-        barreOutils: barre ? String(barre.textContent || "") : null,
-        puceSurface: puce ? String(puce.textContent || "") : null,
-        pucesRail: [...document.querySelectorAll<HTMLElement>("#roomsList .room-chip")].map((n) => String(n.textContent || "")),
-        meubles, ouvertures, murs, cellules,
-        etiquettesEcrites: meubles.filter((m) => m.etiquette).map((m) => m.type + "=" + m.etiquette).sort(),
-        textes: this.textesDuPlan(),
-      };
-    },
-
     v5Touch: () => v5Touch(ctx),
   };
   // The GESTES batch brings ITS slice of the hook, in its own file: `js/57-sondes-test.js`

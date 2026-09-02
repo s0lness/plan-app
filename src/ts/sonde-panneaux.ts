@@ -8,13 +8,11 @@
 // A MISSING ENTRY IS AN ENTRY NOT YET PORTED, never an abandoned entry.
 import type { Contexte } from "./app/contexte.ts";
 import type { Meuble, Ouverture } from "./partage/plan.ts";
-import type { Bornes } from "./noyau/champ-numerique.ts";
 import { pieceById } from "./app/contexte.ts";
 import { $ } from "./noyau/dom.ts";
 import { cur } from "./gestes/selection-actions.ts";
-import { dimBounds, openInspector, setDim, syncInspector, wallPosBounds } from "./panneaux/inspecteur.ts";
+import { openInspector, setDim } from "./panneaux/inspecteur.ts";
 import { renommerCelluleEnLigne, renommerMeubleEnLigne } from "./panneaux/renommer-en-ligne.ts";
-import { activeFloor } from "./panneaux/fiche-cellule-edition.ts";
 import { histInfo } from "./historique/pile.ts";
 
 /** The visible state of an inspector button: offered, or removed, or grayed out. */
@@ -22,16 +20,8 @@ export interface EtatBouton { hidden: boolean; disabled: boolean }
 
 export interface SondePanneaux {
   openInspector(): void;
-  syncInspector(): void;
-  /** Is the inspector ACTUALLY on screen? (LIVE: accessor, not a snapshot) */
-  readonly inspectorHidden: boolean;
   /** Sets a dimension via the inspector's path (same clamp as typing), renders the primary object. */
   setInspectorDim(which: string, val: unknown): Meuble | Ouverture | undefined;
-  /** The REAL bounds of a dimension field for the primary object (G-17/G-18). */
-  dimBounds(which: string): Bornes;
-  wallPosBounds(): Bornes;
-  /** The `min`/`max` attributes actually set on the field: they must say the same thing. */
-  dimAttrs(which: string): { min: number; max: number } | null;
   /** Inspector buttons actually offered for selection `id`. "Bring to front" is gone (decision
    * 0013): paint order is automatic, there is no button left to probe here. */
   inspectorButtons(id?: unknown): {
@@ -44,9 +34,6 @@ export interface SondePanneaux {
     after: { pieces: number; undo: number };
     hidden: boolean;
   } | null;
-  /** The cell card: the active floor, and its visibility. */
-  activeFloor(): string;
-  readonly roomCardHidden: boolean;
   /**
    * Rename a PIECE OF FURNITURE through the REAL inline path (decision 0013: double-click on the
    * label, not the inspector). Drives the actual DOM field this creates (`.label-edit`) rather
@@ -61,17 +48,7 @@ export interface SondePanneaux {
 export function sondePanneaux(ctx: Contexte): SondePanneaux {
   return {
     openInspector: () => openInspector(ctx),
-    syncInspector: () => syncInspector(ctx),
-    // LIVE: `Object.assign` would copy the value, `sonde.ts` carries the descriptor.
-    get inspectorHidden() { const i = $("inspector"); return !i || !!i.hidden; },
-
     setInspectorDim(which: string, val: unknown) { setDim(ctx, which, val); return cur(ctx); },
-    dimBounds: (which: string) => dimBounds(ctx, cur(ctx), which),
-    wallPosBounds: () => wallPosBounds(ctx),
-    dimAttrs(which: string) {
-      const e = $(which === "w" ? "iW" : (which === "h" ? "iH" : "iWallPos")) as HTMLInputElement | null;
-      return e ? { min: +e.min, max: +e.max } : null;
-    },
 
     inspectorButtons(id?: unknown) {
       if (id != null) { ctx.selection.ids.clear(); ctx.selection.ids.add(String(id)); ctx.selection.primaire = String(id); }
@@ -94,9 +71,6 @@ export function sondePanneaux(ctx: Contexte): SondePanneaux {
       b.click();
       return { before, after: lire(), hidden: !!b.hidden };
     },
-
-    activeFloor: () => activeFloor(ctx),
-    get roomCardHidden() { const c = $("roomCard"); return !c || !!c.hidden; },
 
     renameFurnitureInline(id: unknown, texte: string) {
       renommerMeubleEnLigne(ctx, String(id), document.body);

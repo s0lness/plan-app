@@ -27,7 +27,7 @@ export interface RenduPNG {
  * Rasterizes the master SVG into PNG at `scale`x (2 by default). `data:` URL -> `Image` -> `canvas`.
  * The background is painted white BEFORE drawing: a PNG with a transparent background prints gray.
  */
-export function renderMasterPNG(ctx: Contexte, scale?: number): Promise<RenduPNG> {
+function renderMasterPNG(ctx: Contexte, scale?: number): Promise<RenduPNG> {
   const sc = scale || 2;
   const svg = buildMasterSVG(ctx);
   const m = svg.match(/width="(\d+)"\s+height="(\d+)"/);

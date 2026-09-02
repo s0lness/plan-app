@@ -48,7 +48,6 @@ export interface SondeDonnees {
   pieceIconViewH: typeof pieceIconViewH;
   wallMountMarkerMetrics: typeof wallMountMarkerMetrics;
   paletteIconOverflow(): DebordementVignette[];
-  paletteWorstOverflow(): { worst: number; type: string | null };
 }
 
 export function sondeDonnees(ctx: Contexte): SondeDonnees {
@@ -130,15 +129,6 @@ export function sondeDonnees(ctx: Contexte): SondeDonnees {
         });
       });
       return out;
-    },
-    /** Worst overflow (box AND ink) across all thumbnails, in px. */
-    paletteWorstOverflow(): { worst: number; type: string | null } {
-      let worst = -1e9, who: string | null = null;
-      this.paletteIconOverflow().forEach((o) => {
-        const m = Math.max(o.l, o.t, o.r, o.b, o.il, o.it, o.ir, o.ib);
-        if (m > worst) { worst = m; who = o.type ?? null; }
-      });
-      return { worst: +worst.toFixed(2), type: who };
     },
   };
 }

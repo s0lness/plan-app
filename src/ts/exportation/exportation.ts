@@ -31,7 +31,7 @@ export function openFurni(ctx: Contexte): void {
   if (furniEl) furniEl.hidden = false;
 }
 
-export function closeFurni(): void {
+function closeFurni(): void {
   const furniEl = $("furni");
   if (furniEl) furniEl.hidden = true;
   clearTimeout(furniCopyTimer);

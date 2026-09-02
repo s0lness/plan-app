@@ -24,7 +24,7 @@ import { EMBEDDED } from "../fil/drapeaux.ts";
 // brings back exactly the class of defect (temporal dead zone) that real modules eliminate.
 export { EMBEDDED };
 
-export const exportPayload = (ctx: Contexte): string =>
+const exportPayload = (ctx: Contexte): string =>
   JSON.stringify({ app: "room-planner", version: 4, savedAt: new Date().toISOString(), state: serialize(ctx) }, null, 2);
 
 export function importPlan(ctx: Contexte, text: unknown): boolean {

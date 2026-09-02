@@ -10,7 +10,7 @@
 // belongs to the inspector, to export, to sync, or to the Circulation engine.
 
 import type { Contexte } from "./app/contexte.ts";
-import type { Cellule, Meuble, Ouverture, Pt } from "./partage/plan.ts";
+import type { Cellule, Meuble, Pt } from "./partage/plan.ts";
 import { pieceById, v5CellById, v5OpeningById, v5Touch, v5WallById } from "./app/contexte.ts";
 import { TYPEMAP, isWallMount } from "./catalogue/catalogue.ts";
 import { $, COARSE, cssId } from "./noyau/dom.ts";
@@ -18,12 +18,11 @@ import { RSZ_BYKEY, RSZ_MAX, RSZ_MIN } from "./rendu/meubles.ts";
 import { WALL, clamp, v5R2 } from "./noyau/nombres.ts";
 import { closestOnSeg } from "./geometrie/polygones.ts";
 import { v5OverlapArea } from "./modele/aires.ts";
-import { v5CellsAt, v5DedupeWalls, v5OpeningBox, v5OpeningEdgeLimits, v5Seg, v5WallDeleteVerdict } from "./modele/murs.ts";
+import { v5CellsAt, v5OpeningBox, v5OpeningEdgeLimits, v5Seg, v5WallDeleteVerdict } from "./modele/murs.ts";
 import { v5RebuildCells } from "./modele/cellules.ts";
 import {
   v5CanDeleteWall, v5ClampPiece, v5ClampPieces, v5FlushOpeningThinned,
   v5FlushPlaceNarrowed, v5LastFit, v5MoveOpeningTo, v5NearestWall, v5PlaceWallMount, v5BornerAuLogement,
-  v5WallCovering,
 } from "./modele/edition.ts";
 import { fabriqueOuverture, mk } from "./modele/creation.ts";
 import { wallSnapReach } from "./modele/espace.ts";
@@ -35,13 +34,13 @@ import { save, serialize } from "./app/persistance.ts";
 import { clearToast, toast, toastText } from "./app/toast.ts";
 import { histInfo, pushHistory, redo, undo } from "./historique/pile.ts";
 import {
-  endActiveGesture, escapeActiveGesture, gesteActif, gesteArme, fileEnAttente, vieillirGeste,
+  escapeActiveGesture, gesteActif, gesteArme, fileEnAttente, vieillirGeste,
 } from "./gestes/sortie.ts";
-import { WALL_INSET, clampCenterToInset } from "./gestes/contraintes.ts";
-import { lassoVivant, piecesInClientRect, railOpen } from "./gestes/vue-interactions.ts";
+import { WALL_INSET } from "./gestes/contraintes.ts";
+import { piecesInClientRect } from "./gestes/vue-interactions.ts";
 import { setCursorApt, lastCursorApt } from "./gestes/etat-pointeur.ts";
-import { cur, delSel, flipWallMountSide } from "./gestes/selection-actions.ts";
-import { planClipInfo, planClipReset, planCopy, planPaste, planPasteFromText } from "./gestes/clavier.ts";
+import { cur, delSel } from "./gestes/selection-actions.ts";
+import { planClipInfo, planClipReset } from "./gestes/clavier.ts";
 
 import {
   v5AfterGeometry, v5DeleteSelectedWall, v5SelectCell, v5SelectWall, v5SetModel,
@@ -60,9 +59,7 @@ export interface SondeGestes {
   readonly gestureArmed: boolean;
   readonly gestureQueued: { state: boolean; op: string | null };
   ageGesture(ms?: number | null): boolean;
-  endActiveGesture(): void;
   escapeActiveGesture(): boolean;
-  readonly viewOnly: boolean;
 
   // ---- banners (C-16 / G-13) ----
   readonly toastText: string | null;
@@ -90,8 +87,9 @@ export interface SondeGestes {
   clampV5Piece(p: Meuble): Meuble;
   /** The clearance, in cm, a furniture piece keeps from the wall's bare face. */
   readonly WALL_INSET: number;
+  /** No suite reads it, and the probe is the only caller of `v5LastFit`: removing it would drop
+   *  an export of `modele/edition.ts`, which is not this batch's to trim. Decision 0019. */
   readonly lastFit: boolean;
-  clampToInset(cx: number, cy: number, w: number, h: number, rot: number, poly: Pt[]): { cx: number; cy: number; fits: boolean };
 
   readonly v5ui: { selWall: string | null; selCell: string | null; draw: boolean };
   canDeleteWall(id: unknown): boolean;
@@ -103,8 +101,6 @@ export interface SondeGestes {
   moveOutlineVertex(i: number, x: number, y: number, shift?: boolean): Pt[];
   selectCell(id: unknown): Cellule | null;
   dupWalls(): number;
-  dedupeWalls(): number;
-  wallCovering(a: Pt, b: Pt): string | null;
   midHandlePoints(): { cursor: string; title: string; at: string | null }[];
 
   // ---- furniture ----
@@ -127,7 +123,6 @@ export interface SondeGestes {
   rszReadout(): string | null;
   clickFlipSide(id: unknown): { clicked: boolean; hidden?: boolean };
   pressFlipSide(id: unknown): boolean;
-  flipWallMountSide(p: Ouverture | Meuble | undefined): boolean;
 
   // ---- placement ----
   readonly poseArme: string | null;
@@ -137,14 +132,9 @@ export interface SondeGestes {
 
   // ---- clipboard (G-24) ----
   clipInfo(): { n: number; verrous: number; muraux: number } | null;
-  clipCopy(): number;
-  clipCut(): number;
-  clipPaste(): number;
   clipReset(): boolean;
-  clipPasteText(txt: unknown): number;
 
   // ---- lasso (G-11) ----
-  readonly lassoVivant: boolean;
   piecesInClientRect(rect: { left: number; top: number; right: number; bottom: number }): string[];
 
   /** Is the pointer COARSE (a finger)? The touch drawer and enlarged targets depend on it. */
@@ -155,7 +145,6 @@ export interface SondeGestes {
   overlapArea: typeof v5OverlapArea;
   placeWallMountAt(type: string, x: number, y: number): { placed: boolean; id: string | null; toast: string | null };
   dragWallMountTo(id: unknown, x: number, y: number): unknown;
-  railOpen(on?: boolean | null): void;
 
   // ---- identity (C-8) ----
   deviceTag(): string;
@@ -182,9 +171,7 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     get gestureArmed() { return gesteArme(); },
     get gestureQueued() { return fileEnAttente(); },
     ageGesture: (ms?: number | null) => vieillirGeste(ms),
-    endActiveGesture: () => endActiveGesture(),
     escapeActiveGesture: () => escapeActiveGesture(),
-    get viewOnly() { return ctx.viewOnly > 0; },
 
     get toastText() { return toastText(); },
     clearToast,
@@ -225,7 +212,6 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     clampV5Piece(p: Meuble) { v5ClampPiece(ctx.etat.plan, p); return p; },
     WALL_INSET,
     get lastFit() { return v5LastFit(); },
-    clampToInset: (cx, cy, w, h, rot, poly) => clampCenterToInset(cx, cy, w, h, rot, poly),
 
     get v5ui() {
       return { selWall: ctx.ihm.selWall, selCell: ctx.ihm.selCell, draw: ctx.ihm.draw };
@@ -281,8 +267,6 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
       });
       return n;
     },
-    dedupeWalls: () => v5DedupeWalls(ctx.etat.plan),
-    wallCovering(a: Pt, b: Pt) { const w = v5WallCovering(ctx.etat.plan, a, b); return w ? String(w.id) : null; },
     // G-15. A facade's "+": who receives the click, and what a DRAG starting there does.
     midHandlePoints() {
       const l = ctx.canvas.querySelector(".v5layer"); if (!l) return [];
@@ -435,7 +419,6 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true, cancelable: true }));
       return true;
     },
-    flipWallMountSide: (p) => flipWallMountSide(ctx, p),
 
     get poseArme() { return poseArme(); },
     armPose(type: string) { armerPose(ctx, type); return poseArme(); },
@@ -443,13 +426,8 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
     get posing() { const a = document.querySelector(".app"); return !!a && a.classList.contains("posing"); },
 
     clipInfo: planClipInfo,
-    clipCopy: () => planCopy(ctx, false),
-    clipCut: () => planCopy(ctx, true),
-    clipPaste: () => planPaste(ctx),
     clipReset: planClipReset,
-    clipPasteText: (txt: unknown) => planPasteFromText(ctx, txt),
 
-    get lassoVivant() { return lassoVivant(); },
     piecesInClientRect: (rect) => piecesInClientRect(ctx, rect),
 
     COARSE,
@@ -466,7 +444,6 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
       return { placed: !!r, id: r ? String(r.id) : null, toast: toastText() };
     },
     dragWallMountTo(id: unknown, x: number, y: number) { return this.dragOpeningTo(id, x, y); },
-    railOpen,
     deviceTag: v5DeviceTag,
     newId: v5NewId,
 

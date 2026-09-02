@@ -22,7 +22,7 @@ import {
   TOUCH_DRAG_THRESH, isTouchEvt, measureMode, setMeasureModeFlag, touchPts,
 } from "../gestes/etat-pointeur.ts";
 import { armGesture } from "../gestes/sortie.ts";
-import { clearCursorGuides, drawCursorGuides, scheduleCursorGuides } from "./guides-curseur.ts";
+import { clearCursorGuides, scheduleCursorGuides } from "./guides-curseur.ts";
 
 export interface PointMesure {
   x: number;
@@ -43,13 +43,12 @@ let measurePend: PointMesure | null = null;   // first point placed, waiting for
 let measureCur: PointMesure | null = null;    // last snapped cursor point (the live rubber band)
 
 export const mesuresPosees = (): Segment[] => measures;
-export const mesureEnAttente = (): PointMesure | null => measurePend;
 
 /** Tolerance in cm equivalent to ~14 screen px at the current zoom (6 cm minimum, zoomed-out view). */
 function measureTol(ctx: Contexte): number { return Math.max(6, 14 / (ctx.vue.scale || 1)); }
 
 /** Every furniture corner in APARTMENT cm, rotation included. */
-export function allPieceCornersApt(ctx: Contexte): PointMesure[] {
+function allPieceCornersApt(ctx: Contexte): PointMesure[] {
   const out: PointMesure[] = [];
   ((ctx.etat.plan && ctx.etat.plan.pieces) || []).forEach((p: Meuble) => {
     const cx = p.x + p.w / 2, cy = p.y + p.h / 2, rad = (p.rot || 0) * Math.PI / 180;
@@ -75,7 +74,7 @@ function allVerticesApt(ctx: Contexte): PointMesure[] {
  * Snaps an apartment-cm point to the nearest line (corner > vertex > wall), within `tol`.
  * The resulting point is snapped to the whole centimeter.
  */
-export function snapMeasurePoint(ctx: Contexte, ax: number, ay: number, tol?: number | null): PointAccroche {
+function snapMeasurePoint(ctx: Contexte, ax: number, ay: number, tol?: number | null): PointAccroche {
   const t = (tol == null ? measureTol(ctx) : tol);
   let best: (PointAccroche & { d: number }) | null = null;
   const take = (pt: PointMesure, kind: PointAccroche["kind"], d: number): void => {
@@ -93,7 +92,7 @@ export function snapMeasurePoint(ctx: Contexte, ax: number, ay: number, tol?: nu
 export function measureDistCm(a: PointMesure, b: PointMesure): number { return Math.hypot(b.x - a.x, b.y - a.y); }
 
 /** Paints all measurements + the live rubber band into `#measures` (screen px via `aptToScreen`). */
-export function drawMeasures(ctx: Contexte): void {
+function drawMeasures(ctx: Contexte): void {
   const ov = $("measures"); if (!ov) return;
   ov.innerHTML = "";
   if (!measureMode() && measures.length === 0) return;
@@ -135,7 +134,7 @@ function setMeasureCursor(ctx: Contexte, ax: number | null, ay?: number): void {
   measureCur = (ax == null) ? null : snapMeasurePoint(ctx, ax, ay as number);
 }
 
-export function clearMeasures(ctx: Contexte): void {
+function clearMeasures(ctx: Contexte): void {
   measures = []; measurePend = null; measureCur = null; drawMeasures(ctx);
 }
 
@@ -153,7 +152,6 @@ export function measureClickApt(ctx: Contexte, ax: number, ay: number): Segment 
 }
 
 /** Resets the (pending point, cursor) pair, for a probe that chains two clicks. */
-export function resetMeasurePending(): void { measurePend = null; measureCur = null; }
 
 export function setMeasureMode(ctx: Contexte, on: boolean): void {
   const v = !!on;
@@ -249,6 +247,3 @@ export function brancherMesure(ctx: Contexte): void {
     if (e.key === "Escape") { e.preventDefault(); setMeasureMode(ctx, false); }
   });
 }
-
-/** Probe: the cursor-distance probe, drawn right away (without going through the rAF). */
-export function drawCursorGuidesNow(ctx: Contexte, ax: number, ay: number): void { drawCursorGuides(ctx, ax, ay); }

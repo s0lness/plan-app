@@ -37,16 +37,15 @@ import { histApplyOp } from "./historique/rejeu.ts";
 import { v5DerivedId } from "./fil/identite.ts";
 import { v5OpeningWire } from "./fil/pseudo-fil.ts";
 import { ws5DiffOps } from "./fil/miroir.ts";
-import { v5NoteForeignOrphans } from "./modele/edition.ts";
 import { v5RebuildCells } from "./modele/cellules.ts";
 import { bornerLesMeubles, v5TryCreateWall } from "./gestes/murs.ts";
 import { v5RestoreBackup } from "./modele/restauration.ts";
 import {
-  WS_ACK_RTO, etatFilCourant, wsAckTick, wsOnSave, wsShadowFromServer, wsShadowSync,
+  WS_ACK_RTO, etatFilCourant, wsAckTick, wsOnSave, wsShadowSync,
 } from "./fil/emission.ts";
-import { wsApplyGhostsToDOM, wsApplyRemoteOp, wsRevertRefused } from "./fil/reception.ts";
+import { wsApplyGhostsToDOM, wsApplyRemoteOp } from "./fil/reception.ts";
 import { wsOnDown, wsOnMessage } from "./fil/presence.ts";
-import { puceTexte, serverHasPlan } from "./fil/rest.ts";
+import { serverHasPlan } from "./fil/rest.ts";
 
 type FamilleMiroir = "walls" | "openings" | "pieces" | "cells";
 
@@ -68,7 +67,6 @@ export interface SondeFil {
   readonly wsFp: string | null;
   readonly serverRev: number;
   readonly syncDetached: boolean;
-  readonly chipText: string | null;
   forceDiff(): void;
   applyRemote(op: Op): void;
   serverHasPlan(d: unknown): boolean;
@@ -77,8 +75,6 @@ export interface SondeFil {
   shadowSync(): void;
   shadowDump(): VidageMiroir;
   shadowOf(fam: FamilleMiroir, id: unknown): string | null;
-  shadowFromServer(st: unknown): VidageMiroir;
-  shadowAckDump(): VidageMiroir;
   shadowAckOf(fam: FamilleMiroir, id: unknown): string | null;
   diffContreAcquitte(): string[];
 
@@ -89,7 +85,6 @@ export interface SondeFil {
   ageUnacked(ms?: number | null): number;
   ackTickNow(): { unacked: number; retransmis: number };
   pendingOps(): { n: number; kind: string | undefined; undo: string[] }[];
-  revertRefused(n: number): boolean;
   wsSimulerChute(): { unacked: number; aRejouer: boolean };
 
   // ---- identity, presence, ghosts -------------------------------------------------------------
@@ -107,7 +102,6 @@ export interface SondeFil {
   setCell(id: unknown, name?: string, floor?: string): { id: string; name: string; floor: string } | null;
   setPos(id: unknown, x: number, y: number): { x: number; y: number } | null;
   clampPieces(): unknown;
-  noteForeignOrphans(): true;
   openingWire(id: unknown): OuvertureFil | null;
   histApplyOp(plan: PlanV5, op: Op): PlanV5;
   drawWall(a: Pt, b: Pt, opts?: unknown): { id: string | null; toast: string | null };
@@ -150,7 +144,6 @@ export function sondeFil(ctx: Contexte, fil: Fil): SondeFil {
     get wsFp() { return fil.wsFp; },
     get serverRev() { return fil.serverRev; },
     get syncDetached() { return fil.detached; },
-    get chipText() { return puceTexte(); },
     // Forces diff-based emission by pretending to be "online". This is THE trigger for every
     // wire scenario: under `file://` the socket does not exist, so `wsOnSave` would bail out
     // right away.
@@ -165,8 +158,6 @@ export function sondeFil(ctx: Contexte, fil: Fil): SondeFil {
     shadowSync(): void { wsShadowSync(ctx, fil); },
     shadowDump: () => vidage(fil.ws5),
     shadowOf: (fam, id) => fil.ws5[fam].get(String(id)) || null,
-    shadowFromServer(st: unknown): VidageMiroir { wsShadowFromServer(ctx, fil, st); return vidage(fil.ws5); },
-    shadowAckDump: () => vidage(fil.ws5Ack),
     shadowAckOf: (fam, id) => fil.ws5Ack[fam].get(String(id)) || null,
     // The ops the server would be missing if the link dropped RIGHT NOW (diff against the
     // ACKNOWLEDGED state).
@@ -188,7 +179,6 @@ export function sondeFil(ctx: Contexte, fil: Fil): SondeFil {
     pendingOps: () => [...fil.pending.entries()].map(([n, e]) => ({
       n, kind: e.kind, undo: (e.undo || []).map((o) => o.kind),
     })),
-    revertRefused: (n: number) => wsRevertRefused(ctx, fil, n),
     // Link drop through the REAL path: it is what decides the recovery on return.
     wsSimulerChute(): { unacked: number; aRejouer: boolean } {
       wsOnDown(ctx, fil);
@@ -254,7 +244,6 @@ export function sondeFil(ctx: Contexte, fil: Fil): SondeFil {
     // `deux-appareils` cases (`mon_propre_orphelin_est_annonce`,
     // `un_orphelin_venu_du_fil_est_repare_en_silence`), both on "seen [object Object]".
     clampPieces: () => bornerLesMeubles(ctx),
-    noteForeignOrphans(): true { v5NoteForeignOrphans(ctx.etat.plan); return true; },
     openingWire(id: unknown): OuvertureFil | null {
       const o = v5OpeningById(ctx, id);
       return o ? v5OpeningWire(ctx.etat.plan, o) : null;

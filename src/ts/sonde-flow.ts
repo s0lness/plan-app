@@ -11,9 +11,7 @@ import type { Constat, ContexteFlow, Gravite, ResultatAnalyse } from "./circulat
 import { FL } from "./circulation/etat.ts";
 import { buildAptContext } from "./circulation/contexte.ts";
 import { analyzeApt } from "./circulation/regles.ts";
-import {
-  analyzeNow, drawOverlay, renderFlow, scheduleAnalysis, setFlowOpen,
-} from "./circulation/circulation.ts";
+import { analyzeNow, renderFlow } from "./circulation/circulation.ts";
 
 export interface SondeFlow {
   // ---- the engine, called directly (no debounce, no painting) ----
@@ -21,14 +19,8 @@ export interface SondeFlow {
   buildAptContext(): ContexteFlow;
 
   // ---- the engine, through the application's path ----
-  // `scheduleAnalysis`, `drawOverlay` and `setFlowOpen` have no consumer among the suites
-  // today; they stay exposed because the probe is their only caller and `circulation/` is
-  // not this batch's to trim.
   analyzeNow(): void;
-  scheduleAnalysis(): void;
   renderFlow(): void;
-  drawOverlay(): void;
-  setFlowOpen(on: boolean): void;
 
   /** THE DISPLAYED FINDINGS (14 at most). LIVE: `analyze()` replaces the list. */
   readonly findings: Constat[];
@@ -43,10 +35,7 @@ export function sondeFlow(_ctx: Contexte): SondeFlow {
     buildAptContext,
 
     analyzeNow,
-    scheduleAnalysis,
     renderFlow,
-    drawOverlay,
-    setFlowOpen,
 
     get findings() { return FL.findings; },
 

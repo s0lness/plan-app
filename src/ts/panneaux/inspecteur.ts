@@ -93,7 +93,7 @@ function aptLongestSide(ctx: Contexte): number {
  * (measured: 200 cm on a 10 cm wall, 455 px of white across the plan). The rule itself lives in
  * ONE single place, `v5OpeningDepthMax`, shared with placement, snapping and wall changes.
  */
-export function dimBounds(ctx: Contexte, p: Meuble | Ouverture | undefined, which: string): Bornes {
+function dimBounds(ctx: Contexte, p: Meuble | Ouverture | undefined, which: string): Bornes {
   if (!p) return { min: DIM_MIN, max: DIM_MAX };
   const o = vue(p)!;
   if (v5OpeningById(ctx, o.id)) {
@@ -107,7 +107,7 @@ export function dimBounds(ctx: Contexte, p: Meuble | Ouverture | undefined, whic
 }
 
 /** "From the corner": from 0 to the remaining wall available once the opening is placed. */
-export function wallPosBounds(ctx: Contexte): Bornes {
+function wallPosBounds(ctx: Contexte): Bornes {
   const p = cur(ctx); if (!p) return { min: 0, max: 0 };
   const info = openingWallInfo(ctx.etat.plan, p as Ouverture); if (!info) return { min: 0, max: 0 };
   return { min: 0, max: Math.max(0, Math.round(info.segLen - 2 * info.halfW)) };
@@ -122,7 +122,7 @@ export function hideInspector(): void {
   const insp = $("inspector"); if (insp) insp.hidden = true;
 }
 
-export function syncInspector(ctx: Contexte): void {
+function syncInspector(ctx: Contexte): void {
   const insp = $("inspector"); if (!insp) return;
   const p = vue(cur(ctx));
   if (!p) { insp.hidden = true; return; }

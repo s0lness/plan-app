@@ -192,9 +192,6 @@ function chipOkAfter(fil: Fil, msg: EtatPuce): void {
   fil.chipRevertTimer = setTimeout(() => setSyncChip(fil, "ok"), 4000);
 }
 
-/** Test probe: the chip's current text, without going through the DOM on the suite's side. */
-export const puceTexte = (): string | null => _chipText;
-
 // =================================================================================================
 //  THE REST TRANSPORT
 // =================================================================================================

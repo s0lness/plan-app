@@ -82,7 +82,7 @@ function viewCenterApt(ctx: Contexte): { x: number; y: number } {
 }
 
 /** Copy (or cut) the selection. Returns the number of objects taken. */
-export function planCopy(ctx: Contexte, couper: boolean): number {
+function planCopy(ctx: Contexte, couper: boolean): number {
   const src = [...ctx.selection.ids].map((id) => clipCenterOf(ctx, String(id))).filter(Boolean) as NonNullable<ReturnType<typeof clipCenterOf>>[];
   if (!src.length) { toast("Nothing to copy: select a piece of furniture first.", { geste: true }); return 0; }
   const cx = src.reduce((s, e) => s + e.x, 0) / src.length;
@@ -124,7 +124,7 @@ export function planCopy(ctx: Contexte, couper: boolean): number {
  * reference as placing from the palette (`lastCursorApt`): "two different placement rules for two
  * neighboring gestures would be one more source of error."
  */
-export function planPaste(ctx: Contexte): number {
+function planPaste(ctx: Contexte): number {
   if (!planClip || !planClip.items.length) {
     toast("Nothing to paste: copy a piece of furniture first (Ctrl+C).", { geste: true }); return 0;
   }
@@ -179,7 +179,7 @@ export function planPaste(ctx: Contexte): number {
  * Payload coming from the SYSTEM clipboard (another tab, another browser). Unknown format:
  * we SAY SO rather than doing nothing.
  */
-export function planPasteFromText(ctx: Contexte, txt: unknown): number {
+function planPasteFromText(ctx: Contexte, txt: unknown): number {
   let d: Record<string, unknown> | null = null;
   try { d = JSON.parse(String(txt || "")) as Record<string, unknown>; } catch (_) { d = null; }
   if (!d || d["app"] !== CLIP_APP || d["kind"] !== CLIP_KIND || !Array.isArray(d["items"]) || !(d["items"] as unknown[]).length) {
