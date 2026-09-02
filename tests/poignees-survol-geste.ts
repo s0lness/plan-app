@@ -17,7 +17,6 @@
 //     d'ajustement, la cloison de 47 cm (24,3 px) n'était ni coupable ni supprimable, et il fallait
 //     zoomer de 15 % de plus pour la retrouver. Dézoomé de moitié: 3 murs sur 22.
 
-import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -120,8 +119,9 @@ async function pointLibre(pid: string, wid: string): Promise<Point | null> {
   return null;
 }
 
-const results: VerdictSonde[] = [];
-let cur: VerdictSonde;
+interface Verdict { name: string; fails: string[] }
+const results: Verdict[] = [];
+let cur: Verdict;
 function ok(cond: unknown, msg: string) { if (!cond) cur.fails.push(msg); return !!cond; }
 async function test(name: string, fn: () => Promise<void>) {
   cur = { name, fails: [] }; await reload();

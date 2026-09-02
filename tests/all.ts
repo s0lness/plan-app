@@ -30,7 +30,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 // THE BROWSER CAP IS A MACHINE CAP, NOT A PROCESS CAP. `JOBS` below bounds THIS barrier; it cannot
 // see the eight other worktrees, each of which was politely holding its own cap of 8. On 19/08/2026
 // at 11:11 that arithmetic froze the workstation for seven minutes: Chrome from 44 to 264
@@ -41,12 +41,13 @@ import { fileURLToPath } from "node:url";
 // limits how many suites this barrier starts, the pool limits how many browsers exist anywhere.
 // If local-agent is unreachable the helper warns once and runs anyway: a barrier must never be
 // blocked by the supervisor.
-import { withBrowserPermits } from "file:///C:/Users/sylve/projects/local-agent/sem-client.ts";
+type WithBrowserPermits = <T>(n: number, owner: string, fn: () => T | Promise<T>) => Promise<T>;
 
 interface EntreeSuite {
   f: string;
   chrome: number;
   args?: string[];
+  commande?: string;
 }
 interface ResultatSuite { suite: EntreeSuite; code: number | null; out: string; ms: number }
 interface VerdictSuite { n: number; total: number; texte: string }
@@ -54,6 +55,28 @@ interface VerdictSuite { n: number; total: number; texte: string }
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const NODE = process.execPath;
+
+const sansPermis: WithBrowserPermits = async <T>(_n: number, _owner: string, fn: () => T | Promise<T>) => await fn();
+let withBrowserPermits: WithBrowserPermits = sansPermis;
+const clientPermis = process.env.PLAN_SEM_CLIENT?.trim();
+if (!clientPermis) {
+  console.warn("[barriere] PLAN_SEM_CLIENT absent: les suites tournent sans plafond machine.");
+} else {
+  try {
+    const specifier = clientPermis.startsWith("file:")
+      ? clientPermis
+      : pathToFileURL(path.resolve(ROOT, clientPermis)).href;
+    const moduleImporte: unknown = await import(specifier);
+    const candidat = moduleImporte && typeof moduleImporte === "object" && "withBrowserPermits" in moduleImporte
+      ? moduleImporte.withBrowserPermits
+      : null;
+    if (typeof candidat !== "function") throw new TypeError("export withBrowserPermits absent");
+    withBrowserPermits = candidat as WithBrowserPermits;
+  } catch (e) {
+    const raison = e instanceof Error ? e.message : String(e);
+    console.warn(`[barriere] PLAN_SEM_CLIENT injoignable (${raison}): les suites tournent sans plafond machine.`);
+  }
+}
 
 // The order is that of measured DESCENDING DURATIONS: the longest one starts first, otherwise
 // it finishes alone while everything else is already done (the classic "long pole").
@@ -63,6 +86,7 @@ const NODE = process.execPath;
 // actually served. The others read `src/ts` directly, check pure computation, or are
 // agnostic of the client. There is no longer a second copy nor an old client source.
 const SUITES: EntreeSuite[] = [
+  { f: "typecheck",                         chrome: 0, commande: "tests/_typecheck.ts" },
   { f: "tests/gestes-precision.ts",        chrome: 1 },
   { f: "tests/collab-annuler.ts",          chrome: 1 },
   { f: "tests/model-v5-fil-serveur.ts",    chrome: 1 },
@@ -174,7 +198,7 @@ const CORES = os.cpus().length || 4;
 const JOBS = flag("--seq") ? 1 : Math.max(2, Math.min(10, Number(opt("--jobs", Math.floor(CORES * 2 / 3))) || 2));
 const REPEAT = Math.max(1, Number(opt("--repeat", 1)) || 1);
 
-let liste = SUITES.filter((s) => !filters.length || filters.some((f) => s.f.includes(f)));
+let liste = SUITES.filter((s) => s.f === "typecheck" || !filters.length || filters.some((f) => s.f.includes(f)));
 if (!liste.length) { console.error("Aucune suite ne correspond à " + JSON.stringify(filters)); process.exit(1); }
 
 // COUPER LA BARRIÈRE EN TRANCHES, SANS LA TRIER PAR NOM. `--part 1/2` prend une suite sur deux,
@@ -411,7 +435,7 @@ function lanceVraiment(suite: EntreeSuite): Promise<ResultatSuite> {
     dossiersCrees.add(priv);
     enVol.set(suite.f, t0);
     process.stdout.write("  ..    " + suite.f + "\n");
-    const p = spawn(NODE, [suite.f, ...(suite.args || [])], {
+    const p = spawn(NODE, [suite.commande ?? suite.f, ...(suite.args || [])], {
       cwd: ROOT,
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, TEMP: priv, TMP: priv },

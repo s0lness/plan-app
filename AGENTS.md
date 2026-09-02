@@ -190,6 +190,8 @@ node creates a **priority inversion** (the CDP driver falls below the renderers 
 
 `PLAN_TESTS_PRIORITE=normale node tests/all.ts` restores normal priority for the barrier. This is
 the measurement instrument used to REPLAY the comparison, not a comfort setting.
+`PLAN_SEM_CLIENT` may name the local TypeScript client for the machine-wide browser permit pool.
+When it is unset or cannot be imported, the barrier warns once and runs without that optional cap.
 
 **Guard**, the same as for killing orphans: the filter is the **path** of the barrier's private
 folders (`<TEMP>/plan-run-…`), never the process name. The user's browser cannot be slowed down.

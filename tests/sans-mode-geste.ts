@@ -2,7 +2,6 @@
 // ONE AIM-BASED EDITING MODEL, REAL MOUSE AND FINGER THROUGH CDP.
 // The target under the pointer, plus Shift for the lasso, is the whole interaction contract.
 
-import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -94,8 +93,9 @@ async function glisser(a: Point, b: Point, modifiers = 0) {
 const centre = (selecteur: string) => lire(`(function(){var e=document.querySelector(${JSON.stringify(selecteur)});if(!e)return null;var r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);
 const apt = (x: number, y: number) => lire(`(function(){var p=__plan.aptToScreen(${x},${y}),r=document.getElementById("viewport").getBoundingClientRect();return{x:r.left+p.x,y:r.top+p.y}})()`);
 const mur = (id: string) => lire(`(function(){var w=__plan.v5WallById(${JSON.stringify(id)});return w?{a:w.a,b:w.b,isOutline:!!w.isOutline}:null})()`);
-const verdicts: VerdictSonde[] = [];
-let courant: VerdictSonde;
+interface Verdict { name: string; fails: string[] }
+const verdicts: Verdict[] = [];
+let courant: Verdict;
 function ok(v: unknown, message: string) { if (!v) courant.fails.push(message); return !!v; }
 async function test(name: string, fn: () => Promise<void>) {
   courant = { name, fails: [] }; await recharger();
