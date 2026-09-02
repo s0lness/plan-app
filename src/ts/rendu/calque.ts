@@ -518,7 +518,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
         j.dataset["bout"] = bout;
         j.style.cssText = boite(20);
         j.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
-          traits('<line x1="11.6" y1="11.6" x2="16" y2="16"/><line x1="20.4" y1="11.6" x2="16" y2="16"/>'));
+          traits('<line x1="11.6" y1="16" x2="20.4" y2="16"/>'));
         j.title = "Weld this wall back into its neighbour";
         j.addEventListener("click", (ev) => ctx.gestes.fusionnerMurClic?.(ev as MouseEvent, String(w.id), bout));
         poser(j, s.x, s.y);
