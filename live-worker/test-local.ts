@@ -916,8 +916,17 @@ ok(planTooBig(sanitizeState(v5State({ cells: manyCells(2000) }))) === false, "20
 // Unreadable D1: we REFUSE to serve rather than installing an empty plan meant to overwrite the row.
 throws(() => coldLoad("{ pas du json"), "coldLoad JSON casse -> refus");
 throws(() => coldLoad("[1,2,3]"), "coldLoad tableau -> refus");
-throws(() => coldLoad("null"), "coldLoad literal null -> refus");
 throws(() => coldLoad(42), "coldLoad valeur non-chaine -> refus");
+// UN PLAN NEUF N'EST PAS UNE LIGNE ILLISIBLE. `functions/api/plans.ts` insere `JSON.stringify(null)`
+// a la creation : la chaine "null". Refusee, elle faisait echouer `ensureLoaded`, donc l'upgrade
+// WebSocket, donc le fil ne s'ouvrait JAMAIS sur un plan qui vient d'etre cree. C'est le meme
+// contenu que la colonne absente : aucune donnee, donc plan vide au format murs-seuls.
+{
+  const c = coldLoad("null");
+  ok(c.source === "empty" && isV5(c.plan) && c.plan.walls.length === 0,
+    "coldLoad 'null' (plan neuf) = plan vide murs-seuls, vu " + c.source);
+  ok(c.persist === true, "et il est persiste, comme une ligne absente");
+}
 // No case returns an EMPTY plan while the row carried something: that's the invariant.
 {
   const c = coldLoad(JSON.stringify(v5State()));

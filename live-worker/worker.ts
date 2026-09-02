@@ -294,7 +294,8 @@ export function upgradeEmptyLegacy(plan: PlanState): PlanState {
 // COLD load decision, isolated from the Cloudflare runtime to be testable.
 // `rowData` = D1's `data` column, or null/undefined if there is NO row at all.
 // Three outcomes, deliberately distinct:
-//   - "empty": D1 has no row -> legitimate new plan, we can install it and persist it.
+//   - "empty": D1 has no row, or a row whose `data` is JSON `null` (how a plan is CREATED, cf.
+//              functions/api/plans.ts) -> legitimate new plan, we install it and persist it.
 //   - "d1"   : row read AND validated -> canonical shape.
 //   - "raw"  : row read but REFUSED by the current validator (schema that has moved on) -> we
 //              keep the bytes as-is. Better an old state than an empty plan.
@@ -310,6 +311,11 @@ export function coldLoad(rowData: unknown): { plan: PlanState; source: string; p
   if (typeof rowData !== "string") throw new OpError("cold_unreadable");
   let parsed;
   try { parsed = JSON.parse(rowData); } catch (_) { throw new OpError("cold_unparsable"); }
+  // JSON `null` IS "empty", not "unreadable". `functions/api/plans.ts` writes exactly that string
+  // when a plan is created ("a new plan is born empty, not copied"), so refusing it made
+  // `ensureLoaded` throw, the WebSocket upgrade fail, and the wire never open on a brand-new
+  // plan. Same content as an absent column: no data at all.
+  if (parsed === null) return { plan: emptyPlan(), source: "empty", persist: true };
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new OpError("cold_unreadable");
   try {
     return { plan: upgradeEmptyLegacy(sanitizeState(parsed as PlanState)), source: "d1", persist: true };
