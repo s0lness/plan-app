@@ -79,7 +79,7 @@ function brancherSurvolMurs(ctx: Contexte): void {
     const t = ev.target instanceof Element ? ev.target : null;
     // What is painted above the wall owns the pointer where it is painted; and with the tool armed
     // the whole plan is drawing space, so nothing is "clickable" in the hover sense.
-    const pris = !!t?.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit");
+    const pris = !!t?.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit,.v5wjoin");
     const id = (ctx.ihm.draw || pris) ? null : murSousLePointeur(ctx, ev);
     if (ctx.ihm.hoverWall === id) return;
     ctx.ihm.hoverWall = id;

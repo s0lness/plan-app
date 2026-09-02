@@ -1554,7 +1554,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (e.button !== undefined && e.button !== 0) return;
   const t = e.target as Element | null;
   if (ctx.ihm.draw) { v5OutilMurAppui(ctx, e); return; }
-  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit")) return;
+  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit,.v5wjoin")) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
   if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], true); return; }
 }
