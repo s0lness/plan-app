@@ -354,6 +354,13 @@ error**. This has already happened twice: an opening's name and depth did not tr
 the side was packed into a bitfield on the hinge for lack of an authorized key (`44ae55e`, where "the
 server believed it was validating a single hinge when it was actually validating three mixed-up
 fields, and any finite number would pass").
+**Third place** `src/ts/modele/migrations.ts` (`sanitizeV5Plan`) must recopy the same field, or a
+plan that already carries it silently loses it on the next **read**. This is not the wire, but it sits
+on the SAME path: `Ctrl+Z` snapshots through `serialize()` and restores through `migrate()`
+(`src/ts/historique/pile.ts:40,91`), and `migrate()` calls `sanitizeV5Plan()`, so a field this function
+forgets is a field undo silently erases, even though it never left the browser. Measured: `leaf`
+(openings), `tr`/`dmin`/`pair` (furniture) were declared in `partage/plan.ts` and emitted by
+`pseudo-fil.ts`, but dropped on every re-read.
 
 ### C-6. The outbound mirror describes the server, never us
 **Guarantees** the mirror is built from the `hello` state (`wsShadowFromServer`) and then advances

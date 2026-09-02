@@ -1,0 +1,22 @@
+{
+  "setupDone": true,
+  "outline": [[0, 0], [600, 0], [600, 400], [0, 400]],
+  "walls": [
+    {"id": "w1", "a": [0, 0], "b": [600, 0], "t": 12, "isOutline": true},
+    {"id": "w2", "a": [300, 0], "b": [300, 400], "t": 10, "isOutline": false, "free": 1},
+    {"id": "w3", "a": [0, 0], "b": [0, 400], "t": 12, "isOutline": true},
+    {"id": "w4", "a": [600, 0], "b": [600, 400], "t": 12, "isOutline": true},
+    {"id": "w5", "a": [0, 400], "b": [600, 400], "t": 12, "isOutline": true}
+  ],
+  "openings": [
+    {"id": "o1", "wallId": "w1", "t0": 100, "w": 90, "h": 140, "type": "window", "side": 0,
+     "name": "Fenetre du salon", "hinge": 1, "swing": -1, "leaf": 1}
+  ],
+  "pieces": [
+    {"id": "p1", "type": "projector", "name": "Videoprojecteur", "x": 50, "y": 50, "w": 35, "h": 30,
+     "rot": 0, "locked": false, "tr": 150, "dmin": 60, "pair": "p2"},
+    {"id": "p2", "type": "pscreen", "name": "Ecran de projection", "x": 550, "y": 50, "w": 200, "h": 10,
+     "rot": 90, "locked": false}
+  ],
+  "cells": []
+}

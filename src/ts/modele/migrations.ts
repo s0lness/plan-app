@@ -95,6 +95,13 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       name: String(o["name"] || cat.name).slice(0, NAME_MAX),
       hinge: o["hinge"] != null ? (Number(o["hinge"]) ? 1 : 0) : undefined,
       swing: o["swing"] != null ? (Number(o["swing"]) < 0 ? -1 : 1) : undefined,
+      // `leaf` follows the SAME rule as `free` just above, and the same defect: absent stays
+      // absent (D-7's "an absent field is not a field set to zero"), it is declared in
+      // `partage/plan.ts` (`Ouverture.leaf`) and emitted by `v5OpeningWire`
+      // (`fil/pseudo-fil.ts`), but this function used to drop it on every re-read. Ctrl+Z goes
+      // through `serialize()` then `migrate()` (`historique/pile.ts`), so undoing anything lost
+      // whether a window was fixed or opened. Same unpacking as `v5AdoptOpening`.
+      leaf: o["leaf"] != null ? ((Number(o["leaf"]) | 0) as 0 | 1 | 2) : undefined,
     });
   });
 
@@ -118,6 +125,15 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       h: clamp(num(q["h"], cat.h), 1, PIECE_WH_MAX),
       rot: ((Math.round(num(q["rot"], 0)) % 360) + 360) % 360,
       locked: !!q["locked"],
+      // `tr`/`dmin`/`pair` (video projector fields, `Meuble.tr`/`.dmin`/`.pair` in
+      // `partage/plan.ts`, emitted by `v5PieceWire`): same defect as `leaf` above, absent stays
+      // absent, and a re-read (including Ctrl+Z) used to erase the pairing and the throw-ratio
+      // silently. `tr`/`dmin` are finite numbers >= 0 (the server further bounds them on write,
+      // `THROW_RATIO_*`/`THROW_DMIN_*`); `pair` is a chosen identifier, truncated like any other
+      // name so a corrupt payload cannot grow it without bound.
+      tr: q["tr"] != null && isFinite(Number(q["tr"])) ? Math.max(0, Number(q["tr"])) : undefined,
+      dmin: q["dmin"] != null && isFinite(Number(q["dmin"])) ? Math.max(0, Number(q["dmin"])) : undefined,
+      pair: q["pair"] != null ? String(q["pair"]).slice(0, NAME_MAX) : undefined,
     });
   });
 

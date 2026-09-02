@@ -386,6 +386,62 @@ test("v5_sanitize_defensive", () => {
       && expect(v.dropped.cells === 1 && v.dropped.floor === "parquet", "unknown floor must fall back to parquet");
 });
 
+test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
+  // "migrate(serialize(migrate(d)))" (Ctrl+Z, historique/pile.ts:40,91): `serialize()` writes
+  // `plan: ctx.etat.plan` VERBATIM and `migrate()` gives that nested `plan` PRIORITY over the flat
+  // wire shape (D-4, modele/etat.ts). So what a snapshot restore actually exercises is a SECOND
+  // `sanitizeV5Plan` pass over a JSON round trip of the first one's output: exactly what this case
+  // reproduces without needing a DOM `Contexte` to call the real `serialize()`.
+  //
+  // Built from the CONTRACT's key lists (`WALL_KEYS`/`OPENING_KEYS`/`PIECE_KEYS`/`CELL_KEYS`), not
+  // a hand-written list of field names: a field added to the contract and forgotten in
+  // `sanitizeV5Plan` still fails this test, instead of only the ones someone remembered to name.
+  const EXCEPTIONS_PIECE = ["hinge", "swing"];
+  // `hinge`/`swing` are in `PIECE_KEYS` only because the SERVER still accepts the OLD format (a
+  // door used to be a piece of furniture); `v5PieceWire` never emits them on a walls-only
+  // `Meuble` and it does not declare them either (contrat-serveur.ts's own comment on the line
+  // that defines `PIECE_KEYS`). Not a forgotten field, the one documented case where the server
+  // is more permissive than the client (G-18).
+  const VALEUR: Record<string, DonneeDynamique> = {
+    a: [10, 20], b: [130, 20], t: 15, free: 1,
+    t0: 5, w: 20, h: 8, side: 1, name: "Contrat", hinge: 1, swing: -1, leaf: 2,
+    x: 33, y: 44, rot: 90, locked: true, tr: 150, dmin: 60, pair: "ecran1",
+    poly: [[0, 0], [10, 0], [10, 10], [0, 10]], floor: "tile",
+  };
+  const entiteDepuisCles = (cles: readonly string[], overrides: Record<string, DonneeDynamique>): Record<string, DonneeDynamique> => {
+    const e: Record<string, DonneeDynamique> = {};
+    cles.forEach((k) => { e[k] = Object.prototype.hasOwnProperty.call(overrides, k) ? overrides[k] : VALEUR[k]; });
+    return e;
+  };
+  const wallSeed = entiteDepuisCles(WALL_KEYS, { id: "w1" });
+  const openingSeed = entiteDepuisCles(OPENING_KEYS, { id: "o1", wallId: "w1", type: "door" });
+  const pieceKeysUtiles = PIECE_KEYS.filter((k) => EXCEPTIONS_PIECE.indexOf(k) < 0);
+  const pieceSeed = entiteDepuisCles(pieceKeysUtiles, { id: "p1", type: "sofa3" });
+  const cellSeed = entiteDepuisCles(CELL_KEYS, { id: "c1" });
+  const planSeed = {
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [wallSeed], openings: [openingSeed], pieces: [pieceSeed], cells: [cellSeed],
+  };
+  const p1 = PLAN.sanitizeV5Plan(planSeed);
+  const p2 = PLAN.sanitizeV5Plan(JSON.parse(JSON.stringify(p1)) as DonneeDynamique);
+  const familles: Array<[string, readonly string[], Record<string, DonneeDynamique>, DonneeDynamique]> = [
+    ["walls", WALL_KEYS, wallSeed, p2 ? p2.walls[0] : null],
+    ["openings", OPENING_KEYS, openingSeed, p2 ? p2.openings[0] : null],
+    ["pieces", pieceKeysUtiles, pieceSeed, p2 ? p2.pieces[0] : null],
+    ["cells", CELL_KEYS, cellSeed, p2 ? p2.cells[0] : null],
+  ];
+  const ecarts: string[] = [];
+  familles.forEach(([nom, liste, seed, obtenu]) => {
+    liste.forEach((k) => {
+      const attendu = JSON.stringify(seed[k]);
+      const vu = JSON.stringify(obtenu ? (obtenu as DonneeDynamique)[k] : undefined);
+      if (attendu !== vu) ecarts.push(nom + "." + k + " : attendu " + attendu + ", vu " + vu);
+    });
+  });
+  return expect(!!p1 && !!p2, "le plan doit rester lisible aux deux passages")
+      && expect(ecarts.length === 0, "champs perdus au second passage de sanitizeV5Plan :\n         " + ecarts.join("\n         "));
+});
+
 test("door_arc_center_is_hinge", () => {
   function impliedCenter(svg: string): PointTest[] | null {
     const m = svg.match(/M\s+([\-\d.]+)\s+([\-\d.]+)\s+A\s+([\-\d.]+)\s+([\-\d.]+)\s+0\s+0\s+([01])\s+([\-\d.]+)\s+([\-\d.]+)/);
