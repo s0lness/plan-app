@@ -23,13 +23,51 @@
 import type { Contexte } from "../app/contexte.ts";
 import type { BBox } from "../geometrie/polygones.ts";
 import { TYPEMAP, estAuSol, isWallMount, pieceVisible } from "../catalogue/catalogue.ts";
-import { cssId, setLabelSpin } from "../noyau/dom.ts";
+import { setLabelSpin } from "../noyau/dom.ts";
 import { safeDim } from "../noyau/nombres.ts";
 import { resolveColor, withAlpha } from "./couleurs.ts";
 import { pieceIconSVG } from "./icones.ts";
 import { doorArcSVG } from "./arc-porte.ts";
 import { isChosenName } from "./noms.ts";
 import { isSel } from "./selection.ts";
+import { indexerParId } from "./index-noeuds.ts";
+
+/**
+ * LES ENFANTS D'UNE TUILE, RETENUS AVEC ELLE. Le corps d'une tuile est ecrit UNE fois, a la
+ * creation, et ses enfants ne bougent plus: les rechercher a chaque image coutait six
+ * `querySelector` par meuble (icone, enveloppe d'etiquette, etiquette, cote, poignee de rotation,
+ * arc de porte), soit plus de mille par image sur un plan de 200 objets. Ils sont donc retenus AVEC
+ * le noeud, dans une `WeakMap`: le jour ou la tuile est retiree du calque, l'entree part avec elle.
+ *
+ * DEUX ENFANTS SONT REMPLACES EN COURS DE VIE et c'est la seule subtilite: l'icone (`outerHTML`
+ * quand la taille ou le type change) et l'arc de porte (retire puis reinsere). Les deux sont
+ * reecrits DANS le cache au moment ou ils changent, jamais relus depuis le DOM.
+ */
+interface NoeudsMeuble {
+  slot: HTMLElement | null;
+  wrap: HTMLElement | null;
+  lab: HTMLElement | null;
+  dim: HTMLElement | null;
+  rh: HTMLElement | null;
+  darc: HTMLElement | null;
+}
+const noeudsMeuble = new WeakMap<HTMLElement, NoeudsMeuble>();
+
+function noeuds(el: HTMLElement): NoeudsMeuble {
+  let n = noeudsMeuble.get(el);
+  if (!n) {
+    n = {
+      slot: el.querySelector<HTMLElement>(".picon-slot"),
+      wrap: el.querySelector<HTMLElement>(".plabel-wrap"),
+      lab: el.querySelector<HTMLElement>(".plabel"),
+      dim: el.querySelector<HTMLElement>(".pdim"),
+      rh: el.querySelector<HTMLElement>(".rot-handle"),
+      darc: el.querySelector<HTMLElement>(".darc"),
+    };
+    noeudsMeuble.set(el, n);
+  }
+  return n;
+}
 
 /**
  * Model of the resize handles. `(ux,uy)` = the handle's position in the LOCAL, non-rotated
@@ -123,9 +161,12 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     .sort((u, v) => (v.a - u.a) || (u.i - v.i))
     .forEach((o, k) => { rang[o.i] = k; });
 
+  // UN SEUL PARCOURS DU CALQUE, au lieu d'un `querySelector` par meuble (`index-noeuds.ts`).
+  const index = indexerParId(container, ".piece:not([data-op])");
+
   lst.forEach((p, i) => {
     if (!pieceVisible(p, ctx.etat.opts)) return;
-    let el = container.querySelector<HTMLElement>(`.piece[data-id="${cssId(p.id)}"]`);
+    let el = index.get(String(p.id)) || null;
     const t: TraitsPeints = TYPEMAP[p.type] || { color: "var(--seat)" };
     if (!el) {
       el = document.createElement("div");
@@ -145,7 +186,9 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
         ctx.gestes.meubleDblClick?.(e as MouseEvent, String(noeud.dataset["id"]));
       });
       container.appendChild(el);
+      index.set(String(p.id), el);
     }
+    const nds = noeuds(el);
     seen[String(p.id)] = 1;
     const lx = (p.x - bb.minX) * S, ly = (p.y - bb.minY) * S;
     // A FLOOR COVERING IS PAINTED UNDER THE WALLS. `renderFond` draws the floors and the wall bands
@@ -167,7 +210,7 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     // The rotation handle floats 24 px ABOVE the piece: placed on every piece of furniture, its
     // invisible box was stealing the neighbors' pointerdowns. Only the PRIMARY piece carries one.
     const isSelPiece = (String(p.id) === ctx.selection.primaire);
-    const rh = el.querySelector<HTMLElement>(".rot-handle");
+    const rh = nds.rh;
     if (rh) rh.style.display = (wallMount || !isSelPiece) ? "none" : "";
     const showRsz = isSelPiece && ctx.selection.ids.size === 1 && !wallMount && !p.locked;
     const hasRsz = el.dataset["rszon"] === "1";
@@ -209,10 +252,13 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     if (t.round) { el.style.borderRadius = "50%"; }
     else { el.style.borderRadius = t.opening ? "1px" : (p.type === "gaine" ? "0" : "3px"); }
     el.classList.toggle("sel", isSel(ctx, p.id));
-    const slot = el.querySelector<HTMLElement>(".picon-slot");
+    const slot = nds.slot;
     const iconKey = `${p.type}|${p.w}|${p.h}`;
     if (slot && slot.dataset["k"] !== iconKey) {
       slot.outerHTML = pieceIconSVG(p.type, p.w, p.h).replace('class="picon"', `class="picon picon-slot" data-k="${iconKey}"`);
+      // `outerHTML` REMPLACE le noeud: la reference retenue pointe sur un orphelin tant qu'on ne
+      // la reprend pas ici. C'est le seul enfant d'une tuile qui change d'identite en cours de vie.
+      nds.slot = el.querySelector<HTMLElement>(".picon-slot");
     }
     // `hinge` and `swing` are NOT furniture fields: `sanitizeV5Plan` only keeps them on
     // an OPENING (a door was a piece of furniture in v4, that is the legacy still carried by
@@ -221,12 +267,13 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     const bat = p as typeof p & { hinge?: unknown; swing?: unknown };
     if (p.type === "door") {
       const sg = (Number(bat.swing) < 0) ? -1 : 1;
-      let darc = el.querySelector<HTMLElement>(".darc");
+      let darc = nds.darc;
       const arcKey = `${p.w}|${bat.hinge ? 1 : 0}|${sg}`;
       if (!darc || darc.dataset["k"] !== arcKey) {
         if (darc) darc.remove();
         el.insertAdjacentHTML("afterbegin", doorArcSVG(p.w, bat.hinge ? 1 : 0, sg, resolveColor("var(--open)")).replace("<svg ", `<svg data-k="${arcKey}" `));
         darc = el.querySelector<HTMLElement>(".darc");
+        nds.darc = darc;
       }
       // swing = -1: the arc lives in the -w..0 band of the viewBox, so the SVG is shifted up by
       // its own height to draw it ABOVE the door box (outside edge).
@@ -237,18 +284,17 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
         darc.style.width = aw + "px";
         darc.style.height = aw + "px";
       }
-    } else {
-      const darc = el.querySelector<HTMLElement>(".darc");
-      if (darc) darc.remove();
+    } else if (nds.darc) {
+      nds.darc.remove();
+      nds.darc = null;
     }
     if (p.type === "sdoor") {
-      const ic = el.querySelector<HTMLElement>(".picon-slot");
+      const ic = nds.slot;
       if (ic) ic.style.transform = bat.hinge ? "scaleX(-1)" : "";
     }
-    const wrap = el.querySelector<HTMLElement>(".plabel-wrap");
+    const wrap = nds.wrap;
     setLabelSpin(wrap, p.rot);
-    const lab = el.querySelector<HTMLElement>(".plabel");
-    const dim = el.querySelector<HTMLElement>(".pdim");
+    const lab = nds.lab, dim = nds.dim;
     if (!wrap || !lab || !dim) return;
     const small = Math.min(pw, ph);
     const sel = (String(p.id) === ctx.selection.primaire);
@@ -273,7 +319,6 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     wrap.style.display = (showName || showDim) ? "" : "none";
   });
   // [data-op] = opening, rendered in the SAME container by `renderOuvertures`: do not sweep it.
-  container.querySelectorAll<HTMLElement>(".piece:not([data-op])").forEach((n) => {
-    if (!seen[String(n.dataset["id"])]) n.remove();
-  });
+  // Le balayage relit l'INDEX deja construit: le calque n'est parcouru qu'une fois par image.
+  index.forEach((n, id) => { if (!seen[id]) n.remove(); });
 }
