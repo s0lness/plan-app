@@ -531,15 +531,17 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], L = Math.hypot(dx, dy) || 1;
     const lenpx = L * S;
     const sMid = toC(mx, my);
-    // A SHORT WALL SHRINKS ITS HANDLES: it never moves them and never hides them. Hiding was the
-    // defect the owner hit, a 47 cm partition offering one handle out of five, with the END HANDLE
-    // OF THE NEIGHBOURING WALL sitting on its tip and taking the gesture. Pushing them outward was
-    // tried the same day and rejected: the disc then no longer sits where the end IS, so pressing
-    // the visible tip of the wall fell through to DRAWING, the same defect in another hat.
-    // Position must stay truthful. Size is what gives, down to 55 %, which keeps a 9 px target.
-    // Le facteur se mesure sur la BOITE, pas sur le disque: c'est elle qui decide si deux commandes
-    // se marchent dessus, et c'est un clic vole qui fait mal, pas un dessin serre.
-    const facteur = Math.max(0.55, Math.min(1, lenpx / 64));
+    // A SHORT WALL KEEPS FULL-SIZE HANDLES. They used to shrink with the wall, down to 55 % (an
+    // 11 px disc), and the owner's verdict on a 60 cm partition was "the buttons are minuscule, the
+    // button size should not change with the wall size". What the shrinking bought is already
+    // guaranteed elsewhere: the cross and the split sit PERPENDICULAR to the wall, clear of the
+    // move disc by `off`, so no wall length can make them collide; and `poser` below refuses any
+    // box that would overlap one already placed. What gives on a short wall is therefore the
+    // NUMBER of handles (the ends and the links, which have zoom as an immediate fallback), never
+    // their size. Position still stays truthful: a handle sits where its end IS, or it is not
+    // drawn, because pushing it outward was tried and rejected (pressing the visible tip of the
+    // wall then fell through to DRAWING).
+    const facteur = 1;
     // UNE CIBLE PLUS LARGE QUE SON DESSIN. Le bouton faisait 20 px, exactement sa taille visible, et
     // le corps du mur autour TRACE depuis qu'il n'y a plus de mode: rater la prise de deux pixels
     // creait donc un mur par-dessus celui qu'on voulait deplacer. Signale a l'usage: « je veux
