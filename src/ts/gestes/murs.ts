@@ -35,7 +35,7 @@ import { v5Touch, v5On, v5WallById } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
 import { closestOnSeg } from "../geometrie/polygones.ts";
-import { v5CellsAt, v5DedupeWalls, v5Seg } from "../modele/murs.ts";
+import { v5DedupeWalls, v5Seg } from "../modele/murs.ts";
 import { v5RebuildCells } from "../modele/cellules.ts";
 import { photoCellules } from "../modele/photo-cellules.ts";
 import {
@@ -99,29 +99,16 @@ import { DIR8, quantizeAngleDeg } from "../geometrie/angles.ts";
 //  SELECTING A WALL, A CELL, AND DELETION
 // =================================================================================================
 
+/**
+ * SELECTING A WALL OPENS ITS OWN CARD, NEVER THE ROOM'S (decision 0010, amended 2026-09-02). The
+ * owner, verbatim: "quand je sélectionne un mur ça m'affiche aussi le menu de la pièce, je devrais
+ * juste voir le menu du mur". `#wallCard`'s own visibility is derived from `ctx.ihm.selWall` by
+ * `syncWallCard` (`rendu/fiche-cellule.ts`), called every `render()` (R-13): nothing to open or
+ * close here, and no room to probe for any more, since the wall's card shows no room field.
+ */
 export function v5SelectWall(ctx: Contexte, id: unknown): void {
   ctx.ihm.selWall = (id == null ? null : String(id));
   v5Touch(ctx);
-  const card = $("roomCard");
-  // SELECTING A WALL OPENS ITS CARD (decision 0010): Split, Square up, Delete and the length live
-  // there and nowhere else since the hover buttons went, so a card that stays closed hides every
-  // command the wall has. The hover disc used to open it; the click on the wall's body must too.
-  if (card && id != null) {
-    // The card is the ROOM's card with a wall section: it needs a room, and the honest one is a
-    // room this wall borders, not the first cell of the plan. Probe one step off the wall's
-    // midpoint on either side; a room already selected that borders the wall is kept.
-    const w = v5WallById(ctx, id);
-    if (w) {
-      const s = v5Seg(w), mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
-      const d = (w.t || WALL) / 2 + 1;
-      const cotes = [v5CellsAt(ctx.etat.plan, mx - s.uy * d, my + s.ux * d), v5CellsAt(ctx.etat.plan, mx + s.uy * d, my - s.ux * d)];
-      const deja = cotes.find((c) => c && String(c.id) === String(ctx.ihm.selCell));
-      const choix = deja || cotes.find((c) => !!c);
-      if (choix) ctx.ihm.selCell = String(choix.id);
-    }
-    card.hidden = false;
-  }
-  if (card && !card.hidden) syncCellCard(ctx);
 }
 
 export function v5SelectCell(ctx: Contexte, id: unknown, openCard?: boolean): void {
@@ -1462,8 +1449,6 @@ function v5OutlineWallAt(ctx: Contexte, i: number): Mur | null {
 export function v5SelectOutlineEdge(ctx: Contexte, i: number): void {
   const w = v5OutlineWallAt(ctx, i);
   v5SelectWall(ctx, w ? w.id : null);
-  const card = $("roomCard");
-  if (card && !card.hidden) syncCellCard(ctx);
   render(ctx);
 }
 
@@ -1540,7 +1525,7 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (e.button !== undefined && e.button !== 0) return;
   const t = e.target as Element | null;
   if (ctx.ihm.draw) { v5OutilMurAppui(ctx, e); return; }
-  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove")) return;
+  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit")) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
   if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], true); return; }
 }
@@ -1593,12 +1578,26 @@ export function brancherOutilsMurs(ctx: Contexte): void {
     v5SetDraw(ctx, !ctx.ihm.draw);
     render(ctx);
   });
-  // THE WALL SHEET'S THREE ACTIONS. Split, square up and delete used to be buttons floating over
-  // the wall itself, appearing on hover; they are ordinary commands on the selected object, so
-  // they live where every other command of an object lives, in its sheet.
-  $("rcDel")?.addEventListener("click", () => v5DeleteSelectedWall(ctx));
-  $("rcSplit")?.addEventListener("click", () => v5CouperMurSelectionne(ctx));
-  $("rcSquare")?.addEventListener("click", () => v5RedresserMurSelectionne(ctx));
+  // THE SELECTED WALL'S THREE COMMANDS, DRAWN ON THE WALL (decision 0010, amended 2026-09-02: the
+  // owner asked to keep the buttons on the wall rather than in a sheet). `rendu/calque.ts` draws
+  // them at selection only and calls back through these three hooks, never straight into this
+  // module (a rendering module must not import a gesture one). A stale id (the wall was deleted
+  // or replaced between the paint and the click) is refused rather than acting on the wrong wall.
+  ctx.gestes.supprimerMurClic = (e, wallId) => {
+    e.preventDefault(); e.stopPropagation();
+    if (String(ctx.ihm.selWall) !== String(wallId)) return;
+    v5DeleteSelectedWall(ctx);
+  };
+  ctx.gestes.couperMurClic = (e, wallId) => {
+    e.preventDefault(); e.stopPropagation();
+    if (String(ctx.ihm.selWall) !== String(wallId)) return;
+    v5CouperMurSelectionne(ctx);
+  };
+  ctx.gestes.redresserMurClic = (e, wallId) => {
+    e.preventDefault(); e.stopPropagation();
+    if (String(ctx.ihm.selWall) !== String(wallId)) return;
+    v5RedresserMurSelectionne(ctx);
+  };
 
   // EXACT LENGTH OF A PARTITION. We stretch the FREE end, not both: the other end is almost always
   // a junction with a neighboring wall, and moving it would break the room next door. "Free" = the

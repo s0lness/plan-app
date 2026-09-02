@@ -787,12 +787,27 @@ Decision [0010](docs/decisions/0010-le-mur-est-un-outil-le-sol-un-lasso.md), whi
   (`murSousLePointeur`, `rendu/calque.ts`), never a transparent DOM band: a band would join the
   hit-test stack and cover the furniture painted above the wall. G-3's 3 px threshold keeps a clean
   click from writing anything.
-- **A selected wall carries THREE controls at most**: a move disc at its middle and one handle per
-  FREE end (`v5BoutJoint` removes an end that a junction already holds). A facade carries only the
-  disc: its ends are the outline's corners, which already have their own `.vtx` at the same pixel.
-- **Split, Square up and Delete are COMMANDS, so they live in the wall's sheet**
-  (`#rcSplit`, `#rcSquare`, `#rcDel`, `src/html/05-fiche-piece.html`), next to Length. Only what has
-  to be DRAGGED stays on the plan, because dragging is the one thing a sheet cannot do.
+- **A selected wall carries a move disc at its middle, one handle per FREE end** (`v5BoutJoint`
+  removes an end that a junction already holds), **and its three commands, all AT SELECTION,
+  NEVER AT HOVER** (amended 2026-09-02, owner verbatim: "je suis plutôt pour le fait de garder les
+  boutons sur le mur malgré tout"). A facade carries the disc and Split, never Delete or Square up
+  (a facade is derived from the outline, C-13): its ends are the outline's corners, which already
+  have their own `.vtx` at the same pixel.
+- **Delete (×) and Split (+) sit on OPPOSITE sides of the wall's normal, Square up a notch further
+  out on Delete's side** (`off` = half-thickness + a fixed margin), drawn by `rendu/calque.ts`'s
+  `drawHandles` and wired back through `ctx.gestes.supprimerMurClic` / `couperMurClic` /
+  `redresserMurClic` (a rendering module must not import a gesture one) to the SAME functions a
+  sheet used to call. **Fixed size, never shrinks** (commit 5e8c334): a wall too short for a
+  button still gets it, at the risk of visual overlap, rather than reintroducing the 32 px
+  anti-overlap boxes or the five-tier fallback decision 0010 removed. Only the SELECTED wall ever
+  carries these: no hover, so no arbitration with a neighboring wall's own buttons.
+- **The selected wall gets ITS OWN card, `#wallCard`, never the room's `#roomCard`** (amended
+  2026-09-02, owner verbatim: "quand je sélectionne un mur ça m'affiche aussi le menu de la
+  pièce, je devrais juste voir le menu du mur"). `#wallCard` carries a title (Wall, or Facade) and
+  Length, nothing else; `syncWallCard` (`rendu/fiche-cellule.ts`) derives its visibility from
+  `ctx.ihm.selWall` and hides `#roomCard` on every `render()` while it is open, so the two panels
+  in `.side-panels` can never both show. `src/html/05-fiche-piece.html` carries both cards, as
+  siblings.
 - Covered by `tests/outil-mur-geste.ts` (browser) and by the four pure cases of `tests/rapide.ts`.
 
 ## A WALL GOES FROM ONE POINT TO ANOTHER POINT

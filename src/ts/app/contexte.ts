@@ -86,6 +86,12 @@ export interface Gestes {
   boutMurPointerDown?: (e: PointerEvent, wallId: string, bout: "a" | "b") => void;
   /** A wall's central move handle. Facades use the same visible target for selection only. */
   deplacerMurPointerDown?: (e: PointerEvent, wallId: string) => void;
+  /** THE SELECTED WALL'S OWN COMMANDS (decision 0010, amended 2026-09-02): drawn on the wall
+   * itself, at selection only, calling the SAME functions the sheet used to. Plain clicks, not
+   * drags: there is nothing to distinguish a click from a drag here, unlike the handles above. */
+  supprimerMurClic?: (e: MouseEvent, wallId: string) => void;
+  couperMurClic?: (e: MouseEvent, wallId: string) => void;
+  redresserMurClic?: (e: MouseEvent, wallId: string) => void;
   /** Placing an object turns its layer back on (G-22, gestes/pose.ts): the toggles follow (js/28). */
   syncLayerToggles?: () => void;
   /** The rail drawer (js/09): an armed placement closes it, otherwise it covers what you're aiming at. */

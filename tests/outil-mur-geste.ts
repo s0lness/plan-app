@@ -290,9 +290,13 @@ await test("le_sol_lasso_et_ne_trace_plus", async () => {
 });
 
 // =============================================================================
-//  7. A SELECTED WALL CARRIES THREE CONTROLS AT MOST, AND HOVER CARRIES NONE
+//  7. A SELECTED WALL CARRIES ITS OWN BUTTONS, AND HOVER CARRIES NONE (amended 2026-09-02)
 // =============================================================================
-await test("un_mur_selectionne_porte_trois_controles_le_survol_aucun", async () => {
+// The owner, verbatim: "je suis plutôt pour le fait de garder les boutons sur le mur malgré
+// tout". Split, Square up and Delete are drawn ON the wall again, at SELECTION only, never at
+// hover: that half of decision 0010 stands, only the "commands live in the sheet" half is
+// reversed.
+await test("un_mur_selectionne_porte_ses_boutons_le_survol_aucun", async () => {
   await rectangleVierge();
   await armer();
   await click(await aptPoint(200, 60));
@@ -303,8 +307,9 @@ await test("un_mur_selectionne_porte_trois_controles_le_survol_aucun", async () 
 
   await hover(await aptPoint(200, 180));
   const surSurvol = await poignees();
-  ok(surSurvol.move === 0 && surSurvol.bout === 0,
-    `au survol, AUCUNE poignée, vu ${JSON.stringify(surSurvol)}`);
+  ok(surSurvol.move === 0 && surSurvol.bout === 0 && surSurvol.del === 0
+    && surSurvol.split === 0 && surSurvol.square === 0,
+    `au survol, AUCUN bouton, vu ${JSON.stringify(surSurvol)}`);
   ok(await evaluate(`String(getComputedStyle(document.getElementById("viewport")).cursor)`) === "pointer",
     "mais le curseur annonce que le mur est cliquable");
 
@@ -313,8 +318,9 @@ await test("un_mur_selectionne_porte_trois_controles_le_survol_aucun", async () 
   const surSelection = await poignees();
   ok(surSelection.move === 1, `une seule poignée de déplacement, vu ${surSelection.move}`);
   ok(surSelection.bout <= 2, `deux poignées de bout au plus, vu ${surSelection.bout}`);
-  ok(surSelection.move + surSelection.bout <= 3,
-    `trois contrôles AU PLUS sur un mur, vu ${JSON.stringify(surSelection)}`);
+  ok(surSelection.del === 1, `une croix de suppression, vu ${surSelection.del}`);
+  ok(surSelection.split === 1, `un « + » de coupe, vu ${surSelection.split}`);
+  ok(surSelection.square === 0, `pas d'équerre sur un mur déjà droit, vu ${surSelection.square}`);
 });
 
 // =============================================================================
@@ -348,9 +354,9 @@ await test("un_mur_selectionne_affiche_sa_longueur_et_ses_degagements", async ()
 });
 
 // =============================================================================
-//  8. THE SHEET CARRIES THE COMMANDS
+//  8. THE WALL CARRIES THE COMMANDS, AND ITS OWN CARD CARRIES ONLY THE TITLE AND THE LENGTH
 // =============================================================================
-await test("la_fiche_du_mur_porte_couper_supprimer_et_redresser_au_besoin", async () => {
+await test("le_mur_porte_couper_et_supprimer_sa_fiche_ne_porte_que_le_titre_et_la_longueur", async () => {
   await rectangleVierge();
   await armer();
   await click(await aptPoint(200, 60));
@@ -359,12 +365,43 @@ await test("la_fiche_du_mur_porte_couper_supprimer_et_redresser_au_besoin", asyn
   const avant = await murs();
   if (!ok(avant.length === 1, "précondition: un mur")) return;
   await click(await aptPoint(200, 180));
-  ok(await visible("#rcSplit") === "true", "la fiche du mur porte « Split in two »");
-  ok(await visible("#rcDel") === "true", "et « Delete wall »");
-  ok(await visible("#rcSquare") === "false", "l'équerre reste cachée sur un mur qui est déjà droit");
-  await click(await centerOf("#rcSplit"));
+  ok(await visible("#wallCard") === "true", "la sélection ouvre la fiche du mur");
+  ok(await visible("#rcLenRow") === "true", "la fiche porte le champ Length");
+  const titre = await evaluate(`String((document.getElementById("wcTitle")||{}).textContent||"")`);
+  ok(titre === "Wall", `le titre dit « Wall » pour une cloison, vu ${JSON.stringify(titre)}`);
+  ok(await visible("#rcSplit") === "false", "« Split » n'est plus un bouton de la fiche");
+  ok(await visible("#rcDel") === "false", "ni « Delete wall »");
+  ok(await visible("#rcSquare") === "false", "ni l'équerre");
+  // Le « + » se clique SUR le mur, pas dans la fiche.
+  await click(await centerOf(".v5wmid"));
   await pause(150);
-  ok((await murs()).length === 2, `couper depuis la fiche donne deux moitiés, vu ${(await murs()).length}`);
+  ok((await murs()).length === 2, `couper depuis le mur donne deux moitiés, vu ${(await murs()).length}`);
+});
+
+// =============================================================================
+//  8bis. ONE PANEL AT A TIME (decision 0010, amended 2026-09-02)
+// =============================================================================
+// The owner, verbatim: "quand je sélectionne un mur ça m'affiche aussi le menu de la pièce, je
+// devrais juste voir le menu du mur".
+await test("selectionner_un_mur_ferme_la_fiche_de_la_piece_et_reciproquement", async () => {
+  await rectangleVierge();
+  await armer();
+  await click(await aptPoint(200, 60));
+  await click(await aptPoint(200, 300));
+  await key("Escape", "Escape"); await key("Escape", "Escape");
+  if (!ok((await murs()).length === 1, "précondition: un mur")) return;
+  const celluleId = await evaluate(`String(__plan.plan.cells[0].id)`);
+  await evaluate(`__plan.selectCell(${JSON.stringify(celluleId)}); true`);
+  await pause(50);
+  ok(await visible("#roomCard") === "true", "sélectionner une pièce ouvre sa fiche");
+  ok(await visible("#wallCard") === "false", "et ferme celle du mur");
+
+  await click(await aptPoint(200, 180));
+  ok(await visible("#wallCard") === "true", "sélectionner le mur ouvre sa fiche");
+  ok(await visible("#roomCard") === "false", "et ferme celle de la pièce");
+
+  await key("Escape", "Escape");
+  ok(await visible("#wallCard") === "false", "Échap désélectionne le mur et ferme sa fiche");
 });
 
 // =============================================================================

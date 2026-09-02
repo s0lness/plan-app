@@ -1,3 +1,8 @@
+<!-- THE ROOM'S OWN CARD (nothing else): name, flooring, area, close cross. What it looked like
+     before a wall's fields moved in here; they now live in `#wallCard` below, its own sibling in
+     the same `.side-panels` column, so a room and a wall never share one panel again (decision
+     0010, amended 2026-09-02: "quand je sélectionne un mur ça m'affiche aussi le menu de la
+     pièce, je devrais juste voir le menu du mur"). -->
 <div class="roomcard" id="roomCard" hidden>
   <div class="rc-head">
     <span class="sw"></span>
@@ -15,6 +20,17 @@
     <button type="button" class="btn sm floor-opt" data-floor="plain">Plain</button>
   </div>
   <div class="rc-area" id="rcArea"></div>
+</div>
+<!-- THE WALL'S OWN CARD: a title (Wall, or Facade for an outline wall) and its Length, nothing
+     else. Split, Square up and Delete are drawn ON THE WALL again (`rendu/calque.ts`), not here:
+     the owner asked to keep them there. `#rcWarn` (the outline self-crossing alert) lives here
+     too: it only ever lights up while a facade or a contour corner is selected, so it has no room
+     in the room's own card any more than Length does. -->
+<div class="roomcard" id="wallCard" hidden>
+  <div class="rc-head">
+    <span class="sw"></span>
+    <span class="rc-title" id="wcTitle">Wall</span>
+  </div>
   <div class="rc-warn" id="rcWarn">The walls cross each other; the shape may draw oddly.</div>
   <!-- EXACT LENGTH. The dimension already reads out during the drag; here it gets TYPED IN. Only
        the FREE end stretches: the other one is a junction, and moving it would break the wall
@@ -23,25 +39,13 @@
   <!-- SAME GRAMMAR AS THE INSPECTOR (`.field`: label above, `.in` inline with its unit). A
        homegrown class here received NONE of the `.field .in` rules, so "cm" wrapped onto its own
        line below the field. Reuse the structure, don't reinvent it. -->
-  <div class="rc-row" id="rcLenRow" hidden>
+  <div class="rc-row" id="rcLenRow">
     <div class="field">
       <label for="rcLen">Length</label>
       <div class="in"><input id="rcLen" type="number" min="10" max="3000" step="1"><span class="unit">cm</span></div>
     </div>
   </div>
   <p class="rc-note" id="rcLenNote" hidden>Both ends of this wall are junctions, so there is no end to stretch. Move one of them first.</p>
-  <!-- "An exterior wall can't be deleted" is a NOTE, not a failed action: rendering it as a
-       disabled red button made it read like an application error. -->
-  <p class="rc-note" id="rcNote" hidden></p>
-  <!-- THE WALL'S ACTIONS LIVE HERE, not on the plan. They used to be discs floating beside the
-       wall, drawn on hover; a command on an object belongs in that object's sheet, next to its
-       fields. "Square up" only appears on a wall that is actually crooked: a button that appears
-       and then refuses teaches nothing. -->
-  <div class="rc-actions">
-    <button class="btn sm" id="rcSplit" hidden>Split in two</button>
-    <button class="btn sm" id="rcSquare" hidden title="This wall is slightly off square">Square up</button>
-    <button class="btn sm dgr" id="rcDel">Delete wall</button>
-  </div>
 </div>
 </div>
 

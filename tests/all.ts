@@ -117,7 +117,7 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/partage-navigateur.ts",      chrome: 2 },   // the Share button in a real browser: household door, silent-return fix, local-only self-heal
   { f: "tests/retour-navigateur.ts",       chrome: 2 },   // the Feedback button in a real browser: both doors, server received it, text survives a failed send
   { f: "tests/interactions.ts",            chrome: 1 },
-  { f: "tests/outil-mur-geste.ts",        chrome: 1 },   // real mouse + keyboard: click-click chain, double-click and Escape, the floor lassoes, a selected wall carries three controls and its sheet the rest
+  { f: "tests/outil-mur-geste.ts",        chrome: 1 },   // real mouse + keyboard: click-click chain, double-click and Escape, the floor lassoes, a selected wall carries its own buttons and its own card (never the room's)
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
   { f: "tests/facade-glisse-geste.ts",     chrome: 1 },   // real mouse: a facade half SLIDES, the outline never bends, corner drags carry the whole straight run
   { f: "tests/facade-colle-geste.ts",      chrome: 1 },   // real mouse: a facade lands EXACTLY on the line of a parallel facade, the guide says so, Ctrl gives the ordinary positions back

@@ -116,6 +116,9 @@
   .rc-head .sw{width:12px;height:12px;border-radius:3px;flex:none;background:var(--accent)}
   .rc-head input{flex:1;min-width:0;border:0;background:transparent;font-size:14px;font-weight:600;color:var(--ink);padding:2px 0;border-bottom:1px solid transparent}
   .rc-head input:focus{outline:none;border-bottom-color:var(--accent)}
+  /* THE WALL CARD'S TITLE: "Wall" or "Facade", read-only (a wall has no name to type), so a
+     span at the same size and weight as the room's own editable name, not an input. */
+  .rc-title{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--ink);padding:2px 0}
   .rc-lbl{font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
   /* The area is NOT a section label: putting it in capitals displayed « SURFACE
      15,12 M² », and « M² » is not a unit. */
@@ -124,7 +127,6 @@
   .rc-floor{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
   .rc-warn{margin:0 0 10px;font-size:11px;color:var(--danger);display:none}
   .rc-warn.on{display:block}
-  .rc-actions{display:grid;grid-template-columns:1fr;gap:6px}
 
   /* ---- live distance guides (ephemeral, drawn during drag) ---- */
   .guides{position:absolute;left:0;top:0;pointer-events:none;z-index:60}

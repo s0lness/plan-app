@@ -427,10 +427,13 @@ await test("facade_refuse_sa_suppression", async () => {
   ok(await J(`__plan.plan.walls.length`) === n0, "une façade ne doit pas disparaître");
   ok(await J(`(__plan.plan.openings||[]).length`) === o0, "ses ouvertures ne doivent pas disparaître");
   ok(/facade/i.test(await toastNow()), "le refus doit être DIT, message vu : « " + (await toastNow()) + " »");
-  // and the room card doesn't offer an impossible action
-  const del = await J(`(function(){var b=document.getElementById("rcDel");
-    return {cardHidden:document.getElementById("roomCard").hidden,hidden:!!b.hidden, disabled:!!b.disabled, txt:String(b.textContent||"")};})()`);
-  ok(del.cardHidden || del.hidden || del.disabled, "le bouton « Supprimer le mur » ne doit pas être actionnable sur une façade");
+  // and the wall doesn't offer an impossible action: no delete cross is drawn on a selected
+  // facade at all (decision 0010, amended 2026-09-02: the button is drawn on the wall, not in a
+  // sheet any more; `#rcDel` no longer exists in the DOM).
+  await evaluate(`__plan.ctx.ihm.selWall=${JSON.stringify(f)}; __plan.render(); true`);
+  await pause(50);
+  const del = await J(`__plan.handleCount().del`);
+  ok(del === 0, `aucune croix de suppression sur une façade sélectionnée, vu ${del}`);
 });
 
 // =============================================================================

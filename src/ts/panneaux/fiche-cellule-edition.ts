@@ -1,13 +1,14 @@
-// src/ts/panneaux/fiche-cellule-edition.ts: THE CELL SHEET, EDITABLE PART (name, floor, close).
-// Ported from src/js/29-configuration.js (the cell sheet's name and floor block) and
+// src/ts/panneaux/fiche-cellule-edition.ts: THE ROOM'S CELL SHEET, EDITABLE PART (name, floor,
+// close). Ported from src/js/29-configuration.js (the cell sheet's name and floor block) and
 // from src/js/03-vue-selection.js (`activeFloor` / `setActiveFloor`).
 //
-// The READ part (area, active floor, the "Delete wall" button's verdict) is in
-// `rendu/fiche-cellule.ts`: it is recalled by `render()`, never by a selection (R-13).
+// The READ part (area) is in `rendu/fiche-cellule.ts`: it is recalled by `render()`, never by a
+// selection (R-13). The WALL'S OWN card (`#wallCard`) and its commands are elsewhere entirely
+// (decision 0010, amended 2026-09-02): its length lives in `gestes/murs.ts` (`numField($("rcLen")`)),
+// its Delete/Split/Square-up buttons are drawn ON THE WALL by `rendu/calque.ts`'s `drawHandles`,
+// and `syncWallCard` (`rendu/fiche-cellule.ts`) resyncs it. This module never touches a wall.
 //
 // WHAT IS NOT HERE, AND IT'S DELIBERATE:
-//   . `#rcDel` triggers a geometry GESTURE (`v5DeleteSelectedWall`): it is wired with the other
-//     wall tools, in `gestes/murs.ts`;
 //   . the sheet's OPENING belongs to whoever selects the cell (`v5SelectCell`),
 //     already ported in `gestes/murs.ts`. This module only knows how to CLOSE it.
 

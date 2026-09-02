@@ -6,9 +6,10 @@
 // vertex of the SAME polygon shares an X/Y within tolerance. Both axes can snap, which
 // gives a 90° corner. ORDER: the caller applies the GRID first, then this.
 //
-// THE OUTLINE MUST NOT SELF-INTERSECT, AND ONLY ONE PLACE SAYS SO: the cell card (`#rcWarn`),
-// which follows a selected facade or corner. The old `#shapeWarn` banner used to live INSIDE
-// the config modal, hidden as soon as you edit the outline: it could never display.
+// THE OUTLINE MUST NOT SELF-INTERSECT, AND ONLY ONE PLACE SAYS SO: the wall card (`#rcWarn`,
+// `#wallCard` since 2026-09-02), which follows a selected facade or corner. The old `#shapeWarn`
+// banner used to live INSIDE the config modal, hidden as soon as you edit the outline: it could
+// never display.
 
 import type { Contexte } from "../app/contexte.ts";
 import type { Pt } from "../partage/plan.ts";

@@ -382,7 +382,7 @@ export function brancherInteractionsVue(ctx: Contexte): void {
     const t = e.target as HTMLElement | null;
     const pieceEl = t && t.closest && t.closest(".piece");
     const nameEl = t && t.closest && t.closest(".ov-name");
-    const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wend,.v5wmove");
+    const handleEl = t && t.closest && t.closest(".vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit");
     if (pieceEl || nameEl || handleEl) return;   // pieces and handles have their own gestures
     // A WALL IS SELECTED BY PRESSING IT, and the press that selects it also moves it: G-3's 3 px
     // threshold means a clean click only ever selects. The hit test is GEOMETRIC (`murSousLePointeur`),

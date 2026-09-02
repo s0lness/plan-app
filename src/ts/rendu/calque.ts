@@ -16,7 +16,7 @@ import type { PlanV5, Pt } from "../partage/plan.ts";
 import { TYPEMAP, pieceVisible } from "../catalogue/catalogue.ts";
 import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geometrie/polygones.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
-import { v5BoutJoint } from "../modele/edition.ts";
+import { v5BoutJoint, v5IndexAreteContour, v5MurDeTravers } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
 import { SVGNS, cssId } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
@@ -79,7 +79,7 @@ function brancherSurvolMurs(ctx: Contexte): void {
     const t = ev.target instanceof Element ? ev.target : null;
     // What is painted above the wall owns the pointer where it is painted; and with the tool armed
     // the whole plan is drawing space, so nothing is "clickable" in the hover sense.
-    const pris = !!t?.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove");
+    const pris = !!t?.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit");
     const id = (ctx.ihm.draw || pris) ? null : murSousLePointeur(ctx, ev);
     if (ctx.ihm.hoverWall === id) return;
     ctx.ihm.hoverWall = id;
@@ -401,7 +401,7 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   // EVERY handle class belongs in this list, and forgetting one leaves ghosts on screen. `.v5wjoin`
   // was missing: the merge controls were never removed, so they piled up and survived the deletion
   // of the very wall they belonged to. Reported from real use as two "-" floating in mid-air.
-  layer.querySelectorAll(".vtx,.mid,.edge,.v5wend,.v5wmove").forEach((n) => n.remove());
+  layer.querySelectorAll(".vtx,.mid,.edge,.v5wend,.v5wmove,.v5wx,.v5wmid,.v5wdroit").forEach((n) => n.remove());
   if (ctx.ihm.hoverWall && !(ctx.etat.plan.walls || []).some((w) => String(w.id) === String(ctx.ihm.hoverWall))) {
     ctx.ihm.hoverWall = null;
   }
@@ -458,17 +458,28 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
     h.addEventListener("pointerdown", (ev) => ctx.gestes.contourSommetPointerDown?.(ev as PointerEvent, i));
     layer.appendChild(h);
   });
-  // THE SELECTED WALL CARRIES ONLY WHAT MUST BE DRAGGED (decision 0010): one move handle at its
-  // middle, and one handle per end. Split, square up and delete are COMMANDS, so they live in the
-  // wall's sheet, where every other command of an object already lives; hover draws nothing at
-  // all. Three controls at most, and the tiers, the 32 px boxes and the anti-overlap placement
-  // they needed go with the buttons they were arbitrating between.
+  // THE SELECTED WALL CARRIES WHAT MUST BE DRAGGED, PLUS ITS COMMANDS (decision 0010, amended
+  // 2026-09-02). The owner, verbatim: "quand je sélectionne un mur ça m'affiche aussi le menu de
+  // la pièce, je devrais juste voir le menu du mur. also je suis plutôt pour le fait de garder les
+  // boutons sur le mur malgré tout". Split, Square up and Delete are commands again drawn ON the
+  // wall (they act through the SAME functions the sheet used to call, `gestes/murs.ts`), but only
+  // AT SELECTION, never at hover: that is what decision 0010 removed and this amendment does not
+  // bring back. No hover, no arbitration between a wall and its neighbor's buttons (only the
+  // SELECTED wall ever carries any), no 32 px anti-overlap placement, no tiered fallback: a button
+  // is drawn at fixed size or not drawn at all (commit 5e8c334, "un bouton garde sa taille").
   const w = (ctx.etat.plan.walls || []).find((q) => String(q.id) === String(ctx.ihm.selWall));
   if (!w) return;
   const sMid = toC((w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2);
-  const disque = (r: number, remplissage: string, contour: string): string =>
+  const disque = (r: number, remplissage: string, contour: string, dedans = ""): string =>
     `<svg viewBox="0 0 32 32" width="100%" height="100%" aria-hidden="true">`
-    + `<circle cx="16" cy="16" r="${r}" fill="${remplissage}" stroke="${contour}" stroke-width="2"/></svg>`;
+    + `<circle cx="16" cy="16" r="${r}" fill="${remplissage}" stroke="${contour}" stroke-width="2"/>`
+    + dedans + `</svg>`;
+  // GLYPHS DRAWN, NOT WRITTEN: a font glyph sits on its own metrics baseline, not the disc's
+  // optical center, so no CSS centering fixes it. Traced in the same 32x32 box as the disc itself,
+  // geometrically centered (ported from `git show 5e8c334:src/ts/rendu/calque.ts`, the last commit
+  // to draw these three before decision 0010 moved them into the sheet).
+  const traits = (d: string): string =>
+    `<g stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none">${d}</g>`;
   // A TARGET WIDER THAN ITS DRAWING: a transparent 32 px box carrying a 20 px disc. The grabbable
   // surface grows by half, the drawing does not move a pixel.
   const boite = (base: number): string => {
@@ -491,22 +502,76 @@ export function drawHandles(ctx: Contexte, layer: HTMLElement, bb: BBox, S: numb
   poser(move, sMid.x, sMid.y);
   // A FACADE HAS NO ENDPOINT HANDLE: its ends are the outline's CORNERS, which already carry their
   // own `.vtx` at the very same pixel, and two controls at one place cancel each other out.
-  if (w.isOutline) return;
-  (["a", "b"] as const).forEach((bout) => {
-    // A JOINT IS NOT AN END. Something already holds this tip (another wall, its flank, the
-    // facade): offering a grip to stretch it would tear the junction open.
-    if (v5BoutJoint(ctx.etat.plan, w.id, bout)) return;
-    const s = toC(w[bout][0], w[bout][1]);
-    const h = document.createElement("div");
-    h.className = "v5wend";
-    h.dataset["w"] = String(w.id);
-    h.dataset["bout"] = bout;
-    h.style.cssText = boite(16);
-    h.innerHTML = disque(7, "var(--room-bg)", "var(--accent)");
-    h.title = "Drag to extend this wall, or connect it to another";
-    h.addEventListener("pointerdown", (ev) => ctx.gestes.boutMurPointerDown?.(ev as PointerEvent, String(w.id), bout));
-    poser(h, s.x, s.y);
-  });
+  if (!w.isOutline) {
+    (["a", "b"] as const).forEach((bout) => {
+      // A JOINT IS NOT AN END. Something already holds this tip (another wall, its flank, the
+      // facade): offering a grip to stretch it would tear the junction open.
+      if (v5BoutJoint(ctx.etat.plan, w.id, bout)) return;
+      const s = toC(w[bout][0], w[bout][1]);
+      const h = document.createElement("div");
+      h.className = "v5wend";
+      h.dataset["w"] = String(w.id);
+      h.dataset["bout"] = bout;
+      h.style.cssText = boite(16);
+      h.innerHTML = disque(7, "var(--room-bg)", "var(--accent)");
+      h.title = "Drag to extend this wall, or connect it to another";
+      h.addEventListener("pointerdown", (ev) => ctx.gestes.boutMurPointerDown?.(ev as PointerEvent, String(w.id), bout));
+      poser(h, s.x, s.y);
+    });
+  }
+  // THE NORMAL: on screen, oriented DOWN (or RIGHT for a vertical wall) so the delete cross always
+  // falls on the same visual side regardless of which way `a`/`b` happen to be stored (the owner
+  // otherwise has to hunt for it on every wall). A facade uses the CONTOUR's own outward normal
+  // instead: the "+" that inserts a corner (`.mid`, G-15) already sits 18 px OUTSIDE the same edge,
+  // so the split/delete pair takes the INSIDE, where only the cell's floor is painted.
+  const dxw = w.b[0] - w.a[0], dyw = w.b[1] - w.a[1], Lw = Math.hypot(dxw, dyw) || 1;
+  let nx = -dyw / Lw, ny = dxw / Lw;
+  if (ny < 0 || (Math.abs(ny) < 1e-9 && nx < 0)) { nx = -nx; ny = -ny; }
+  if (w.isOutline) {
+    const arete = v5IndexAreteContour(ctx.etat.plan, w.id);
+    const dehors = arete >= 0 ? outlineOutward(ctx, arete) : null;
+    if (dehors) { nx = dehors.x; ny = dehors.y; }
+  }
+  // off = HALF-THICKNESS + a fixed margin (commit 5e8c334): clears the wall's own band regardless
+  // of zoom, same shape the old hover buttons used.
+  const off = ((w.t || WALL) * S) / 2 + 16;
+  // DELETE: never on a facade (C-13, it is derived from the outline and cannot be deleted; a
+  // button that would only refuse teaches nothing).
+  if (!w.isOutline) {
+    const x = document.createElement("div");
+    x.className = "v5wx";
+    x.dataset["w"] = String(w.id);
+    x.style.cssText = boite(20);
+    x.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+      traits('<line x1="12.9" y1="12.9" x2="19.1" y2="19.1"/><line x1="19.1" y1="12.9" x2="12.9" y2="19.1"/>'));
+    x.title = "Delete this wall (the two rooms merge)";
+    x.addEventListener("click", (ev) => ctx.gestes.supprimerMurClic?.(ev as MouseEvent, String(w.id)));
+    poser(x, sMid.x + nx * off, sMid.y + ny * off);
+  }
+  // SPLIT: on the OPPOSITE side of the normal from delete, so the pair never disputes a pixel. A
+  // facade carries it too (it inserts an outline corner, `v5CouperMurSelectionne`).
+  const coupe = document.createElement("div");
+  coupe.className = "v5wmid";
+  coupe.dataset["w"] = String(w.id);
+  coupe.style.cssText = boite(20);
+  coupe.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+    traits('<line x1="16" y1="11.6" x2="16" y2="20.4"/><line x1="11.6" y1="16" x2="20.4" y2="16"/>'));
+  coupe.title = w.isOutline ? "Split this facade in two here" : "Split this wall in two here";
+  coupe.addEventListener("click", (ev) => ctx.gestes.couperMurClic?.(ev as MouseEvent, String(w.id)));
+  poser(coupe, sMid.x - nx * off, sMid.y - ny * off);
+  // SQUARE UP: a notch further out, on the DELETE side, and only where the model says the wall is
+  // actually crooked (`v5MurDeTravers`): a button that appears and then refuses teaches nothing.
+  if (!w.isOutline && v5MurDeTravers(ctx.etat.plan, w.id)) {
+    const eq = document.createElement("div");
+    eq.className = "v5wdroit";
+    eq.dataset["w"] = String(w.id);
+    eq.style.cssText = boite(20);
+    eq.innerHTML = disque(9, "var(--accent)", "var(--room-bg)",
+      traits('<path d="M11.2 10 L11.2 21 L22.2 21"/><path d="M15.8 21 L15.8 16.4 L20.4 16.4" stroke-width="1.3" opacity=".75"/>'));
+    eq.title = "Square this wall up (it is slightly off)";
+    eq.addEventListener("click", (ev) => ctx.gestes.redresserMurClic?.(ev as MouseEvent, String(w.id)));
+    poser(eq, sMid.x + nx * off * 2, sMid.y + ny * off * 2);
+  }
 }
 
 /**

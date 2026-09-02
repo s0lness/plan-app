@@ -1,18 +1,25 @@
-// src/ts/rendu/fiche-cellule.ts: THE ROOM SHEET (name, floor, area).
+// src/ts/rendu/fiche-cellule.ts: THE ROOM SHEET (name, floor, area) AND THE WALL SHEET (length).
 // Ported from src/js/54-v5-interface.js (`v5SyncCellCard`).
 //
-// R-13. IT IS RESYNCED BY `render()`, NOT BY A SELECTION. Before, moving a facade left it on its
+// R-13. BOTH ARE RESYNCED BY `render()`, NOT BY A SELECTION. Before, moving a facade left it on its
 // opening value: the toolbar announced 13.7 m², the rail's chip 13.7 m², and the sheet of the SAME
 // room 15.12 m², a few centimeters apart from each other. Worse, after merging two cells it still
 // showed a room that no longer existed.
+//
+// ONE PANEL AT A TIME (decision 0010, amended 2026-09-02). The owner, verbatim: "quand je
+// sélectionne un mur ça m'affiche aussi le menu de la pièce, je devrais juste voir le menu du
+// mur". `syncCellCard` and `syncWallCard` are now two SEPARATE cards in the same `.side-panels`
+// column (`#roomCard`, `#wallCard`); `syncWallCard` hides `#roomCard` whenever a wall is selected,
+// on every render, so the invariant holds regardless of which code path changed the selection.
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5SelectedCell, v5WallById } from "../app/contexte.ts";
-import { v5BoutLibre, v5MurDeTravers } from "../modele/edition.ts";
+import { v5BoutLibre } from "../modele/edition.ts";
 import { v5SignedArea } from "../modele/aires.ts";
 import { fmtM2 } from "../noyau/nombres.ts";
 import { $ } from "../noyau/dom.ts";
 
+/** THE ROOM'S OWN CARD: name, flooring, area. Nothing about a wall lives here any more. */
 export function syncCellCard(ctx: Contexte): void {
   const c = v5SelectedCell(ctx);
   const card = $("roomCard");
@@ -34,48 +41,39 @@ export function syncCellCard(ctx: Contexte): void {
   // same format as the chip and the toolbar (R-12).
   const area = $("rcArea");
   if (area) area.textContent = "Area " + fmtM2(v5SignedArea(c.poly));
-  // The button used to announce "Delete wall (none selected)" while looking at a ROOM: a red
-  // action that spells out, in plain words, that it applies to nothing. And a FACADE can be
-  // selected: the sheet must say, on screen, that it can't be deleted (C-13).
-  const del = $("rcDel") as HTMLButtonElement | null;
-  if (!del) return;
+}
+
+/**
+ * THE WALL'S OWN CARD: a title (Wall, or Facade for an outline wall) and its Length. Split,
+ * Square up and Delete are DRAWN ON THE WALL (`rendu/calque.ts`), not here (decision 0010,
+ * amended 2026-09-02): the owner asked to keep them there rather than in a sheet.
+ */
+export function syncWallCard(ctx: Contexte): void {
+  const card = $("wallCard");
   const w = ctx.ihm.selWall ? v5WallById(ctx, ctx.ihm.selWall) : null;
-  const note = $("rcNote");
-  if (w && w.isOutline) {
-    del.hidden = true;
-    if (note) { note.textContent = "A facade can be moved and resized, but not deleted."; note.hidden = false; }
-  } else {
-    del.textContent = "Delete wall";
-    del.disabled = !w;
-    del.hidden = !w;
-    if (note) note.hidden = true;
-  }
-  // SPLIT AND SQUARE UP, the two commands that used to float over the wall itself. Split works on
-  // a facade too (it inserts an outline corner); square up only exists where the model says the
-  // wall is crooked (`v5MurDeTravers`), so the button never appears just to refuse.
-  const split = $("rcSplit") as HTMLButtonElement | null;
-  if (split) split.hidden = !w;
-  const square = $("rcSquare") as HTMLButtonElement | null;
-  if (square) square.hidden = !(w && !w.isOutline && v5MurDeTravers(ctx.etat.plan, w.id));
+  if (!w) { if (card) (card as HTMLElement).hidden = true; return; }
+  if (card) (card as HTMLElement).hidden = false;
+  // ONE PANEL AT A TIME: selecting a wall closes the room's card, on every render, not just at
+  // the moment of selection (rule A).
+  const room = $("roomCard");
+  if (room && !room.hidden) room.hidden = true;
+  const title = $("wcTitle");
+  if (title) title.textContent = w.isOutline ? "Facade" : "Wall";
   // LENGTH. Facade INCLUDED: its length can also be set, by moving the next facade (see
-  // `gestes/murs.ts`). Only its DELETION remains forbidden.
-  const lenRow = $("rcLenRow");
-  if (lenRow) {
-    lenRow.hidden = !w;
-    const inp = $("rcLen") as HTMLInputElement | null;
-    if (w && inp && document.activeElement !== inp) {
-      inp.value = String(Math.round(Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1])));
-    }
-    // A TYPED LENGTH STRETCHES THE FREE END, so a partition held at BOTH ends has no end to give:
-    // the field is disabled and says why, rather than picking a junction to tear open (G-13, a
-    // gesture that produces nothing says why). A facade is never in that case: it is resized by the next
-    // one, which is why it keeps the field.
-    const bloque = !!w && !w.isOutline && !v5BoutLibre(ctx.etat.plan, w);
-    const noteLen = $("rcLenNote");
-    if (inp) {
-      inp.disabled = bloque;
-      inp.title = bloque ? "Both ends of this wall are junctions." : "";
-    }
-    if (noteLen) noteLen.hidden = !bloque;
+  // `gestes/murs.ts`).
+  const inp = $("rcLen") as HTMLInputElement | null;
+  if (inp && document.activeElement !== inp) {
+    inp.value = String(Math.round(Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1])));
   }
+  // A TYPED LENGTH STRETCHES THE FREE END, so a partition held at BOTH ends has no end to give:
+  // the field is disabled and says why, rather than picking a junction to tear open (G-13, a
+  // gesture that produces nothing says why). A facade is never in that case: it is resized by the
+  // next one, which is why it keeps the field.
+  const bloque = !w.isOutline && !v5BoutLibre(ctx.etat.plan, w);
+  const noteLen = $("rcLenNote");
+  if (inp) {
+    inp.disabled = bloque;
+    inp.title = bloque ? "Both ends of this wall are junctions." : "";
+  }
+  if (noteLen) noteLen.hidden = !bloque;
 }

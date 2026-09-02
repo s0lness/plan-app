@@ -32,6 +32,14 @@
   .v5wend > svg,.v5wmove > svg{display:block}
   .v5wend:hover > svg circle,.v5wmove:hover > svg circle{opacity:.85}
   .v5wend:active,.v5wmove:active{cursor:grabbing}
+  /* THE SELECTED WALL'S OWN COMMANDS (decision 0010, amended 2026-09-02): delete, split, square
+     up. Same first-class layer as the move disc and the end handles (2100, above furniture); a
+     plain click, so `cursor:pointer`, not `grab`. */
+  .v5wx,.v5wmid,.v5wdroit{position:absolute;z-index:2100;cursor:pointer;pointer-events:auto;
+        touch-action:none;background:none;border:none;box-shadow:none;padding:0;
+        filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+  .v5wx > svg,.v5wmid > svg,.v5wdroit > svg{display:block}
+  .v5wx:hover > svg circle,.v5wmid:hover > svg circle,.v5wdroit:hover > svg circle{opacity:.85}
   .v5dim{position:absolute;transform:translate(-50%,-50%);z-index:58;pointer-events:none;
          font:600 11px/1 var(--mono);color:var(--accent-ink);background:var(--room-bg);
          border:1px solid var(--accent);border-radius:3px;padding:2px 5px;white-space:nowrap}

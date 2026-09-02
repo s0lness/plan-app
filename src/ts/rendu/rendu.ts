@@ -11,12 +11,15 @@ import { $ } from "../noyau/dom.ts";
 import { updateReadout } from "./vue.ts";
 import { renderV5 } from "./calque.ts";
 import { renderRoomChips } from "./puces-rail.ts";
-import { syncCellCard } from "./fiche-cellule.ts";
+import { syncCellCard, syncWallCard } from "./fiche-cellule.ts";
 
 export function render(ctx: Contexte): void {
   updateReadout(ctx);
   renderV5(ctx);
-  // R-13: the sheet follows ALL editing paths, like the rail, not just a selection.
+  // R-13: the sheets follow ALL editing paths, like the rail, not just a selection. The wall's
+  // card is resynced UNCONDITIONALLY: it also decides its own visibility (open exactly when a
+  // wall is selected) and closes the room's card while it is open (rule A, one panel at a time).
+  syncWallCard(ctx);
   const card = $("roomCard");
   if (card && !(card as HTMLElement).hidden) syncCellCard(ctx);
   const vide = $("emptyMsg");

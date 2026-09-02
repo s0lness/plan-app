@@ -91,3 +91,35 @@ mal codée, c'est le modèle d'interaction qui demande trop.
   touche ni la géométrie, ni la lecture, ni le fil.
 - **Ce que ce lot ne fait PAS** : le mur traversant (`v5ThroughWall`, le bouton Through / Free) est
   le lot 2, juste après. Un segment posé se joint à ce qu'il touche exactement comme avant.
+
+## Amendement du 2026-09-02
+
+Le propriétaire, mot pour mot : « quand je sélectionne un mur ça m'affiche aussi le "menu" de la
+pièce. je devrais juste voir le menu du mur. also je suis plutôt pour le fait de garder les
+boutons sur le mur malgré tout ». Deux retours distincts, deux corrections distinctes :
+
+- **Un panneau pour le mur, un pour la pièce, jamais les deux.** La fiche partagée (`#roomCard`,
+  nom + sol + surface + longueur + actions du mur mêlés) devient DEUX cartes, sœurs dans
+  `.side-panels` : `#roomCard` redevient ce qu'il était avant ce lot (nom, sol, surface, croix de
+  fermeture), `#wallCard` est neuf et ne porte qu'un titre (« Wall », ou « Facade » pour un mur de
+  contour) et la longueur. `syncWallCard` (`rendu/fiche-cellule.ts`) dérive la visibilité de
+  `#wallCard` de `ctx.ihm.selWall` à CHAQUE `render()` (R-13) et ferme `#roomCard` tant qu'elle est
+  ouverte : l'invariant tient quel que soit le chemin de code qui a changé la sélection, pas
+  seulement au moment du clic. `v5SelectWall` n'a donc plus besoin de deviner une pièce voisine à
+  afficher (l'ancien sondage de part et d'autre du mur, `v5CellsAt`, disparaît avec la raison
+  d'être) : la carte du mur ne montre aucun champ de pièce.
+- **Les boutons reviennent SUR le mur, mais seulement à la sélection.** La moitié « sept PR de
+  boîtes de 32 px et de survol » de la décision ci-dessus reste vraie : aucun bouton n'apparaît au
+  survol, et seul le mur SÉLECTIONNÉ en porte. Ce qui revient, c'est l'endroit où Split, Square up
+  et Delete se dessinent : sur le mur (`rendu/calque.ts`, `drawHandles`), plutôt que dans la fiche
+  (`#rcSplit`/`#rcSquare`/`#rcDel` disparaissent du HTML). Ils appellent les MÊMES fonctions qu'avant
+  (`v5CouperMurSelectionne`, `v5RedresserMurSelectionne`, `v5DeleteSelectedWall`), via trois hooks
+  neufs (`ctx.gestes.couperMurClic`/`redresserMurClic`/`supprimerMurClic`) puisqu'un module de rendu
+  ne doit pas importer un module de geste. Taille FIXE, jamais réduite (commit 5e8c334, toujours en
+  vigueur) ; PAS de réintroduction des boîtes de 32 px anti-recouvrement ni des cinq paliers : un
+  mur trop court porte quand même ses boutons, au risque d'un chevauchement visuel accepté plutôt
+  que de refaire l'arbitrage de clic entre murs voisins que ce lot avait justement supprimé (il n'y
+  a plus de voisin à arbitrer : seul le mur sélectionné porte quoi que ce soit).
+- **Ce qui NE change PAS** : le tracé au clic-clic, les aimants, le lasso, l'absence de bouton au
+  survol, les trois contrôles de traction (disque + deux bouts). `compat-donnees` rend toujours les
+  mêmes 1069 empreintes.

@@ -157,7 +157,10 @@ export interface SondePlan {
   RSZ_HANDLES: PoigneeRedim[];
   stackedAt: typeof stackedAt;
   rszHandleCount(pieceId: unknown): number;
-  handleCount(): { edge: number; vtx: number; mid: number; move: number; bout: number };
+  handleCount(): {
+    edge: number; vtx: number; mid: number; move: number; bout: number;
+    del: number; split: number; square: number;
+  };
   textesDuPlan(): TexteDuPlan[];
   empreinteRendu(): unknown;
 
@@ -286,13 +289,16 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
     },
     handleCount() {
       const l = ctx.canvas.querySelector(".v5layer");
-      if (!l) return { edge: 0, vtx: 0, mid: 0, move: 0, bout: 0 };
+      if (!l) return { edge: 0, vtx: 0, mid: 0, move: 0, bout: 0, del: 0, split: 0, square: 0 };
       return {
         edge: l.querySelectorAll(".edge").length,
         vtx: l.querySelectorAll(".vtx").length,
         mid: l.querySelectorAll(".mid").length,
         move: l.querySelectorAll(".v5wmove").length,
         bout: l.querySelectorAll(".v5wend").length,
+        del: l.querySelectorAll(".v5wx").length,
+        split: l.querySelectorAll(".v5wmid").length,
+        square: l.querySelectorAll(".v5wdroit").length,
       };
     },
     // R-1. All the PLAN's texts with their REAL SCREEN angle (the product of every ancestor's
