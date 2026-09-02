@@ -237,6 +237,13 @@ ajouterFichier("fixture-plan-rev177", "v4 rooms[]+envelope, révision 177",
   path.join(FIXTURES, "plan-rev177.json"));
 ajouterFichier("export-appartement", "export ENVELOPPÉ {app,version,savedAt,note,state} (v5 murs-seuls, appartement de démonstration)",
   path.join(RACINE, "exemple-appartement.json"));
+// A1 (docs/invariants.md C-5) : document INVENTÉ, jamais un appartement réel, qui porte à lui seul
+// `leaf`, `tr`, `dmin`, `pair` (nouveaux champs que `sanitizeV5Plan` laissait tomber) ainsi que
+// `free`, `hinge`, `swing` (déjà couverts, mais absents des autres fixtures figées) : sans ce
+// document le corpus ne peut pas prouver que ces champs survivent une lecture.
+ajouterFichier("fixture-plan-champs-recents",
+  "v5 murs-seuls INVENTÉ : porte leaf/tr/dmin/pair/free/hinge/swing (C-5)",
+  path.join(FIXTURES, "plan-champs-recents.json"));
 
 // ---- 3b. the household's REAL backups (outside the repo, cannot be reconstructed) ----
 // They are recopied into `tests/fixtures/` on the first run: a proof that depends on a

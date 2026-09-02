@@ -16,7 +16,7 @@
 //       live in their own key (`room-planner-opts`).
 
 import type { Contexte } from "./contexte.ts";
-import type { EtatFil } from "../partage/plan.ts";
+import type { EtatFil, PlanV5 } from "../partage/plan.ts";
 import { OPTS_KEY, keyPourMode } from "../noyau/nombres.ts";
 import { modeCourant, planCourant, planIdInvite } from "../fil/drapeaux.ts";
 import { $ } from "../noyau/dom.ts";
@@ -30,7 +30,13 @@ import { toast } from "./toast.ts";
  * carries the openings' `h`/`side`/`name`). D-4: on re-reading, `plan` wins over the flat form.
  */
 export function serialize(ctx: Contexte): { setupDone: boolean; model: "v5"; plan: unknown } & EtatFil {
-  const s = { setupDone: !!ctx.etat.setupDone, model: "v5" as const, plan: ctx.etat.plan };
+  // A5. `plan._report` (`partage/plan.ts`) is documented "diagnostic, never persisted", but
+  // `plan: ctx.etat.plan` used to copy the LIVE object verbatim, `_report` included whenever the
+  // last cell detection had left one behind: the promise was written down, not kept. A shallow
+  // copy that OMITS it is what actually keeps it, without touching the live plan `v5RebuildCells`
+  // still writes `_report` onto.
+  const { _report, ...plan } = ctx.etat.plan as PlanV5 & { _report?: unknown };
+  const s = { setupDone: !!ctx.etat.setupDone, model: "v5" as const, plan };
   return Object.assign(s, v5StateWire(ctx.etat.plan, !!ctx.etat.setupDone));
 }
 

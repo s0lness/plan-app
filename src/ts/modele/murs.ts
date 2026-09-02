@@ -10,7 +10,7 @@
 
 import { clamp, v5R2, WALL } from "../noyau/nombres.ts";
 import { OPENING_H_MAX } from "../partage/contrat-serveur.ts";
-import { fam, pieceVisible, type CalquesVisibles } from "../catalogue/catalogue.ts";
+import { fam, pieceVisible, TYPEMAP, type CalquesVisibles } from "../catalogue/catalogue.ts";
 import { pointInPoly } from "../geometrie/polygones.ts";
 import { v5OnOutline } from "./conversion.ts";
 import type { Cellule, Id, Mur, Ouverture, PlanV5, Pt } from "../partage/plan.ts";
@@ -170,16 +170,31 @@ export function v5ClampOpeningsOfWall(
       out.push({ id: String(o.id), name: o.name || "", quoi: "orpheline" });
       continue;
     }
-    const w0 = Number(o.w), t00 = Number(o.t0), h0 = Math.round(Number(o.h) || WALL);
+    const w0 = Number(o.w), t00 = Number(o.t0), h0raw = Number(o.h);
+    // A3. A NON-FINITE FIELD (NaN: an interrupted drag, a division by a then-zero-length wall
+    // elsewhere) must NOT survive `clamp` below unrepaired: `clamp(NaN, lo, hi)` returns NaN,
+    // untouched — `NaN > hi` and `NaN < lo` are both false, so the usual "clamp catches
+    // everything" reasoning does not apply to it. Left alone, that NaN is then written out:
+    // `JSON.stringify` turns it into `null`, and the NEXT read (`sanitizeV5Plan`'s
+    // `num(null, default)`, which treats `null` as a REAL value of 0, never as "missing") floors
+    // it to the 1cm minimum. Replaced here by the catalog's value (0 for `t0`, which has none)
+    // BEFORE the clamp, and reported below through the SAME verdicts a real resize would get:
+    // the repair IS a resize, from the reader's point of view.
+    const cat = TYPEMAP[o.type];
+    if (!isFinite(w0)) o.w = cat ? cat.w : 1;
+    if (!isFinite(t00)) o.t0 = 0;
+    const h0 = isFinite(h0raw) ? Math.round(h0raw || WALL) : (cat ? cat.h : WALL);
+    if (!isFinite(h0raw)) o.h = h0;
     o.w = clamp(o.w, 1, Math.max(1, L));
     o.t0 = v5R2(clamp(o.t0, 0, Math.max(0, L - o.w)));
     if (h0 > hMax) o.h = hMax;
-    if (Math.abs(o.w - w0) > 0.5) {
-      out.push({ id: String(o.id), name: o.name || "", quoi: "retrecie", de: Math.round(w0), a: Math.round(o.w) });
-    } else if (Math.abs(o.t0 - t00) > 0.5) {
+    if (!isFinite(w0) || Math.abs(o.w - w0) > 0.5) {
+      out.push({ id: String(o.id), name: o.name || "", quoi: "retrecie", de: Math.round(isFinite(w0) ? w0 : 0), a: Math.round(o.w) });
+    } else if (!isFinite(t00) || Math.abs(o.t0 - t00) > 0.5) {
       out.push({ id: String(o.id), name: o.name || "", quoi: "deplacee" });
     }
     if (h0 > hMax) out.push({ id: String(o.id), name: o.name || "", quoi: "aminci", de: h0, a: hMax });
+    else if (!isFinite(h0raw)) out.push({ id: String(o.id), name: o.name || "", quoi: "aminci", de: 0, a: h0 });
   }
   return out;
 }

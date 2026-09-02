@@ -201,12 +201,11 @@ await test("le_plus_agit_une_fois_et_un_seul_ctrl_z_le_defait", async () => {
   await seedUnMur();
   const h = await centerOf('.v5wmid[data-w="w1"]');
   if (!ok(h, "poignée de coupe introuvable")) return;
-  // `_report` est un bloc de DIAGNOSTIC de la detection des cellules (segments, noeuds, aretes),
-  // present ou absent selon qu'une detection vient de tourner. Le comparer reviendrait a tester
-  // l'instrumentation, pas le plan.
-  const sansRapport = `(function(){var s=__plan.serialize();
-    if (s && s.plan) delete s.plan._report; delete s._report; return JSON.stringify(s);})()`;
-  const avantPlan = await evaluate(sansRapport);
+  // A5: `serialize()` n'ecrit plus jamais `_report` (bloc de DIAGNOSTIC de la detection des
+  // cellules, jamais cense etre persiste); comparer sa sortie octet pour octet suffit desormais,
+  // plus besoin de le retirer a la main avant de comparer.
+  const versJSON = `(function(){return JSON.stringify(__plan.serialize());})()`;
+  const avantPlan = await evaluate(versJSON);
   const avantUndo = await undoCount();
   const avantNombre = (await mursInterieurs()).length;
   await click(h);
@@ -214,7 +213,7 @@ await test("le_plus_agit_une_fois_et_un_seul_ctrl_z_le_defait", async () => {
   ok(Number(await undoCount()) === Number(avantUndo) + 1, "le clic doit ajouter exactement une entrée d'historique");
   await evaluate(`__plan.undo(); true`); await pause(250);
   ok((await mursInterieurs()).length === avantNombre, "un seul Ctrl+Z doit défaire la coupe");
-  const apresPlan = await evaluate(sansRapport);
+  const apresPlan = await evaluate(versJSON);
   let ou = "";
   if (apresPlan !== avantPlan) {
     let i = 0; while (i < avantPlan.length && avantPlan[i] === apresPlan[i]) i++;

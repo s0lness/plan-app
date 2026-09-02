@@ -831,7 +831,11 @@ export function v5MoveOpeningTo(
     op.side = v5WallMountSide(P, w, s, c.x, c.y, x, y);
   }
   const tc = (x - w.a[0]) * s.ux + (y - w.a[1]) * s.uy;
-  op.w = Math.min(op.w, s.L);
+  // A5: NO shave here, on purpose (see the comment above this function). `w` is either the wall
+  // the opening was ALREADY on (unchanged, so already fitting) or a wall `v5OpeningFitsWall`
+  // just confirmed is long enough; a `Math.min(op.w, s.L)` at this point would silently do again,
+  // for a resize the code no longer performs elsewhere, exactly what the refusal above exists to
+  // prevent doing silently.
   op.t0 = v5R2(clamp(tc - op.w / 2, 0, Math.max(0, s.L - op.w)));
   v5ResolveOpening(P, op, dir || 0, calques);
   return op;

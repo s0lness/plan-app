@@ -47,7 +47,7 @@ import { v5SetModel } from "../gestes/murs.ts";
 import { v5OnOutline } from "../modele/conversion.ts";
 import { sanitizeV5Plan } from "../modele/migrations.ts";
 import { v5ClampOpeningsOfWall, v5WallDeleteVerdict } from "../modele/murs.ts";
-import { v5NoteForeignOrphans, v5SyncOutlineWalls } from "../modele/edition.ts";
+import { v5FlushOpeningsBorned, v5NoteForeignOrphans, v5SyncOutlineWalls } from "../modele/edition.ts";
 import { v5RebuildCells } from "../modele/cellules.ts";
 import { v5AdoptOpening } from "./pseudo-fil.ts";
 import { wsShadowApplyOp, wsRequestFullSync } from "./emission.ts";
@@ -279,7 +279,23 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
 
   // C-10. We recompute CELLS (derived, without them nothing paints) and facades, but we do NOT
   // rebound EITHER furniture OR openings. See the header.
-  if (geo) { v5SyncOutlineWalls(P); v5RebuildCells(P); }
+  if (geo) {
+    v5SyncOutlineWalls(P);
+    v5RebuildCells(P);
+    // A4, C-13's sibling for the ORDINARY case (a peer's outline shrink relogges a facade's
+    // openings, `v5RelogerOuverturesContour`, `modele/edition.ts`), not the refused one already
+    // handled above. `ardoiseBorned` is a SHARED module-level slate, the same one a LOCAL
+    // gesture's own clamping (`v5ClampOpenings`) accumulates into and flushes at the end of that
+    // gesture. Left unflushed here, an opening lost to a PEER's op sat there until whatever
+    // LOCAL gesture ran next called `v5FlushOpeningsBorned()`, and the banner landed on the
+    // wrong screen, attributed to whatever that person happened to do. Furniture has the exact
+    // same defect and the exact same fix, `v5NoteForeignOrphans` below: say it (or here, since
+    // an opening is truly gone rather than merely repaired, using the SAME banner and vocabulary
+    // `v5FlushOpeningsBorned` already uses for this) HERE, on receipt, and clear the slate so
+    // nothing survives for the next local gesture to inherit.
+    const perdu = v5FlushOpeningsBorned();
+    if (perdu) toast(perdu);
+  }
   // A piece that the OTHER person's op has just left outside any cell is THEIR business: it is
   // them who bounds it and republishes it. We note the orphan so as not to claim its repair on
   // the next local gesture.

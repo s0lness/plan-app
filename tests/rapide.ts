@@ -22,7 +22,7 @@ import {
   // model
   v5SignedArea, v5OverlapArea, v5DetectCells, v5AssignNames, v5RebuildCells,
   v5Seg, v5WallLen, v5OpeningSameSlot, v5OpeningDepthMax, v5OpeningDepthFor, v5OpeningEdgeLimits,
-  v5OpeningBox, v5CellsAt, sanitizeV5Plan,
+  v5OpeningBox, v5CellsAt, sanitizeV5Plan, v5ClampOpeningsOfWall,
   // wire
   v5StateWire, v5AdoptOpening, wireIdentite,
   wsShadowCopy, wsShadowFromServerInto, ws5ShadowPut, wsShadowApplyOpInto, ws5FieldDiff, ws5DiffOps,
@@ -108,6 +108,7 @@ const CLIENT = {
   // `v5WallLen(id)` used to read `state.plan`; `v5OpeningEdgeLimits(op,w)` used to read `state.plan.openings`
   // AND `state.opts` (through `pieceVisible`). Both now take what they read as arguments.
   v5WallLen: (id: string) => v5WallLen(CLIENT.state.plan, id),
+  v5ClampOpeningsOfWall,
   v5OpeningEdgeLimits: (op: unknown, w: unknown) => v5OpeningEdgeLimits(CLIENT.state.plan,
     op as Parameters<typeof v5OpeningEdgeLimits>[1], w as Mur, CLIENT.state.opts),
 };
@@ -384,6 +385,128 @@ test("v5_sanitize_defensive", () => {
       && expect(v.dropped.pieces === 1 && v.dropped.w <= 3000 && v.dropped.h >= 1 && v.dropped.rot === 5,
          "piece fields must be clamped/normalised: " + JSON.stringify(v.dropped))
       && expect(v.dropped.cells === 1 && v.dropped.floor === "parquet", "unknown floor must fall back to parquet");
+});
+
+test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
+  // "migrate(serialize(migrate(d)))" (Ctrl+Z, historique/pile.ts:40,91): `serialize()` writes
+  // `plan: ctx.etat.plan` VERBATIM and `migrate()` gives that nested `plan` PRIORITY over the flat
+  // wire shape (D-4, modele/etat.ts). So what a snapshot restore actually exercises is a SECOND
+  // `sanitizeV5Plan` pass over a JSON round trip of the first one's output: exactly what this case
+  // reproduces without needing a DOM `Contexte` to call the real `serialize()`.
+  //
+  // Built from the CONTRACT's key lists (`WALL_KEYS`/`OPENING_KEYS`/`PIECE_KEYS`/`CELL_KEYS`), not
+  // a hand-written list of field names: a field added to the contract and forgotten in
+  // `sanitizeV5Plan` still fails this test, instead of only the ones someone remembered to name.
+  const EXCEPTIONS_PIECE = ["hinge", "swing"];
+  // `hinge`/`swing` are in `PIECE_KEYS` only because the SERVER still accepts the OLD format (a
+  // door used to be a piece of furniture); `v5PieceWire` never emits them on a walls-only
+  // `Meuble` and it does not declare them either (contrat-serveur.ts's own comment on the line
+  // that defines `PIECE_KEYS`). Not a forgotten field, the one documented case where the server
+  // is more permissive than the client (G-18).
+  const VALEUR: Record<string, DonneeDynamique> = {
+    a: [10, 20], b: [130, 20], t: 15, free: 1,
+    t0: 5, w: 20, h: 8, side: 1, name: "Contrat", hinge: 1, swing: -1, leaf: 2,
+    x: 33, y: 44, rot: 90, locked: true, tr: 150, dmin: 60, pair: "ecran1",
+    poly: [[0, 0], [10, 0], [10, 10], [0, 10]], floor: "tile",
+  };
+  const entiteDepuisCles = (cles: readonly string[], overrides: Record<string, DonneeDynamique>): Record<string, DonneeDynamique> => {
+    const e: Record<string, DonneeDynamique> = {};
+    cles.forEach((k) => { e[k] = Object.prototype.hasOwnProperty.call(overrides, k) ? overrides[k] : VALEUR[k]; });
+    return e;
+  };
+  const wallSeed = entiteDepuisCles(WALL_KEYS, { id: "w1" });
+  const openingSeed = entiteDepuisCles(OPENING_KEYS, { id: "o1", wallId: "w1", type: "door" });
+  const pieceKeysUtiles = PIECE_KEYS.filter((k) => EXCEPTIONS_PIECE.indexOf(k) < 0);
+  const pieceSeed = entiteDepuisCles(pieceKeysUtiles, { id: "p1", type: "sofa3" });
+  const cellSeed = entiteDepuisCles(CELL_KEYS, { id: "c1" });
+  const planSeed = {
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [wallSeed], openings: [openingSeed], pieces: [pieceSeed], cells: [cellSeed],
+  };
+  const p1 = PLAN.sanitizeV5Plan(planSeed);
+  const p2 = PLAN.sanitizeV5Plan(JSON.parse(JSON.stringify(p1)) as DonneeDynamique);
+  const familles: Array<[string, readonly string[], Record<string, DonneeDynamique>, DonneeDynamique]> = [
+    ["walls", WALL_KEYS, wallSeed, p2 ? p2.walls[0] : null],
+    ["openings", OPENING_KEYS, openingSeed, p2 ? p2.openings[0] : null],
+    ["pieces", pieceKeysUtiles, pieceSeed, p2 ? p2.pieces[0] : null],
+    ["cells", CELL_KEYS, cellSeed, p2 ? p2.cells[0] : null],
+  ];
+  const ecarts: string[] = [];
+  familles.forEach(([nom, liste, seed, obtenu]) => {
+    liste.forEach((k) => {
+      const attendu = JSON.stringify(seed[k]);
+      const vu = JSON.stringify(obtenu ? (obtenu as DonneeDynamique)[k] : undefined);
+      if (attendu !== vu) ecarts.push(nom + "." + k + " : attendu " + attendu + ", vu " + vu);
+    });
+  });
+  return expect(!!p1 && !!p2, "le plan doit rester lisible aux deux passages")
+      && expect(ecarts.length === 0, "champs perdus au second passage de sanitizeV5Plan :\n         " + ecarts.join("\n         "));
+});
+
+test("v5_sanitize_applique_les_bornes_serveur_a_la_lecture", () => {
+  // A2: `migrations.ts` used to apply NONE of `COORD_MAX`/`POLY_MAX_PTS`/`MAX_ENTITIES`/`ID_RE`
+  // on read: a plan loaded out of bounds OPENED, but every future op on it got rejected by the
+  // server. The read now corrects, on the spot, exactly what the server would refuse.
+  const s = PLAN.sanitizeV5Plan;
+
+  // -- COORD_MAX: an absurd coordinate is clamped, not left to overflow every downstream sum.
+  const coord = s({
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [{ id: "w1", a: [0, 0], b: [1e9, 0], t: 12 }],
+    pieces: [{ id: "p1", type: "sofa3", x: 1e9, y: -1e9, w: 200, h: 90 }],
+  });
+
+  // -- ID_RE: an id carrying an injection attempt is REPLACED, and the reference following it
+  // (an opening's `wallId`) is NOT orphaned by the replacement.
+  const idInjecte = s({
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [{ id: 'bad"><img>', a: [0, 0], b: [600, 0], t: 12 }],
+    openings: [{ id: "o1", wallId: 'bad"><img>', type: "window", t0: 100, w: 80 }],
+  });
+
+  // -- ID_RE + a valid but 100-character id: truncated to at most 80 AND still ID_RE-shaped.
+  const idLong = s({
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [{ id: "w".repeat(100), a: [0, 0], b: [600, 0], t: 12 }],
+  });
+
+  // -- MAX_ENTITIES: 2001 walls in, at most 2000 out.
+  const trop: DonneeDynamique = { outline: [[0, 0], [600, 0], [600, 400], [0, 400]], walls: [] };
+  for (let i = 0; i < 2001; i++) trop.walls.push({ id: "m" + i, a: [0, i], b: [1, i], t: 5 });
+  const bornes = s(trop);
+
+  const ID_RE_TEST = /^[A-Za-z0-9_.:-]{1,80}$/;
+  return expect(!!coord && Math.abs(coord.walls[0]!.b[0]) === 100000,
+          "une coordonnée absurde doit être ramenée à ±COORD_MAX, vu " + (coord && coord.walls[0]!.b[0]))
+      && expect(!!coord && coord.pieces[0]!.x === 100000 && coord.pieces[0]!.y === -100000,
+          "un meuble hors bornes aussi (x/y sont des coordonnées) : " + JSON.stringify(coord && coord.pieces[0]))
+      && expect(!!idInjecte && idInjecte.walls[0]!.id !== 'bad"><img>' && ID_RE_TEST.test(idInjecte.walls[0]!.id),
+          "un id qui ne passe pas ID_RE doit être remplacé : " + JSON.stringify(idInjecte && idInjecte.walls[0]))
+      && expect(!!idInjecte && idInjecte.openings.length === 1 && idInjecte.openings[0]!.wallId === idInjecte.walls[0]!.id,
+          "et la référence (wallId) doit suivre le remplacement, pas s'orpheliner : " + JSON.stringify(idInjecte && idInjecte.openings))
+      && expect(!!idLong && idLong.walls[0]!.id.length <= 80 && ID_RE_TEST.test(idLong.walls[0]!.id),
+          "un id de 100 caractères doit être ramené à <= 80 et rester conforme à ID_RE, vu " + (idLong && idLong.walls[0]!.id))
+      && expect(!!bornes && bornes.walls.length === 2000,
+          "2001 murs en entrée, au plus MAX_ENTITIES en sortie, vu " + (bornes && bornes.walls.length));
+});
+
+test("v5_clamp_ouvertures_repare_un_champ_non_fini", () => {
+  // A3 (modele/murs.ts:173-183): `{t0:NaN, w:NaN, h:NaN}` used to come out UNCHANGED, and the
+  // function reported `[]` (nothing to say). `clamp(NaN, lo, hi)` returns NaN, untouched: it
+  // then survives in memory, `JSON.stringify` turns it into `null` on the next save, and the
+  // NEXT read floors it to 1cm (`num(null, default)` treats `null` as a REAL 0, not "missing").
+  const P: PlanV5 = {
+    outline: [[0, 0], [600, 0], [600, 400], [0, 400]],
+    walls: [{ id: "w1", a: [0, 0], b: [600, 0], t: 12, isOutline: true }],
+    openings: [{ id: "o1", wallId: "w1", t0: NaN, w: NaN, h: NaN, type: "window", side: 0, name: "Fenêtre" }],
+    pieces: [], cells: [],
+  };
+  const chg = CLIENT.v5ClampOpeningsOfWall(P, "w1");
+  const o = P.openings[0]!;
+  return expect(isFinite(o.t0) && isFinite(o.w) && isFinite(o.h),
+          "t0/w/h doivent redevenir des nombres finis : " + JSON.stringify({ t0: o.t0, w: o.w, h: o.h }))
+      && expect(o.w >= 1 && o.h >= 1, "et rester dans les bornes physiques, pas à 0 : " + JSON.stringify({ w: o.w, h: o.h }))
+      && expect(chg.length > 0, "la réparation doit être signalée comme un changement, pas silencieuse (ardoise vide)");
 });
 
 test("door_arc_center_is_hinge", () => {
