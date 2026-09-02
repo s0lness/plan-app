@@ -82,7 +82,10 @@ for (const f of fichiers(SRC)) {
     for (const [autre, contenu] of texte) {
       if (autre === f) continue;
       // Whole word: `tr` must not be found inside `strHash`.
-      if (new RegExp("\\b" + nom.replace(/\$/g, "\\$") + "\\b").test(contenu)) { vu = true; break; }
+      // Identifier boundaries by LOOKAROUND, not `\b`: `$` is not a word character, so `\b$\b`
+      // can never match a real call of `$()` and reported the most-called helper of the client
+      // as dead (246 call sites). `[\w$]` is exactly what may continue a JavaScript identifier.
+      if (new RegExp("(?<![\\w$])" + nom.replace(/\$/g, "\\$") + "(?![\\w$])").test(contenu)) { vu = true; break; }
     }
     if (!vu) morts.push(`${r} → ${nom}`);
   }
