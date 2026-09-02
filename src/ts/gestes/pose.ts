@@ -556,24 +556,9 @@ export function startPaletteDrag(
 // palette isn't built yet when bootstrap calls `brancherPalette`: so we DELEGATE
 // from `#palette`, which gives exactly the same three listeners, valid for any
 // thumbnail present or yet to come, and which makes the wiring independent of batch ordering.
-// `brancherVignettePalette` is still offered for the day the palette wants to wire its items one by
-// one: both paths call the same functions, they don't duplicate each other.
 
 const vignetteDe = (t: EventTarget | null): HTMLElement | null =>
   (t instanceof Element) ? t.closest<HTMLElement>("#palette .pitem") : null;
-
-/** The three listeners for ONE thumbnail (identical to js/08). */
-export function brancherVignettePalette(ctx: Contexte, el: HTMLElement, type: string): void {
-  // A DOUBLE-click is ONE gesture, not two: the second click (detail>=2) places nothing. Otherwise the
-  // palette responded to a double-click with two pieces of furniture, systematically (G-22).
-  el.addEventListener("click", (e) => { if (e && e.detail >= 2) return; armerPose(ctx, type); });
-  el.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); armerPose(ctx, type); }
-  });
-  // Mouse only: `pointerdown` starts the drag-and-drop ghost. On a finger it is skipped
-  // (`startPaletteDrag` bails out early on pointerType==="touch") and the tap ARMS the placement.
-  el.addEventListener("pointerdown", (e) => startPaletteDrag(ctx, e, type, el));
-}
 
 let _palBranchee = false;
 

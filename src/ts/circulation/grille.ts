@@ -155,6 +155,15 @@ export function widestPath(g: Grille, clear: Float64Array, srcIdx: number): Chem
 export function reconstruct(prev: Int32Array, srcIdx: number, tgtIdx: number): number[] {
   const path: number[] = []; let c = tgtIdx, guard = 0;
   while (c >= 0 && guard++ < 100000) { path.push(c); if (c === srcIdx) break; c = prev[c]!; }
+  // The guard exists against a corrupt `prev` chain (a cycle, or an index that never reaches
+  // `srcIdx`): 100000 steps is already far past any real apartment's cell count, so hitting it
+  // means the reconstructed path is CUT SHORT, silently, unless this says so.
+  if (guard >= 100000 && c !== srcIdx) {
+    console.warn(
+      `circulation/grille.reconstruct: guard hit at 100000 steps, path truncated `
+      + `(srcIdx=${srcIdx}, tgtIdx=${tgtIdx}, stoppedAt=${c}, partialLength=${path.length}).`,
+    );
+  }
   return path.reverse();
 }
 export function nearestFreeCell(g: Grille, xcm: number, ycm: number): number {

@@ -11,8 +11,9 @@
 //   node build.ts --out X.html    writes elsewhere (useful for comparisons)
 //   node build.ts --check         rewrites nothing; exits 1 if the output differs from the source
 //
-// The typed client is the ONLY client source. `legacy/index.html` remains a self-contained,
-// servable archive, but its source has left the repo: see legacy/README.md and the git history.
+// The typed client is the ONLY client source, and the ONLY one this repository contains: the
+// pre-cutover client (source AND `legacy/index.html`) was archived OUTSIDE this published
+// repository (see src/README.md), so neither exists here to build or to serve.
 // Both package.json packages remain BUILD tools; none of them land in the deliverable, and the
 // "module outside src/ts" guard below checks that on EVERY build.
 //
@@ -36,7 +37,8 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === "--next" || args[i] === "--legacy") {
     // These flags must not be silently ignored: they would pretend to select another client source.
     console.error(`${args[i]} n'existe plus : src/js a été retiré du dépôt, le client typé est le seul.`);
-    console.error("  legacy/index.html reste servable telle quelle ; son source se retrouve dans l'historique git.");
+    console.error("  L'archive pré-bascule (source ET legacy/index.html) n'est PAS dans ce dépôt : elle a été");
+    console.error("  conservée à part avant la publication. Rien ici à construire ni à servir sous ce nom.");
     process.exit(1);
   }
   else { console.error(`Option inconnue : ${args[i]}`); process.exit(1); }

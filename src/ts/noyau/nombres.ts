@@ -33,6 +33,23 @@ export const escapeHtml = (s: unknown): string =>
 export const fmtM2 = (cm2: unknown): string =>
   (Math.round((Math.abs(Number(cm2)) || 0) / 1000) / 10).toFixed(1).replace(".", ",") + " m²";
 
+/**
+ * ONE single download filename for the whole application (C-6 of the 2026-09-02 review): the PNG
+ * export and the JSON save used to be fixed names (`plan.png`, `plan-appartement.json`), so saving
+ * a second plan the same way silently overwrote the first one in the person's Downloads folder.
+ * `<cleaned plan name>-<YYYY-MM-DD>.<ext>`: letters, digits and dashes only (a plan title can carry
+ * spaces, slashes, emoji, anything typed into `#planName`, none of which belongs in a filename
+ * unescaped), and an EMPTY or entirely-punctuation name falls back to `"plan"` rather than
+ * producing a bare `-2026-09-02.png`.
+ */
+export function nomFichierExport(nomPlan: unknown, ext: string): string {
+  const propre = String(nomPlan ?? "").normalize("NFC")
+    .replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+  const d = new Date();
+  const jour = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
+  return (propre || "plan") + "-" + jour + "." + ext;
+}
+
 // ---- local storage keys (D-2, D-3, D-7) -----------------------------------------------------------
 // None is renamed by the rewrite: these are bytes already written at the household's.
 export const KEY = "room-planner-v4";

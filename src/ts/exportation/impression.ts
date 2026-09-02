@@ -12,6 +12,7 @@
 
 import type { Contexte } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
+import { nomFichierExport } from "../noyau/nombres.ts";
 import { buildMasterSVG } from "./svg-maitre.ts";
 import { furnitureListHTML } from "./liste-mobilier.ts";
 
@@ -55,7 +56,9 @@ export function renderMasterPNG(ctx: Contexte, scale?: number): Promise<RenduPNG
 export function exportPNG(ctx: Contexte): Promise<RenduPNG> {
   return renderMasterPNG(ctx, 2).then((res) => {
     const url = res.blob ? URL.createObjectURL(res.blob) : (res.dataURL || "");
-    const a = document.createElement("a"); a.href = url; a.download = "plan.png";
+    // `#planName` (the rail's title, always painted, "Flat plan" as its own fallback) rather
+    // than a second source of truth for the plan's name: see `nomFichierExport` (C-6).
+    const a = document.createElement("a"); a.href = url; a.download = nomFichierExport($("planName")?.textContent, "png");
     document.body.appendChild(a); a.click(); a.remove();
     if (res.blob) setTimeout(() => URL.revokeObjectURL(url), 0);
     return res;
