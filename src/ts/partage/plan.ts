@@ -1,32 +1,15 @@
-// src/ts/partage/plan.ts: THE WALLS-ONLY MODEL, TYPED.
+// src/ts/partage/plan.ts: THE WALLS-ONLY MODEL, TYPED. An outline partitioned by walls; rooms are
+// the CELLS, which are DERIVED.
 //
-// AN outline partitioned by walls; ROOMS are the CELLS, which are DERIVED.
-// Carried over from src/js/47-v5-modele.js, without changing a single data key (docs/reecriture.md §7.5:
-// "the rewrite changes the language of the code, not a data key").
-//
-// ---- WHAT THE TYPING CLOSES OFF HERE, AND WHAT IT DOESN'T -----------------------------------------
-//
-// 1. THE FOUR ENTITIES NO LONGER MIX (docs/reecriture.md §5.2, the `NaN` defect).
-//    A piece of furniture has `x`/`y`. An opening does NOT: its position is parametric (`wallId`, `t0`,
-//    `side`). Nor does a wall (`a`, `b`, `t`). Nor does a cell (`poly`). Passing an opening
-//    where a piece of furniture is expected has already written `NaN`s into the household's plan.
-//    These four interfaces have NO field in common beyond `id`: TypeScript's structural typing
-//    already refuses the swap, with no discriminant needing to exist at runtime.
-//
-//    WHY THERE'S NO `kind` FIELD IN MEMORY, contrary to the plan's recommendation (§5.2):
-//    `serialize()` (js/07) writes `plan: state.plan` VERBATIM into `room-planner-v4`, into the body
-//    of the PUT and into every file export. A `kind` carried in memory would therefore become a
-//    PERSISTED key, in bytes that the old client reads back, which is precisely the kind of
-//    change §7.5 forbids. The structural discriminant costs zero bytes and gives the same
-//    compile-time guarantee.
-//
-// 2. `Fp` IS OPAQUE (docs/invariants.md C-2). Two identically-named counters (content `fp`, ops
-//    `opCount`) were once compared: a permanent divergence with both screens showing "live ✓".
-//    `fp === String(opCount)` no longer compiles.
-//
-// 3. WHAT THE TYPING DOES NOT CLOSE OFF, and it must be said: nothing here stops a field from being
-//    forgotten in `*Wire` (C-5). Only the equality test against the server's whitelists does
-//    (`partage/contrat-serveur.ts`).
+// ---- WHAT THE TYPING CLOSES OFF, AND WHAT IT DOESN'T --------------------------------------------
+// 1. THE FOUR ENTITIES NO LONGER MIX: a piece has `x`/`y`, an opening's position is parametric
+//    (`wallId`/`t0`/`side`), a wall has `a`/`b`/`t`, a cell has `poly`. No field in common beyond
+//    `id`, so TypeScript's structural typing refuses the swap with no runtime discriminant needed
+//    (no `kind` field carried in memory, since `serialize()` writes the plan verbatim and a `kind`
+//    would become a persisted key).
+// 2. `Fp` IS OPAQUE (C-2): `fp === String(opCount)` no longer compiles.
+// 3. WHAT ISN'T CLOSED OFF: nothing here stops a field from being forgotten in `*Wire` (C-5); only
+//    the equality test against the server's whitelists does (`partage/contrat-serveur.ts`).
 
 import type { CellFloor, OpeningLeaf, OpeningType } from "./contrat-serveur.ts";
 

@@ -1,14 +1,6 @@
-// src/ts/noyau.ts: THE PURE CORE'S ENTRY POINT (E2).
-//
-// Everything this module re-exports is WITHOUT DOM, WITHOUT global `state`, WITHOUT storage:
-// geometry, old-format reading, serialization, emission diffing, undo replay, and the
-// catalogue. This is exactly what `tests/rapide.ts` and `tests/harnais-graine.ts` used to CARVE
-// out of the source by counting braces; both TypeScript benches import it instead of carving it.
-//
-// This file is NOT `main.ts`: the core does not yet have a taker in the application (E3 will
-// wire it up), so `index-next.html` does not change by one byte at this batch. `tsc --noEmit`
-// still typechecks the whole thing: `tsconfig.json` includes `src/ts/**/*.ts`, not `main.ts`'s
-// import graph.
+// src/ts/noyau.ts: THE PURE CORE'S ENTRY POINT. Re-exports everything WITHOUT DOM, WITHOUT
+// global `state`, WITHOUT storage: geometry, serialization, emission diffing, undo replay, and
+// the catalogue, for `tests/rapide.ts` and `tests/harnais-graine.ts` to import directly.
 
 export * from "./partage/contrat-serveur.ts";
 export * from "./partage/plan.ts";

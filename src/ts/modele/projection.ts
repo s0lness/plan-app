@@ -1,19 +1,9 @@
-// src/ts/modele/projection.ts: THE GEOMETRY OF A VIDEO PROJECTOR.
+// src/ts/modele/projection.ts: THE GEOMETRY OF A VIDEO PROJECTOR, PURE (no DOM, no writes).
 //
-// Usage request: "see the projection throw to know where to place it, be able to match it to a
-// screen, move it back and forward, and know whether the minimum distance is respected,
-// including with ultra short throw, set right in front of the screen".
-//
-// DISTANCE IS NOT A PROPERTY OF THE DEVICE, IT IS A RESULT. What a projector has is a THROW
-// RATIO (`tr`, x100): image width = distance / ratio. This is the number on its spec sheet, and
-// the only one that makes ultra short throw expressible: a UST at 0.25 casts a 120 cm image from
-// 30 cm off the wall, which no stored "projection distance" can express.
-//
-// EVERYTHING IS DERIVED, NOTHING IS DUPLICATED: distance comes from positions, image width from
-// the ratio, the verdict from the comparison to the screen. None of these three values is
-// persisted, so none of them can drift out of sync with the plan.
-//
-// PURE module: it does not read the DOM, writes nothing, and proves itself without a browser.
+// DISTANCE IS NOT A PROPERTY OF THE DEVICE, IT IS A RESULT: what a projector has is a THROW RATIO
+// (`tr`, x100, the number on its spec sheet), image width = distance / ratio. Everything is
+// derived, nothing duplicated: distance from positions, width from the ratio, the verdict from
+// the comparison to the screen; none of the three is persisted, so none can drift out of sync.
 
 /** A projector as this module needs to see it. */
 export interface Projecteur {

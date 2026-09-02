@@ -1,36 +1,16 @@
 // src/ts/noyau/champ-numerique.ts: THE ONLY NUMERIC-INPUT GUARD.
-// Ported from src/js/00-noyau.js (`numField`), without changing a single rule or message.
 //
-// G-17. NOTHING APPLIES UNTIL THE VALUE IS VALID. Three outcomes, a single truth of
-// bound:
-//   · impossible keystroke (letters) or value definitively out of bounds -> REJECT: the field goes
-//     back to the last valid value, marked in red, with a message that GIVES the bound;
-//   · value still incomplete (empty field, or too small but still able to grow: typing
-//     "1" before "180") -> we apply NOTHING, the field is marked "pending"; leaving the
-//     field (or Enter) decides;
-//   · valid value -> applied after a 220 ms pause in typing.
+// G-17: nothing applies until the value is valid. Three outcomes: an impossible keystroke or a
+// value definitively out of bounds REJECTS (back to the last valid value, marked red, with a
+// message that gives the bound); an incomplete value (empty, or too small but still growing)
+// applies NOTHING, marked "pending"; a valid value applies after a 220ms typing pause.
 //
-// **Before this fix**, the field used to apply on EVERY keystroke, silently folded back onto an
-// arbitrary bound: typing letters set the furniture to 10 cm, "1" stored 5, so did "-50", and
-// "3000" went through into a 12 m flat. Three bounds contradicted each other (the `min=10`
-// attribute, the JS clamp `5..3000`, the server's `1..3000`). And without the typing pause, typing
-// "3000" COMMITTED 3, then 30, then 300 along the way, and the final rejection handed back
-// 300, a value nobody had wanted.
+// G-18: the server bounds what's dangerous, the client bounds what's sensible. `bounds()` can
+// depend on the current object (an opening's width bounded by its wall's length); HTML
+// `min`/`max` are REWRITTEN to match, always at least as strict as the server validator.
+// `raison()` completes a rejection whose bound comes from elsewhere ("This wall is 10cm thick...").
 //
-// G-18. THE SERVER BOUNDS WHAT'S DANGEROUS, THE CLIENT BOUNDS WHAT'S SENSIBLE. `bounds()` returns the
-// REAL bound and can depend on the current object (an opening's width bounded by its wall's
-// length, DEPTH bounded by that wall's THICKNESS, a piece of furniture's dimension bounded by the
-// flat). The HTML `min`/`max` attributes are REWRITTEN to match: the field can no longer announce a
-// bound the code doesn't respect. The client bound can be stricter than the server validator, never
-// wider.
-//
-// `raison()` completes the rejection when the bound comes from SOMEWHERE OTHER than the field: "This
-// wall is 10 cm thick: beyond that, the opening would cross both rooms." Without that
-// word, "between 1 and 10 cm" reads as an arbitrary software limit and the gesture repeats without
-// understanding why.
-//
-// CONSEQUENCE FOR TESTS: a value set programmatically requires ~350 ms of waiting, or a
-// `blur`.
+// CONSEQUENCE FOR TESTS: a programmatically set value requires ~350ms of waiting, or a `blur`.
 
 import { toast } from "../app/toast.ts";
 

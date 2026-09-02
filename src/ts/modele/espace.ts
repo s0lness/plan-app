@@ -14,41 +14,21 @@ import { v5Seg } from "./murs.ts";
  */
 export const wallSnapReach = (scale: number): number => Math.min(150, Math.max(60, 45 / (scale || 1)));
 
-/**
- * THE FURNITURE MAGNET HAS ITS OWN, SHORT REACH. `wallSnapReach` is sized for an opening, whose
- * CENTER must land on a wall from wherever the hand lets go (60 to 150 cm). Applied to a bed or a
- * table it pulled a piece left 60 cm from the wall all the way to it: "too aggressive", the
- * owner's words. A piece of furniture is attracted only when its back is a dozen screen pixels
- * from the face, 6 to 20 cm depending on zoom: close enough that the hand meant it.
- */
+/** THE FURNITURE MAGNET HAS ITS OWN, SHORT REACH: `wallSnapReach` is sized for an opening's
+ * CENTER (60-150cm); applied to furniture it was "too aggressive" (owner's words). A piece
+ * attracts only when its back is a dozen screen pixels from the face, 6-20cm depending on zoom. */
 export const meubleSnapReach = (scale: number): number => Math.min(20, Math.max(6, 12 / (scale || 1)));
 
 export const NO_WALL_MSG = "No wall nearby: bring the cursor closer to a wall to place this fitting.";
 
 /**
- * THE WALL MAGNET, FOR EVERY PIECE OF FURNITURE. A piece of furniture is not a wall-mounted
- * opening (it keeps moving freely mid-room), but whenever a wall comes within reach OF ITS BACK it
- * snaps to it: back flush against the face, oriented with the wall, dos au mur. This is what every
- * comparable planner does, and it is what replaces the bounds, the tolerances and the 5 cm grid:
- * out of reach the piece is left exactly where the hand put it, wall or no wall.
- *
- * THE REACH IS MEASURED ON THE BACK, NOT ON THE CENTER, and that is the whole difference with the
- * radiator-only version this generalizes. A radiator is 12 cm deep, so its center is always within
- * a few centimeters of the wall it hugs; a 200 cm deep bed pushed flat against a wall has its
- * center a full metre away, so a reach read at the center could never catch it.
- *
- * PURE: reads the plan, returns where the piece SHOULD land (or null, out of reach), touches
- * nothing and knows nothing about pointers. `maxDist` is the SAME reach as an opening
- * (`wallSnapReach`, computed by the caller): one mechanism, not two. `sansAimant` (Alt held) is the
- * ONE escape hatch, and it is passed rather than read, like every other personal input here.
- *
- * The convention matches `v5OpeningBox` / `v5WallMountSide`: `rot = wall angle + 180·side`, so the
- * piece's local +y (its DEPTH axis, same rotation formula as `pieceCorners` in gestes/guides.ts)
- * points INTO the room, and its back edge (local −y) lands exactly on the wall's face,
- * `t/2 + h/2` from the centerline: neither buried in the wall nor floating off it. That local +y is
- * already the FRONT everywhere else in this app (a chair's seat faces its table, `snapChairToTable`
- * in gestes/contraintes.ts), so "the back goes to the wall" needs no per-type table: the catalogue
- * carries no face flag, and the one convention answers for a sofa, a bed and a plant alike.
+ * THE WALL MAGNET, FOR EVERY PIECE OF FURNITURE (G-7): whenever a wall comes within reach OF ITS
+ * BACK it snaps to it, back flush, oriented with the wall; out of reach it stays where the hand
+ * put it. The reach is measured on the BACK, not the center (a 200cm bed's center never gets
+ * close enough for a center-based reach). PURE: returns where the piece should land, or null;
+ * `maxDist` is the SAME reach as an opening; `sansAimant` (Alt held) is the one escape hatch.
+ * Convention matches `v5OpeningBox`/`v5WallMountSide`: `rot = wall angle + 180·side`, local +y is
+ * the FRONT everywhere in this app, so "the back goes to the wall" needs no per-type table.
  */
 export interface AimantMur {
   x: number;

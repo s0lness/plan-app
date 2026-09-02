@@ -1,21 +1,8 @@
-// src/ts/partage/contrat-serveur.ts: THE CLIENT/SERVER CONTRACT, WRITTEN ONCE.
-//
-// WHY THIS FILE EXISTS (docs/invariants.md, C-5, "the most fragile invariant in the repo"):
-// the validator in `live-worker/ops.ts` fixes the allowed keys and REJECTS the unknown. A
-// persisted field not declared on BOTH sides never crosses the network, with no visible error.
-// It happened twice: an opening's name and depth, then its side (packed as a
-// bitfield into the hinge for lack of an allowed key).
-//
-// THE DELIVERABLE MUST STAY SELF-CONTAINED: `build.ts` rejects any module that doesn't come from
-// `src/ts/`, so this file CANNOT import `live-worker/ops.ts`. The lists are therefore
-// copied here, and that is exactly the situation C-5 describes. The copy is acceptable only
-// because it is VERIFIED: `tests/rapide.ts` imports the Sets exported by `ops.ts` and
-// requires equality, set by set. Without that test, C-5 would not be closed, it would be
-// documented twice.
-//
-// On the server side the same values are `Set`s (runtime check); here they are `as const`
-// tuples (compile-time check). Both forms say the same thing; the test says
-// they say the same thing.
+// src/ts/partage/contrat-serveur.ts: THE CLIENT/SERVER CONTRACT, WRITTEN ONCE (C-5). The
+// deliverable must stay self-contained (`build.ts` rejects any module outside `src/ts/`), so this
+// file cannot import `live-worker/ops.ts`: the lists are copied here, verified by `tests/rapide.ts`
+// importing `ops.ts`'s Sets and requiring equality, set by set. Server side: `Set`s (runtime
+// check); here: `as const` tuples (compile-time check).
 
 // ---- key whitelists (ops.ts: PIECE_KEYS / WALL_KEYS / OPENING_KEYS / CELL_KEYS) ------------------
 // `hinge` and `swing` really are in a PIECE's whitelist, and that's not a typo:

@@ -1,9 +1,6 @@
-// src/ts/noyau/dom.ts: the four DOM gestures that all of rendering shares.
-// Ported from src/js/00-noyau.js (`$`, `cssId`, `setLabelSpin`) and from src/js/09-viewport-rail.js
-// (`SVGNS`, `COARSE`).
-//
-// None of this is a convenience utility: `cssId` and `setLabelSpin` each carry a
-// numbered invariant (R-8, R-1), and having them in ONE single copy is what holds them.
+// src/ts/noyau/dom.ts: the four DOM gestures that all of rendering shares. None of this is a
+// convenience utility: `cssId` and `setLabelSpin` each carry a numbered invariant (R-8, R-1), and
+// having them in ONE single copy is what holds them.
 
 /** SVG namespace. An `<svg>` created without it displays NOTHING, with no error. */
 export const SVGNS = "http://www.w3.org/2000/svg";
@@ -20,12 +17,8 @@ export function el(id: string): HTMLElement {
   return n;
 }
 
-/**
- * R-8. An entity identifier comes from the WIRE, from a JSON import or from an old plan: it never
- * goes RAW into a selector. A `"` or a `]` makes `querySelector` THROW, and the call is made
- * from `render()`, so the whole application goes down, not just the offending entity.
- * "The server bounds an id's character set today, but this is our last line of defense."
- */
+/** R-8: an entity identifier (wire, JSON import, old plan) never goes RAW into a selector. A `"`
+ * or `]` makes `querySelector` THROW from inside `render()`, taking down the whole application. */
 export function cssId(v: unknown): string {
   const s = String(v);
   try {
