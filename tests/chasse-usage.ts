@@ -152,24 +152,22 @@ const undoCount = async () => Number(await evaluate(`String(__plan.histInfo().un
 // =============================================================================
 //  1. mur_re_glisse_apres_selection_ne_le_supprime_pas
 // =============================================================================
-// The delete "x" of the SELECTED wall (painted by the handle pass of rendu/calque.ts) used to sit dead-center on
-// the wall's own segment. Selecting a wall by dragging it once, then reaching for the SAME spot
-// to nudge it again, hit the delete cross
-// instead, the wall vanished, silently (no toast: the layer's own early return hands the event to
-// `.v5wx` before the wall-drag gesture is ever armed).
+// The delete "x" of the SELECTED wall used to sit dead-center on the wall's own segment.
+// Selecting a wall by dragging it once, then reaching for the SAME spot to nudge it again, hit the
+// delete cross instead, and the wall vanished, silently. Since decision 0010 the cross lives in
+// the wall's sheet, so that spot belongs to the drag alone; this case keeps the round trip honest.
 await test("mur_re_glisse_apres_selection_ne_le_supprime_pas", async () => {
   const w = await J(`(function(){var x=__plan.plan.walls.filter(function(w){return !w.isOutline;})[0];
     return x?{id:String(x.id), a:x.a, b:x.b}:null;})()`);
   if (!ok(w, "aucune cloison intérieure dans le gabarit")) return;
   const n0 = await J(`__plan.plan.walls.length`);
 
-  // Reveal and select through the midpoint handle, then use that same dedicated target twice.
+  // A CLICK on the wall selects it, and only then does its move handle exist (decision 0010).
   const bande = await wallRect(w.id);
   if (!ok(bande, "centre du mur introuvable")) return;
-  await M("mouseMoved", bande.x, bande.y, { button: "none", buttons: 0 }); await pause(120);
-  let p0 = await moveRect(w.id);
-  if (!ok(p0, "poignée move introuvable")) return;
-  await click(p0); p0 = await moveRect(w.id);
+  await click(bande); await pause(120);
+  const p0 = await moveRect(w.id);
+  if (!ok(p0, "poignée move introuvable après la sélection")) return;
   await drag(p0, { x: p0.x + 30, y: p0.y + 30 }, 16);
   await pause(150);
   ok(await J(`__plan.plan.walls.length`) === n0, "le premier geste ne doit ni créer ni supprimer de mur");

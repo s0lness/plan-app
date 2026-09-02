@@ -234,6 +234,10 @@ await test("outil_arme_ne_deforme_aucun_mur", async () => {
     await pause(150);
     ok((await empreinte()) === avant,
       `outil armé : un simple clic en ${JSON.stringify(c)} a modifié le plan`);
+    // Un clic pose un DÉPART depuis la décision 0010: on referme la chaîne entre deux cibles, sinon
+    // le clic suivant fermerait un segment, ce que ce cas ne mesure pas.
+    await click(await centerOf("#btnDrawWall"));
+    await click(await centerOf("#btnDrawWall"));
   }
 });
 
@@ -255,7 +259,7 @@ await test("mur_supprime_se_retrace", async () => {
   // we retrace it EXACTLY at the same coordinates, with the mouse, tool armed
   await click(await centerOf("#btnDrawWall"));
   ok(await evaluate(`String(__plan.v5ui.draw)`) === "true", "l'outil de tracé ne s'arme pas");
-  await drag(await aptPoint(w.a[0], w.a[1]), await aptPoint(w.b[0], w.b[1]), 20);
+  await click(await aptPoint(w.a[0], w.a[1])); await click(await aptPoint(w.b[0], w.b[1]));
   await pause(300);
   // CE QUI COMPTE EST QUE LA CLOISON SOIT REVENUE, PAS LE COMPTE. Depuis qu'un T coupe la barre
   // qu'il touche, retracer une cloison entre deux murs peut aussi couper l'un d'eux, donc le total

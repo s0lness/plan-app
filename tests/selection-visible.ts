@@ -19,7 +19,7 @@
 //   une_ouverture_selectionnee_se_voit   the marker exists and overflows the box, even at 10 cm
 //   marquage_vif_pendant_le_geste        what is under the rectangle is marked before release
 //   rien_ne_s_ecrit_pendant_le_geste     neither selection nor saved plan, until release
-//   glisser_et_shift_glisser_sont_distincts  ordinary drag draws; Shift+drag selects
+//   glisser_et_shift_glisser_sont_distincts  a plain drag REPLACES the selection, Shift+drag ADDS
 //   shift_ctrl_lasso_montre_le_cumul     adding to an existing selection is visible during the gesture
 //   echap_rend_tout_a_l_etat_d_avant     Escape cancels instead of committing, no orphan marks
 //   la_selection_ne_reordonne_pas_la_pile  the paint rank does not move (recent fix)
@@ -154,7 +154,7 @@ const departVide = () => J(`(function(){
   for(var fy=0.05; fy<0.5; fy+=0.02) for(var fx=0.05; fx<0.5; fx+=0.02){
     var x=vr.left+fx*vr.width, y=vr.top+fy*vr.height;
     var t=document.elementFromPoint(x,y);
-    if(t && !t.closest(".piece") && !t.closest(".vtx,.mid,.edge,.v5wx") && !t.closest(".ov-name"))
+    if(t && !t.closest(".piece") && !t.closest(".vtx,.mid,.edge,.v5wend,.v5wmove") && !t.closest(".ov-name"))
       return {x:Math.round(x), y:Math.round(y)};
   }
   return null;})()`);
@@ -182,8 +182,8 @@ await test("glisser_et_shift_glisser_sont_distincts", async () => {
   await M("mouseReleased", B.x, B.y, { buttons: 0 }); await pause(220);
   const sansShift = await dump();
   const mursApres = await J(`__plan.plan.walls.filter(function(w){return !w.isOutline;}).length`);
-  ok(mursApres === mursAvant + 1, `un glisser sans Shift doit créer un mur, vu ${mursAvant} puis ${mursApres}`);
-  ok(sansShift.modele.length === 0, `un glisser sans Shift ne doit rien sélectionner, vu ${sansShift.modele.length} objet(s)`);
+  ok(mursApres === mursAvant, `un glisser sur le sol ne crée AUCUN mur (décision 0010), vu ${mursAvant} puis ${mursApres}`);
+  ok(sansShift.modele.length > 0, `un glisser sur le sol lassote, vu ${sansShift.modele.length} objet(s)`);
 
   await reload(); await preparer();
   A = await aptPoint(60, 60); B = await aptPoint(340, 280);
@@ -352,17 +352,16 @@ await test("shift_ctrl_lasso_montre_le_cumul", async () => {
   ok(apres.manquants.length === 0 && apres.enTrop.length === 0, "écran et modèle doivent coïncider après un Ctrl+lasso");
 
   // AND THE OTHER HALF OF THE RULE, which is what makes the first half mean anything: a lasso
-  // WITHOUT the cumulative modifier REPLACES the selection. This assertion used to be written on a
-  // lasso with no modifier at all; that gesture now draws a wall, so the rule is restated on its
-  // new base, Shift alone. Deleting it rather than restating it would have quietly dropped the
-  // guard that says the two modifiers do different things.
-  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0, modifiers: 8 });
-  await M("mousePressed", A.x, A.y, { modifiers: 8 });
-  await M("mouseMoved", A.x + 60, A.y + 50, { modifiers: 8 }); await pause(180);
-  await M("mouseReleased", A.x + 60, A.y + 50, { buttons: 0, modifiers: 8 }); await pause(200);
+  // WITHOUT a cumulative modifier REPLACES the selection. Since decision 0010 that gesture is the
+  // PLAIN drag again, and Shift joined Ctrl on the cumulative side, so the rule goes back to being
+  // stated on the unmodified lasso.
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
+  await M("mousePressed", A.x, A.y);
+  await M("mouseMoved", A.x + 60, A.y + 50); await pause(180);
+  await M("mouseReleased", A.x + 60, A.y + 50, { buttons: 0 }); await pause(200);
   const remplace = await dump();
   ok(!deja.every((id: string) => remplace.modele.indexOf(id) >= 0),
-    "Maj seul : un lasso REMPLACE la sélection, il ne l'ajoute pas");
+    "lasso nu : il REMPLACE la sélection, il ne l'ajoute pas");
 });
 
 // =============================================================================

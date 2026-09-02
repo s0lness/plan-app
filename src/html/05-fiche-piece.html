@@ -41,7 +41,13 @@
   <!-- "An exterior wall can't be deleted" is a NOTE, not a failed action: rendering it as a
        disabled red button made it read like an application error. -->
   <p class="rc-note" id="rcNote" hidden></p>
+  <!-- THE WALL'S ACTIONS LIVE HERE, not on the plan. They used to be discs floating beside the
+       wall, drawn on hover; a command on an object belongs in that object's sheet, next to its
+       fields. "Square up" only appears on a wall that is actually crooked: a button that appears
+       and then refuses teaches nothing. -->
   <div class="rc-actions">
+    <button class="btn sm" id="rcSplit" hidden>Split in two</button>
+    <button class="btn sm" id="rcSquare" hidden title="This wall is slightly off square">Square up</button>
     <button class="btn sm dgr" id="rcDel">Delete wall</button>
   </div>
 </div>

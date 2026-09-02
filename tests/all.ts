@@ -119,17 +119,11 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/partage-navigateur.ts",      chrome: 2 },   // the Share button in a real browser: household door, silent-return fix, local-only self-heal
   { f: "tests/retour-navigateur.ts",       chrome: 2 },   // the Feedback button in a real browser: both doors, server received it, text survives a failed send
   { f: "tests/interactions.ts",            chrome: 1 },
-  { f: "tests/mur-outil-geste.ts",         chrome: 1 },   // single-segment wall tool, real mouse+keyboard: stays armed across walls, endpoint snap shares the exact point, a drawn wall keeps its length, D-held guides on a wall write nothing
+  { f: "tests/outil-mur-geste.ts",        chrome: 1 },   // real mouse + keyboard: click-click chain, double-click and Escape, the floor lassoes, a selected wall carries three controls and its sheet the rest
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
-  { f: "tests/poignees-survol-geste.ts",    chrome: 1 }, // real mouse: wall handles on hover, dedicated move target, body draws, facade selects, short-wall crowding
-  { f: "tests/sans-mode-geste.ts",          chrome: 1 }, // real mouse and finger: one aim-based canvas with no persistent structural toggle
-  { f: "tests/bouts-de-mur-geste.ts",      chrome: 1 },   // real mouse: a wall's own endpoint handle is hittable and extends it, the wall body still drags the whole wall, a clean click writes nothing
-  { f: "tests/coude-mur-geste.ts",         chrome: 1 },   // real mouse: midpoint elbow handle, wall body remains reachable, clean click writes nothing
   { f: "tests/facade-glisse-geste.ts",     chrome: 1 },   // real mouse: a facade half SLIDES, the outline never bends, corner drags carry the whole straight run
   { f: "tests/facade-colle-geste.ts",      chrome: 1 },   // real mouse: a facade lands EXACTLY on the line of a parallel facade, the guide says so, Ctrl gives the ordinary positions back
   { f: "tests/avancee-suit-la-piece-geste.ts", chrome: 1 }, // real mouse: a recess stops on the room's own partition rather than on the facade's cut, the partition never moves, the neighbour's window stays put
-  { f: "tests/mur-droit-geste.ts",         chrome: 1 },   // real mouse: the square-up button exists ONLY on a crooked wall, straightens the real plan's w3/w7, spares a deliberate oblique, and nothing straightens itself
-  { f: "tests/facade-controles-geste.ts",  chrome: 1 },   // real mouse: a hovered facade offers its "+" and its weld link, never a cross nor endpoint handles, and the outline's own "+" stays reachable
   { f: "tests/sol-suit-la-main-geste.ts",  chrome: 1 },   // real mouse: the painted floor follows the hand during the drag instead of jumping on release, and a typed room name survives a room being swept away and reopened
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },

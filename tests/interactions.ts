@@ -237,7 +237,7 @@ await test("gesture_always_ends", async () => {
       var xs=c.poly.map(function(p){return p[0];}), ys=c.poly.map(function(p){return p[1];});
       return [Math.round((Math.min.apply(null,xs)+Math.max.apply(null,xs))/2), Math.round(Math.min.apply(null,ys)+30)];})()`);
     const a = await aptPoint(coord[0], coord[1]);
-    await drag(a, { x: a.x + 60, y: a.y });
+    await click(a); await click({ x: a.x + 60, y: a.y });
     const g = await gestureState();
     ok(!g.active && !g.armed, "tracer un mur : geste encore ouvert " + JSON.stringify(g));
   }
@@ -422,7 +422,7 @@ await test("rail_chips_follow_cells", async () => {
     var y=Math.round((Math.min.apply(null,ys)+Math.max.apply(null,ys))/2);
     return {x0:Math.round(Math.min.apply(null,xs)), x1:Math.round(Math.max.apply(null,xs)), y:y};})()`);
   const a = await aptPoint(seg.x0, seg.y), b = await aptPoint(seg.x1, seg.y);
-  await drag(a, b, 12);
+  await click(a); await click(b);
   const grown = await railMatchesModel("après avoir tracé une cloison");
   ok(grown.cells === start.cells + 1, `la cloison doit créer une cellule (${start.cells} -> ${grown.cells})`);
 

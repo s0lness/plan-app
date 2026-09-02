@@ -788,11 +788,11 @@ messages are gone with the bounding they explained. The invariant still holds fo
 CAN be refused (an opening on a wall too short, a facade that cannot be deleted).
 
 ### G-14. An armed tool wins, during the capture phase, over all handles
-**Prevents** a partition trace started **on** a wall (exactly what the tooltip asks for,
-"drag from one wall to another") never reached `v5StartDraw`:
+**Prevents** a wall drawn starting **on** a facade never reached the wall tool:
 **the user dragged the outline wall across the apartment, 15 m² reduced to a 20 cm strip,
 without a word.**
-**Where** `js/53:503`, arbitration at **capture** time. Also applies to Measure and pan:
+**Where** `gestes/murs.ts`, `v5CaptureDown`, arbitration at **capture** time, with no exception
+since decision 0010 left a wall no button of its own. Also applies to Measure and pan:
 "underneath them, a handle must absolutely not trigger a deletion or an insertion under the
 cursor."
 **Verified** `gestes-perte-de-travail.ts`: `tracer_gagne_sur_les_poignees`.

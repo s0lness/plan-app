@@ -24,9 +24,9 @@ import { startPieceResize } from "./redimension.ts";
 import { rotatePieceWithChairs } from "./guides.ts";
 import { v5StartOpeningDrag } from "./ouverture.ts";
 import {
-  v5DeleteSelectedWall, v5DeleteVertex, v5SelectCell, v5SelectWall, v5StartInsertHandle,
+  v5DeleteVertex, v5SelectCell, v5StartInsertHandle,
   v5StartOutlineEdgeDrag, v5StartVertexDrag, v5SelectOutlineEdge, v5LayerDown,
-  v5MergeWallAt, v5RedresserMurAt, v5SplitWallAtMid, v5StartWallEndDrag, v5StartWallMove,
+  v5StartWallEndDrag, v5StartWallMove,
 } from "./murs.ts";
 import { measureMode } from "./etat-pointeur.ts";
 import { fitCell } from "../rendu/vue.ts";
@@ -145,19 +145,6 @@ export function brancherGestes(ctx: Contexte): void {
     if (measureMode()) return;
     e.preventDefault(); e.stopPropagation(); v5DeleteVertex(ctx, i);
   };
-  // THE CROSS DELETES THE WALL IT BELONGS TO, not "the selected one". It used to call
-  // `v5DeleteSelectedWall` with nothing else, which worked back when handles only ever appeared on
-  // a SELECTED wall. Since they appear on HOVER, pressing the cross of a wall you have not clicked
-  // deleted nothing at all, in silence. Reported from real use as "the x does not work". Selecting
-  // first also keeps the refusal path intact: a facade still says why it cannot be deleted.
-  ctx.gestes.supprimerMurSelectionne = (e, id) => {
-    e.preventDefault(); e.stopPropagation();
-    if (id) v5SelectWall(ctx, id);
-    v5DeleteSelectedWall(ctx);
-  };
   ctx.gestes.boutMurPointerDown = (e, id, bout) => v5StartWallEndDrag(ctx, e, id, bout);
-  ctx.gestes.coudeMurPointerDown = (e, id) => v5SplitWallAtMid(ctx, e, id);
-  ctx.gestes.fusionnerMurPointerDown = (e, id, bout) => v5MergeWallAt(ctx, e, id, bout);
-  ctx.gestes.redresserMurPointerDown = (e, id) => v5RedresserMurAt(ctx, e, id);
   ctx.gestes.deplacerMurPointerDown = (e, id) => v5StartWallMove(ctx, e, id);
 }

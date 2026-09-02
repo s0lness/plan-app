@@ -44,13 +44,11 @@ import {
   v5ClampPieces,
   v5FlushOpeningsBorned,
   v5SnapPoint,
-  v5SnapVertex,
   v5SnapWallEnd,
   v5SyncOutlineWalls,
   v5ThroughWall,
   v5WallMergeAt,
   v5CouperContour,
-  v5SommetPlatDeFacade,
   v5IndexAreteContour,
   v5MurDeTravers,
   v5MurTraverse,
@@ -74,6 +72,10 @@ import { numField } from "../noyau/champ-numerique.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { armGesture, beginGesture, endGesture } from "./sortie.ts";
 import { measureMode, sansGrille, spaceHeld } from "./etat-pointeur.ts";
+// THE WALL TOOL'S GRAMMAR, pure and testable without a browser: what a click MEANS in a chain.
+// Where the point lands (the magnets) stays here, because that needs the plan.
+import type { OutilMur } from "./outil-mur.ts";
+import { outilMurALongueur, outilMurFin, outilMurNeuf, outilMurPoint } from "./outil-mur.ts";
 // SYMBOLS EXPECTED FROM A MODULE THAT HAS NO AUTHOR YET (src/js/15-edition-murs.js):
 // the outline's orthogonal snap, its guides, and the "walls cross" alert. Outline editing
 // can't do without them (`v5StartVertexDrag` and `v5AfterGeometry` call them), and js/15
@@ -855,81 +857,22 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
 }
 
 // =================================================================================================
-//  TOOL 1-TER: THE "+" SPLITS THE WALL AT ITS MIDPOINT, ON A CLICK
+//  THE SELECTED WALL'S SHEET ACTIONS: SPLIT, SQUARE UP
 // =================================================================================================
-// It used to be a DRAG that split the wall and placed the new joint in one gesture. The owner asked
-// for the simpler shape and he is right: press the plus, the wall becomes two, and each half then
-// carries the SAME controls at ITS OWN midpoint. So the "+" acts on a click, exactly like the "x"
-// sitting on the other side of the wall, and the joint the two halves now share is a real ENDPOINT
-// that the end handles can grab and extend.
+// These two used to be discs floating beside the wall, drawn on HOVER. They are commands on an
+// object, so they belong where every other command of an object belongs: in its sheet, next to
+// "Delete wall" (decision 0010). What the wall itself carries is only what has to be DRAGGED, and
+// dragging is the one thing a sheet cannot do: its two ends and its move handle.
 //
 // A CLICK THAT ACTS IS NOT A CLICK THAT SLIPS. The repository's rule is that a press-release
-// without movement never writes ON THE GEOMETRY: clicking a wall, a corner or an outline edge must
-// only ever select. This control is not geometry, it is a button, like the delete cross that has
-// always removed a wall on a plain click. What the rule forbids is a gesture whose ordinary
-// meaning is "look at this" quietly rewriting the plan.
-//
-// AND BECAUSE THE SPLIT MOVES NOTHING, IT CHANGES NOTHING ELSE. The drag version had to turn both
-// halves into FREE partitions, since a joint dragged into open space would otherwise be stretched
-// straight back out by the through-running rule, and it had to announce that change. A split that
-// leaves every point exactly where it was needs neither: the halves keep whatever nature the wall
-// had. Moving the joint afterwards goes through the endpoint drag, which sets `free` itself.
+// without movement never writes ON THE GEOMETRY: clicking a wall, a corner or a facade must only
+// ever select. A sheet button is not geometry, and now it also sits outside the plan entirely, so
+// there is nothing left for it to slip onto.
 
-/**
- * THE "-" WELDS THIS WALL TO THE NEIGHBOUR MEETING THAT END. The owner's words: having partitioned
- * a wall, he wants to be able to put it back together when the pieces still continue one another.
- * A click, like the "+" that cut it and the "x" that removes it; the guard that decides whether the
- * control exists at all lives in the model (`v5WallMergeCandidate`), so the button is only ever
- * drawn where welding is legitimate.
- */
-export function v5MergeWallAt(ctx: Contexte, e: PointerEvent, wallId: unknown, bout: "a" | "b"): void {
+function v5RedresserMurSelectionne(ctx: Contexte): void {
   const P = ctx.etat.plan;
-  if (!P) return;
-  if (e.button !== undefined && e.button !== 0) return;
-  if (spaceHeld() || measureMode()) return;
-  e.preventDefault(); e.stopPropagation();
-  // RESSOUDER DEUX MOITIES DE FACADE, C'EST RETIRER LE SOMMET PLAT qui les separe, pas fusionner
-  // deux murs: une facade est RECALCULEE depuis le polygone, donc un mur fusionne serait defait au
-  // `v5SyncOutlineWalls` suivant. `v5DeleteVertex` fait le reste (historique, geometrie, sauvegarde),
-  // et depuis ce lot il RELOGE les ouvertures de l'arete qui disparait au lieu de les detruire.
-  const mur = v5WallById(ctx, String(wallId));
-  if (mur && mur.isOutline) {
-    const sommet = v5SommetPlatDeFacade(P, String(wallId), bout);
-    if (sommet < 0) { toast("These two facades do not continue one another, or something else meets them here.", { geste: true }); return; }
-    v5DeleteVertex(ctx, sommet);
-    return;
-  }
-  pushHistory(ctx);
-  const r = v5WallMergeAt(P, String(wallId), bout);
-  if ("refus" in r) { toast(r.refus, { geste: true }); return; }
-  v5SelectWall(ctx, r.id);
-  v5ResoudreGeometrie(P, true);
-  bornerLesMeubles(ctx);
-  v5Touch(ctx);
-  render(ctx);
-  save(ctx);
-}
-
-/**
- * L'ÉQUERRE REDRESSE CE MUR-LÀ, AU CLIC, ET LE DIT.
- *
- * Demande du propriétaire: « the vertical wall on the right is slightly off, i want a way to make
- * it perpendicular », « automatiquement », « it should snap ». Le pourquoi du bouton plutôt que
- * d'un aimant, et les trois seuils qui décident de son existence, sont dans `v5MurDeTravers`
- * (`modele/edition.ts`), avec les chiffres mesurés sur son plan.
- *
- * RIEN NE SE REDRESSE EN SILENCE, ET RIEN NE SE REDRESSE EN MASSE. C'est une CONSÉQUENCE d'un
- * geste délibéré sur CE mur, jamais une passe au chargement ni dans `v5ThroughWall`: la règle
- * « pas de renormalisation de masse » d'AGENTS.md est née d'un clic qui réécrivait le plan. Et
- * comme le mur bouge sous la main, le message le dit avec ses deux chiffres, l'écart corrigé et le
- * déplacement, sinon un déplacement d'1 cm est indistinguable d'un clic qui n'a rien fait.
- */
-export function v5RedresserMurAt(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
-  const P = ctx.etat.plan;
-  if (!P) return;
-  if (e.button !== undefined && e.button !== 0) return;
-  if (spaceHeld() || measureMode()) return;
-  e.preventDefault(); e.stopPropagation();
+  const wallId = ctx.ihm.selWall;
+  if (!P || !wallId) return;
   const r = v5MurDeTravers(P, String(wallId));
   // Le bouton n'existe que là où le redressement est légitime, donc ce refus n'est pas une porte
   // fermée à l'usage: c'est la garde du chemin, pour un identifiant périmé d'une image à l'autre.
@@ -963,12 +906,11 @@ export function v5RedresserMurAt(ctx: Contexte, e: PointerEvent, wallId: unknown
     { geste: true });
 }
 
-export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown): void {
+/** SPLIT: the selected wall becomes two halves meeting at its midpoint. */
+function v5CouperMurSelectionne(ctx: Contexte): void {
   const P = ctx.etat.plan;
-  if (!P) return;
-  if (e.button !== undefined && e.button !== 0) return;
-  if (spaceHeld() || measureMode()) return;
-  e.preventDefault(); e.stopPropagation();
+  const wallId = ctx.ihm.selWall;
+  if (!P || !wallId) return;
   // UNE FACADE SE COUPE AUSSI, ET PAS PAR LE MEME CHEMIN. Demande du proprietaire: « je peux resize
   // un mur de facade comme je veux, donc je devrais aussi pouvoir le couper ». Une facade n'est pas
   // stockee comme un mur, elle est RECALCULEE depuis le polygone du contour: la couper, c'est
@@ -1027,16 +969,36 @@ export function v5SplitWallAtMid(ctx: Contexte, e: PointerEvent, wallId: unknown
 }
 
 // =================================================================================================
-//  TOOL 2: DRAWING A WALL
+//  TOOL 2: THE WALL TOOL, CLICK BY CLICK
 // =================================================================================================
+// THE WALL IS A TOOL AGAIN, AND THE FLOOR IS A LASSO AGAIN (decision 0010). Dragging over empty
+// space used to draw: that is what every comparable planner does NOT do, and it is what forced
+// seven pull requests of 32 px boxes, hover buttons and rules to keep them from stealing each
+// other's click. The button arms the tool (W), a click lays the start, a click lays the arrival
+// AND starts the next segment, a double-click / Enter / Escape ends the chain.
+//
+// The chain's GRAMMAR is pure and lives in `gestes/outil-mur.ts`, tested without a browser. What
+// stays here is what needs the plan and the DOM: where a point LANDS (the magnets), the live
+// length next to the pointer, and the wall's creation.
+
+/** The chain being drawn. One tool, one chain; `v5SetDraw` resets it in BOTH directions. */
+let chaine: OutilMur = outilMurNeuf();
+/** Digits typed during the trace: they set the segment's length on Enter. */
+let saisieLongueur = "";
+/** Where the pointer last aimed, in apartment cm: the DIRECTION a typed length uses. */
+let visee: Pt | null = null;
+
+/** Is a chain open (a start laid, its arrival still in the air)? Read by the keyboard. */
+const traceEnCours = (): boolean => chaine.depart !== null;
 
 /**
- * Arms (or disarms) THE draw tool: one tool, one button, one flag. It used to pick between two
- * tools through a `libre` parameter (the freehand trace, a stroke becoming a chain of walls),
- * removed on the owner's request; nothing selects a variant anymore.
+ * Arms (or disarms) THE wall tool: one tool, one button, one flag. Disarming also drops whatever
+ * chain was open, so re-arming never resumes a run somebody left behind.
  */
 export function v5SetDraw(ctx: Contexte, on: boolean): void {
   ctx.ihm.draw = !!on;
+  chaine = outilMurNeuf(); saisieLongueur = ""; visee = null;
+  v5ClearDraft(ctx); v5ClearDims(ctx); cacherLongueur();
   const bSeg = $("btnDrawWall");
   if (bSeg) {
     bSeg.classList.toggle("pri", ctx.ihm.draw);
@@ -1105,69 +1067,130 @@ export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | 
   return w;
 }
 
-export function v5StartDraw(ctx: Contexte, e: PointerEvent, onNoDraw?: (() => void) | null): void {
+/** The live length, next to the pointer, in the SAME readout the resize gesture already uses. */
+function cacherLongueur(): void {
+  const r = $("rszReadout");
+  if (r) { r.hidden = true; r.removeAttribute("style"); r.hidden = true; }
+}
+
+function montrerLongueur(ctx: Contexte, clientX: number, clientY: number, L: number): void {
+  const r = $("rszReadout");
+  if (!r) return;
+  const vr = ctx.viewport.getBoundingClientRect();
+  r.hidden = false;
+  r.style.left = (clientX - vr.left) + "px";
+  r.style.top = (clientY - vr.top) + "px";
+  // `saisieLongueur` only ever holds digits (the keyboard filters them in), so there is nothing
+  // here that could carry markup.
+  r.innerHTML = saisieLongueur
+    ? '<span class="axon">' + saisieLongueur + '</span> cm <span class="cap">⏎</span>'
+    : String(Math.round(L)) + " cm";
+}
+
+/**
+ * WHERE THE POINT LANDS. The magnets are ON by default and there is ONE key to cut them:
+ *   . `Alt` held cuts EVERY magnet for as long as it is held (the point follows the pointer);
+ *   . otherwise a junction wins: another wall's endpoint, an outline corner, or a point on a
+ *     wall's own face within reach (`v5SnapWallEnd`, through `v5WallEndDrop`);
+ *   . otherwise the direction is quantised to 45° from the chain's start, so 0/90 and the
+ *     diagonals come out exact;
+ *   . `Shift` narrows that to the two AXES, which is what "force the axis" has always meant here.
+ * The very first point of a chain has no direction yet: it only snaps (`v5SnapPoint`).
+ */
+function pointVise(ctx: Contexte, P: PlanV5, e: { altKey?: boolean; shiftKey?: boolean }, cm: { x: number; y: number }): Pt {
+  const pas = ctx.etat.opts.snap ? 5 : 1;
+  if (e.altKey) return [Math.round(cm.x / pas) * pas, Math.round(cm.y / pas) * pas];
+  const depart = chaine.depart;
+  if (!depart) return v5SnapPoint(P, cm.x, cm.y, ctx.vue.scale, !!ctx.etat.opts.snap);
+  if (e.shiftKey) {
+    const dx = cm.x - depart[0], dy = cm.y - depart[1];
+    return Math.abs(dx) >= Math.abs(dy)
+      ? [v5R2(depart[0] + Math.round(dx / pas) * pas), depart[1]]
+      : [depart[0], v5R2(depart[1] + Math.round(dy / pas) * pas)];
+  }
+  return v5WallEndDrop(P, null, depart, cm.x, cm.y, ctx.vue.scale, false, pas);
+}
+
+/** A segment shorter than this is a click landing on its own start, not a wall. */
+const TRACE_MIN = 20;
+
+/**
+ * A PRESS WITH THE TOOL ARMED. The first one lays the start; each one after it closes a segment
+ * and immediately reopens the chain there, so a room is drawn without letting go.
+ *
+ * A press that lands back on the start (under `TRACE_MIN`) is a NO-OP, silently: that is exactly
+ * the second half of a double-click, the gesture that ends a chain, and refusing it out loud would
+ * make every finished run end with a complaint.
+ */
+function v5OutilMurAppui(ctx: Contexte, e: PointerEvent): void {
   const P = ctx.etat.plan;
   if (!P) return;
   if (e.button !== undefined && e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
-  const A = evtApt(ctx, e);                          // pure APARTMENT space
-  // `Alt` = FREE drawing: no imposed right angle, NOR snap. The snap reaches up to a wall
-  // thickness (12 cm): a stroke deliberately placed 2, 5 or 10 cm from an existing partition would
-  // therefore end up sticking onto it, the duplicate would be refused, and the gesture seemed to
-  // evaporate. The refusal is legitimate (two overlapping walls are invisible), but there needs to be
-  // an exit door AND a message that names it.
-  const snap = !!ctx.etat.opts.snap;
-  // START POINT: `v5SnapPoint` already checks vertices (outline corners, wall endpoints) BEFORE
-  // edges and the grid, so a stroke starting near an existing joint already lands exactly on it.
-  const a: Pt = e.altKey ? [v5R2(A.x), v5R2(A.y)] : v5SnapPoint(P, A.x, A.y, ctx.vue.scale, snap);
-  let draft: [Pt, Pt] | null = null, libre = !!e.altKey, brut: Pt | null = null;
-  const move = (ev: PointerEvent): void => {
-    const cm = evtApt(ctx, ev);
-    brut = [v5R2(cm.x), v5R2(cm.y)];
-    libre = !!ev.altKey;
-    let b: Pt;
-    if (ev.altKey) {
-      b = [v5R2(cm.x), v5R2(cm.y)];
-    } else {
-      // END POINT, TWO ROOMS CLOSING ON ONE ANOTHER: an existing joint (outline corner or wall
-      // endpoint) wins over the orthogonal constraint below. `v5SnapVertex` is the SAME vertex
-      // check `v5SnapPoint` already runs first (reused, not a second notion of snapping); when it
-      // finds one within reach (tolerance: one wall thickness, capped between 8 cm and 12 cm,
-      // shrinking with zoom, `v5SnapPoint`'s own header) the two walls share that EXACT point,
-      // rather than merely the same axis as it. Only the fallback (grid/edge) below still folds
-      // onto the orthogonal line, exactly as before.
-      const vtx = v5SnapVertex(P, cm.x, cm.y, ctx.vue.scale);
-      if (vtx) {
-        b = vtx;
-      } else {
-        b = v5SnapPoint(P, cm.x, cm.y, ctx.vue.scale, snap);
-        if (Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1])) b = [b[0], a[1]]; else b = [a[0], b[1]];
-      }
-    }
-    draft = [a, b];
-    v5DrawDraft(ctx, draft);
-    v5DrawWallDims(ctx, [{ a: draft[0], b: draft[1] }]);
-  };
-  const up = (): void => {
-    window.removeEventListener("pointermove", move);
-    v5ClearDraft(ctx); v5ClearDims(ctx);
-    // THE TOOL STAYS ARMED (owner's #1 complaint: drawing a room meant re-clicking "Draw a wall"
-    // between every single segment). Disarming now happens only where it is a DELIBERATE act: the
-    // button again (toggles off, `brancherOutilsMurs`) or Escape while no gesture is running
-    // (`gestes/clavier.ts`). The toolbar button's `.pri` class and `aria-pressed`
-    // (`v5SetDraw`) already track the armed state continuously, so staying armed stays VISIBLE.
-    const d = draft;
-    if (!d || Math.hypot(d[1][0] - d[0][0], d[1][1] - d[0][1]) < 20) {
-      onNoDraw?.();
-      render(ctx);
-      return;
-    }
-    v5TryCreateWall(ctx, d[0], d[1], { libre, brut });
-  };
-  // G-12. Escape: the drawing in progress is abandoned, no wall is created.
-  const cancel = (): void => { draft = null; };
-  window.addEventListener("pointermove", move);
-  armGesture(up, null, cancel);
+  if (e.detail >= 2) return;                     // belongs to the double-click that ends the chain
+  const cm = evtApt(ctx, e);
+  const p = pointVise(ctx, P, e, cm);
+  visee = p;
+  const depart = chaine.depart;
+  if (depart && Math.hypot(p[0] - depart[0], p[1] - depart[1]) < TRACE_MIN) return;
+  const r = outilMurPoint(chaine, p);
+  chaine = r.etat;
+  saisieLongueur = "";
+  if (r.segment) v5TryCreateWall(ctx, r.segment[0], r.segment[1], { libre: !!e.altKey, brut: [v5R2(cm.x), v5R2(cm.y)] });
+  v5ClearDraft(ctx); v5ClearDims(ctx); cacherLongueur();
+}
+
+/** The pointer moving with a chain open: the segment follows, and says how long it is. */
+function v5OutilMurSuivi(ctx: Contexte, e: PointerEvent): void {
+  const P = ctx.etat.plan;
+  const depart = chaine.depart;
+  if (!P || !depart) return;
+  const cm = evtApt(ctx, e);
+  visee = pointVise(ctx, P, e, cm);
+  const b = saisieLongueur ? (outilMurALongueur(depart, visee, Number(saisieLongueur)) || visee) : visee;
+  v5DrawDraft(ctx, [depart, b]);
+  v5DrawWallDims(ctx, [{ a: depart, b }]);
+  montrerLongueur(ctx, e.clientX, e.clientY, Math.hypot(b[0] - depart[0], b[1] - depart[1]));
+}
+
+/**
+ * END OF A CHAIN: double-click, Enter, or Escape. The tool STAYS armed so several runs can be
+ * drawn one after another; Escape on a chain that holds nothing is what puts it away, and it says
+ * so (G-13: a gesture that produces nothing says why).
+ */
+function v5OutilMurFin(ctx: Contexte): void {
+  const r = outilMurFin(chaine);
+  chaine = r.etat; saisieLongueur = ""; visee = null;
+  v5ClearDraft(ctx); v5ClearDims(ctx); cacherLongueur();
+  if (r.quitter) {
+    v5SetDraw(ctx, false);
+    toast("Wall tool off.", { geste: true });
+  }
+  render(ctx);
+}
+
+/**
+ * THE KEYBOARD WHILE THE TOOL IS ARMED. Digits then Enter place the point at that exact length in
+ * the direction currently aimed at, the SAME grammar the resize readout already uses (type, then
+ * Enter); Enter on an empty buffer ends the chain, like a double-click. Returns true when the key
+ * was consumed, so the general keyboard leaves it alone.
+ */
+export function v5OutilMurTouche(ctx: Contexte, e: KeyboardEvent): boolean {
+  if (!ctx.ihm.draw) return false;
+  if (e.key >= "0" && e.key <= "9" && chaine.depart) { saisieLongueur = (saisieLongueur + e.key).slice(0, 4); return true; }
+  if (e.key === "Backspace" && saisieLongueur) { saisieLongueur = saisieLongueur.slice(0, -1); return true; }
+  if (e.key === "Escape") { v5OutilMurFin(ctx); return true; }
+  if (e.key !== "Enter") return false;
+  const depart = chaine.depart;
+  const L = Number(saisieLongueur);
+  const p = (depart && visee && saisieLongueur) ? outilMurALongueur(depart, visee, L) : null;
+  if (!p || !depart) { v5OutilMurFin(ctx); return true; }
+  const pt: Pt = [v5R2(p[0]), v5R2(p[1])];
+  chaine = outilMurPoint(chaine, pt).etat;
+  saisieLongueur = "";
+  v5TryCreateWall(ctx, depart, pt, null);
+  v5ClearDraft(ctx); v5ClearDims(ctx);
+  return true;
 }
 
 // =================================================================================================
@@ -1646,13 +1669,14 @@ export function v5DeleteVertex(ctx: Contexte, i: number): void {
 // =================================================================================================
 //  TOOL PRIORITY, DURING THE CAPTURE PHASE (G-14)
 // =================================================================================================
-// The outline's handles (outline wall, vertex, "+", delete cross) listen to `pointerdown` on
-// themselves and cut the propagation. A partition drawing started ON a wall (which is what
-// the tooltip asks for, "drag from one wall to another") therefore never reached `v5StartDraw`:
-// the user would drag the OUTLINE WALL across the apartment, 15 m² reduced to a 20 cm strip,
-// without a word. We settle it UPSTREAM, in capture: an ARMED tool wins over all handles.
+// The outline's handles (facade band, vertex, "+", corner cross) listen to `pointerdown` on
+// themselves and cut the propagation. A wall drawn starting ON a facade would therefore never
+// reach the tool: the user would drag the FACADE across the apartment, 15 m² reduced to a 20 cm
+// strip, without a word. We settle it UPSTREAM, in capture: AN ARMED TOOL WINS OVER ALL HANDLES,
+// with no exception, which is what makes the rule sayable in one line now that a wall carries no
+// button of its own.
 
-export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
+function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
   if (!v5On(ctx)) return;
   if (e.button !== undefined && e.button !== 0) return;
   const t = e.target as Element | null;
@@ -1660,33 +1684,12 @@ export function v5CaptureDown(ctx: Contexte, e: PointerEvent): void {
   if (measureMode() || spaceHeld()) {
     // Measuring / panning are ALSO armed tools: under them, a handle must especially
     // not trigger a deletion or an insertion under the cursor.
-    if (t.closest(".v5wx") || (spaceHeld() && t.closest(".mid,.vx"))) e.stopPropagation();
+    if (spaceHeld() && t.closest(".mid,.vx")) e.stopPropagation();
     return;
   }
-  // An ARMED tool wins over ALL the outline's handles (outline wall band, vertex, "+", cross).
-  // The old version only diverted the "+": a drawing started on the outline wall band
-  // still reached v5StartOutlineEdgeDrag, and a simple click there triggered a
-  // v5AfterGeometry(true) that lengthened a partition three meters away from there.
   if (ctx.ihm.draw) {
-    // MAIS LES BOUTONS D'UN MUR RESTENT DES BOUTONS, OUTIL ARMÉ OU NON. La règle ci-dessus vise ce
-    // qu'on TIRE : la bande d'une façade, un sommet, le bout d'un mur, le disque de déplacement.
-    // Tirer l'un de ces quatre pendant qu'on trace, c'est le geste raté qu'elle existe pour
-    // empêcher. Elle emportait au passage les trois contrôles qui AGISSENT AU CLIC sur une cloison :
-    // le « + » qui coupe, la croix qui supprime, le maillon qui ressoude. Signalé à l'usage :
-    // « quand je suis en mode Draw a wall je ne peux cliquer ni + ni x ». Ils sont posés à 18 px À
-    // CÔTÉ du mur et n'acceptent qu'un appui : rien de ce qu'on trace ne passe par là.
-    //
-    // LES DEUX POIGNÉES DU CONTOUR, ELLES, RESTENT SOUS LA RÈGLE. Le « + » d'insertion de coin
-    // (`.mid`) et la croix de suppression de coin (`.vx`) ne coupent pas un mur, elles changent la
-    // FORME DU LOGEMENT, et un tracé part très souvent d'une façade, donc de leur voisinage
-    // immédiat. Deux suites énoncent ce contrat et l'ont attrapé quand je les avais exemptées :
-    // `tracer_gagne_sur_les_poignees` (un tracé démarré sur le « + » d'une façade doit tracer) et
-    // `outil_arme_ne_deforme_aucun_mur` (outil armé, un clic sur `.edge`, `.mid` ou `.vtx` ne
-    // modifie rien). Elles gardent raison : ce n'est pas le même bouton ni le même risque.
-    if (t.closest(".v5wx,.v5wmid,.v5wjoin,.v5wdroit")) return;
     e.stopPropagation();
-    v5StartDraw(ctx, e);
-    return;
+    v5OutilMurAppui(ctx, e);
   }
 }
 
@@ -1698,16 +1701,13 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
   if (!v5On(ctx) || measureMode() || spaceHeld()) return;
   if (e.button !== undefined && e.button !== 0) return;
   const t = e.target as Element | null;
-  if (ctx.ihm.draw) {
-    // Même exception qu'en capture : les cinq contrôles qui agissent au clic gardent leur clic.
-    if (t?.closest?.(".v5wx,.v5wmid,.v5wjoin")) return;
-    v5StartDraw(ctx, e);
-    return;
-  }
-  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wx,.v5wend,.v5wmid,.v5wmove,.v5wdroit")) return;
+  if (ctx.ihm.draw) { v5OutilMurAppui(ctx, e); return; }
+  if (t && t.closest && t.closest(".piece,.vtx,.mid,.edge,.v5wend,.v5wmove")) return;
   const cellEl = (t && t.closest) ? t.closest<HTMLElement>("[data-c]") : null;
   if (cellEl) { e.stopPropagation(); v5SelectCell(ctx, cellEl.dataset["c"], true); return; }
 }
+
+
 
 // =================================================================================================
 //  THE WIRING
@@ -1725,14 +1725,29 @@ export function v5LayerDown(ctx: Contexte, e: PointerEvent): void {
 export function brancherOutilsMurs(ctx: Contexte): void {
   // G-14. IN CAPTURE, on the canvas: an armed tool passes BEFORE all handles.
   ctx.canvas.addEventListener("pointerdown", (e) => v5CaptureDown(ctx, e as PointerEvent), true);
+  // THE SEGMENT FOLLOWS THE POINTER while a chain is open. One listener for the life of the app,
+  // gated on the tool: a click-click tool has no `pointerup` to hang a teardown on, so adding and
+  // removing a listener per segment would be one more thing to get wrong.
+  ctx.viewport.addEventListener("pointermove", (e) => {
+    if (ctx.ihm.draw && traceEnCours()) v5OutilMurSuivi(ctx, e as PointerEvent);
+  }, { passive: true });
+  // A DOUBLE-CLICK ENDS THE CHAIN, in capture so it never reaches the rename path underneath.
+  ctx.canvas.addEventListener("dblclick", (e) => {
+    if (!ctx.ihm.draw) return;
+    e.preventDefault(); e.stopPropagation();
+    v5OutilMurFin(ctx);
+  }, true);
   const b = $("btnDrawWall");
   if (b) b.addEventListener("click", () => {
     v5SetDraw(ctx, !ctx.ihm.draw);
     render(ctx);
   });
-  // "Delete wall" from the cell card. The REST of the card (name, flooring) belongs to the
-  // panels batch; this particular button triggers a geometry GESTURE, so it is wired here.
+  // THE WALL SHEET'S THREE ACTIONS. Split, square up and delete used to be buttons floating over
+  // the wall itself, appearing on hover; they are ordinary commands on the selected object, so
+  // they live where every other command of an object lives, in its sheet.
   $("rcDel")?.addEventListener("click", () => v5DeleteSelectedWall(ctx));
+  $("rcSplit")?.addEventListener("click", () => v5CouperMurSelectionne(ctx));
+  $("rcSquare")?.addEventListener("click", () => v5RedresserMurSelectionne(ctx));
 
   // EXACT LENGTH OF A PARTITION. We stretch the FREE end, not both: the other end is
   // almost always a junction with a neighboring wall, and moving it would break the room next door.

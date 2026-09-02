@@ -893,7 +893,7 @@ function v5SnapTol(echelle: number): number {
  * ask the same question `v5SnapPoint` already answers first, without a second notion of snapping.
  * Returns null outside `tol` cm (see `v5SnapTol`).
  */
-export function v5SnapVertex(P: PlanV5 | null | undefined, x: number, y: number, echelle: number): Pt | null {
+function v5SnapVertex(P: PlanV5 | null | undefined, x: number, y: number, echelle: number): Pt | null {
   if (!P) return null;
   const tol = v5SnapTol(echelle);
   let best: Pt | null = null, bd = tol;
