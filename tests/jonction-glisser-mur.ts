@@ -118,9 +118,9 @@ function ecartAngle(a: number, b: number): number {
 // The owner's exact shape: three hand-drawn walls, corner to corner, carving the 400x300
 // apartment into two rooms (wB is the shared middle segment).
 const troisMurs = (): Mur[] => [
-  { id: "wA", a: [200, 0], b: [200, 150], t: 12, isOutline: false, free: 1 },
-  { id: "wB", a: [200, 150], b: [300, 150], t: 12, isOutline: false, free: 1 },
-  { id: "wC", a: [300, 150], b: [300, 300], t: 12, isOutline: false, free: 1 },
+  { id: "wA", a: [200, 0], b: [200, 150], t: 12, isOutline: false },
+  { id: "wB", a: [200, 150], b: [300, 150], t: 12, isOutline: false },
+  { id: "wC", a: [300, 150], b: [300, 300], t: 12, isOutline: false },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -153,8 +153,8 @@ test("voisins_qui_se_tiennent_ne_bougent_pas", (a: DonneeDynamique) => {
   // (200,150) and touch EACH OTHER there too: once wB leaves, all three are still held by one
   // another (rule 2), so NONE of them moves, at any angle, not wA (perpendicular), not wX
   // (collinear), not wY (perpendicular the other way). Only wB moves.
-  const wX: Mur = { id: "wX", a: [100, 150], b: [200, 150], t: 12, isOutline: false, free: 1 };
-  const wY: Mur = { id: "wY", a: [200, 150], b: [200, 250], t: 12, isOutline: false, free: 1 };
+  const wX: Mur = { id: "wX", a: [100, 150], b: [200, 150], t: 12, isOutline: false };
+  const wY: Mur = { id: "wY", a: [200, 150], b: [200, 250], t: 12, isOutline: false };
   const P = plan([...troisMurs(), wX, wY]);
   const wAAvant = JSON.stringify([mur(P, "wA").a, mur(P, "wA").b]);
   const wXAvant = JSON.stringify([mur(P, "wX").a, mur(P, "wX").b]);
@@ -179,8 +179,8 @@ test("voisin_perpendiculaire_change_de_longueur_pas_d_angle", (a: DonneeDynamiqu
   // being pushed sideways, so the vector carried to the touching point was, by construction,
   // already along wB's own line even under the old fraction carry. Kept as a non-regression guard,
   // three separate assertions so a future break says which one broke.
-  const wA: Mur = { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false, free: 1 };
-  const wB: Mur = { id: "wB", a: [100, 250], b: [300, 250], t: 12, isOutline: false, free: 1 };
+  const wA: Mur = { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false };
+  const wB: Mur = { id: "wB", a: [100, 250], b: [300, 250], t: 12, isOutline: false };
   const P = plan([wA, wB]);
   const ctx = ctxDe(P);
   const g = v5WallDragCtx(ctx, "wA")!;
@@ -201,8 +201,8 @@ test("voisin_oblique_garde_son_angle", (a: DonneeDynamique) => {
   // touching point by the dragged wall's own translation vector, along neither wC's line nor
   // anything close to it once the angle is neither 0° nor 90°. GREEN after: wC's own line meets
   // wA's new line by intersection, so it keeps its 45° and only its length changes.
-  const wA: Mur = { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false, free: 1 };
-  const wC: Mur = { id: "wC", a: [200, 150], b: [300, 250], t: 12, isOutline: false, free: 1 };
+  const wA: Mur = { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false };
+  const wC: Mur = { id: "wC", a: [200, 150], b: [300, 250], t: 12, isOutline: false };
   const P = plan([wA, wC]);
   const ctx = ctxDe(P);
   const g = v5WallDragCtx(ctx, "wA")!;
@@ -220,8 +220,8 @@ test("voisin_colineaire_dans_le_vide_se_detache", (a: DonneeDynamique) => {
   // straight line, and its far end touches nothing (in the void, the negative of the previous
   // test's "held" case). Two near-parallel lines have no usable intersection, and nothing else
   // holds wZ, so it does not move AT ALL: it detaches from wA rather than stretch into a diagonal.
-  const wA: Mur = { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false, free: 1 };
-  const wZ: Mur = { id: "wZ", a: [300, 250], b: [300, 290], t: 12, isOutline: false, free: 1 };
+  const wA: Mur = { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false };
+  const wZ: Mur = { id: "wZ", a: [300, 250], b: [300, 290], t: 12, isOutline: false };
   const P = plan([wA, wZ]);
   const wZAvant = JSON.stringify([mur(P, "wZ").a, mur(P, "wZ").b]);
   const ctx = ctxDe(P);
@@ -243,9 +243,9 @@ test("trois_murs_au_meme_point_rien_ne_bascule_rien_ne_bouge", (a: DonneeDynamiq
   // GREEN with both rules: wHoriz and wBas hold EACH OTHER at (300,150) (each is "tenu" by the
   // other, rule 2), so neither one is in the void, so neither one moves; wHaut simply comes to
   // rest on wHoriz's FLANK, further left. Nothing tears, nothing tilts.
-  const wHaut: Mur = { id: "wHaut", a: [300, 50], b: [300, 150], t: 12, isOutline: false, free: 1 };
-  const wHoriz: Mur = { id: "wHoriz", a: [100, 150], b: [300, 150], t: 12, isOutline: false, free: 1 };
-  const wBas: Mur = { id: "wBas", a: [300, 150], b: [300, 300], t: 12, isOutline: false, free: 1 };
+  const wHaut: Mur = { id: "wHaut", a: [300, 50], b: [300, 150], t: 12, isOutline: false };
+  const wHoriz: Mur = { id: "wHoriz", a: [100, 150], b: [300, 150], t: 12, isOutline: false };
+  const wBas: Mur = { id: "wBas", a: [300, 150], b: [300, 300], t: 12, isOutline: false };
   const P = plan([wHaut, wHoriz, wBas]);
   const wHorizAvant = JSON.stringify([mur(P, "wHoriz").a, mur(P, "wHoriz").b]);
   const wBasAvant = JSON.stringify([mur(P, "wBas").a, mur(P, "wBas").b]);
@@ -276,28 +276,28 @@ test("aucun_mur_ne_bascule_jamais", (a: DonneeDynamique) => {
   const scenarios: Array<{ nom: string; murs: Mur[]; id: string; d: number }> = [
     { nom: "trois murs + T colinéaire (PR #17)", id: "wB", d: 40, murs: [
       ...troisMurs(),
-      { id: "wX", a: [100, 150], b: [200, 150], t: 12, isOutline: false, free: 1 },
-      { id: "wY", a: [200, 150], b: [200, 250], t: 12, isOutline: false, free: 1 },
+      { id: "wX", a: [100, 150], b: [200, 150], t: 12, isOutline: false },
+      { id: "wY", a: [200, 150], b: [200, 250], t: 12, isOutline: false },
     ] },
     { nom: "chaîne à cinq murs", id: "wA", d: 30, murs: [
-      { id: "wA", a: [100, 0], b: [100, 100], t: 12, isOutline: false, free: 1 },
-      { id: "wB", a: [100, 100], b: [200, 100], t: 12, isOutline: false, free: 1 },
-      { id: "wC", a: [200, 100], b: [200, 200], t: 12, isOutline: false, free: 1 },
-      { id: "wD", a: [200, 200], b: [300, 200], t: 12, isOutline: false, free: 1 },
-      { id: "wE", a: [300, 200], b: [300, 300], t: 12, isOutline: false, free: 1 },
+      { id: "wA", a: [100, 0], b: [100, 100], t: 12, isOutline: false },
+      { id: "wB", a: [100, 100], b: [200, 100], t: 12, isOutline: false },
+      { id: "wC", a: [200, 100], b: [200, 200], t: 12, isOutline: false },
+      { id: "wD", a: [200, 200], b: [300, 200], t: 12, isOutline: false },
+      { id: "wE", a: [300, 200], b: [300, 300], t: 12, isOutline: false },
     ] },
     { nom: "voisin perpendiculaire seul (rapport n°1)", id: "wA", d: 50, murs: [
-      { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false, free: 1 },
-      { id: "wB", a: [100, 250], b: [300, 250], t: 12, isOutline: false, free: 1 },
+      { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false },
+      { id: "wB", a: [100, 250], b: [300, 250], t: 12, isOutline: false },
     ] },
     { nom: "voisin oblique 45°", id: "wA", d: 50, murs: [
-      { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false, free: 1 },
-      { id: "wC", a: [200, 150], b: [300, 250], t: 12, isOutline: false, free: 1 },
+      { id: "wA", a: [300, 50], b: [300, 250], t: 12, isOutline: false },
+      { id: "wC", a: [200, 150], b: [300, 250], t: 12, isOutline: false },
     ] },
     { nom: "trois murs au même point (rapport n°2)", id: "wHaut", d: 90, murs: [
-      { id: "wHaut", a: [300, 50], b: [300, 150], t: 12, isOutline: false, free: 1 },
-      { id: "wHoriz", a: [100, 150], b: [300, 150], t: 12, isOutline: false, free: 1 },
-      { id: "wBas", a: [300, 150], b: [300, 300], t: 12, isOutline: false, free: 1 },
+      { id: "wHaut", a: [300, 50], b: [300, 150], t: 12, isOutline: false },
+      { id: "wHoriz", a: [100, 150], b: [300, 150], t: 12, isOutline: false },
+      { id: "wBas", a: [300, 150], b: [300, 300], t: 12, isOutline: false },
     ] },
   ];
   for (const sc of scenarios) {
@@ -335,11 +335,11 @@ test("mur_de_contour_n_est_jamais_deplace_par_un_glissement", (a: DonneeDynamiqu
 test("chaine_ne_propage_qu_un_saut", (a: DonneeDynamique) => {
   // A-B-C-D-E: dragging A (which only touches B) must carry B, never reach C, D or E.
   const murs: Mur[] = [
-    { id: "wA", a: [100, 0], b: [100, 100], t: 12, isOutline: false, free: 1 },
-    { id: "wB", a: [100, 100], b: [200, 100], t: 12, isOutline: false, free: 1 },
-    { id: "wC", a: [200, 100], b: [200, 200], t: 12, isOutline: false, free: 1 },
-    { id: "wD", a: [200, 200], b: [300, 200], t: 12, isOutline: false, free: 1 },
-    { id: "wE", a: [300, 200], b: [300, 300], t: 12, isOutline: false, free: 1 },
+    { id: "wA", a: [100, 0], b: [100, 100], t: 12, isOutline: false },
+    { id: "wB", a: [100, 100], b: [200, 100], t: 12, isOutline: false },
+    { id: "wC", a: [200, 100], b: [200, 200], t: 12, isOutline: false },
+    { id: "wD", a: [200, 200], b: [300, 200], t: 12, isOutline: false },
+    { id: "wE", a: [300, 200], b: [300, 300], t: 12, isOutline: false },
   ];
   const P = plan(murs);
   const cAvant = JSON.stringify([mur(P, "wC").a, mur(P, "wC").b]);

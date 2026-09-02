@@ -10,8 +10,8 @@
 //
 // This suite exercises the PURE half: `v5SnapWallEnd` (junction/segment/outline snap,
 // `modele/edition.ts`), `v5WallEndDrop` (the full cascade: snap, then 45° direction, then the
-// grid, `gestes/murs.ts`), and `v5WallEndDragApply` (the mutation itself: only ONE endpoint
-// moves, the wall becomes `free`, geometry re-settles). All three are safe to call with a stub
+// bare centimetre, `gestes/murs.ts`), and `v5WallEndDragApply` (the mutation itself: only ONE
+// endpoint moves, geometry re-settles). All three are safe to call with a stub
 // `Contexte` (no `render()`, no `document`), exactly the way `v5WallDragCtx`/`v5WallDragApply` are
 // already exercised by `tests/jonction-glisser-mur.ts`.
 //
@@ -67,7 +67,7 @@ function mur(P: PlanV5, id: Id): Mur {
 /** A fake `Contexte`: `v5WallEndDragApply` only ever touches `etat.plan`, `canvas` and `vue`. */
 function ctxDe(P: PlanV5): Contexte {
   return {
-    etat: { plan: P, opts: { snap: true } },
+    etat: { plan: P, opts: {} },
     canvas: { querySelector: (): null => null },
     vue: { scale: 1, ox: 0, oy: 0 },
     rev: 0,
@@ -75,7 +75,7 @@ function ctxDe(P: PlanV5): Contexte {
 }
 
 // ---------------------------------------------------------------------------------------------
-//  v5WallEndDragApply: only ONE endpoint moves, the wall becomes `free`
+//  v5WallEndDragApply: only ONE endpoint moves, and it stays where it was dropped
 // ---------------------------------------------------------------------------------------------
 test("glisser_b_ne_bouge_que_b_a_reste_identique", (a: DonneeDynamique) => {
   const P = plan([{ id: "w1", a: [100, 100], b: [100, 200], t: 12, isOutline: false }]);
@@ -97,23 +97,22 @@ test("glisser_a_ne_bouge_que_a_b_reste_identique", (a: DonneeDynamique) => {
   a(JSON.stringify(w.b) === JSON.stringify(bAvant), `b doit rester BIT POUR BIT identique, vu ${JSON.stringify(w.b)} attendu ${JSON.stringify(bAvant)}`);
 });
 
-test("l_extremite_glissee_devient_free", (a: DonneeDynamique) => {
-  // A THROUGH-GOING wall (free absent): without `free:1`, `v5ThroughWall` would push the dropped
-  // endpoint straight back out to the nearest barrier on the very next recompute, undoing the
-  // placement the instant the gesture ends.
+test("l_extremite_glissee_tient_apres_le_recalcul_final", (a: DonneeDynamique) => {
+  // Il fallait un marqueur `free` pour ça: la règle traversante repoussait l'extrémité lâchée
+  // jusqu'à la première barrière au recalcul suivant, donc défaisait le geste à l'instant même où
+  // il finissait. Décision 0012: plus rien ne s'allonge, le lâcher se suffit.
   const P = plan([{ id: "w1", a: [100, 100], b: [100, 200], t: 12, isOutline: false }]);
-  a(!mur(P, "w1").free, "précondition : le mur ne doit pas être `free` avant le geste");
   const ctx = ctxDe(P);
   v5WallEndDragApply(ctx, "w1", "b", [250, 250], true);
   const w = mur(P, "w1");
-  a(w.free === 1, `l'extrémité tirée doit rendre le mur \`free\`, vu ${JSON.stringify(w.free)}`);
   a(w.b[0] === 250 && w.b[1] === 250, `la position lâchée doit tenir même après le recalcul final, vu ${JSON.stringify(w.b)}`);
+  a(w.a[0] === 100 && w.a[1] === 100, `et l'autre bout ne doit pas bouger, vu ${JSON.stringify(w.a)}`);
 });
 
 test("les_cellules_se_reconstruisent_a_la_fin_seulement", (a: DonneeDynamique) => {
   const P = plan([
-    { id: "w1", a: [200, 0], b: [200, 150], t: 12, isOutline: false, free: 1 },
-    { id: "w2", a: [200, 150], b: [200, 300], t: 12, isOutline: false, free: 1 },
+    { id: "w1", a: [200, 0], b: [200, 150], t: 12, isOutline: false },
+    { id: "w2", a: [200, 150], b: [200, 300], t: 12, isOutline: false },
   ]);
   v5RebuildCells(P);
   a(P.cells.length === 2, `précondition : deux pièces, vu ${P.cells.length}`);
@@ -420,7 +419,7 @@ test("hors_de_portee_aucune_accroche", (a: DonneeDynamique) => {
 });
 
 // ---------------------------------------------------------------------------------------------
-//  v5WallEndDrop: the full cascade (snap, then 45°, then the grid)
+//  v5WallEndDrop: the full cascade (snap, then 45°, then the centimetre)
 // ---------------------------------------------------------------------------------------------
 // A big apartment, anchor DEAD CENTER: every point used below stays hundreds of cm from any
 // wall/facade, so `v5SnapWallEnd` never fires and these three tests measure ONLY the
@@ -435,9 +434,9 @@ test("sans_accroche_la_direction_se_cale_sur_45_degres", (a: DonneeDynamique) =>
   })!;
   // Anchor at the apartment's center, a ROUGHLY horizontal drag (dx=97, dy=6, ~3.5° off axis,
   // nothing within reach to snap onto): the wall must come out EXACTLY horizontal, not 6 off.
-  const p = v5WallEndDrop(P, "w1", OUTLINE_OUVERTE, 1097, 1006, 1, false, 5);
+  const p = v5WallEndDrop(P, "w1", OUTLINE_OUVERTE, 1097, 1006, 1, false);
   a(p[1] === 1000, `un tracé quasi horizontal doit donner un mur EXACTEMENT horizontal, vu y=${p[1]}`);
-  a(p[0] === 1095, `l'abscisse doit être calée sur la grille de 5, vu x=${p[0]}`);
+  a(p[0] === 1097, `l'abscisse est au centimètre, plus sur une grille de 5, vu x=${p[0]}`);
 });
 
 test("alt_libere_l_angle", (a: DonneeDynamique) => {
@@ -446,22 +445,24 @@ test("alt_libere_l_angle", (a: DonneeDynamique) => {
     walls: [{ id: "w1", a: OUTLINE_OUVERTE, b: OUTLINE_OUVERTE, t: 12, isOutline: false }],
     openings: [], pieces: [], cells: [],
   })!;
-  // Same near-horizontal drag, but Alt held: no 45° constraint, the raw point (grid-rounded) wins.
-  const p = v5WallEndDrop(P, "w1", OUTLINE_OUVERTE, 1097, 1006, 1, true, 5);
-  a(p[1] === 1005, `Alt doit libérer l'angle (pas d'axe imposé), vu y=${p[1]}`);
-  a(p[0] === 1095, `la grille s'applique quand même sous Alt, vu x=${p[0]}`);
+  // Same near-horizontal drag, but Alt held: no 45° constraint, the raw point wins.
+  const p = v5WallEndDrop(P, "w1", OUTLINE_OUVERTE, 1097, 1006, 1, true);
+  a(p[1] === 1006, `Alt doit libérer l'angle (pas d'axe imposé), vu y=${p[1]}`);
+  a(p[0] === 1097, `et le point brut est au centimètre, vu x=${p[0]}`);
 });
 
-test("ctrl_donne_le_centimetre_la_grille_par_defaut_donne_5cm", (a: DonneeDynamique) => {
+test("le_bout_se_pose_au_centimetre_sans_grille_ni_touche_pour_en_sortir", (a: DonneeDynamique) => {
+  // Il y avait un pas de 5 cm et Ctrl/Cmd pour l'éviter (`sansGrille`). Décision 0012: les murs et
+  // les ouvertures étaient les derniers lecteurs de cette grille, elle part avec eux, et la touche
+  // qui n'échappe plus à rien part aussi.
   const P = sanitizeV5Plan({
     outline: [[0, 0], [2000, 0], [2000, 2000], [0, 2000]],
     walls: [{ id: "w1", a: OUTLINE_OUVERTE, b: OUTLINE_OUVERTE, t: 12, isOutline: false }],
     openings: [], pieces: [], cells: [],
   })!;
-  const p5 = v5WallEndDrop(P, "w1", OUTLINE_OUVERTE, 1097, 1001, 1, false, 5);
-  a(p5[0] === 1095, `pas de 5cm par défaut, vu x=${p5[0]}`);
-  const p1 = v5WallEndDrop(P, "w1", OUTLINE_OUVERTE, 1097, 1001, 1, false, 1);
-  a(p1[0] === 1097, `Ctrl/Cmd (step=1) doit donner le centimètre, vu x=${p1[0]}`);
+  const p = v5WallEndDrop(P, "w1", OUTLINE_OUVERTE, 1097, 1001, 1, false);
+  a(p[0] === 1097, `le centimètre, pas le multiple de 5, vu x=${p[0]}`);
+  a(p[1] === 1000, `et l'axe reste imposé, vu y=${p[1]}`);
 });
 
 test("une_jonction_a_portee_gagne_sur_la_direction_et_la_grille", (a: DonneeDynamique) => {
@@ -471,17 +472,17 @@ test("une_jonction_a_portee_gagne_sur_la_direction_et_la_grille", (a: DonneeDyna
   ]);
   // The pointer sits close enough to w2's own endpoint [303,6] to snap (stage 1), even though it
   // is ALSO close to the horizontal axis from the anchor: the junction must win.
-  const p = v5WallEndDrop(P, "w1", [0, 0], 305, 8, 1, false, 5);
+  const p = v5WallEndDrop(P, "w1", [0, 0], 305, 8, 1, false);
   a(p[0] === 303 && p[1] === 6, `la jonction doit l'emporter sur la quantification d'angle, vu ${JSON.stringify(p)}`);
 });
 
 // ---------------------------------------------------------------------------------------------
-//  THE `free` RULE: an endpoint dropped in open space stays exactly there
+//  UN BOUT LÂCHÉ EN ESPACE LIBRE RESTE EXACTEMENT LÀ (décision 0012)
 // ---------------------------------------------------------------------------------------------
 test("lache_en_espace_libre_l_extremite_reste_exactement_la", (a: DonneeDynamique) => {
-  // A wall running east-west, extended far into open space, away from every wall/facade: without
-  // `free:1` (checked directly below), `v5ThroughWall` would shoot this endpoint straight back
-  // to the nearest barrier (here, the far facade at x=400) the moment the gesture settles.
+  // Un mur est-ouest étendu loin de tout: la règle traversante envoyait ce bout jusqu'à la
+  // première barrière (ici la façade à x=400) dès que le geste se posait, et il fallait un
+  // marqueur `free` pour l'en empêcher.
   const P = plan([{ id: "w1", a: [50, 150], b: [100, 150], t: 12, isOutline: false }]);
   const ctx = ctxDe(P);
   v5WallEndDragApply(ctx, "w1", "b", [180, 150], true);
@@ -490,17 +491,25 @@ test("lache_en_espace_libre_l_extremite_reste_exactement_la", (a: DonneeDynamiqu
     `l'extrémité lâchée en espace libre doit rester EXACTEMENT là, vu ${JSON.stringify(w.b)} (pas la façade à x=400)`);
 });
 
-test("sans_le_marqueur_free_le_mur_traversant_s_etendrait_a_la_facade", (a: DonneeDynamique) => {
-  // NEGATIVE CONTROL for the test above: a wall that is NOT free DOES get pushed out to the
-  // facade by the ordinary geometry pipeline, proving `free` is really what holds the endpoint in
-  // place, not some other accident of this fixture.
+test("un_mur_qui_n_a_pas_bouge_ne_s_allonge_pas_au_recalcul", (a: DonneeDynamique) => {
+  // Le contrôle du cas ci-dessus, et le coeur du lot: le pipeline ordinaire, appelé sans le
+  // moindre geste, ne doit toucher à AUCUN des deux bouts. C'est ce même appel qui, avant, poussait
+  // le mur jusqu'à la façade.
   const P = plan([{ id: "w1", a: [50, 150], b: [180, 150], t: 12, isOutline: false }]);
-  a(!mur(P, "w1").free, "précondition : ce mur n'est pas `free`");
-  // Re-settle without dragging: a through-going wall still gets extended to the facade by the
-  // ordinary pipeline (the very one `v5WallEndDragApply` calls internally).
   v5ResoudreGeometrie(P, true);
   const w = mur(P, "w1");
-  a(w.b[0] === 400, `un mur NON free doit s'étendre jusqu'à la façade (x=400), vu ${JSON.stringify(w.b)}, ceci prouve que \`free\` est bien ce qui protège le geste précédent`);
+  a(w.a[0] === 50 && w.b[0] === 180,
+    `le mur garde ses deux bouts (50..180), vu ${JSON.stringify(w.a)}..${JSON.stringify(w.b)}`);
+});
+
+test("un_bout_sorti_du_logement_est_ramene_sur_la_facade", (a: DonneeDynamique) => {
+  // Ce que le contour fait TOUJOURS, et la seule chose qui déplace encore un bout toute seule:
+  // « un mur va d'un point à un point » n'a jamais voulu dire « autorisé à sortir du logement ».
+  const P = plan([{ id: "w1", a: [200, 150], b: [200, 460], t: 12, isOutline: false }]);
+  v5ResoudreGeometrie(P, true);
+  const w = mur(P, "w1");
+  a(w.b[1] <= 301, `le bout qui sortait revient sur le contour (<=300), vu ${w.b[1]}`);
+  a(Math.round(w.a[1]) === 150, `et le bout qui était DEDANS ne bouge pas, vu ${w.a[1]}`);
 });
 
 // ---------------------------------------------------------------------------------------------

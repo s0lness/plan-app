@@ -25,6 +25,9 @@
 // This is the exact line that `tests/rapide.ts`'s startup check caught out on its first run:
 // the copy said nine keys, the server accepts eleven.
 export const PIECE_KEYS = ["id", "type", "name", "x", "y", "w", "h", "rot", "locked", "hinge", "swing", "tr", "dmin", "pair"] as const;
+// `free` is still ACCEPTED by the server, and this list must stay set-for-set equal to
+// `ops.ts`'s (`tests/rapide.ts` checks it). No client type carries the field any more (decision
+// 0012): a tab running the old code may still send it, and the server may still store it.
 export const WALL_KEYS = ["id", "a", "b", "t", "free"] as const;
 export const OPENING_KEYS = ["id", "wallId", "t0", "w", "h", "type", "side", "name", "hinge", "swing", "leaf"] as const;
 export const CELL_KEYS = ["id", "poly", "name", "floor"] as const;

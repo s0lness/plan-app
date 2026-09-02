@@ -355,114 +355,23 @@ await test("une_pose_rabotee_par_un_mur_court_est_annoncee", SEED, `
      && expect(!!v.txt && /instead of/.test(v.txt), "et le dire, vu " + JSON.stringify(v.txt)));
 
 // =============================================================================
-//  7. A FREE-STANDING PARTITION SURVIVES THE INCREMENTAL WIRE
+//  7. UN `free` VENU D'UN ONGLET ANCIEN EST ACCEPTÉ ET IGNORÉ
 // =============================================================================
-// A wall can carry `free:1`: it does NOT extend to the first barrier (a wall drawn with the tool,
-// a split half, and the "Ends: Through | Free" control). `sanitizeV5Plan` (full-plan re-read: reload,
-// undo/redo, D1/realtime adoption) already keeps it. The receive path for a SINGLE incremental
-// op (`ws5ApplyRemoteOp`'s `wall.set` case, `src/ts/fil/reception.ts`) is a SEPARATE code path
-// that merges only the keys present on the op: it used to merge neither on wall CREATION nor on
-// an UPDATE to an existing wall, so a free partition drawn by one device looked right locally but
-// reverted to through-going the moment the OTHER device received it, live or through fallback.
-
-// 7a. The peer receives a brand-new wall carrying `free:1` (the author's FIRST op for it,
-// C-5: creation sends the whole entity): it must exist, and stay free.
-await test("un_mur_libre_recu_du_pair_reste_libre", SEED, `
+// Décision 0012: `free` ne décrit plus rien (aucun mur ne s'allonge), le client ne l'émet plus et
+// ne le garde plus. Mais le serveur l'accepte toujours et un onglet resté ouvert peut encore
+// l'envoyer: recevoir l'op doit poser le mur exactement où l'op le dit, sans que la clé change
+// quoi que ce soit. Les trois cas qui vivaient ici (« un mur libre reçu reste libre », « une maj
+// partielle le rend libre », « la levée atteint le pair ») testaient ce drapeau, ils partent avec.
+// SUITE NAVIGATEUR ÉCRITE, NON LANCÉE (le propriétaire teste lui-même dans Chrome).
+await test("un_free_recu_d_un_onglet_ancien_ne_change_rien", SEED, `
   ${HELLO}
-  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerLibre", a:[60,60], b:[60,120], t:12, free:1 } });
-  var w = window.__plan.v5WallById("wPeerLibre");
-  return { existe: !!w, free: w && w.free };
+  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerVieux", a:[60,60], b:[60,120], t:12, free:1 } });
+  var w = window.__plan.v5WallById("wPeerVieux");
+  return { existe: !!w, a: w && w.a, b: w && w.b, free: w && w.free };
 `, (v: VerdictSonde) => expect(v.existe === true, "le mur reçu doit exister chez le pair")
-     && expect(v.free === 1, "et y rester libre, vu " + JSON.stringify(v)));
-
-// 7b. The reverse, the suite's own negative control: an ORDINARY wall (no `free` key at all)
-// must NOT come out free on the peer's side either.
-await test("un_mur_traversant_recu_du_pair_reste_traversant", SEED, `
-  ${HELLO}
-  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerTrav", a:[80,60], b:[80,120], t:12 } });
-  var w = window.__plan.v5WallById("wPeerTrav");
-  return { existe: !!w, free: w && w.free };
-`, (v: VerdictSonde) => expect(v.existe === true, "le mur reçu doit exister chez le pair")
-     && expect(!v.free, "et rester traversant, vu " + JSON.stringify(v)));
-
-// 7c. The OTHER half of the receive path: an UPDATE to a wall the peer ALREADY has (field-by-field
-// merge, C-5) must also carry `free` over, not just a creation.
-await test("une_maj_recue_du_pair_rend_un_mur_deja_connu_libre", SEED, `
-  ${HELLO}
-  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerMaj", a:[100,60], b:[100,120], t:12 } });
-  // \`v5WallById\` returns a LIVE reference: the flag is read off right away, before the second
-  // op can mutate the SAME object in place.
-  var avantFree = (window.__plan.v5WallById("wPeerMaj") || {}).free;
-  window.__plan.applyRemote({ kind:"wall.set", wall:{ id:"wPeerMaj", free:1 } });
-  var apres = window.__plan.v5WallById("wPeerMaj");
-  return { avant: avantFree, apres: apres && apres.free };
-`, (v: VerdictSonde) => expect(!v.avant, "avant la mise à jour, le mur doit être traversant, vu " + JSON.stringify(v))
-     && expect(v.apres === 1, "après la mise à jour partielle, il doit devenir libre, vu " + JSON.stringify(v)));
-
-// =============================================================================
-//  8. THE CLEAR TRAVELS TOO, NOT JUST THE SET
-// =============================================================================
-// `v5WallWire` used to emit `free` ONLY when truthy: switching a partition back to Through
-// (`gestes/murs.ts`'s "Ends: Through" button) deletes the local flag, so the wire object for
-// that wall came back out looking EXACTLY like a wall that was never touched, and the
-// field-by-field diff had nothing to compare `free` against. The author saw Through, the peer
-// kept showing Free, and only a full resync repaired it. Fixed: the local model now keeps the
-// clear as `free: 0` (never `delete`), and the wire emits it explicitly.
-
-// 8a. THE ROUND TRIP: device A's diff emitter is made to run for real (`outLog`+`forceDiff`,
-// the same rig `collab-annuler.ts` uses), so this exercises the ACTUAL emission code, not a
-// hand-built op. The captured op is then handed to a peer whose copy of the SAME wall is still
-// `free:1` (representative of someone who has not heard about the clear yet): applying the op
-// must bring them back to Through.
-await test("la_levee_d_une_cloison_libre_atteint_le_pair", SEED, `
-  ${HELLO}
-  var w = window.__plan.plan.walls.filter(function(x){ return !x.isOutline; })[0];
-  if (!w) return { aucun: true };
-  // Device A had already set it free, and this state was already shared (the mirror knows it).
-  w.free = 1;
-  window.__plan.shadowSync();
-  window.__plan.outLog(true);
-  // Device A now flips it back to Through.
-  w.free = 0;
-  window.__plan.forceDiff();
-  var out = window.__plan.outLog(false);
-  var msg = out.filter(function(m){
-    return m.t === "op" && m.op && m.op.kind === "wall.set" && String(m.op.wall.id) === String(w.id);
-  })[0];
-  var opEnvoye = msg && msg.op;
-  // A peer whose copy is still free (they have not received anything yet).
-  w.free = 1;
-  if (opEnvoye) window.__plan.applyRemote(opEnvoye);
-  var apres = window.__plan.v5WallById(w.id);
-  return { id: w.id, opPresent: !!opEnvoye, opCles: opEnvoye && Object.keys(opEnvoye.wall).sort(),
-           opFree: opEnvoye && opEnvoye.wall.free, peerFreeApres: apres && apres.free };
-`, (v: VerdictSonde) => expect(!v.aucun, "le plan de référence doit contenir au moins une cloison intérieure")
-     && expect(v.opPresent === true, "la levée doit émettre une op wall.set, vu " + JSON.stringify(v))
-     && expect(v.opCles.indexOf("free") >= 0, "l'op doit PORTER la clé \`free\`, vu " + JSON.stringify(v.opCles))
-     && expect(v.opFree === 0, "avec la valeur explicite 0 (pas l'absence), vu " + JSON.stringify(v.opFree))
-     && expect(!v.peerFreeApres, "et le pair doit redevenir traversant en l'appliquant, vu " + JSON.stringify(v)));
-
-// 8b. NEGATIVE CONTROL / no wire-shape regression: a wall that NEVER used the Free tool
-// (`free` absent, not just falsy) must keep emitting EXACTLY what it emitted before this fix
-// when an unrelated field changes, otherwise every existing plan would move on its next save.
-await test("une_cloison_jamais_libre_n_emet_toujours_pas_free", SEED, `
-  ${HELLO}
-  var w = window.__plan.plan.walls.filter(function(x){ return !x.isOutline && x.free === undefined; })[0];
-  if (!w) return { aucun: true };
-  window.__plan.shadowSync();
-  window.__plan.outLog(true);
-  w.t = w.t === 12 ? 13 : 12;   // touch an UNRELATED field to force a diff
-  window.__plan.forceDiff();
-  var out = window.__plan.outLog(false);
-  var msg = out.filter(function(m){
-    return m.t === "op" && m.op && m.op.kind === "wall.set" && String(m.op.wall.id) === String(w.id);
-  })[0];
-  var opEnvoye = msg && msg.op;
-  return { opPresent: !!opEnvoye, opCles: opEnvoye && Object.keys(opEnvoye.wall).sort() };
-`, (v: VerdictSonde) => expect(!v.aucun, "le plan de référence doit contenir une cloison jamais libre")
-     && expect(v.opPresent === true, "le changement d'épaisseur doit émettre une op, vu " + JSON.stringify(v))
-     && expect(JSON.stringify(v.opCles) === JSON.stringify(["id", "t"]),
-        "et ne JAMAIS porter \`free\`, vu " + JSON.stringify(v.opCles)));
+     && expect(JSON.stringify(v.a) === "[60,60]" && JSON.stringify(v.b) === "[60,120]",
+        "et se poser exactement là où l'op le dit, vu " + JSON.stringify(v))
+     && expect(v.free === undefined, "la clé `free` ne doit pas être retenue, vu " + JSON.stringify(v.free)));
 
 // =============================================================================
 //  9. GUEST WIRE IDENTITY: EACH DEVICE REASSERTS ITS OWN NAME, NEITHER IS LEFT NAMELESS

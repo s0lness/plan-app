@@ -26,8 +26,8 @@
 // 3. THE SLATES REMAIN MODULE-LEVEL VARIABLES, as before, but they are now read only through an
 //    exported accessor (`v5LastFit()`, `v5LastRefus()`, ...).
 // 4. WHAT DEPENDED ON THE VIEW BECOMES A PARAMETER. `wallSnapReach()` (js/05) and `vScale` depend
-//    on the zoom: `maxDist` and `echelle` are therefore REQUIRED, never guessed. `state.opts.snap`
-//    becomes `snap`. The visibility layers are a PERSONAL setting: they are passed in too.
+//    on the zoom: `maxDist` and `echelle` are therefore REQUIRED, never guessed. The visibility
+//    layers are a PERSONAL setting: they are passed in too.
 //
 // ---- A DELIBERATE BORROW, AND WHY --------------------------------------------------------------
 // `v5ResolveOpening` comes from js/53 (tools batch), but placing, pasting, and moving an opening
@@ -163,49 +163,18 @@ export function v5RayHits(
 }
 
 // =================================================================================================
-//  A v5 WALL RUNS THROUGH, AND IT DOES SO OVER ITS ENTIRE LENGTH
+//  A WALL GOES FROM ONE POINT TO ANOTHER POINT
 // =================================================================================================
-// BUSINESS DECISION. Each endpoint is pushed out to the first geometry encountered BEYOND itself
-// (a T-junction), and trimmed by the OUTLINE if it goes past it. What crosses the wall BETWEEN
-// its two endpoints no longer shortens it.
-// The ray used to start from the wall's MIDPOINT and stop at the first crossing: any wall crossed
-// anywhere other than exactly at its midpoint was therefore truncated on the next drag, a room
-// vanished, silently. Starting from the ENDPOINT makes the crossing (an off-center T, a cross, or
-// multiple crossings) have no effect, and the operation idempotent.
-
-/** cm: an overshoot of less than 2 cm snaps back to the junction it crossed */
-export const V5_JOIN_TOL = 2;
-
-function v5ThroughEnd(
-  P: PlanV5 | null | undefined,
-  w: Mur,
-  s: SegmentMur,
-  sign: number,
-): Pt | null {
-  const half = s.L / 2;
-  const mx = (w.a[0] + w.b[0]) / 2, my = (w.a[1] + w.b[1]) / 2;
-  const ux = s.ux * sign, uy = s.uy * sign;
-  const ex = (sign > 0 ? w.b[0] : w.a[0]), ey = (sign > 0 ? w.b[1] : w.a[1]);
-  // 1. EXTENSION: first barrier seen from the endpoint (t~0 => it already touches there, we do
-  //    not move; no barrier => we do not extend on this side).
-  let ext: number | null = null;
-  const fromEnd = v5RayHits(P, ex, ey, ux, uy, w.id, -V5_JOIN_TOL);
-  if (fromEnd.length) ext = half + fromEnd[0]!.t;
-  // 2. TRIM: a wall never leaves the outline.
-  let trim: number | null = null;
-  const fromMid = v5RayHits(P, mx, my, ux, uy, w.id, 0.5);
-  for (const h of fromMid) { if (h.outline) { trim = h.t; break; } }
-  const t = (ext != null && trim != null) ? Math.min(ext, trim) : (ext != null ? ext : trim);
-  if (t == null || !isFinite(t) || t <= 0.5) return null;
-  return [v5R2(mx + ux * t), v5R2(my + uy * t)];
-}
+// Decision 0012. A wall ends where it was put: nothing pushes an endpoint out to the first
+// geometry beyond it, at load, on a drag, on an incoming op or after a square-up. The only thing
+// that still MOVES an endpoint by itself is the outline: a wall is not allowed to leave the home,
+// and shortening is not stretching.
 
 /**
  * TRIM ONLY: every endpoint that LEAVES the outline is brought back onto it, and nothing else
- * moves. Serves free-standing partitions, which keep their ends but are not allowed to overflow
- * the home.
+ * moves.
  */
-function v5TrimWall(P: PlanV5 | null | undefined, w: Mur, s: SegmentMur): Mur {
+function v5RognerAuContour(P: PlanV5 | null | undefined, w: Mur, s: SegmentMur): Mur {
   const poly = P && Array.isArray(P.outline) ? P.outline : null;
   if (!poly || poly.length < 3) return w;
   for (const sign of [1, -1] as const) {
@@ -228,17 +197,9 @@ function v5TrimWall(P: PlanV5 | null | undefined, w: Mur, s: SegmentMur): Mur {
   return w;
 }
 
-/** Mutates `w`: both endpoints are recomputed. Returns the wall, as the old code did. */
-export function v5ThroughWall(P: PlanV5 | null | undefined, w: Mur): Mur {
-  const s = v5Seg(w);
-  // A FREE-STANDING PARTITION DOES NOT EXTEND. It is still TRIMMED by the outline (free does not
-  // mean "allowed to leave the home"), but no endpoint is pushed out looking for a barrier: that
-  // is exactly what makes it stay where it was placed.
-  if (w.free) return v5TrimWall(P, w, s);
-  const nb = v5ThroughEnd(P, w, s, 1), na = v5ThroughEnd(P, w, s, -1);
-  if (nb) w.b = nb;
-  if (na) w.a = na;
-  return w;
+/** Mutates `w`: an endpoint left outside the home comes back onto it. Returns the wall. */
+export function v5BornerAuLogement(P: PlanV5 | null | undefined, w: Mur): Mur {
+  return v5RognerAuContour(P, w, v5Seg(w));
 }
 
 // Does a wall ALREADY carry the segment a->b? (same support line within `tol`, and at least 60%
@@ -870,14 +831,13 @@ export function v5FlushPlaceNarrowed(): string | null {
   return `This wall is ${r.len} cm: “${r.name || "this object"}” was placed at ${r.len} cm instead of ${r.want} cm.`;
 }
 
-// Snapping a drawn point: outline vertices / wall endpoints > edges > 5 cm grid.
+// Snapping a drawn point: outline vertices / wall endpoints > edges > the bare centimetre.
 // The drawing snap used to be expressed in PIXELS (14 px), so in cm it grew as you zoomed out: at
 // the "Fit" scale of a real apartment it was worth ~18 cm and jumped clean over the real gap
 // between two parallel partitions. Deleting one of the two and redrawing it became impossible:
 // the stroke stuck to the other one and "Cette cloison est déjà là" refused the wall. So the snap
 // is now capped at one wall thickness: it can no longer jump across a gap that genuinely exists.
-// `echelle` = the view's `vScale`, `snap` = `state.opts.snap`: two settings that are not part of
-// the plan, hence two arguments.
+// `echelle` = the view's `vScale`, a setting that is not part of the plan, hence an argument.
 
 /** The tolerance shared by every point-snap in this file: one wall thickness at most, never less
  * than 8 cm, and shrinking with zoom (14 screen px converted to cm) so it stays a SCREEN-sized
@@ -906,7 +866,7 @@ function v5SnapVertex(P: PlanV5 | null | undefined, x: number, y: number, echell
   return best ? [v5R2((best as Pt)[0]), v5R2((best as Pt)[1])] : null;
 }
 
-export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, snap: boolean): Pt {
+export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number): Pt {
   const tol = v5SnapTol(echelle);
   const vtx = v5SnapVertex(P, x, y, echelle);
   if (vtx) return vtx;
@@ -916,8 +876,10 @@ export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, sn
     if (c.dist <= bd) { bd = c.dist; best = [c.x, c.y]; }
   });
   if (best) return [v5R2((best as Pt)[0]), v5R2((best as Pt)[1])];
-  const st = snap ? 5 : 1;
-  return [Math.round(x / st) * st, Math.round(y / st) * st];
+  // NOTHING IN REACH: the centimetre, not a grid step. Decision 0012 took the 5 cm step away from
+  // walls and openings, the way 0011 took it away from furniture: a magnet places a point, or the
+  // hand does, and the hand works in centimetres.
+  return [Math.round(x), Math.round(y)];
 }
 
 // ---- SNAP FOR A DRAGGED WALL ENDPOINT (owner's report: "choper les extrémités des murs et
@@ -931,10 +893,8 @@ export function v5SnapPoint(P: PlanV5, x: number, y: number, echelle: number, sn
 //   2. THE TWO TOLERANCES ARE WIDER (15px / 10px vs 14px for both stages of `v5SnapPoint`): a
 //      junction that must physically CONNECT two walls needs a more forgiving target than a
 //      point merely snapping to an existing line while drawing.
-//   3. `snap` (the personal "snapping enabled" setting) plays NO PART here, matching how
-//      `v5SnapPoint` itself never gates its own vertex/edge stages on it either (only the
-//      GRID fallback, computed by the caller, is gated by that setting): a junction connection
-//      is not an optional convenience to turn off, only the grid-rounding fallback is.
+//   3. NEITHER OF THEM HAS A SETTING TO TURN OFF. A junction connection is not an optional
+//      convenience; `Alt` suspends it for the length of one gesture, and nothing else does.
 
 // A HAND AIMS IN PIXELS, NOT IN CENTIMETRES, AND THESE TWO SAID THE OPPOSITE. `Math.min(WALL, ...)`
 // capped both at 12 cm, which cancelled outright the `Math.max(8, 15 / echelle)` that was meant to
@@ -1068,7 +1028,6 @@ export function v5WallSplitAtPoint(P: PlanV5 | null | undefined, wallId: Id, pt:
   const milieu = coupe, demiLongueur = premiere;
   const id = v5NewId("w", plan);
   const nouveau: Mur = { id, a: [milieu[0], milieu[1]], b: ancienB, t: w.t, isOutline: false };
-  if (w.free !== undefined) nouveau.free = w.free;
 
   w.b = [milieu[0], milieu[1]];
   for (const o of plan.openings || []) {
@@ -1106,6 +1065,19 @@ export function v5BoutJoint(P: PlanV5 | null | undefined, wallId: Id, bout: "a" 
     if (String(x.id) === String(wallId)) return false;
     return closestOnSeg(pt[0], pt[1], x.a[0], x.a[1], x.b[0], x.b[1]).dist <= JOINT_TOL;
   });
+}
+
+/**
+ * WHICH END A TYPED LENGTH IS ALLOWED TO MOVE: the FREE one, the one no junction holds. If both
+ * are free, `b`, the end drawn second, hence the one the hand placed last. If NEITHER is free,
+ * `null`: stretching would tear a junction open at one end or the other, so the Length field is
+ * disabled and says why, instead of silently picking a victim. Same predicate as the endpoint
+ * handles (`v5BoutJoint`), so the field offers exactly what the plan offers.
+ */
+export function v5BoutLibre(P: PlanV5 | null | undefined, w: Mur): "a" | "b" | null {
+  if (!v5BoutJoint(P, w.id, "b")) return "b";
+  if (!v5BoutJoint(P, w.id, "a")) return "a";
+  return null;
 }
 
 // ---- UN MUR DE TRAVERS SE REDRESSE, ET SEULEMENT LUI ------------------------------------------
@@ -1413,9 +1385,6 @@ export function v5WallMergeAt(P: PlanV5 | null | undefined, wallId: Id, bout: "a
 
   w.a = [v5R2(A[0]), v5R2(A[1])];
   w.b = [v5R2(B[0]), v5R2(B[1])];
-  // A welded wall stays put. If either piece was a free partition, the result must be one too:
-  // letting the through rule loose on it would stretch the weld somewhere nobody asked for.
-  if (w.free === 1 || x.free === 1) w.free = 1;
   plan.walls = (plan.walls || []).filter((q) => String(q.id) !== String(f.autre));
   return { id: w.id };
 }

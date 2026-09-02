@@ -451,9 +451,10 @@ await test("poignee_deportee_ne_teleporte_pas_le_bord", async () => {
   await seedModel(4000);
   const o = await poseFenetre(2000, 186, "door");
   await pause(220);
-  // Snap turned off: the 5 cm grid quantizes the ABSOLUTE width, which is a separate question.
-  // Here we measure ONE thing: is the hand followed, and does the round trip come back.
-  await evaluate(`__plan.state.opts.snap=false; __plan.render(); true`); await pause(150);
+  // The width is at the CENTIMETRE now (decision 0012 took the 5 cm step away from openings, the
+  // way 0011 took it away from furniture), so there is nothing left to turn off here: what is
+  // measured is the one thing this case was ever about, is the hand followed and does the round
+  // trip come back.
   const S = await pxParCm();
   const a0 = await geom(o.id);
   // Preconditions: without them, the case could pass green while testing a WIDE opening,

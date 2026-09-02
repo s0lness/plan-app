@@ -123,7 +123,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
   { f: "tests/facade-glisse-geste.ts",     chrome: 1 },   // real mouse: a facade half SLIDES, the outline never bends, corner drags carry the whole straight run
   { f: "tests/facade-colle-geste.ts",      chrome: 1 },   // real mouse: a facade lands EXACTLY on the line of a parallel facade, the guide says so, Ctrl gives the ordinary positions back
-  { f: "tests/avancee-suit-la-piece-geste.ts", chrome: 1 }, // real mouse: a recess stops on the room's own partition rather than on the facade's cut, the partition never moves, the neighbour's window stays put
   { f: "tests/sol-suit-la-main-geste.ts",  chrome: 1 },   // real mouse: the painted floor follows the hand during the drag instead of jumping on release, and a typed room name survives a room being swept away and reopened
   { f: "tests/selection-visible.ts",       chrome: 1 },
   { f: "tests/textes-lisibles.ts",         chrome: 1 },
@@ -142,7 +141,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/compat-donnees.ts",          chrome: 0 },
   { f: "tests/repartir-espacement.ts",     chrome: 0 },   // PURE computation: no browser
   { f: "tests/fenetre-battement.ts",       chrome: 0 },   // PURE tracing: no browser
-  { f: "tests/mur-libre.ts",               chrome: 0 },   // PURE geometry: no browser
   { f: "tests/cellules-perf.ts",           chrome: 0 },   // PURE: what cell detection COSTS, and that it still returns the same bytes as before the grids
   { f: "tests/jonction-glisser-mur.ts",    chrome: 0 },   // PURE geometry: junctions carried by a wall drag, outline left alone, one-hop chains, exact round trip, the wire diff
   { f: "tests/bouts-de-mur.ts",            chrome: 0 },   // PURE geometry: a wall endpoint's snap cascade (junction, segment, outline, then 45°, then the grid) and the `free` rule

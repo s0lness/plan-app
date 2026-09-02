@@ -34,19 +34,10 @@ export function setSpaceHeld(v: boolean): void { _spaceHeld = v; }
 export const RATIO_PRECIS = 0.2;
 const estPrecis = (e: { shiftKey?: boolean }): boolean => !!e.shiftKey;
 
-/**
- * NO GRID: Ctrl (or Cmd) held while drawing or dragging a WALL or an opening, which still round to
- * a 5 cm step. Furniture has no grid at all any more (decision 0011), so this modifier no longer
- * reaches it.
- *
- * BOTH KEYS, DELIBERATELY. On macOS, Ctrl+click is a SECONDARY click, and in this app the right
- * button already means "pan": a Mac user holding Ctrl from `pointerdown` would open the browser's
- * or OS's own context menu instead of dragging. Cmd is therefore the reliable key on a Mac; Ctrl is
- * the reliable key on Windows and Linux. Accepting either removes the need to know which OS you're
- * on. It reads `ev.ctrlKey || ev.metaKey` on a MOVE event, so it applies whether the modifier was
- * grabbed mid-drag or was already held at `pointerdown`.
- */
-export const sansGrille = (e: { ctrlKey?: boolean; metaKey?: boolean }): boolean => !!(e.ctrlKey || e.metaKey);
+// THERE IS NO "NO GRID" MODIFIER ANY MORE. `sansGrille` (Ctrl or Cmd) existed to escape the 5 cm
+// step; furniture lost that step with decision 0011, walls and openings with 0012, and a key that
+// escapes nothing is one more thing to explain in the help. `Alt` remains the one modifier that
+// suspends the magnets, and `Shift` the one that constrains.
 
 /**
  * The point to TRACK: the pointer as-is, or a slowed-down version around the starting point.

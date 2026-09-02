@@ -100,18 +100,15 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         if (w.a) ex.a = [w.a[0], w.a[1]];
         if (w.b) ex.b = [w.b[0], w.b[1]];
         if (w.t !== undefined) ex.t = w.t;
-        // C-5: `free` follows the same "present key = opinion" merge as every other field here.
-        // `v5WallWire` now emits it whenever the sender has an opinion, `0` included (a wall
-        // switched back to Through): a present-but-falsy value here CLEARS it locally, same as
-        // any other field going back to its neutral value.
-        if (w.free !== undefined) ex.free = w.free ? 1 : undefined;
+        // `free` is READ AND DROPPED (decision 0012): a peer still running the old code may send
+        // it, and it names a behavior that no longer exists. It is not in `MurFil` any more, so
+        // there is nothing here to copy.
         ex.isOutline = v5OnOutline(ex.a, ex.b, P.outline, 1);
       } else if (w.a && w.b) {
         const a: Pt = [w.a[0], w.a[1]], b: Pt = [w.b[0], w.b[1]];
         P.walls.push({
           id: String(w.id), a, b, t: (w.t || WALL),
           isOutline: v5OnOutline(a, b, P.outline, 1),
-          free: w.free ? 1 : undefined,
         });
       }
       // C-10, THE ONLY HOLE IN THE RULE (see the header): we bound ONLY what depends on the wall

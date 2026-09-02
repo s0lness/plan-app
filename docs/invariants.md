@@ -130,7 +130,7 @@ nothing.
 **Prevents** "old data has multiple rooms with the SAME id" (`js/02:90`).
 
 ### D-7. Personal settings never cross over, in either direction, on either of the two paths
-**Guarantees** layers, labels, snap, the Circulation panel, overlay, collapsed categories, and
+**Guarantees** layers, labels, the Circulation panel, overlay, collapsed categories, and
 TV inches live in `room-planner-opts` and neither leave nor enter.
 **Prevents** they used to travel in the shared plan: one member of the household unchecks
 "Luminaires", the other reloads, their wall lights disappear. Inconsistency on top: they traveled

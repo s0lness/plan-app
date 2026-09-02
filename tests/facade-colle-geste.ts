@@ -5,12 +5,12 @@
 // Signalé par le propriétaire, mot pour mot: « ça marche pas, j'arrive pas à le refaire coller, il
 // est toujours slightly on top or below et se stick jamais dans le mur ». Sa façade porte une
 // ENCOCHE EN U; pour la refermer il faut pousser le fond du U pile sur la ligne des deux façades
-// qui l'encadrent. Le glissement n'était arrondi qu'à la grille de 5 cm, donc à la main on tombe
-// toujours sur un multiple de 5 non nul: mesuré sur le contour ci-dessous, visé 0 pile l'encoche se
-// referme (6 sommets), visé -7, +6 ou +3 il reste une marche de 5 cm et 8 sommets.
+// qui l'encadrent. À la main on tombe toujours à quelques centimètres: mesuré sur le contour
+// ci-dessous, visé 0 pile l'encoche se referme (6 sommets), visé -7, +6 ou +3 il reste une marche
+// et 8 sommets.
 //
 // Ce qui est vérifié ici: l'aimant referme l'encoche quand on vise à côté, il SE VOIT pendant le
-// geste, il ne vole pas les positions ordinaires, Ctrl le désarme comme il désarme la grille, les
+// geste, il ne vole pas les positions ordinaires, Alt le désarme (la seule touche qui le fasse), les
 // fenêtres des deux moitiés survivent, et l'encoche refermée reste RÉVERSIBLE (c'est la preuve du
 // choix de ne pas ressouder tout seul: à 6 sommets un glissement la rouvre, à 4 il faudrait
 // recouper la façade).
@@ -232,7 +232,7 @@ await test("l_alignement_attrape_se_voit_pendant_le_geste", async () => {
 });
 
 // L'AIMANT NE VOLE PAS LES POSITIONS ORDINAIRES. Hors de sa portée (une épaisseur de mur, ou 16 px
-// une fois dézoomé), la grille de 5 cm reprend la main sans rien tirer.
+// une fois dézoomé), la façade se pose au centimètre sans que rien la tire.
 await test("l_aimant_ne_vole_pas_les_positions_ordinaires", async () => {
   await seedEncoche();
   const rond = await poignee(450, 202, "f2");
@@ -243,20 +243,22 @@ await test("l_aimant_ne_vole_pas_les_positions_ordinaires", async () => {
   const fond = O.filter((p: VerdictSonde) => p[0] >= 300 && p[0] <= 600 && Math.abs(p[1]) > 1);
   // CE QUE L'AIMANT PROMET, C'EST DE NE PAS VOLER UNE POSITION LOIN DE L'ALIGNEMENT. Ce cas
   // exigeait 40 cm a 1 cm pres, c'est-a-dire la position exacte ou la souris de la sonde s'etait
-  // arretee. Sous barriere chargee elle se pose a 45, soit UN PAS DE GRILLE plus loin, et le cas
+  // arretee. Sous barriere chargee elle se pose quelques centimetres plus loin, et le cas
   // tombait alors que l'aimant n'avait rien vole: il aurait ramene le fond a 0. On verifie donc la
   // regle, et sa portee: le fond reste a plus d'une portee de l'alignement.
   ok(fond.length === 2 && fond.every((p: VerdictSonde) => p[1] >= 25 && p[1] <= 60),
     `l'aimant ne doit pas ramener le fond sur l'alignement, vu ${JSON.stringify(fond)}`);
 });
 
-// CTRL DÉSARME L'AIMANT COMME IL DÉSARME LA GRILLE: c'est la même promesse, une touche pour poser
-// où l'on veut. Visée -7, à portée de l'alignement, la façade DOIT rester à -7.
-await test("ctrl_desarme_l_aimant_comme_la_grille", async () => {
+// ALT DÉSARME L'AIMANT, ET C'EST LA SEULE TOUCHE QUI LE FAIT (décision 0012). C'était Ctrl, parce
+// que Ctrl désarmait aussi la grille de 5 cm; il n'y a plus de grille, et Alt est le modificateur
+// d'aimant partout ailleurs dans l'app. Visée -7, à portée de l'alignement, la façade DOIT rester
+// à -7. SUITE NAVIGATEUR ÉCRITE, NON LANCÉE.
+await test("alt_desarme_l_aimant_de_facade", async () => {
   await seedEncoche();
   const rond = await poignee(450, 202, "f2");
   if (!ok(rond, "poignée introuvable")) return;
-  await glisser(rond, await aptPoint(450, -7), 2);   // 2 = Ctrl
+  await glisser(rond, await aptPoint(450, -7), 1);   // 1 = Alt
   const O = await attendre(contour, (o) => o.some((p: VerdictSonde) => p[1] < -1));
   ok(O.length === 8, `le contour doit garder ses 8 sommets, vu ${JSON.stringify(O)}`);
   const fond = O.filter((p: VerdictSonde) => p[0] >= 300 && p[0] <= 600 && Math.abs(p[1]) > 1);
@@ -264,9 +266,9 @@ await test("ctrl_desarme_l_aimant_comme_la_grille", async () => {
   // exigeait une arrivee dans [-10, -4] autour des -7 vises. Sous barriere chargee la souris
   // synthetique depasse et pose la facade a -11: l'aimant AVAIT bien lache prise (sinon elle serait
   // sur l'alignement, a 0), et le cas tombait pour 1 cm de derive du harnais. On verifie donc la
-  // regle: avec Ctrl, la facade ne se pose PAS sur l'alignement, et elle reste du bon cote.
+  // regle: avec Alt, la facade ne se pose PAS sur l'alignement, et elle reste du bon cote.
   ok(fond.length === 2 && fond.every((p: VerdictSonde) => p[1] <= -1 && p[1] >= -40),
-    `avec Ctrl la façade ne doit pas retomber sur l'alignement, vu ${JSON.stringify(fond)}`);
+    `avec Alt la façade ne doit pas retomber sur l'alignement, vu ${JSON.stringify(fond)}`);
 });
 
 // ET LES DEUX FENÊTRES SURVIVENT À LA FERMETURE, chacune à sa place. C'est la moitié de la question

@@ -55,14 +55,13 @@
             <h3>Walls</h3>
             <dl class="help-dl">
               <dt>Select a wall</dt><dd>Click it. It highlights, its card opens, and it carries at most three grips: one disc at its middle to move it, and one at each free end to stretch it. Hovering only tells you it is clickable. Selecting a facade reveals the outline controls.</dd>
-              <dt>Move a wall</dt><dd>Pull a partition: the two rooms it separates adjust together. Hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on a Mac) to move it by the whole centimetre instead of the 5 cm grid; <kbd>Alt</kbd> keeps its own meaning below.</dd>
+              <dt>Move a wall</dt><dd>Pull a partition: the two rooms it separates adjust together, at the centimetre. A wall goes from one point to the other and stays there; nothing stretches it to meet what is around it. Where one of its ends touches another wall, that end follows when you push that wall.</dd>
               <dt>Draw a wall</dt><dd>The <b>Draw a wall</b> button (or <kbd>W</kbd>), then click to start and click to place. Each click chains into the next segment, and the length shows next to the pointer as you go. Type digits then <kbd>Enter</kbd> to place the point at an exact length. Double-click, <kbd>Enter</kbd> or <kbd>Esc</kbd> ends the run; the tool stays armed for the next one, a second <kbd>Esc</kbd> puts it away.</dd>
               <dt>Magnets while drawing</dt><dd>Points snap to the corners and faces of the walls already there, and the direction snaps to 0°, 45° and 90°. Hold <kbd>Shift</kbd> to keep only the two axes, and <kbd>Alt</kbd> to cut every magnet for as long as you hold it.</dd>
-              <dt>Length</dt><dd>On a selected wall, type the exact length in centimetres. It stretches the <b>free end</b> only: the other one is usually a junction, and moving it would break the room on the far side. A facade works too, by sliding the next facade along, so the corners stay square. Setting a length also makes a partition <b>Free</b>, otherwise it would immediately stretch back out.</dd>
+              <dt>Length</dt><dd>On a selected wall, type the exact length in centimetres. It stretches the <b>free end</b> only: the other one is a junction, and moving it would break the room on the far side. A wall held at BOTH ends has no end to give, so the field is greyed out and says so. A facade works too, by sliding the next facade along, so the corners stay square.</dd>
               <dt>Neighbour lengths</dt><dd>While you drag a wall, every wall touching it is measured too: you move a wall to size the room next to it, and that room is bounded by its neighbours.</dd>
-              <dt>Through / Free</dt><dd>On a selected partition, switches between the two: <b>Through</b> extends both ends until they meet something, <b>Free</b> leaves them alone. A free wall is still trimmed at the facade: free does not mean allowed to leave the flat.</dd>
               <dt>Split, square up, delete</dt><dd>Select the wall: its card carries <b>Split in two</b>, <b>Delete wall</b> (the two rooms merge), and <b>Square up</b> when the wall is slightly off square. <kbd>Del</kbd> deletes the selected wall too.</dd>
-              <dt>Facades</dt><dd>Pull an edge or a corner of the outline; <kbd>Shift</kbd> forces the horizontal/vertical axis, <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on a Mac) moves it by the whole centimetre instead of the 5 cm grid.</dd>
+              <dt>Facades</dt><dd>Pull an edge or a corner of the outline, at the centimetre; <kbd>Shift</kbd> forces the horizontal/vertical axis. A facade lands exactly on the line of a parallel facade when one is within reach, and <kbd>Alt</kbd> cuts that magnet.</dd>
               <dt>Rooms</dt><dd>A room is not drawn: it is COMPUTED from the walls. Click its name to open its card, or double-click the name to rename it straight away.</dd>
             </dl>
           </section>
@@ -137,10 +136,9 @@
               <tr><td class="k"><kbd>?</kbd></td><td class="d">Open this help</td></tr>
               <tr><td class="k">digits, <kbd>Enter</kbd></td><td class="d">Exact dimension while resizing, exact length while drawing a wall</td></tr>
               <tr><td class="k"><kbd>Shift</kbd>+slide an opening</td><td class="d">Fine mode: five times slower along the wall</td></tr>
-              <tr><td class="k"><kbd>Ctrl</kbd>+drag a wall (<kbd>Cmd</kbd> on a Mac)</td><td class="d">No grid: moves it by the whole centimetre</td></tr>
               <tr><td class="k"><kbd>D</kbd> (hold)</td><td class="d">Show the selected (or pointed-at) piece's dimensions without moving it</td></tr>
               <tr><td class="k"><kbd>W</kbd></td><td class="d">Arm (or put away) the wall tool</td></tr>
-              <tr><td class="k"><kbd>Alt</kbd>+drag</td><td class="d">On furniture: no magnet. While drawing a wall: cuts every magnet</td></tr>
+              <tr><td class="k"><kbd>Alt</kbd>+drag</td><td class="d">Cuts every magnet: on furniture, while drawing a wall, and on a facade</td></tr>
               <tr><td class="k">double-click a label</td><td class="d">Rename, in place</td></tr>
               <tr><td class="k"><kbd>Shift</kbd>+rotate</td><td class="d">Snap the rotation to 15°</td></tr>
               <tr><td class="k"><kbd>Shift</kbd>+drag a corner</td><td class="d">Outline: lock to the horizontal or vertical axis</td></tr>

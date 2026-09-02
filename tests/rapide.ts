@@ -40,6 +40,10 @@ import { oublierPhotoCellules, photoCellules, photographierCellules } from "../s
 import { meubleWallSnap } from "../src/ts/modele/espace.ts";
 import { outilMurALongueur, outilMurFin, outilMurNeuf, outilMurPoint } from "../src/ts/gestes/outil-mur.ts";
 import { v5PlaceWallMount } from "../src/ts/modele/edition.ts";
+// Le lot « un mur va d'un point à un point » (0012) éprouve le PIPELINE, pas un helper: le module
+// entier est importé une fois, plutôt que six symboles nommés dont aucun n'a d'autre lecteur ici.
+import * as MURS from "../src/ts/gestes/murs.ts";
+import { pointSuivi, RATIO_PRECIS } from "../src/ts/gestes/etat-pointeur.ts";
 import { empilables, passeAuDessus } from "../src/ts/catalogue/catalogue.ts";
 import { PLAN_ID_RE as PLAN_ID_RE_FN } from "../functions/plan-id.ts";
 import { cleanName as cleanNameFn } from "../functions/nom.ts";
@@ -544,6 +548,12 @@ test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
   // a hand-written list of field names: a field added to the contract and forgotten in
   // `sanitizeV5Plan` still fails this test, instead of only the ones someone remembered to name.
   const EXCEPTIONS_PIECE = ["hinge", "swing"];
+  // `free` is in `WALL_KEYS` only because the SERVER still accepts it (decision 0012 took the
+  // through-running wall away; a tab running the old code may still send the field, and the server
+  // still stores it). No client type carries it any more, `sanitizeV5Plan` reads it and drops it,
+  // and `v5WallWire` never emits it: the same documented asymmetry as `hinge`/`swing` above, in
+  // the same direction (G-18, the server is the more permissive of the two).
+  const EXCEPTIONS_MUR = ["free"];
   // `hinge`/`swing` are in `PIECE_KEYS` only because the SERVER still accepts the OLD format (a
   // door used to be a piece of furniture); `v5PieceWire` never emits them on a walls-only
   // `Meuble` and it does not declare them either (contrat-serveur.ts's own comment on the line
@@ -560,6 +570,7 @@ test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
     cles.forEach((k) => { e[k] = Object.prototype.hasOwnProperty.call(overrides, k) ? overrides[k] : VALEUR[k]; });
     return e;
   };
+  const murKeysUtiles = WALL_KEYS.filter((k) => EXCEPTIONS_MUR.indexOf(k) < 0);
   const wallSeed = entiteDepuisCles(WALL_KEYS, { id: "w1" });
   const openingSeed = entiteDepuisCles(OPENING_KEYS, { id: "o1", wallId: "w1", type: "door" });
   const pieceKeysUtiles = PIECE_KEYS.filter((k) => EXCEPTIONS_PIECE.indexOf(k) < 0);
@@ -572,7 +583,7 @@ test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
   const p1 = PLAN.sanitizeV5Plan(planSeed);
   const p2 = PLAN.sanitizeV5Plan(JSON.parse(JSON.stringify(p1)) as DonneeDynamique);
   const familles: Array<[string, readonly string[], Record<string, DonneeDynamique>, DonneeDynamique]> = [
-    ["walls", WALL_KEYS, wallSeed, p2 ? p2.walls[0] : null],
+    ["walls", murKeysUtiles, wallSeed, p2 ? p2.walls[0] : null],
     ["openings", OPENING_KEYS, openingSeed, p2 ? p2.openings[0] : null],
     ["pieces", pieceKeysUtiles, pieceSeed, p2 ? p2.pieces[0] : null],
     ["cells", CELL_KEYS, cellSeed, p2 ? p2.cells[0] : null],
@@ -1374,6 +1385,106 @@ test("outil_mur_une_longueur_tapee_pose_le_point_dans_la_direction_visee", () =>
       && expect(q !== null && q[0] === 100 && q[1] === 150, "50 cm vers le bas, vu " + JSON.stringify(q))
       && expect(outilMurALongueur([0, 0], [0, 0], 120) === null, "sans direction visée, rien n'est posé")
       && expect(outilMurALongueur([0, 0], [500, 0], 0) === null, "une longueur nulle ne pose rien");
+});
+
+// =================================================================================================
+//  UN MUR VA D'UN POINT À UN POINT (décision 0012)
+// =================================================================================================
+// Un mur v5 était TRAVERSANT: chaque bout était repoussé jusqu'à la première géométrie rencontrée,
+// à chaque recalcul, donc au chargement, à chaque image d'un geste et à la réception d'une op. Il
+// fallait un drapeau `free` pour y échapper, et ce drapeau était posé par le tracé, par la coupe,
+// par le redressement, par la longueur tapée et par un couple de boutons dans la fiche. Ce qui
+// reste: un mur va de `a` à `b`, l'aimant décide où `b` se pose, et rien ne s'allonge tout seul.
+// Le contour, lui, borne toujours: « libre » n'a jamais voulu dire « autorisé à sortir du logement ».
+
+/** Un 400x300 avec ses quatre façades, et les cloisons passées en argument. */
+const planMurs = (murs: DonneeDynamique[]): PlanV5 => sanitizeV5Plan({
+  outline: [[0, 0], [400, 0], [400, 300], [0, 300]],
+  walls: murs, openings: [], pieces: [], cells: [],
+} as DonneeDynamique)!;
+/** Le mur VIVANT dans `P.walls`: `sanitizeV5Plan` reconstruit des objets neufs. */
+const murDe = (P: PlanV5, id: string): Mur => P.walls.find((w) => String(w.id) === id)!;
+/** `v5WallDragCtx`/`v5WallDragApply`/`v5WallEndDragApply` ne touchent que `etat.plan` et `canvas`. */
+const ctxMurs = (P: PlanV5): DonneeDynamique =>
+  ({ etat: { plan: P }, canvas: { querySelector: (): null => null }, rev: 0, crochets: {}, ihm: {} }) as DonneeDynamique;
+
+test("un_mur_pose_a_40_cm_d_un_autre_reste_a_40_cm", () => {
+  // AVANT: `v5ThroughWall` poussait le bout `b` jusqu'à la cloison (x=200) et le bout `a` jusqu'à
+  // la façade (x=0), donc une cloison de 120 cm dessinée à la main en faisait 200 dès le premier
+  // recalcul. C'est le défaut d'usage qui a mené à ce lot.
+  const P = planMurs([
+    { id: "wB", a: [200, 50], b: [200, 250], t: 10, isOutline: false },
+    { id: "wA", a: [40, 150], b: [160, 150], t: 10, isOutline: false },
+  ]);
+  MURS.v5ResoudreGeometrie(P, true);
+  const a = murDe(P, "wA");
+  return expect(a.a[0] === 40 && a.b[0] === 160,
+      "la cloison garde ses deux bouts, vu a=" + JSON.stringify(a.a) + " b=" + JSON.stringify(a.b));
+});
+
+test("un_bout_amene_sur_un_mur_y_est_joint_et_le_suit", () => {
+  // La jonction se fait par l'AIMANT au moment du lâcher (`v5WallEndDrop`), pas en restant
+  // traversant, et c'est elle, et elle seule, qui fait suivre le bout quand le mur porteur bouge
+  // (les suiveurs de la décision 0005, gardés).
+  const P = planMurs([
+    { id: "wB", a: [200, 50], b: [200, 250], t: 10, isOutline: false },
+    { id: "wA", a: [40, 150], b: [160, 150], t: 10, isOutline: false },
+  ]);
+  const ctx = ctxMurs(P);
+  const cible = MURS.v5WallEndDrop(P, "wA", [40, 150], 197, 150, 1, false);
+  MURS.v5WallEndDragApply(ctx, "wA", "b", cible, true);
+  const joint = murDe(P, "wA").b[0] === 200;
+  const g = MURS.v5WallDragCtx(ctx, "wB");
+  MURS.v5WallDragApply(ctx, g, 30, true);
+  const a = murDe(P, "wA");
+  return expect(joint, "le bout lâché à 3 cm du mur doit s'y poser exactement (x=200), vu " + murDe(P, "wA").b[0])
+      && expect(murDe(P, "wB").a[0] === 170, "le mur porteur doit avoir bougé de 30 cm, vu " + murDe(P, "wB").a[0])
+      && expect(a.b[0] === 170, "et le bout joint doit l'avoir suivi, vu " + JSON.stringify(a.b))
+      && expect(a.a[0] === 40, "sans que l'autre bout bouge, vu " + JSON.stringify(a.a));
+});
+
+test("un_bout_laisse_loin_d_un_mur_ne_suit_plus_rien", () => {
+  // Le contrôle négatif de la précédente: hors de portée, il n'y a pas de jonction, donc pas de
+  // suiveur, donc rien ne bouge. C'était déjà vrai; ce qui change, c'est qu'il ne se rallonge plus
+  // non plus jusqu'au mur voisin en attendant.
+  const P = planMurs([
+    { id: "wB", a: [200, 50], b: [200, 250], t: 10, isOutline: false },
+    { id: "wA", a: [40, 150], b: [160, 150], t: 10, isOutline: false },
+  ]);
+  const ctx = ctxMurs(P);
+  const g = MURS.v5WallDragCtx(ctx, "wB");
+  MURS.v5WallDragApply(ctx, g, 30, true);
+  const a = murDe(P, "wA");
+  return expect(a.b[0] === 160, "le bout à 40 cm ne suit pas, vu " + JSON.stringify(a.b))
+      && expect(a.a[0] === 40, "et l'autre bout non plus, vu " + JSON.stringify(a.a));
+});
+
+test("free_est_lu_en_entree_ignore_et_jamais_reecrit", () => {
+  // C-5 à l'envers: le serveur accepte encore la clé (`WALL_KEYS`), un onglet resté ouvert peut
+  // encore l'envoyer, et le client la lit sans la garder. Ce qu'il ne fait plus JAMAIS, c'est
+  // l'écrire: ni dans le plan enregistré, ni sur le fil.
+  const P = planMurs([{ id: "wA", a: [40, 150], b: [160, 150], t: 10, isOutline: false, free: 1 }]);
+  const a = murDe(P, "wA");
+  const fil = v5StateWire(P, true);
+  const w = fil.walls.find((q) => String(q.id) === "wA");
+  return expect(!("free" in (a as unknown as Record<string, unknown>)),
+      "la relecture ne garde pas `free`, vu " + JSON.stringify(a))
+      && expect(a.a[0] === 40 && a.b[0] === 160, "et elle ne déplace pas le mur d'un centimètre")
+      && expect(!!w && !("free" in (w as unknown as Record<string, unknown>)),
+      "le fil ne porte plus la clé `free`, vu " + JSON.stringify(w));
+});
+
+test("maj_ralentit_le_point_suivi", () => {
+  // Repris de `tests/mur-libre.ts`, supprimée avec la cloison libre: ce cas-là n'avait rien à voir
+  // avec elle. Sans MAJ le point suivi EST le pointeur; avec, il avance cinq fois moins vite,
+  // ancré au point de départ du geste, ce qui rend le centimètre atteignable au zoom de travail.
+  const sans = pointSuivi({ shiftKey: false }, 300, 200, 100, 100);
+  const avec = pointSuivi({ shiftKey: true }, 300, 200, 100, 100);
+  const nul = pointSuivi({ shiftKey: true }, 100, 100, 100, 100);
+  return expect(sans.x === 300 && sans.y === 200, "sans MAJ, le point est inchangé, vu " + JSON.stringify(sans))
+      && expect(avec.x === 100 + 200 * RATIO_PRECIS && avec.y === 100 + 100 * RATIO_PRECIS,
+      "avec MAJ, l'écart est réduit d'un facteur " + RATIO_PRECIS + ", vu " + JSON.stringify(avec))
+      && expect(nul.x === 100 && nul.y === 100, "au point de départ, MAJ ne décale rien, vu " + JSON.stringify(nul));
 });
 
 // =================================================================================================

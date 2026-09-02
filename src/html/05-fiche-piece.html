@@ -16,12 +16,10 @@
   </div>
   <div class="rc-area" id="rcArea"></div>
   <div class="rc-warn" id="rcWarn">The walls cross each other; the shape may draw oddly.</div>
-  <!-- Through or free. Visible only when a WALL is selected: a room has no ends. "Free" = the
-       partition stays where it is; "Through" = it stretches to the first barrier, which is the
-       historical behavior and the default. -->
   <!-- EXACT LENGTH. The dimension already reads out during the drag; here it gets TYPED IN. Only
        the FREE end stretches: the other one is a junction, and moving it would break the wall
-       across from it. -->
+       across from it. A wall held at BOTH ends has no end to give, so the field is disabled and
+       the note below says why. -->
   <!-- SAME GRAMMAR AS THE INSPECTOR (`.field`: label above, `.in` inline with its unit). A
        homegrown class here received NONE of the `.field .in` rules, so "cm" wrapped onto its own
        line below the field. Reuse the structure, don't reinvent it. -->
@@ -31,13 +29,7 @@
       <div class="in"><input id="rcLen" type="number" min="10" max="3000" step="1"><span class="unit">cm</span></div>
     </div>
   </div>
-  <div class="rc-row rc-free" id="rcFreeRow" hidden>
-    <span class="lbl">Ends</span>
-    <span class="seg" role="group" aria-label="How this wall ends">
-      <button class="btn sm" id="rcThrough" title="Extend both ends until they meet something">Through</button>
-      <button class="btn sm" id="rcFree" title="Leave both ends where they are (a stub partition)">Free</button>
-    </span>
-  </div>
+  <p class="rc-note" id="rcLenNote" hidden>Both ends of this wall are junctions, so there is no end to stretch. Move one of them first.</p>
   <!-- "An exterior wall can't be deleted" is a NOTE, not a failed action: rendering it as a
        disabled red button made it read like an application error. -->
   <p class="rc-note" id="rcNote" hidden></p>

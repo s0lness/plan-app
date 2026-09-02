@@ -10,7 +10,7 @@
 //   node tests/gestes-perte-de-travail.ts [path/to/app.html]
 //
 //   tracer_gagne_sur_les_poignees   starting a trace ON a wall dragged the FACADE (15.1 m2 -> 0.8)
-//   mur_traversant_reste_entier     a wall crossed off its middle was cut in two on drag
+//   un_mur_croise_reste_entier      a wall crossed off its middle was cut in two on drag
 //   meuble_trop_grand_ne_saute_pas  a too-wide sofa jumped 372 cm outside the dwelling
 //   pas_de_mur_en_double            two strokes at the same spot = one more invisible wall
 //   echap_annule_le_geste           Escape did nothing, except clear the selection under the finger
@@ -236,14 +236,14 @@ await test("tracer_gagne_sur_les_poignees", async () => {
 });
 
 // =============================================================================
-//  2. mur_traversant_reste_entier
+//  2. un_mur_croise_reste_entier
 // =============================================================================
-// v5ThroughWall used to cast its ray from the wall's MIDDLE and stop at the first crossing:
-// any wall crossed anywhere other than exactly at its middle was truncated on the next drag.
+// The through rule (removed by decision 0012) used to cast its ray from the wall's MIDDLE and
+// stop at the first crossing: any wall crossed anywhere but exactly at its middle was truncated
 // [210,0]->[210,360] became [250,100]->[250,360], the top half vanished, 4 rooms became 3,
 // silently. We prove the OFF-CENTER crossing, the MULTIPLE crossing, the centered cross, and
 // we check that a real T-junction still holds.
-await test("mur_traversant_reste_entier", async () => {
+await test("un_mur_croise_reste_entier", async () => {
   const dragWall = async (atX: VerdictSonde, atY: VerdictSonde, toX: VerdictSonde, toY: VerdictSonde) => {
     const w = await J(`(function(){var best=null;__plan.plan.walls.forEach(function(q){if(q.isOutline)return;var dx=q.b[0]-q.a[0],dy=q.b[1]-q.a[1],ll=dx*dx+dy*dy||1;
       var t=Math.max(0,Math.min(1,((${atX}-q.a[0])*dx+(${atY}-q.a[1])*dy)/ll));var d=Math.hypot(${atX}-(q.a[0]+t*dx),${atY}-(q.a[1]+t*dy));if(!best||d<best.d)best={id:String(q.id),d:d};});return best&&best.id})()`);
@@ -259,7 +259,7 @@ await test("mur_traversant_reste_entier", async () => {
   await dragWall(210, 280, 250, 280);      // grabbed in its BOTTOM QUARTER
   const after = await plan();
   const w1 = after.walls.find((w: VerdictSonde) => w.id === "w1");
-  ok(after.cells === 4, `un mur traversant glissé ne doit pas faire disparaître de pièce (4 -> ${after.cells})`);
+  ok(after.cells === 4, `un mur croisé et glissé ne doit pas faire disparaître de pièce (4 -> ${after.cells})`);
   ok(w1 && Math.abs(w1.a[1] - 0) < 1 && Math.abs(w1.b[1] - 360) < 1,
     "le mur doit rester entier sur toute sa hauteur : " + JSON.stringify(w1));
 

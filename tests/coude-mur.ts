@@ -62,7 +62,7 @@ function ouvertureDe(id: string, t0: number, w: number, name: string): Ouverture
 }
 
 test("division_donne_deux_murs_colineaires_avec_un_point_commun", (a: DonneeDynamique) => {
-  const P = plan([{ id: "w1", a: [40, 120], b: [360, 120], t: 12, isOutline: false, free: 1 }]);
+  const P = plan([{ id: "w1", a: [40, 120], b: [360, 120], t: 12, isOutline: false }]);
   const r = v5WallSplitAt(P, "w1");
   if (!a(reussi(r), `la division doit réussir, vu ${JSON.stringify(r)}`) || !reussi(r)) return;
   const premier = mur(P, "w1"), second = mur(P, r.id);
@@ -73,7 +73,7 @@ test("division_donne_deux_murs_colineaires_avec_un_point_commun", (a: DonneeDyna
 });
 
 test("la_longueur_totale_et_l_epaisseur_sont_conservees", (a: DonneeDynamique) => {
-  const P = plan([{ id: "w1", a: [50, 40], b: [290, 220], t: 17, isOutline: false, free: 1 }]);
+  const P = plan([{ id: "w1", a: [50, 40], b: [290, 220], t: 17, isOutline: false }]);
   const avant = longueur(P.walls[0]!);
   const r = v5WallSplitAt(P, "w1");
   if (!a(reussi(r), `division refusée: ${JSON.stringify(r)}`) || !reussi(r)) return;
@@ -83,7 +83,7 @@ test("la_longueur_totale_et_l_epaisseur_sont_conservees", (a: DonneeDynamique) =
 });
 
 test("ouverture_premiere_moitie_garde_wallId_et_t0", (a: DonneeDynamique) => {
-  const P = plan([{ id: "w1", a: [0, 100], b: [300, 100], t: 12, isOutline: false, free: 1 }], [
+  const P = plan([{ id: "w1", a: [0, 100], b: [300, 100], t: 12, isOutline: false }], [
     ouvertureDe("o1", 25, 60, "First window"),
   ]);
   const r = v5WallSplitAt(P, "w1");
@@ -94,7 +94,7 @@ test("ouverture_premiere_moitie_garde_wallId_et_t0", (a: DonneeDynamique) => {
 });
 
 test("ouverture_seconde_moitie_change_de_mur_et_soustrait_la_demi_longueur", (a: DonneeDynamique) => {
-  const P = plan([{ id: "w1", a: [0, 100], b: [300, 100], t: 12, isOutline: false, free: 1 }], [
+  const P = plan([{ id: "w1", a: [0, 100], b: [300, 100], t: 12, isOutline: false }], [
     ouvertureDe("o2", 210, 50, "Second window"),
   ]);
   const r = v5WallSplitAt(P, "w1");
@@ -105,7 +105,7 @@ test("ouverture_seconde_moitie_change_de_mur_et_soustrait_la_demi_longueur", (a:
 });
 
 test("les_positions_absolues_des_ouvertures_ne_bougent_pas", (a: DonneeDynamique) => {
-  const P = plan([{ id: "w1", a: [40, 30], b: [360, 270], t: 12, isOutline: false, free: 1 }], [
+  const P = plan([{ id: "w1", a: [40, 30], b: [360, 270], t: 12, isOutline: false }], [
     ouvertureDe("o1", 30, 45, "First window"),
     ouvertureDe("o2", 260, 55, "Second window"),
   ]);
@@ -141,14 +141,14 @@ test("mur_de_facade_refuse_meme_si_le_cache_est_verifie_par_la_geometrie", (a: D
 });
 
 test("le_nouvel_id_porte_l_etiquette_du_device", (a: DonneeDynamique) => {
-  const P = plan([{ id: "w19", a: [20, 100], b: [380, 100], t: 12, isOutline: false, free: 1 }]);
+  const P = plan([{ id: "w19", a: [20, 100], b: [380, 100], t: 12, isOutline: false }]);
   const r = v5WallSplitAt(P, "w19");
   if (!a(reussi(r), `division refusée: ${JSON.stringify(r)}`) || !reussi(r)) return;
   a(/^w\d+-[a-z0-9]{4,8}$/.test(String(r.id)), `id créé sans étiquette de device: ${r.id}`);
 });
 
 test("diviser_deux_fois_produit_trois_murs_et_deux_ids_uniques", (a: DonneeDynamique) => {
-  const P = plan([{ id: "w1", a: [0, 100], b: [320, 100], t: 12, isOutline: false, free: 1 }]);
+  const P = plan([{ id: "w1", a: [0, 100], b: [320, 100], t: 12, isOutline: false }]);
   const r1 = v5WallSplitAt(P, "w1");
   if (!a(reussi(r1), `première division refusée: ${JSON.stringify(r1)}`) || !reussi(r1)) return;
   const r2 = v5WallSplitAt(P, "w1");
@@ -165,7 +165,7 @@ test("diviser_deux_fois_produit_trois_murs_et_deux_ids_uniques", (a: DonneeDynam
 // first half's length is derived FROM IT.
 test("un_milieu_non_rond_est_arrondi_et_ne_deplace_rien", (a: DonneeDynamique) => {
   const P = plan(
-    [{ id: "w1", a: [40.01, 120], b: [361.02, 120], t: 12, isOutline: false, free: 1 }],
+    [{ id: "w1", a: [40.01, 120], b: [361.02, 120], t: 12, isOutline: false }],
     [ouvertureDe("o1", 250, 40, "Fenêtre")],
   );
   const avant = extremitesOuverture(P, ouverture(P, "o1"));

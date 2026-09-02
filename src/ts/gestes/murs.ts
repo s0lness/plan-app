@@ -30,7 +30,7 @@
 // returns a TEXT, it no longer talks on its own.
 
 import type { Contexte } from "../app/contexte.ts";
-import type { Mur, Ouverture, PlanV5, Pt } from "../partage/plan.ts";
+import type { Mur, PlanV5, Pt } from "../partage/plan.ts";
 import { v5Touch, v5On, v5WallById } from "../app/contexte.ts";
 import { $ } from "../noyau/dom.ts";
 import { clamp, WALL, v5R2 } from "../noyau/nombres.ts";
@@ -43,10 +43,11 @@ import {
   v5ClampOpenings,
   v5ClampPieces,
   v5FlushOpeningsBorned,
+  v5BoutLibre,
   v5SnapPoint,
   v5SnapWallEnd,
   v5SyncOutlineWalls,
-  v5ThroughWall,
+  v5BornerAuLogement,
   v5WallMergeAt,
   v5CouperContour,
   v5IndexAreteContour,
@@ -71,7 +72,7 @@ import { toast } from "../app/toast.ts";
 import { numField } from "../noyau/champ-numerique.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { armGesture, beginGesture, endGesture } from "./sortie.ts";
-import { measureMode, sansGrille, spaceHeld } from "./etat-pointeur.ts";
+import { measureMode, spaceHeld } from "./etat-pointeur.ts";
 // THE WALL TOOL'S GRAMMAR, pure and testable without a browser: what a click MEANS in a chain.
 // Where the point lands (the magnets) stays here, because that needs the plan.
 import type { OutilMur } from "./outil-mur.ts";
@@ -259,8 +260,9 @@ function v5ClearDraft(ctx: Contexte): void {
 // =================================================================================================
 
 /**
- * THE GEOMETRY PIPELINE ITSELF, no screen effects: re-sync the outline walls, re-traverse every
- * interior wall, keep openings inside their wall, and (`final`) rebuild the cells. Extracted out
+ * THE GEOMETRY PIPELINE ITSELF, no screen effects: re-sync the outline walls, bring back inside
+ * the home any wall end that left it, keep openings inside their wall, and (`final`) rebuild the
+ * cells. NOTHING HERE LENGTHENS A WALL (decision 0012): a wall goes from `a` to `b`. Extracted out
  * of `v5AfterGeometry` (below) so a headless test can drive the SAME pipeline without a DOM
  * (`ctx.canvas`, `render()`, `document`) in the loop, exactly how `v5WallDragCtx`/
  * `v5WallDragApply` above are already tested directly, `tests/jonction-glisser-mur.ts`. Pure
@@ -269,7 +271,7 @@ function v5ClearDraft(ctx: Contexte): void {
 export function v5ResoudreGeometrie(P: PlanV5 | null | undefined, final: boolean): void {
   if (!P) return;
   v5SyncOutlineWalls(P);
-  (P.walls || []).forEach((w) => { if (!w.isOutline) v5ThroughWall(P, w); });
+  (P.walls || []).forEach((w) => { if (!w.isOutline) v5BornerAuLogement(P, w); });
   v5ClampOpenings(P);
   recalculerCellules(P, final);
 }
@@ -382,8 +384,8 @@ export function v5AfterGeometry(ctx: Contexte, final: boolean): void {
 // along" would need a projection rule that exists nowhere else in this model and would fight the
 // next `v5SyncOutlineWalls` rebuild; leaving it alone is the choice already in force (`x.isOutline`
 // is excluded from followers, and the dragged wall itself can never be an outline wall). Where a
-// dragged wall's OWN end rests against a facade, `v5ThroughWall`'s trim (below) is what keeps it
-// from leaving the apartment; that is unrelated to this follower list and unchanged by it.
+// dragged wall's OWN end would leave the apartment, `v5BornerAuLogement` brings it back; that is
+// unrelated to this follower list and unchanged by it.
 //
 // CHAINS ARE ONE HOP, DELIBERATELY: if A meets B and B meets C, dragging B carries A and C (their
 // near ends, touching B), but dragging A carries ONLY B, C is not touching A, so it is not in
@@ -478,7 +480,7 @@ export function v5WallDragApply(ctx: Contexte, g: ContexteGlisserMur, d: number,
   const P = ctx.etat.plan;
   w.a = [v5R2(a0[0] + s.nx * d), v5R2(a0[1] + s.ny * d)];
   w.b = [v5R2(b0[0] + s.nx * d), v5R2(b0[1] + s.ny * d)];
-  v5ThroughWall(P, w);
+  v5BornerAuLogement(P, w);
   const wl = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) || 1e-9;
   const wux = (w.b[0] - w.a[0]) / wl, wuy = (w.b[1] - w.a[1]) / wl;
   followers.forEach((f) => {
@@ -562,17 +564,16 @@ function v5PontsDeJonction(ctx: Contexte, g: ContexteGlisserMur, ponts: Map<Suiv
     // reselects and saves: all three are wrong in the middle of another gesture's final apply,
     // which has already pushed one history entry for the whole move.
     //
-    // A bridge is FREE, always. It is a wall we placed ourselves, exactly where we want it;
-    // leaving it through-running would have the through rule stretch it away from the very joint
-    // it exists to hold. Same thickness as the wall being moved, so the step reads as one piece
-    // of masonry rather than two.
+    // Same thickness as the wall being moved, so the step reads as one piece of masonry rather
+    // than two. It used to be marked `free` so the through rule would not stretch it away from the
+    // very joint it exists to hold; no wall stretches any more (decision 0012), so the bridge is
+    // an ordinary wall like every other.
     const pont: Mur = {
       id: v5NewId("w"),
       a: [p[0], p[1]],
       b: cible,
       t: w.t || WALL,
       isOutline: false,
-      free: 1,
     };
     P.walls.push(pont);
     ponts.set(f, pont);
@@ -608,16 +609,10 @@ function v5StartWallDrag(ctx: Contexte, e: PointerEvent, wallId: unknown): void 
       moved = true; pushHistory(ctx);
     }
     const cm = evtApt(ctx, ev);
-    let d = (cm.x - a0[0]) * s.nx + (cm.y - a0[1]) * s.ny - d0;
-    // Alt = free partition (unchanged). Ctrl/Cmd (`sansGrille`) is the SAME escape hatch as
-    // furniture and openings: one key to remember for "no grid," without taking Alt away from
-    // free-drawing.
-    if (ctx.etat.opts.snap && !ev.altKey && !sansGrille(ev)) {
-      const na = [a0[0] + s.nx * d, a0[1] + s.ny * d];
-      if (Math.abs(s.nx) > 0.99) d += (Math.round(na[0]! / 5) * 5 - na[0]!) / s.nx;
-      else if (Math.abs(s.ny) > 0.99) d += (Math.round(na[1]! / 5) * 5 - na[1]!) / s.ny;
-      else d = Math.round(d / 5) * 5;
-    }
+    // AT THE CENTIMETRE, NOT ON A GRID (decision 0012, after 0011 for furniture). The wall used to
+    // be rounded to a 5 cm step, with Alt and Ctrl as two different ways out of it. There is no
+    // step left to escape, so there is nothing to hold either key for here.
+    const d = (cm.x - a0[0]) * s.nx + (cm.y - a0[1]) * s.ny - d0;
     v5WallDragApply(ctx, g, d, false);
     v5PontsDeJonction(ctx, g, ponts);
     render(ctx);
@@ -690,13 +685,11 @@ const P0 = (ctx: Contexte): PlanV5 | null => ctx.etat.plan || null;
 // neighbor that was resting against this wall reacts to the endpoint's NEW position exactly as
 // it would to any other geometry edit; there is nothing extra to decide or carry.
 //
-// THE DRAGGED END BECOMES `free`, DELIBERATELY (same reasoning as the "exact length" field
-// further down, and the 2026-08-14 decision on drawn walls, see `v5TryCreateWall`'s own note):
-// `v5ThroughWall` extends a non-free wall's ends to the nearest barrier on every recompute, which
-// would silently undo a deliberate placement in open space the instant the gesture ends.
-// Connection to another wall is made through SNAPPING (`v5SnapWallEnd`) at drop time, never
-// through staying through-going: a `free` wall does not "reconnect" if a neighbor is later
-// dragged away, which is exactly what a deliberately extended stub should do.
+// THE END LANDS WHERE IT IS DROPPED, and stays there (decision 0012). There used to be a `free`
+// flag to set here, because the through rule would otherwise have undone the placement the instant
+// the gesture ended; nothing extends any more, so there is nothing to protect the drop from.
+// Connection to another wall is made through SNAPPING (`v5SnapWallEnd`) at drop time, and it does
+// not "reconnect" by itself if a neighbor is later dragged away.
 
 /**
  * Where the dragged endpoint lands THIS FRAME, in priority order:
@@ -707,10 +700,10 @@ const P0 = (ctx: Contexte): PlanV5 | null => ctx.etat.plan || null;
  *   4. otherwise, the wall's DIRECTION quantised to the nearest 45° measured from the FIXED end
  *      (`DIR8`/`quantizeAngleDeg`, `geometrie/angles.ts`), unless Alt is held, which frees the
  *      angle, the same meaning Alt already has everywhere else in this file.
- *   5. `step` (5cm, or 1cm under Ctrl/Cmd, the caller passes it, see `sansGrille`) rounds the
- *      result along whichever direction stage 4 picked.
- * Mirrors `v5StartDraw`'s own precedence (vertex > edge > grid) so extending a wall feels
- * identical to drawing one.
+ *   5. the result is rounded to the CENTIMETRE, along whichever direction stage 4 picked. There
+ *      is no 5 cm step any more (decision 0012), so there is no key to escape one either.
+ * Mirrors the wall tool's own precedence (vertex > edge > the bare centimetre) so extending a wall
+ * feels identical to drawing one.
  */
 export function v5WallEndDrop(
   P: PlanV5 | null | undefined,
@@ -720,20 +713,18 @@ export function v5WallEndDrop(
   y: number,
   echelle: number,
   alt: boolean,
-  step: number,
 ): Pt {
   const snapped = v5SnapWallEnd(P, String(wallId), x, y, echelle);
   if (snapped) return snapped;
-  if (alt) return [Math.round(x / step) * step, Math.round(y / step) * step];
+  if (alt) return [Math.round(x), Math.round(y)];
   const dx = x - anchor[0], dy = y - anchor[1];
   const dir = DIR8[quantizeAngleDeg(Math.atan2(dy, dx) * 180 / Math.PI) / 45]!;
-  const t = dx * dir[0] + dy * dir[1];
-  const tq = Math.round(t / step) * step;
-  return [v5R2(anchor[0] + dir[0] * tq), v5R2(anchor[1] + dir[1] * tq)];
+  const t = Math.round(dx * dir[0] + dy * dir[1]);
+  return [v5R2(anchor[0] + dir[0] * t), v5R2(anchor[1] + dir[1] * t)];
 }
 
 /**
- * Applies the drop: moves ONLY `bout`, marks the wall `free` (see file header), re-settles the
+ * Applies the drop: moves ONLY `bout`, then re-settles the
  * geometry (`final` also rebuilds the cells and bounds furniture). Mirrors `v5WallDragApply`'s
  * own shape exactly, including being safe to call headlessly with a stub `Contexte`
  * (`ctx.etat.plan` and `ctx.canvas.querySelector` only, no `render()`, no `document`), so the
@@ -750,7 +741,6 @@ export function v5WallEndDragApply(
   const w = v5WallById(ctx, wallId);
   if (!P || !w || w.isOutline) return null;
   w[bout] = target;
-  w.free = 1;
   v5ResoudreGeometrie(P, final);
   if (final) bornerLesMeubles(ctx);
   v5Touch(ctx);
@@ -776,19 +766,13 @@ function v5CouperLesTraverses(ctx: Contexte, w: Mur): void {
     // recalculee depuis le contour, la couper veut dire donner un sommet de plus au polygone: les
     // deux moities deviennent deux aretes, chacune deplacable comme n'importe quelle facade.
     if (!cible) { v5CouperContour(P, w[bout]); continue; }
-    const r = v5WallSplitAtPoint(P, cible.id, w[bout]);
     // ON NE REFUSE PAS CE QUE PERSONNE N'A DEMANDE. La coupe du T est une CONSEQUENCE du geste, pas
     // le geste: la personne a trace un mur, et il est trace. Quand une porte occupe le point de
     // contact, la jonction tient quand meme et seule la coupe n'a pas lieu; annoncer un refus
     // ferait croire que le trace a echoue. Mesure: retracer une cloison sur le plan reel sortait
-    // « "Porte 2" crosses that point », alors que la cloison etait bien la.
-    if ("refus" in r) continue;
-    // The two halves are frozen for the same reason the "+" freezes them: a through-running wall
-    // would be stretched straight back across the cut by `v5ResoudreGeometrie`, and the T would
-    // silently become one wall again.
-    const g = v5WallById(ctx, cible.id), d = v5WallById(ctx, r.id);
-    if (g) g.free = 1;
-    if (d) d.free = 1;
+    // « "Porte 2" crosses that point », alors que la cloison etait bien la. Le resultat n'est donc
+    // pas lu: les deux moities sont des murs ordinaires, comme celui qu'elles remplacent.
+    v5WallSplitAtPoint(P, cible.id, w[bout]);
   }
 }
 
@@ -803,7 +787,6 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
   const fixe: "a" | "b" = bout === "a" ? "b" : "a";
   const p0: Pt = [w[bout][0], w[bout][1]];
   const anchor: Pt = [w[fixe][0], w[fixe][1]];
-  const freeAvant = w.free;
   beginGesture();
   ctx.crochets.dragStart?.();
   const px0 = e.clientX, py0 = e.clientY;
@@ -817,8 +800,7 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
       moved = true; pushHistory(ctx);
     }
     const cm = evtApt(ctx, ev);
-    const step = sansGrille(ev) ? 1 : (ctx.etat.opts.snap ? 5 : 1);
-    const target = v5WallEndDrop(P, w.id, anchor, cm.x, cm.y, ctx.vue.scale, ev.altKey, step);
+    const target = v5WallEndDrop(P, w.id, anchor, cm.x, cm.y, ctx.vue.scale, ev.altKey);
     v5WallEndDragApply(ctx, w.id, bout, target, false);
     render(ctx);
     v5DrawWallDims(ctx, [w]);
@@ -842,10 +824,10 @@ export function v5StartWallEndDrag(ctx: Contexte, e: PointerEvent, wallId: unkno
     endGesture();
     ctx.crochets.dragEnd?.();
   };
-  // G-12. Escape: the endpoint AND its `free` flag return to before the gesture, then everything
+  // G-12. Escape: the endpoint returns to where it was before the gesture, then everything
   // touching it re-settles (a neighbor may have reacted to the endpoint while it was away).
   const cancel = (): void => {
-    w[bout] = p0; w.free = freeAvant;
+    w[bout] = p0;
     v5ResoudreGeometrie(P, true);
     bornerLesMeubles(ctx);
     v5Touch(ctx);
@@ -881,28 +863,20 @@ function v5RedresserMurSelectionne(ctx: Contexte): void {
   if (!w) return;
   pushHistory(ctx);
   w[r.bout] = r.cible;
-  // ET LE MUR REDRESSÉ GÈLE, SINON IL S'ENFUIT. Un mur v5 est TRAVERSANT par défaut: chaque bout
-  // est repoussé jusqu'à la première géométrie rencontrée. Le bout qu'on vient de bouger d'1 cm ne
-  // touche plus, pendant une image, le mur qui l'attendait, et `v5ThroughWall` l'envoie alors
-  // jusqu'à la façade. Mesuré sur le plan réel: `w3`, redressé, passait de 154 cm à 716 cm et
-  // traversait tout le haut du logement, en silence. C'est exactement la raison qui gèle les deux
-  // moitiés après un « + » (`v5SplitWallAtMid`) et le bout après un glissement
-  // (`v5WallEndDragApply`), et c'est la même réponse.
-  const traversantAvant = w.free !== 1;
-  w.free = 1;
+  // IL N'Y A PLUS RIEN À GELER (décision 0012). Le redressement devait marquer le mur `free`, sinon
+  // le bout qu'on venait de bouger d'1 cm, ne touchant plus rien pendant une image, était envoyé
+  // jusqu'à la façade (mesuré: `w3` passait de 154 cm à 716 cm, en silence). Un mur ne court plus:
+  // le bout redressé reste où le redressement l'a mis, et le mur d'en face, lui, ne bouge pas non
+  // plus, ce qui est la contrepartie assumée (voir le dossier 0012).
   v5SelectWall(ctx, w.id);
-  // Le mur d'en face, lui, n'est pas laissé en plan: `v5ResoudreGeometrie` rallonge les murs restés
-  // TRAVERSANTS jusqu'à la nouvelle droite (mesuré: `w4` et `w6` retrouvent x=276 tout seuls).
   v5ResoudreGeometrie(P, true);
   bornerLesMeubles(ctx);
   v5Touch(ctx);
   render(ctx);
   save(ctx);
   // Le message porte les deux chiffres: un déplacement d'1 cm est indistinguable d'un clic qui n'a
-  // rien fait. Et le gel CHANGE CE QU'EST LE MUR, donc il se dit, et seulement quand il change
-  // quelque chose.
-  toast(`Wall squared up: it was ${r.deg.toFixed(2)}° off, and its end moved by ${r.cm.toFixed(1)} cm.`
-    + (traversantAvant ? " It is now a free partition: its ends no longer stretch to meet what is around them." : ""),
+  // rien fait.
+  toast(`Wall squared up: it was ${r.deg.toFixed(2)}° off, and its end moved by ${r.cm.toFixed(1)} cm.`,
     { geste: true });
 }
 
@@ -940,26 +914,14 @@ function v5CouperMurSelectionne(ctx: Contexte): void {
   // split, and an opening straddling the midpoint blocks the cut by naming itself.
   const refus = v5WallSplitRefusal(P, String(wallId));
   if (refus) { toast(refus, { geste: true }); return; }
-  const avant = v5WallById(ctx, wallId);
-  const traversantAvant = !!avant && avant.free !== 1;
   pushHistory(ctx);
   const division = v5WallSplitAt(P, String(wallId));
   if ("refus" in division) { toast(division.refus, { geste: true }); return; }
-  // THE TWO HALVES ARE FROZEN, OR THE CUT UNDOES ITSELF ON THE SPOT. A v5 wall is THROUGH-RUNNING
-  // by default: each end is pushed to the first geometry beyond it. The joint the split just
-  // created IS an end of both halves, so `v5ResoudreGeometrie` immediately stretches each of them
-  // straight back through it. Measured on the real flat: cutting a wall running from 277 to 1011
-  // left one half at 277..644 and the other at 353..1011, overlapping, looking exactly like the
-  // single wall it was a moment earlier. The person clicking "+" would see nothing happen and
-  // would be holding two walls on top of each other.
-  const moitieA = v5WallById(ctx, wallId), moitieB = v5WallById(ctx, division.id);
-  if (moitieA) moitieA.free = 1;
-  if (moitieB) moitieB.free = 1;
-  // Freezing them CHANGES WHAT THE WALL IS, so it is said once, and only when it changes something:
-  // their outer ends stop following the outline too. Nothing here rewrites a wall's nature silently.
-  if (traversantAvant) {
-    toast("Wall split in two. Both halves are now free partitions: their ends no longer stretch to meet what is around them.", { geste: true });
-  }
+  // LES DEUX MOITIÉS N'ONT PLUS BESOIN D'ÊTRE GELÉES (décision 0012). Le joint que la coupe vient
+  // de créer est un bout des deux moitiés, et la règle traversante les rallongeait aussitôt l'une
+  // à travers l'autre (mesuré: un mur de 277 à 1011 rendait 277..644 et 353..1011, superposés).
+  // Rien ne rallonge plus, donc la coupe tient d'elle-même et ne change la nature de rien: il n'y
+  // a plus de message à dire.
   v5SelectWall(ctx, wallId);
   v5ResoudreGeometrie(P, true);
   bornerLesMeubles(ctx);
@@ -1028,22 +990,10 @@ export interface OptionsTrace {
  * it was still far from (2, 5, 10 cm): otherwise the gesture just seems to evaporate.
  */
 export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | null): Mur | null {
-  // OWNER'S DECISION (2026-08-14): A WALL DRAWN WITH THE TOOL KEEPS THE ENDS YOU DREW.
-  // Before, every drawn wall was through-going (`v5ThroughWall` pushes each end to the first
-  // barrier beyond it): a 60 cm stub drawn by hand shot across the room to the facade, which is
-  // right for a wall REBUILT from the outline but surprises everyone drawing by hand. `free` is
-  // the model's existing escape hatch for exactly this (see AGENTS.md "free partition", the
-  // "Ends: Through | Free" control): a wall born from THIS tool now sets it unconditionally,
-  // no `Alt` required. `Alt` keeps its OTHER, unrelated meaning below (no imposed right angle,
-  // no magnet): it never touches `free` here.
-  //
-  // BLAST RADIUS: this is the ONLY function that turns a drawn stroke into a wall object
-  // (`v5StartDraw`'s single caller, plus the identical test probe `sonde-fil.ts`'s `drawWall`,
-  // which exists precisely to exercise this same code path). It does not touch outline walls
-  // (`v5SyncOutlineWalls`), walls rebuilt from the outline, walls received from a peer
-  // (`historique/rejeu.ts`, `fil/*`), walls read from a stored plan (`modele/migrations.ts`), or
-  // conversion from the old format (`modele/conversion-v4.ts`): none of those call this function,
-  // and none of them were touched by this change.
+  // A WALL KEEPS THE ENDS YOU DREW, and that is now true of EVERY wall, not just of the ones the
+  // tool made (decision 0012). It used to need a `free` flag set here, because otherwise each end
+  // was pushed to the first barrier beyond it and a 60 cm stub shot across the room to the facade.
+  // `Alt` keeps its own, unrelated meaning below: no imposed right angle, no magnet.
   const P = ctx.etat.plan;
   if (!P) return null;
   const dup = v5WallCovering(P, a, b);
@@ -1056,9 +1006,9 @@ export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | 
     return null;
   }
   pushHistory(ctx);
-  const w: Mur = { id: v5NewId("w"), a: [a[0], a[1]], b: [b[0], b[1]], t: WALL, isOutline: false, free: 1 };
+  const w: Mur = { id: v5NewId("w"), a: [a[0], a[1]], b: [b[0], b[1]], t: WALL, isOutline: false };
   P.walls.push(w);
-  v5ThroughWall(P, w);            // `free`: trimmed by the outline only, kept as drawn otherwise
+  v5BornerAuLogement(P, w);       // trimmed by the outline only, kept as drawn otherwise
   // Un mur TRACE dans un autre forme un T lui aussi, et doit le couper de la meme facon.
   v5CouperLesTraverses(ctx, w);
   v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx);
@@ -1098,17 +1048,16 @@ function montrerLongueur(ctx: Contexte, clientX: number, clientY: number, L: num
  * The very first point of a chain has no direction yet: it only snaps (`v5SnapPoint`).
  */
 function pointVise(ctx: Contexte, P: PlanV5, e: { altKey?: boolean; shiftKey?: boolean }, cm: { x: number; y: number }): Pt {
-  const pas = ctx.etat.opts.snap ? 5 : 1;
-  if (e.altKey) return [Math.round(cm.x / pas) * pas, Math.round(cm.y / pas) * pas];
+  if (e.altKey) return [Math.round(cm.x), Math.round(cm.y)];
   const depart = chaine.depart;
-  if (!depart) return v5SnapPoint(P, cm.x, cm.y, ctx.vue.scale, !!ctx.etat.opts.snap);
+  if (!depart) return v5SnapPoint(P, cm.x, cm.y, ctx.vue.scale);
   if (e.shiftKey) {
     const dx = cm.x - depart[0], dy = cm.y - depart[1];
     return Math.abs(dx) >= Math.abs(dy)
-      ? [v5R2(depart[0] + Math.round(dx / pas) * pas), depart[1]]
-      : [depart[0], v5R2(depart[1] + Math.round(dy / pas) * pas)];
+      ? [v5R2(depart[0] + Math.round(dx)), depart[1]]
+      : [depart[0], v5R2(depart[1] + Math.round(dy))];
   }
-  return v5WallEndDrop(P, null, depart, cm.x, cm.y, ctx.vue.scale, false, pas);
+  return v5WallEndDrop(P, null, depart, cm.x, cm.y, ctx.vue.scale, false);
 }
 
 /** A segment shorter than this is a click landing on its own start, not a wall. */
@@ -1272,10 +1221,8 @@ export function v5StartVertexDrag(ctx: Contexte, e: PointerEvent, i: number): vo
     }
     if (!moved) return;
     const cm = evtApt(ctx, ev);                      // pure APARTMENT space
-    // Ctrl/Cmd (`sansGrille`): same "no grid" key as the edge, the wall, furniture and openings.
-    const step = (ctx.etat.opts.snap && !sansGrille(ev)) ? 5 : 1;
-    const lx = Math.round(cm.x / step) * step, ly = Math.round(cm.y / step) * step;
-    const o = orthoSnapVertex(poly, i, lx, ly, ev.shiftKey, sx, sy, ctx.vue.scale);
+    // AU CENTIMÈTRE (décision 0012): plus de pas de 5 cm, donc plus de touche pour en sortir.
+    const o = orthoSnapVertex(poly, i, Math.round(cm.x), Math.round(cm.y), ev.shiftKey, sx, sy, ctx.vue.scale);
     poly[i] = [Math.round(o.x), Math.round(o.y)];
     suivreLesVoisins(poly[i]![0], poly[i]![1]);
     drawOrthoGuides(ctx, o.guides);
@@ -1298,74 +1245,6 @@ export function v5StartVertexDrag(ctx: Contexte, e: PointerEvent, i: number): vo
   const cancel = (): void => { poly[i] = [sx, sy]; rendreLesVoisins(); moved = false; clearStitchGuides(ctx); };
   window.addEventListener("pointermove", move);
   armGesture(up, null, cancel);
-}
-
-// =================================================================================================
-//  UNE AVANCÉE S'ARRÊTE SUR LE MUR DE LA PIÈCE, PAS SUR LA COUPE DE LA FAÇADE
-// =================================================================================================
-// Signalement du propriétaire, captures à l'appui: il pousse vers le haut le tronçon de façade qui
-// forme le mur du haut d'une petite pièce, « ça crée un trou » et « la bissection à droite ne se
-// fait pas au bon endroit ». Mesuré sur la reproduction (contour 900x700 coupé en 350 et 550,
-// cloisons à 350 et à 560, poussée de 200 cm vers le haut): l'avancée sort large de 200 cm
-// (350..550) alors que la pièce en fait 210 (350..560), donc son coin droit tombe 10 cm avant le
-// mur de la pièce et le plan garde une encoche de 10 x 200 cm d'EXTÉRIEUR mordant dans le coin
-// haut-droit de la pièce. La cloison de gauche, elle, tombe pile sur la coupe: ce côté-là est
-// correct aujourd'hui, et c'est pour ça que le défaut est invisible quand les deux coupes tombent
-// juste.
-//
-// LA CLOISON NE BOUGE PAS, C'EST LE COIN DE L'AVANCÉE QUI VA LA CHERCHER. Les deux réponses se
-// défendaient: faire glisser la cloison de 10 cm déplacerait latéralement un mur que la personne
-// n'a pas touché (ce dépôt refuse ça partout ailleurs, « NO MASS RENORMALIZATION »), et l'écarter
-// de sa pièce sur toute sa hauteur (700 cm) pour rattraper une coupe de façade est un dégât bien
-// plus grand que celui qu'on répare. Ne rien faire laisse l'encoche. Le coin de l'avancée, lui,
-// n'existe QUE parce que le geste vient de le créer: le poser 10 cm plus loin ne défait rien.
-//
-// C'est la règle de la décision 0007 appliquée au cas où c'est la FAÇADE qui s'en va: une jonction
-// qui se romprait est pontée. Le pont du contour est le raccord à angle droit que `poserLesCoins`
-// crée déjà; ce qui manquait, c'est qu'il naisse là où la pièce se termine.
-//
-// PORTÉE, VOLONTAIREMENT ÉTROITE: seulement le bout où un RACCORD naît, c'est-à-dire là où la
-// façade a été coupée et où sa voisine la prolonge en ligne droite. Un voisin PERPENDICULAIRE (le
-// cas ordinaire, pousser le haut d'un rectangle) ne reçoit aucun coin, donc aucun aimant: sinon
-// pousser une façade de rectangle déplacerait les deux façades latérales de côté.
-
-/** The outline wall carrying the edge `p`->`q`, in either orientation. */
-function v5MurDeArete(P: PlanV5, p: Pt, q: Pt): Mur | undefined {
-  const pres = (u: Pt, v: Pt): boolean => Math.hypot(u[0] - v[0], u[1] - v[1]) < 2;
-  return (P.walls || []).find((w) => !!w.isOutline
-    && ((pres(w.a, p) && pres(w.b, q)) || (pres(w.a, q) && pres(w.b, p))));
-}
-
-/**
- * How far the corner `coin` has to slide along `e` (outward, away from the edge's other end) to
- * land on the end of a partition resting on this facade. 0 if there is none in reach, if the
- * partition is already exactly there, or if sliding would eat one of the two edges.
- *
- * `tol` is the SAME magnet reach as `aimantFacade` (one wall thickness, or 16 screen pixels,
- * whichever is larger): what is within a finger's width of the corner under the hand.
- */
-function v5CoinSurCloison(
-  P: PlanV5, coin: Pt, e: Pt, nrm: Pt, longArete: number, longVoisine: number, tol: number,
-): number {
-  let best = 0;
-  for (const w of (P.walls || [])) {
-    if (w.isOutline) continue;
-    const L = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]);
-    if (L < 1) continue;
-    // A partition RUNNING ALONG the facade is not a room's side wall: it says nothing about where
-    // the room ends. Same 0.09 (~5°) as the follower rule.
-    const ux = (w.b[0] - w.a[0]) / L, uy = (w.b[1] - w.a[1]) / L;
-    if (Math.abs(ux * e[0] + uy * e[1]) > 0.996) continue;
-    for (const k of ["a", "b"] as const) {
-      const q = w[k];
-      if (Math.abs((q[0] - coin[0]) * nrm[0] + (q[1] - coin[1]) * nrm[1]) > 2) continue;  // pas sur la façade
-      const d = (q[0] - coin[0]) * e[0] + (q[1] - coin[1]) * e[1];
-      if (Math.abs(d) < 0.5 || Math.abs(d) > tol) continue;
-      if (longArete + d < 1 || longVoisine - d < 1) continue;    // ni l'arête ni sa voisine ne disparaissent
-      if (best === 0 || Math.abs(d) < Math.abs(best)) best = d;
-    }
-  }
-  return best;
 }
 
 /**
@@ -1402,18 +1281,9 @@ export function v5StartOutlineEdgeDrag(
   const murArete = ctx.etat.plan.walls.find((w) => w.isOutline
     && ((memePt(w.a, a0) && memePt(w.b, b0)) || (memePt(w.a, b0) && memePt(w.b, a0))));
   const epaisseur = murArete?.t || WALL;
-  // Les deux bouts de l'arête AVANT tout aimantage: le coin d'une avancée peut aller chercher la
-  // cloison voisine (`v5CoinSurCloison`), et un clic net comme un Échap doivent rendre l'arête
-  // telle qu'elle était, ses ouvertures comprises.
-  const a00: Pt = [a0[0], a0[1]], b00: Pt = [b0[0], b0[1]];
-  let t0Memoire: Array<[Ouverture, number]> = [];
-  let decalage = 0;
   const restaurer = (): void => {
     poly.length = 0; for (const p of poly0) poly.push([p[0], p[1]]);
     ctx.etat.plan.walls.length = 0; for (const w of murs0) ctx.etat.plan.walls.push(w);
-    a0[0] = a00[0]; a0[1] = a00[1]; b0[0] = b00[0]; b0[1] = b00[1];
-    for (const [o, t] of t0Memoire) o.t0 = t;
-    t0Memoire = []; decalage = 0;
     i = i0; j = j0; coinsPoses = false;
   };
   // A FACADE SLIDES, IT NEVER BENDS. Pushing an edge moves its two ends; a neighbouring edge that
@@ -1425,41 +1295,12 @@ export function v5StartOutlineEdgeDrag(
   // junction bridge for partitions (decision record 0007). A neighbour that is PERPENDICULAR just
   // grows or shrinks, which is the ordinary rectangle case, and gets no corner.
   let coinsPoses = false;
-  /**
-   * Le coin d'une avancée va chercher la cloison qui borde la pièce, quand elle est à portée
-   * d'aimant. `coin` est le bout de l'arête tirée (muté ici), `loin` le bout opposé de la façade
-   * voisine qui la prolonge, `courant` le sommet vivant à ce coin (il sert à retrouver le mur de la
-   * voisine), et `autre` l'autre bout de l'arête tirée.
-   *
-   * UNE OUVERTURE DÉSIGNE SON MUR ET SA DISTANCE DEPUIS `a`: bouger le `a` d'un mur emmène toutes
-   * ses fenêtres avec lui, en silence. Les deux murs qui touchent ce coin sont donc corrigés d'un
-   * cran avant qu'il ne bouge, et la valeur d'origine est retenue pour Échap.
-   */
-  const glisserLeCoin = (coin: Pt, loin: Pt, courant: Pt, autre: Pt): void => {
-    const P = ctx.etat.plan;
-    if (!P) return;
-    const ex = coin[0] - autre[0], ey = coin[1] - autre[1];
-    const L = Math.hypot(ex, ey);
-    if (L < 1) return;
-    const e: Pt = [ex / L, ey / L];
-    const M = (loin[0] - coin[0]) * e[0] + (loin[1] - coin[1]) * e[1];
-    const tol = Math.max(WALL, 16 / (ctx.vue.scale || 1));
-    const d = v5CoinSurCloison(P, coin, e, [s.nx, s.ny], L, M, tol);
-    if (!d) return;
-    const v: Pt = [d * e[0], d * e[1]];
-    for (const w of [murArete, v5MurDeArete(P, loin, courant)]) {
-      if (!w || Math.hypot(w.a[0] - coin[0], w.a[1] - coin[1]) > 2) continue;
-      const l = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) || 1e-9;
-      const dl = (v[0] * (w.b[0] - w.a[0]) + v[1] * (w.b[1] - w.a[1])) / l;
-      for (const o of (P.openings || [])) {
-        if (String(o.wallId) !== String(w.id)) continue;
-        t0Memoire.push([o, o.t0]);
-        o.t0 = Math.max(0, v5R2(o.t0 - dl));
-      }
-    }
-    coin[0] = v5R2(coin[0] + v[0]); coin[1] = v5R2(coin[1] + v[1]);
-    decalage = Math.max(decalage, Math.abs(d));
-  };
+  // LE COIN SE POSE SUR LA COUPE DE LA FAÇADE, ET NULLE PART AILLEURS (décision 0012, qui renverse
+  // 0009). Il allait chercher, à portée d'aimant, le bout de la cloison qui borde la pièce, et
+  // portait avec lui la correction des ouvertures des deux façades, un souvenir pour Échap et un
+  // message chiffré. Ça répondait à une géométrie qui n'existe plus de la même façon: la pièce
+  // suit maintenant ses murs tels qu'ils sont, et si sa cloison ne tombe pas pile sur la coupe,
+  // c'est la coupe qu'on déplace, au « + », en le voyant.
   const poserLesCoins = (d: number): void => {
     coinsPoses = true;
     const m = poly.length;
@@ -1471,10 +1312,6 @@ export function v5StartOutlineEdgeDrag(
     };
     const avant = parallele(poly[av], poly[i]), apres = parallele(poly[j], poly[ap]);
     if (!avant && !apres) return;
-    // ET CE COIN SE POSE SUR LE MUR DE LA PIÈCE. Il naît ici et nulle part ailleurs, donc c'est ici
-    // qu'on décide où: sur la coupe de la façade, ou sur la cloison qui borde vraiment la pièce.
-    if (avant) glisserLeCoin(a0, poly[av]!, poly[i]!, b0);
-    if (apres) glisserLeCoin(b0, poly[ap]!, poly[j]!, a0);
     const out: Pt[] = []; let ni = i, nj = j;
     for (let k = 0; k < m; k++) {
       if (k === i && avant) out.push([a0[0], a0[1]]);
@@ -1511,18 +1348,12 @@ export function v5StartOutlineEdgeDrag(
     if (!moved) return;
     const cm = evtApt(ctx, ev);
     let d = (cm.x - a0[0]) * s.nx + (cm.y - a0[1]) * s.ny - d0;
-    // Alt = free partition (unchanged). Ctrl/Cmd (`sansGrille`) is the SAME escape hatch as
-    // furniture and openings: one key to remember for "no grid," without taking Alt away from
-    // free-drawing.
+    // AU CENTIMÈTRE, PUIS L'AIMANT (décision 0012). Il y avait une grille de 5 cm, deux touches
+    // pour en sortir, et un aimant qui devait ensuite gagner CONTRE elle pour qu'une façade puisse
+    // se poser pile sur la ligne d'une autre. Sans grille, l'aimant est seul: une façade se pose au
+    // centimètre, sauf si une façade parallèle est à portée, et Alt le coupe.
     let guide: GuideOrtho | null = null;
-    if (ctx.etat.opts.snap && !ev.altKey && !sansGrille(ev)) {
-      const na = [a0[0] + s.nx * d, a0[1] + s.ny * d];
-      if (Math.abs(s.nx) > 0.99) d += (Math.round(na[0]! / 5) * 5 - na[0]!) / s.nx;
-      else if (Math.abs(s.ny) > 0.99) d += (Math.round(na[1]! / 5) * 5 - na[1]!) / s.ny;
-      else d = Math.round(d / 5) * 5;
-      // ET L'AIMANT PASSE APRÈS LA GRILLE, ET GAGNE CONTRE ELLE (`aimantFacade`, gestes/edition-murs):
-      // une façade se pose PILE sur la ligne d'une autre façade parallèle, sinon il reste la marche
-      // de 5 cm qui empêche de refermer une encoche.
+    if (!ev.altKey) {
       const aim = aimantFacade(poly0, i0, a0, b0, s.nx, s.ny, d, ctx.vue.scale);
       d = aim.d; guide = aim.guide;
     }
@@ -1570,13 +1401,6 @@ export function v5StartOutlineEdgeDrag(
     // l'encoche irréversible (mesuré: à 6 sommets, un glissement du milieu la rouvre telle quelle;
     // à 4, il faut d'abord recouper la façade au « + »). Le maillon, lui, est un geste demandé.
     v5AfterGeometry(ctx, true);
-    // RIEN NE CHANGE DE FORME EN SILENCE. Le coin de l'avancée n'est pas tombé sur la coupe de la
-    // façade mais sur le mur de la pièce: la pièce n'a donc pas la largeur qu'on lisait avant le
-    // geste, et ça se dit avec le chiffre.
-    if (decalage >= 0.5) {
-      toast(`The recess stopped on the partition, ${decalage.toFixed(0)} cm past the cut,`
-        + " so the room keeps a square corner.", { geste: true });
-    }
     endGesture();
     ctx.crochets.dragEnd?.();
   };
@@ -1749,10 +1573,10 @@ export function brancherOutilsMurs(ctx: Contexte): void {
   $("rcSplit")?.addEventListener("click", () => v5CouperMurSelectionne(ctx));
   $("rcSquare")?.addEventListener("click", () => v5RedresserMurSelectionne(ctx));
 
-  // EXACT LENGTH OF A PARTITION. We stretch the FREE end, not both: the other end is
-  // almost always a junction with a neighboring wall, and moving it would break the room next door.
-  // "Free" = the end that touches no other wall; if BOTH touch, we stretch `b`, which is
-  // the end drawn second, hence the one the hand placed last.
+  // EXACT LENGTH OF A PARTITION. We stretch the FREE end, not both: the other end is almost always
+  // a junction with a neighboring wall, and moving it would break the room next door. "Free" = the
+  // end no junction holds (`v5BoutLibre`); if BOTH are free, `b`, the end drawn second, hence the
+  // one the hand placed last; if NEITHER is, the field is disabled and the sheet says why.
   numField($("rcLen"), {
     label: "The wall length", unit: "cm",
     bounds: () => ({ min: 10, max: 3000 }),
@@ -1791,49 +1615,16 @@ export function brancherOutilsMurs(ctx: Contexte): void {
       }
       const s2 = v5Seg(w);
       if (!s2.L) return;
-      const touche = v5MursTouchant(P, w);
-      const TOL = 3;
-      const colle = (p: Pt): boolean =>
-        touche.some((q) => Math.hypot(q.a[0] - p[0], q.a[1] - p[1]) <= TOL
-                        || Math.hypot(q.b[0] - p[0], q.b[1] - p[1]) <= TOL);
-      const bougeB = !colle(w.b) || colle(w.a);   // we prefer to move `b`, unless it's the only one welded
+      const bout = v5BoutLibre(P, w);
+      if (!bout) return;                          // both ends joined: the field is disabled, C-2
       pushHistory(ctx);
-      if (bougeB) w.b = [v5R2(w.a[0] + s2.ux * v), v5R2(w.a[1] + s2.uy * v)];
+      if (bout === "b") w.b = [v5R2(w.a[0] + s2.ux * v), v5R2(w.a[1] + s2.uy * v)];
       else w.a = [v5R2(w.b[0] - s2.ux * v), v5R2(w.b[1] - s2.uy * v)];
-      // A partition given an imposed length becomes FREE: without this, `v5ThroughWall` would
-      // immediately lengthen it back to the first barrier and the typed number would have been useless.
-      w.free = 1;
-      v5ThroughWall(P, w);
+      v5BornerAuLogement(P, w);
       v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx);
       render(ctx); save(ctx);
     },
   });
-
-  // THROUGH <-> FREE. Toggling RECOMPUTES the geometry: switching to free doesn't shorten the
-  // wall (it's already extended, and shortening it by force would make a partition you could
-  // see disappear), but switching to through LENGTHENS it right away, otherwise the setting would say nothing
-  // on screen and you'd have to guess that it will act "later."
-  //
-  // Switching to Through sets `w.free = 0`, it does NOT delete the key. A deleted key and a wall
-  // that never used this control at all became BYTE-IDENTICAL on the wire (`v5WallWire`), so the
-  // field-by-field diff had no way to tell "never set" from "just cleared", and the CLEAR never
-  // reached a peer: the author saw Through, the peer kept showing Free, forever, until a full
-  // resync. `0` is a real value the server already understands and already normalizes to the
-  // same storage as absence (`WALL_FREE`, `live-worker/ops.ts`), so nothing downstream changes;
-  // only the wire, in between, finally gets to carry the clear.
-  for (const [id, libre] of [["rcThrough", false], ["rcFree", true]] as const) {
-    $(id)?.addEventListener("click", () => {
-      const P = ctx.etat.plan;
-      const w = ctx.ihm.selWall ? v5WallById(ctx, ctx.ihm.selWall) : null;
-      if (!P || !w || w.isOutline) return;
-      if (!!w.free === libre) return;
-      pushHistory(ctx);
-      w.free = libre ? 1 : 0;
-      v5ThroughWall(P, w);
-      v5RebuildCells(P); bornerLesMeubles(ctx); v5Touch(ctx);
-      render(ctx); save(ctx);
-    });
-  }
 }
 
 // =================================================================================================

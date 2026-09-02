@@ -1,6 +1,6 @@
 {
  "quoi": "Empreintes de lecture du corpus de compatibilité. Écrites par `node tests/compat-donnees.ts --figer`. Une empreinte qui bouge sans qu'on l'ait voulu EST une perte de données : ne jamais refiger pour faire taire l'oracle.",
- "fige": "2026-09-02T08:41:53.066Z",
+ "fige": "2026-09-02T12:58:29.110Z",
  "documents": {
   "fixture-plan-reel-77": {
    "quoi": "v4 rooms[]+envelope+opts : le plan du foyer AVANT la conversion murs-seuls (8 salles, 77 objets, D-3)",
@@ -38,9 +38,9 @@
   "fixture-plan-champs-recents": {
    "quoi": "v5 murs-seuls INVENTÉ : porte leaf/tr/dmin/pair/free/hinge/swing (C-5)",
    "lu": true,
-   "fp": "1ee27bdd8de68e59",
-   "octets": "aaed52026ca2aac0",
-   "local": "f0f7f4f29e832016",
+   "fp": "ffce06c5b8e861d3",
+   "octets": "f5fd90250df28293",
+   "local": "7e25e94da9e10405",
    "setupDone": true,
    "n": "4/5/1/2/2",
    "pointFixe": true,

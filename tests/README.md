@@ -74,7 +74,6 @@ in `AGENTS.md`, section "The barrier runs at LOW PRIORITY".
 | `tests/train-ouvertures.ts` | browser | Grouped movement of openings without destroying the selection. |
 | `tests/repartir-espacement.ts` | pure | Even distribution of selected furniture. |
 | `tests/fenetre-battement.ts` | pure | Geometry of window swing. |
-| `tests/mur-libre.ts` | pure | Freestanding partition wall and precise placement mode. |
 | `tests/projection.ts` | pure | Optical calculation of the projector. |
 | `tests/exports-morts.ts` | 2/2 | Every suite is registered in the barrier and no new export goes without a caller. |
 | `live-worker/test-local.ts` | 601 assertions | Server, no browser: validator, ops, Durable Object, D1 fallback, sequencing and deduplication by (tag, n). |

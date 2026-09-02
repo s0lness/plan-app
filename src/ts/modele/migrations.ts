@@ -112,16 +112,11 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       b,
       t: clamp(num(w["t"], WALL), WALL_T_MIN, WALL_T_MAX),
       isOutline: !!w["isOutline"] || v5OnOutline(a, b, outline, 1),
-      // FREE PARTITION (a wall drawn with the tool, a split half, the "Ends: Through | Free"
-      // control): it must NOT extend to the first
-      // barrier the next time it is touched (`v5ThroughWall`, modele/edition.ts). This field used
-      // to be DROPPED here on every re-read: reload, undo/redo (`histReplay` -> `migrate` ->
-      // `sanitizeV5Plan`), and D1/realtime adoption all go through this function, so a
-      // free-standing segment silently turned into an ordinary through-running wall the moment
-      // anyone touched it again. Measured (on the freehand chain tool, since removed): a chain's
-      // loose end, redrawn then undone and redone, came back withOUT `free` even though the
-      // geometry looked identical.
-      free: w["free"] ? 1 : undefined,
+      // `free` IS READ AND IGNORED (decision 0012). It marked a wall that must not stretch to the
+      // first barrier; no wall stretches any more, so every stored plan is already "free" and
+      // dropping the key moves nothing: a wall's geometry is what is stored, and it is kept
+      // verbatim. This function never writes the field back, so a plan saved by this client no
+      // longer carries it at all.
     });
     if (brut != null) wallIdAlias.set(brut, id);
   });
@@ -251,7 +246,7 @@ export function normalizeOpeningFacing<T extends PlanV5>(plan: T | null | undefi
 // =================================================================================================
 //  PERSONAL SETTINGS, they NEVER cross over, in either direction (D-7)
 // =================================================================================================
-// Everything here describes the person's SCREEN (layers, labels, snap, Circulation panel,
+// Everything here describes the person's SCREEN (layers, labels, Circulation panel,
 // overlay, collapsed categories, TV inches), not the apartment.
 // They used to travel inside the shared plan: one household member unchecks "Luminaires", the
 // other reloads, their wall lights vanish.
@@ -261,14 +256,11 @@ export function normalizeOpeningFacing<T extends PlanV5>(plan: T | null | undefi
 // compile error, whereas the guarantee used to rest on three independent barriers and a
 // convention written as a comment.
 
+// THE `snap` KEY IS GONE (decision 0012, after 0011 for furniture). Walls and openings were the
+// last readers of the 5 cm step; they move at the centimetre now, magnets and all. An old stored
+// setting still carrying `snap` is read without complaint and simply dropped by `cleanOpts`,
+// which never writes it back.
 export interface Options {
-  /**
-   * The 5 cm step, WALLS AND OPENINGS ONLY. Furniture lost its grid with decision 0011 and there is
-   * no longer a switch for this in the configuration: the field is read from what is already stored
-   * (an old save keeps working) and left at its default otherwise. It disappears when the wall and
-   * opening lots take their own magnets.
-   */
-  snap: boolean;
   labels: boolean;
   flow: boolean;
   overlay: boolean;
@@ -286,13 +278,14 @@ export interface Options {
 }
 
 const DEFAULT_OPTS: Options = {
-  snap: true, labels: true, flow: false, overlay: false, tvIn: null, collapsedCats: [],
+  labels: true, flow: false, overlay: false, tvIn: null, collapsedCats: [],
   layFurn: true, layLight: true, layPlug: true, palBy: "room",
 };
 
 export function cleanOpts(opts: Partial<Options> | null | undefined): Options {
-  const o: Options & { floor?: unknown } = Object.assign({}, DEFAULT_OPTS, opts || {});
+  const o: Options & { floor?: unknown; snap?: unknown } = Object.assign({}, DEFAULT_OPTS, opts || {});
   delete o.floor; // the floor is a CELL property, never a setting
+  delete o.snap;  // the 5 cm step: read from an old save, never kept and never written back
   o.collapsedCats = Array.isArray(o.collapsedCats) ? o.collapsedCats.filter((c) => typeof c === "string") : [];
   // An unknown value (old setting, hand-edited file) falls back to the default instead of
   // breaking the palette's construction.

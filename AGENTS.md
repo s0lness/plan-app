@@ -12,7 +12,10 @@ Why it is built this way, not just how to work in it: `docs/decisions/`.
 - A **cell** (a "room" in the usual sense) is DERIVED from the planar subdivision of the outline by
   the walls. It owns nothing: neither furniture nor openings. It carries a name and a floor, and
   these survive recomputation through area matching.
-- A **wall** is ONE object shared by the two cells it separates: moving it adjusts both.
+- A **wall** is ONE object shared by the two cells it separates: moving it adjusts both. It goes
+  from `a` to `b` and stays there (decision 0012): nothing pushes an end out to the first thing
+  beyond it, at load, during a gesture, on an incoming op or after a square-up. The one thing that
+  still moves an end by itself is the OUTLINE, which brings back inside anything that left the home.
 - An **opening** (door, window, wall light, outlet, RJ45) belongs to the WALL: `{wallId, t0, side}`.
 - A **piece of furniture** has apartment coordinates, period. No re-homing, no notion of a
   "current room", no local coordinate system.
@@ -795,6 +798,32 @@ Decision [0010](docs/decisions/0010-le-mur-est-un-outil-le-sol-un-lasso.md), whi
   to be DRAGGED stays on the plan, because dragging is the one thing a sheet cannot do.
 - Covered by `tests/outil-mur-geste.ts` (browser) and by the four pure cases of `tests/rapide.ts`.
 
+## A WALL GOES FROM ONE POINT TO ANOTHER POINT
+Decision [0012](docs/decisions/0012-un-mur-va-d-un-point-a-un-point.md), which reverses the
+through-running wall, the `free` flag it needed, decision 0009's recess magnet, and the 5 cm grid
+for walls and openings. Read it before touching `modele/edition.ts` or `gestes/murs.ts`.
+
+- **Nothing lengthens on its own.** A wall ends where the hand put it. `v5BornerAuLogement`
+  (`modele/edition.ts`) is all that is left of the old `v5ThroughWall`: it TRIMS an endpoint that
+  has left the outline and does nothing else. `v5ResoudreGeometrie` calls it on every interior wall
+  at every frame, exactly as before, and now that call moves nothing that was already inside.
+- **The junction is what connects, and it is made by the MAGNET at drop time** (`v5SnapWallEnd`
+  through `v5WallEndDrop`), never by a wall running into another one. A wall that touches another
+  one within 2 cm is joined to it, and its end follows when that wall is pushed (the followers of
+  decision 0005, unchanged, plus the bridge of 0007 for the junction that would otherwise tear).
+- **There is no `free` field any more.** It marked "this one must not stretch"; nothing stretches,
+  so it describes nothing. `sanitizeV5Plan` READS it and drops it, `v5WallWire` never emits it, the
+  sheet's Through / Free pair is gone, and the server (`WALL_KEYS`, `live-worker/ops.ts`) still
+  accepts it so a tab running the old code is never refused.
+- **No grid, for walls or openings either** (decision 0011 did furniture). A wall, a facade, an
+  outline corner and an opening all move at the CENTIMETRE. `Alt` suspends the magnets, `Shift`
+  constrains; the `sansGrille` (Ctrl/Cmd) modifier and the `snap` setting are both gone, the
+  setting read from an old save and dropped by `cleanOpts`.
+- **A typed Length stretches the FREE end** (`v5BoutLibre`), `b` when both are free. Held at both
+  ends, the field is DISABLED and the sheet says why: picking a junction to tear would be worse
+  than refusing.
+- Covered without a browser by `tests/rapide.ts` (five cases) and `tests/bouts-de-mur.ts`.
+
 ## Pushing a wall: A FOLLOWER NEVER TILTS
 Two rules, decided ONCE at `pointerdown` (`v5WallDragCtx`) and never re-evaluated during the
 gesture. **A follower never tilts**: it keeps its own direction, so its touching point either slides
@@ -842,14 +871,13 @@ merely carries no button.
 - **We pivot around the CROSSROADS, never around a simple rest.** Both ends are held, so one has to
   move; the one that stays is the one where the MOST other wall ENDS coincide, because that is the
   junction that would tear. Measured on `w3`: end `a` carries the ends of `w2` and `w7` (the middle
-  T), end `b` only `w4`, so `b` is the one that slides by 1 cm. The wall opposite is not left
-  dangling: `w4` and `w6` are THROUGH walls, so `v5ThroughWall` stretches them onto the new line by
-  itself.
-- **And the squared-up wall FREEZES (`free`), or it runs away.** The end just moved by 1 cm no
-  longer touches, for one frame, the wall that was waiting for it, and the through rule then sends
-  it all the way to the facade (measured: `w3` went from 154 cm to 716 cm, crossing the whole top of
-  the flat, in silence). Same reason the "+" freezes both halves and an endpoint drag freezes its
-  wall. That change of nature is STATED, like the split states it.
+  T), end `b` only `w4`, so `b` is the one that slides by 1 cm.
+- **Nothing is frozen afterwards, and nothing runs away** (decision 0012). The correction used to
+  need a `free` flag on the spot: the end just moved by 1 cm stopped touching, for one frame, the
+  wall that was waiting for it, and the through rule then sent it to the facade (measured: `w3`
+  went from 154 cm to 716 cm, in silence). No wall runs, so there is nothing to freeze and nothing
+  to announce beyond the two figures. The counterpart, accepted: the wall ACROSS from it does not
+  come along by itself either, it is pushed or its end is pulled.
 - **NOTHING IS SQUARED UP IN SILENCE, AND NOTHING IN BULK.** No pass at load, none inside
   `v5ThroughWall`: this is the "NO MASS RENORMALIZATION" rule below, born from a click that rewrote
   the floor plan. The correction is a consequence of a DELIBERATE gesture on THAT wall, and it is
@@ -861,6 +889,7 @@ merely carries no button.
   itself is covered by `tests/outil-mur-geste.ts` (it stays hidden on a wall that is already
   square). The measurements above were taken with `tests/mur-droit-geste.ts`, removed with the
   hover controls it was written against (decision 0010).
+- Squaring up no longer stretches anything, in either direction (decision 0012).
 
 ## A click lands on what is visible, and repeating gives EXACTLY the same number
 Four rules born from a second real-use session (1 500 gestures, real floor plan then 300 objects).

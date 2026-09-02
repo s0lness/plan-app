@@ -22,7 +22,7 @@ import { v5CellsAt, v5DedupeWalls, v5OpeningBox, v5OpeningEdgeLimits, v5Seg, v5W
 import { v5RebuildCells } from "./modele/cellules.ts";
 import {
   v5CanDeleteWall, v5ClampPiece, v5ClampPieces, v5FlushOpeningThinned,
-  v5FlushPlaceNarrowed, v5LastFit, v5MoveOpeningTo, v5NearestWall, v5PlaceWallMount, v5ThroughWall,
+  v5FlushPlaceNarrowed, v5LastFit, v5MoveOpeningTo, v5NearestWall, v5PlaceWallMount, v5BornerAuLogement,
   v5WallCovering,
 } from "./modele/edition.ts";
 import { fabriqueOuverture, mk } from "./modele/creation.ts";
@@ -238,11 +238,11 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
       v5SelectWall(ctx, id); v5DeleteSelectedWall(ctx);
       return (ctx.etat.plan.cells || []).length;
     },
-    // TOOL: draw a through wall between two points, via the same path as the pointer.
+    // TOOL: draw a wall between two points, via the same path as the pointer.
     addWall(a: Pt, b: Pt) {
       const P = ctx.etat.plan; if (!P) return null;
       const w = { id: v5NewId("w"), a: [a[0], a[1]] as Pt, b: [b[0], b[1]] as Pt, t: WALL, isOutline: false };
-      P.walls.push(w); v5ThroughWall(P, w);   // a drawn wall RUNS THROUGH to any wall it meets
+      P.walls.push(w); v5BornerAuLogement(P, w);   // a drawn wall keeps the ends it was given
       v5RebuildCells(P); v5ClampPieces(P); v5Touch(ctx); render(ctx); save(ctx);
       return { id: String(w.id), a: w.a, b: w.b };
     },
@@ -266,8 +266,7 @@ export function sondeGestes(ctx: Contexte): SondeGestes {
       const poly = ctx.etat.plan.outline;
       const p0 = poly[i]; if (!p0) return poly;
       const sx = p0[0], sy = p0[1];
-      const step = ctx.etat.opts.snap ? 5 : 1;
-      const o = orthoSnapVertex(poly, i, Math.round(x / step) * step, Math.round(y / step) * step, !!shift, sx, sy, ctx.vue.scale);
+      const o = orthoSnapVertex(poly, i, Math.round(x), Math.round(y), !!shift, sx, sy, ctx.vue.scale);
       poly[i] = [Math.round(o.x), Math.round(o.y)];
       v5AfterGeometry(ctx, true); save(ctx);
       return ctx.etat.plan.outline;

@@ -8,7 +8,7 @@
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5SelectedCell, v5WallById } from "../app/contexte.ts";
-import { v5MurDeTravers } from "../modele/edition.ts";
+import { v5BoutLibre, v5MurDeTravers } from "../modele/edition.ts";
 import { v5SignedArea } from "../modele/aires.ts";
 import { fmtM2 } from "../noyau/nombres.ts";
 import { $ } from "../noyau/dom.ts";
@@ -57,27 +57,25 @@ export function syncCellCard(ctx: Contexte): void {
   if (split) split.hidden = !w;
   const square = $("rcSquare") as HTMLButtonElement | null;
   if (square) square.hidden = !(w && !w.isOutline && v5MurDeTravers(ctx.etat.plan, w.id));
-  // Through-wall or free-standing: only on a PARTITION. A facade has no ends to leave dangling,
-  // and a room is not a wall.
+  // LENGTH. Facade INCLUDED: its length can also be set, by moving the next facade (see
+  // `gestes/murs.ts`). Only its DELETION remains forbidden.
   const lenRow = $("rcLenRow");
   if (lenRow) {
-    // Facade INCLUDED: its length can also be set, by moving the next facade (see
-    // `gestes/murs.ts`). Only its DELETION remains forbidden.
-    const cloison = !!w;
-    lenRow.hidden = !cloison;
+    lenRow.hidden = !w;
     const inp = $("rcLen") as HTMLInputElement | null;
-    if (cloison && inp && document.activeElement !== inp) {
+    if (w && inp && document.activeElement !== inp) {
       inp.value = String(Math.round(Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1])));
     }
-  }
-  const row = $("rcFreeRow");
-  if (row) {
-    const cloison = !!w && !w.isOutline;
-    row.hidden = !cloison;
-    if (cloison) {
-      const libre = !!w.free;
-      $("rcThrough")?.setAttribute("aria-pressed", String(!libre));
-      $("rcFree")?.setAttribute("aria-pressed", String(libre));
+    // A TYPED LENGTH STRETCHES THE FREE END, so a partition held at BOTH ends has no end to give:
+    // the field is disabled and says why, rather than picking a junction to tear open (C-2, what
+    // cannot be done says so). A facade is never in that case: it is resized by sliding the next
+    // one, which is why it keeps the field.
+    const bloque = !!w && !w.isOutline && !v5BoutLibre(ctx.etat.plan, w);
+    const note = $("rcLenNote");
+    if (inp) {
+      inp.disabled = bloque;
+      inp.title = bloque ? "Both ends of this wall are junctions." : "";
     }
+    if (note) note.hidden = !bloque;
   }
 }

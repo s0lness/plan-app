@@ -91,9 +91,9 @@ export function orthoSnapVertex(
  * - **La portée se mesure à l'écran**, `Math.max(WALL, 16 / echelle)`, la même formule que
  *   `v5SnapTolBout`: un aimant en centimètres ne s'attrape plus une fois dézoomé, et une main
  *   vise en pixels.
- * - **L'aimant PRIME sur la grille**: se poser à 5 cm près d'un alignement, c'est exactement le
- *   défaut. Il est armé par le même réglage et désarmé par la même échappatoire (`sansGrille`,
- *   Ctrl/Cmd), parce que c'est la même promesse: une touche pour poser où l'on veut.
+ * - **Il est seul, maintenant qu'il n'y a plus de grille** (décision 0012). Il devait primer sur
+ *   un pas de 5 cm, parce que se poser à 5 cm près d'un alignement est exactement le défaut; la
+ *   façade se déplace au centimètre, et `Alt` suspend l'aimant le temps d'un geste.
  * - **Il ne s'applique que sur un axe**, donc là où le guide qui le PROUVE peut être dessiné. Un
  *   aimant muet est indistinguable d'un hasard, et c'est une façade oblique qui paierait le
  *   silence.
