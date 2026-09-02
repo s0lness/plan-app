@@ -32,8 +32,36 @@ const IP_MAX = 64;
 // distinct reports plus a retry after a flaky connection (this feature must never lose what
 // someone typed, so a retry is expected), while still stopping a script from filling the table
 // for free — a genuine household generates at most a handful of these a year.
-const FEEDBACK_PAR_HEURE_MAX = 5;
+export const FEEDBACK_PAR_HEURE_MAX = 5;
 const HEURE_MS = 3_600_000;
+
+/**
+ * THE ONE RATE LIMIT IN THIS CODEBASE, and it is shared rather than copied: `functions/api/err.ts`
+ * is the other unauthenticated-ish write that can be driven in a loop, and two hand-written copies
+ * of a counting query drift the day one of them is tuned.
+ *
+ * `table` and `colonne` are a CLOSED UNION, never caller data: they are interpolated into the SQL
+ * because a table or column name cannot be a bind parameter, and the type is what guarantees only
+ * these four spellings ever reach it. Both tables carry `at` (ISO), which is what makes one
+ * function fit both. WHICH handle is counted differs on purpose: `feedback` has an `ip` column and
+ * needs no identity on either door, while `errors` has no `ip` column at all (live-worker/schema.sql)
+ * and is reachable ONLY on the household door, so its author (`who`) is the handle available there.
+ *
+ * Returns how many rows that handle already wrote inside the window; the caller compares it to its
+ * own cap. An empty handle counts as 0: refusing a caller we cannot even name would refuse
+ * everyone at once.
+ */
+export async function comptageRecent(
+  env: Env, table: "feedback" | "errors", colonne: "ip" | "who", valeur: string,
+  fenetreMs: number = HEURE_MS,
+): Promise<number> {
+  if (!valeur) return 0;
+  const depuis = new Date(Date.now() - fenetreMs).toISOString();
+  const r = await env.DB
+    .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${colonne}=?1 AND at>?2`)
+    .bind(valeur, depuis).first<{ n: number }>();
+  return (r && typeof r.n === "number") ? r.n : 0;
+}
 
 // RETENTION: same mechanism as functions/api/err.ts's own cap on `errors`. This table is a
 // mailbox read periodically by hand, not a permanent log: keep only the newest 500 rows.
@@ -92,13 +120,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const contact = cleanName(b.contact, CONTACT_MAX);
 
   const ip = (request.headers.get("CF-Connecting-IP") || "").trim().slice(0, IP_MAX);
-  if (ip) {
-    const depuis = new Date(Date.now() - HEURE_MS).toISOString();
-    const recent = await env.DB.prepare("SELECT COUNT(*) AS n FROM feedback WHERE ip=?1 AND at>?2")
-      .bind(ip, depuis).first<{ n: number }>();
-    if ((recent?.n || 0) >= FEEDBACK_PAR_HEURE_MAX) {
-      return json({ error: "trop_de_retours", max: FEEDBACK_PAR_HEURE_MAX }, 429);
-    }
+  if (await comptageRecent(env, "feedback", "ip", ip) >= FEEDBACK_PAR_HEURE_MAX) {
+    return json({ error: "trop_de_retours", max: FEEDBACK_PAR_HEURE_MAX }, 429);
   }
 
   const ua = String((typeof b.ua === "string" && b.ua) || request.headers.get("user-agent") || "").slice(0, UA_MAX);

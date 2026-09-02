@@ -47,6 +47,7 @@
 // none to have), and never the literal `"live"` (identiteFoyer already screens that out; this
 // path never calls it at all).
 import type { Env } from "../env.ts";
+import type { Porte } from "../porte.ts";
 import { identiteFoyer, porteDe } from "../porte.ts";
 import { auteurPourInvite, cleanName } from "../nom.ts";
 import { chargerInvitation, invitationValide, tokenDuCookie } from "../invitation.ts";
@@ -82,8 +83,24 @@ const mauvaisPlan = () => new Response(JSON.stringify({ error: "bad_plan_id" }),
 const inviteInvalide = () => new Response(JSON.stringify({ error: "invite_invalide" }),
   { status: 403, headers: { "content-type": "application/json" } });
 
+const porteRefusee = () => new Response(JSON.stringify({ error: "porte_refusee" }),
+  { status: 403, headers: { "content-type": "application/json" } });
+
+/**
+ * THIS ROUTE REFUSES AN UNRECOGNIZED DOOR ITSELF, it does not lean on the choke point. Only two
+ * doors mean anything to the shared plan: `foyer` (Access vouched for the caller) and `invite` (a
+ * valid token is the credential, checked just below). `inconnue` used to fall into the SAME branch
+ * as the household: an unlisted host got `main` by default, and the GET answered with the raw
+ * `updated_by` column, an Access address, in clear. `functions/_middleware.ts` does keep that host
+ * out in production, and that is exactly why the hole was invisible — every direct-import test in
+ * this codebase calls this file with no middleware at all, which is the shape any future caller
+ * could take too. Same discipline as `functions/api/invites.ts` and `functions/api/feedback.ts`.
+ */
+const porteConnue = (porte: Porte): boolean => porte === "foyer" || porte === "invite";
+
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const porte = porteDe(request, env);
+  if (!porteConnue(porte)) return porteRefusee();
   let planId: string;
   if (porte === "invite") {
     const invit = await chargerInvitation(env, tokenDuCookie(request));
@@ -195,6 +212,7 @@ const memeDocument = (lu: unknown, ecrit: string): boolean => {
 
 export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
   const porte = porteDe(request, env);
+  if (!porteConnue(porte)) return porteRefusee();
   let planId: string;
   // Non-empty only when the write comes through the invite door: captured here, at the point
   // where the invite row is still in scope, so the write below never has to re-resolve it.

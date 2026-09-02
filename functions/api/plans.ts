@@ -34,6 +34,14 @@ import { cleanName as nettoieNom } from "../nom.ts";
 const json = (o: unknown, status?: number) => new Response(JSON.stringify(o),
   { status: status || 200, headers: { "content-type": "application/json" } });
 
+// HOUSEHOLD DOOR ONLY, whatever the method, and stated here rather than borrowed from the choke
+// point: listing, creating, renaming and DELETING plans is owner work. `functions/_middleware.ts`
+// already refuses every other door on this path; this is the copy that survives a direct import
+// (every route test in this codebase is one) and any future caller that arrives another way. Same
+// rule, same wording, as functions/api/invites.ts.
+const refuse = () => json({ error: "porte_refusee" }, 403);
+const horsFoyer = (request: Request, env: Env): boolean => porteDe(request, env) !== "foyer";
+
 /** Clean name: no control characters, no bidi overrides, no edge whitespace, truncated at
  * NAME_MAX. "" = no name. Now THE SAME implementation a guest's self-declared name goes through
  * (functions/nom.ts) — a plan name sits on the same screen as a guest name, so it gets the same
@@ -58,7 +66,8 @@ const idDepuisNom = (nom: string, pris: Set<string>) => {
   return null;
 };
 
-export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
+export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
+  if (horsFoyer(request, env)) return refuse();
   const r = await env.DB
     .prepare("SELECT id, name, rev, updated_at, updated_by, length(data) AS bytes FROM plans ORDER BY id")
     .all<PlanRow>();
@@ -74,6 +83,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
 };
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  if (horsFoyer(request, env)) return refuse();
   let brut: unknown;
   try { brut = await request.json(); } catch { return json({ error: "bad_json" }, 400); }
   const body = brut && typeof brut === "object" && !Array.isArray(brut)
@@ -119,6 +129,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 };
 
 export const onRequestPatch: PagesFunction<Env> = async ({ request, env }) => {
+  if (horsFoyer(request, env)) return refuse();
   let brut: unknown;
   try { brut = await request.json(); } catch { return json({ error: "bad_json" }, 400); }
   const body = brut && typeof brut === "object" && !Array.isArray(brut)
@@ -136,6 +147,7 @@ export const onRequestPatch: PagesFunction<Env> = async ({ request, env }) => {
 };
 
 export const onRequestDelete: PagesFunction<Env> = async ({ request, env }) => {
+  if (horsFoyer(request, env)) return refuse();
   let brut: unknown;
   try { brut = await request.json(); } catch { return json({ error: "bad_json" }, 400); }
   const body = brut && typeof brut === "object" && !Array.isArray(brut)

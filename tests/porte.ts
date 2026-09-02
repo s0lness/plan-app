@@ -9,9 +9,21 @@
 // must never trust anything off the household door), and `functions/_middleware.ts` (the 403 on
 // /api/ off an unrecognized host, the header/cookie strip, and that the household door is left
 // untouched).
+//
+// Section 4 covers the OTHER half of the same rule: every route refuses an unrecognized door
+// ITSELF. This suite imports the route files directly, so the middleware does not exist here —
+// which is precisely what makes the point provable, and what made the hole invisible for as long
+// as the choke point was the only guard.
 
 import { porteDe, identiteFoyer } from "../functions/porte.ts";
 import { onRequest as middleware } from "../functions/_middleware.ts";
+import { onRequestGet as planGet, onRequestPut as planPut } from "../functions/api/plan.ts";
+import {
+  onRequestDelete as plansDelete, onRequestGet as plansGet,
+  onRequestPatch as plansPatch, onRequestPost as plansPost,
+} from "../functions/api/plans.ts";
+import { onRequestPost as errPost } from "../functions/api/err.ts";
+import { onRequest as wsUpgrade } from "../functions/ws.ts";
 import type { DonneeDynamique, ResultatSimple } from "./_types.ts";
 
 // =================================================================================================
@@ -365,19 +377,157 @@ await test("middleware_invite_refuse_api_err", async () => {
 });
 
 await test("middleware_invite_retire_les_en_tetes_access", async () => {
-  const r = requeteVers("https://share.example.com/api/plan", {
-    Host: "share.example.com",
-    "Cf-Access-Authenticated-User-Email": "sylve@example.com",
-    Cookie: "other=stays; CF_Authorization=" + jwtForge("sylve@example.com"),
-  });
-  const { appel, next } = fauxNext();
-  await middleware(ctx(r, ENV_INVITE, next));
-  const vue = appel.requete;
-  return expect(!!vue, "next() doit recevoir une requête reconstruite")
+  // Les DEUX en-têtes Access, et sur les DEUX chemins que la porte invitée atteint. `/ws` compte
+  // autant que `/api/plan` : c'est `functions/ws.ts` qui recopie les en-têtes entrants vers le
+  // Durable Object (`new Request(url, request)`), donc un `Cf-Access-Jwt-Assertion` laissé passer
+  // serait exactement celui qu'`identiteFoyer` sait décoder.
+  for (const chemin of ["/api/plan", "/ws"]) {
+    const r = requeteVers("https://share.example.com" + chemin, {
+      Host: "share.example.com",
+      Upgrade: "websocket",
+      "Cf-Access-Authenticated-User-Email": "sylve@example.com",
+      "Cf-Access-Jwt-Assertion": jwtForge("sylve@example.com"),
+      Cookie: "other=stays; CF_Authorization=" + jwtForge("sylve@example.com"),
+    });
+    const { appel, next } = fauxNext();
+    await middleware(ctx(r, ENV_INVITE, next));
+    const vue = appel.requete;
+    const ok = expect(!!vue, chemin + " : next() doit recevoir une requête reconstruite")
       && expect(vue!.headers.get("cf-access-authenticated-user-email") === null,
-        "l'en-tête d'identité Access doit disparaître aussi sur la porte invite")
+        chemin + " : l'en-tête d'identité Access doit disparaître aussi sur la porte invite")
+      && expect(vue!.headers.get("cf-access-jwt-assertion") === null,
+        chemin + " : l'en-tête du JWT Access doit disparaître aussi sur la porte invite")
       && expect(vue!.headers.get("cookie") === "other=stays",
-        "seul CF_Authorization doit être retiré du cookie");
+        chemin + " : seul CF_Authorization doit être retiré du cookie");
+    if (!ok) return false;
+  }
+  return true;
+});
+
+// =================================================================================================
+//  4. CHAQUE ROUTE REFUSE LA PORTE INCONNUE ELLE-MÊME — sans middleware, par import direct
+// =================================================================================================
+// C'est exactement ce que ces tests prouvent : ils appellent les fichiers de route DIRECTEMENT,
+// donc le point d'étranglement n'existe pas ici. Une route qui ne se gardait pas elle-même était
+// donc sans garde sous test, et sous tout appelant futur qui l'atteindrait autrement (la route de
+// zone décrite dans `live-worker/DEPLOY.md` §2, par exemple, enverrait `/ws*` droit au Worker).
+//
+// Avant : seul le verdict `invite` était distingué, et `inconnue` tombait dans la MÊME branche que
+// le foyer. `/api/plan` GET rendait la colonne `updated_by` brute, une adresse Access, en clair ;
+// `/ws` transmettait la bascule vers le Durable Object DU FOYER avec `?p=` honoré.
+
+const ENV_HOTES = { HOUSEHOLD_HOSTS: "plan.example.com", GUEST_HOST: "share.example.com" };
+const HOTE_INCONNU = "autre.example.com";
+
+/** Une base D1 minimale pour `functions/api/err.ts` : elle compte et elle insère, rien d'autre. */
+function fauxDbErreurs() {
+  const lignes: { at: string; who: string }[] = [];
+  const prepare = (sql: string) => ({
+    args: [] as unknown[],
+    bind(...a: unknown[]) { this.args = a; return this; },
+    async first() {
+      if (sql.includes("COUNT(*) AS n FROM errors")) {
+        const who = String(this.args[0]), depuis = String(this.args[1]);
+        return { n: lignes.filter((l) => l.who === who && l.at > depuis).length };
+      }
+      return null;
+    },
+    async all() { return { results: [] as unknown[] }; },
+    async run() {
+      if (sql.startsWith("INSERT INTO errors")) lignes.push({ at: String(this.args[0]), who: String(this.args[1]) });
+      return { success: true, meta: { changes: 1 } };
+    },
+  });
+  return { lignes, env: { ...ENV_HOTES, DB: { prepare } } as DonneeDynamique };
+}
+
+const requetePour = (url: string, host: string, methode: string, corps?: unknown, entetes?: Record<string, string>) => {
+  const h = new Headers(entetes || {});
+  h.set("Host", host);
+  if (corps !== undefined) h.set("content-type", "application/json");
+  return new Request(url, {
+    method: methode, headers: h,
+    body: corps === undefined ? undefined : JSON.stringify(corps),
+  });
+};
+
+await test("plan_get_refuse_la_porte_inconnue", async () => {
+  // AUCUNE base dans l'env : si la garde ne tranchait pas AVANT la lecture, on verrait une
+  // exception, pas un 403. C'est la preuve que le refus vient en premier.
+  const res = await planGet({
+    request: requetePour("https://autre.example.com/api/plan?p=main", HOTE_INCONNU, "GET",
+      undefined, { "Cf-Access-Authenticated-User-Email": "sylve@example.com" }),
+    env: ENV_HOTES,
+  } as DonneeDynamique);
+  const corps = await res.json<DonneeDynamique>();
+  return expect(res.status === 403, "doit répondre 403, vu " + res.status)
+      && expect(corps.error === "porte_refusee", "corps attendu porte_refusee, vu " + JSON.stringify(corps));
+});
+
+await test("plan_put_refuse_la_porte_inconnue", async () => {
+  const res = await planPut({
+    request: requetePour("https://autre.example.com/api/plan", HOTE_INCONNU, "PUT",
+      { state: { outline: [], walls: [] }, rev: 0 }),
+    env: ENV_HOTES,
+  } as DonneeDynamique);
+  return expect(res.status === 403, "doit répondre 403, vu " + res.status);
+});
+
+await test("fil_refuse_la_porte_inconnue_sans_toucher_au_durable_object", async () => {
+  let appele = false;
+  const room = { idFromName: (n: string) => n, get: () => ({ fetch: async () => { appele = true; return new Response("ok"); } }) };
+  const res = await wsUpgrade({
+    request: requetePour("https://autre.example.com/ws?p=main", HOTE_INCONNU, "GET", undefined, { Upgrade: "websocket" }),
+    env: { ...ENV_HOTES, ROOM: room },
+  } as DonneeDynamique);
+  return expect(res.status === 403, "doit répondre 403, vu " + res.status)
+      && expect(!appele, "le Durable Object du foyer ne doit JAMAIS être atteint depuis un hôte inconnu");
+});
+
+await test("err_refuse_la_porte_inconnue_et_la_porte_invitee", async () => {
+  for (const hote of [HOTE_INCONNU, "share.example.com"]) {
+    const { env, lignes } = fauxDbErreurs();
+    const res = await errPost({
+      request: requetePour("https://" + hote + "/api/err", hote, "POST", { msg: "boum" }), env,
+    } as DonneeDynamique);
+    const ok = expect(res.status === 403, hote + " doit répondre 403, vu " + res.status)
+      && expect(lignes.length === 0, hote + " : rien ne doit être écrit en base");
+    if (!ok) return false;
+  }
+  return true;
+});
+
+await test("err_borne_le_debit_comme_le_retour_utilisateur", async () => {
+  // La MÊME fonction que functions/api/feedback.ts, jamais une seconde copie : une erreur dans un
+  // chemin de rendu part à chaque image, et la purge de rétention ne borne que ce qui est GARDÉ,
+  // jamais le nombre d'écritures demandées à D1.
+  const { env, lignes } = fauxDbErreurs();
+  const envoyer = () => errPost({
+    request: requetePour("https://plan.example.com/api/err", "plan.example.com", "POST", { msg: "boucle" },
+      { "Cf-Access-Authenticated-User-Email": "sylve@example.com" }),
+    env,
+  } as DonneeDynamique);
+  const codes: number[] = [];
+  for (let i = 0; i < 7; i++) codes.push((await envoyer()).status);
+  return expect(codes.slice(0, 5).every((c) => c === 200), "les cinq premières doivent passer, vu " + JSON.stringify(codes))
+      && expect(codes[5] === 429 && codes[6] === 429, "au-delà, 429, vu " + JSON.stringify(codes))
+      && expect(lignes.length === 5, "et cinq lignes seulement en base, vu " + lignes.length);
+});
+
+await test("plans_refuse_la_porte_inconnue_dans_toutes_les_methodes", async () => {
+  const env = { ...ENV_HOTES } as DonneeDynamique;   // pas de DB : la garde doit trancher avant
+  const cas: [string, () => Promise<Response> | Response][] = [
+    ["GET", () => plansGet({ request: requetePour("https://autre.example.com/api/plans", HOTE_INCONNU, "GET"), env } as DonneeDynamique)],
+    ["POST", () => plansPost({ request: requetePour("https://autre.example.com/api/plans", HOTE_INCONNU, "POST", { name: "X" }), env } as DonneeDynamique)],
+    ["PATCH", () => plansPatch({ request: requetePour("https://autre.example.com/api/plans", HOTE_INCONNU, "PATCH", { id: "x", name: "X" }), env } as DonneeDynamique)],
+    ["DELETE", () => plansDelete({ request: requetePour("https://autre.example.com/api/plans", HOTE_INCONNU, "DELETE", { id: "x" }), env } as DonneeDynamique)],
+  ];
+  for (const [nom, appel] of cas) {
+    const res = await appel();
+    const ok = expect(res.status === 403, nom + " doit répondre 403, vu " + res.status);
+    if (!ok) return false;
+  }
+  return true;
 });
 
 // =================================================================================================

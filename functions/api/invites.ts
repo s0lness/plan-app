@@ -6,11 +6,17 @@
 // This file is DISTINCT from functions/api/invite.ts (singular): that one is the guest's
 // redemption of a token, reachable only from the "invite" door; this one is management,
 // reachable only from the "foyer" door. `functions/_middleware.ts` already keeps the "invite"
-// door away from this path entirely, but each handler here checks `porteDe()` again anyway, the
-// same way functions/api/plan.ts and functions/ws.ts do not just trust the choke point: every
-// direct-import test in this codebase (tests/repli-conflit.ts, this batch's tests/invitation.ts)
+// door away from this path entirely, but each handler here checks `porteDe()` again anyway: every
+// direct-import test in this codebase (tests/repli-conflit.ts, tests/invitation.ts, tests/porte.ts)
 // calls a route file directly, bypassing the middleware, and a route that trusted it alone would
 // be unguarded under test and under any future caller that reaches it a different way.
+//
+// This paragraph used to claim functions/api/plan.ts and functions/ws.ts already did the same. They
+// did not: they distinguished only the "invite" door, and treated "inconnue" exactly like the
+// household — `/api/plan` GET handed back the raw `updated_by` column (an Access address) and `/ws`
+// forwarded the upgrade to the household's own Durable Object. Both check for themselves now, so
+// the sentence is true; it is written down because a comment that describes a discipline nobody
+// applies is worse than no comment, it stops the next reader from looking.
 
 import type { Env } from "../env.ts";
 import { hoteInviteDe, identiteFoyer, porteDe } from "../porte.ts";

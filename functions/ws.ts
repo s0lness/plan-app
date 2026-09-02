@@ -42,6 +42,16 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     return new Response("expected websocket", { status: 426 });
 
   const porte = porteDe(request, env);
+  // AN UNRECOGNIZED DOOR GETS NO SOCKET, and this route says so itself. The comment on the
+  // household branch below used to call the "anything else" case defensive, and it was not: an
+  // unlisted host fell straight into it, `?p=` was honoured, and the upgrade was forwarded to the
+  // household's own Durable Object with the identity merely downgraded to `inconnu`. A socket with
+  // no name is still a socket ON THE HOUSEHOLD PLAN, able to read it and write ops into it.
+  // `functions/_middleware.ts` carries the same check and states, in its own comment, that a zone
+  // route sending `/ws*` straight to the Worker would bypass it: this copy is what survives that.
+  if (porte !== "foyer" && porte !== "invite")
+    return new Response(JSON.stringify({ error: "porte_refusee" }),
+      { status: 403, headers: { "content-type": "application/json" } });
   let planId: string | null;
   let email = "";
   let guest = false;
@@ -70,9 +80,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     name = (guestId && invit.last_guest_id && guestId === invit.last_guest_id)
       ? cleanName(invit.last_name, 40) : "";
   } else {
-    // Household door (and, defensively, anything else this route is reached from: `identiteFoyer`
-    // already reads no header off a non-household door, so `email` naturally stays "inconnu" —
-    // the middleware is what actually keeps an unrecognized host from reaching this far).
+    // Household door, and only it: every other verdict was turned away above.
     email = identiteFoyer(request, porte);
     // WHICH plan: the URL's `?p=`, `main` by default. A malformed identifier is an ERROR and
     // never a fallback to `main`: editing the household's plan while believing to edit another
