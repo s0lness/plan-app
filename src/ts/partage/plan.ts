@@ -68,6 +68,12 @@ export interface Ouverture {
    * change appearance until someone has set it.
    */
   leaf?: OpeningLeaf | undefined;
+  /**
+   * LUMINOUS FLUX, lumens. Absent = this fixture radiates its TYPE’s default
+   * (`circulation/lumiere.ts`, `FLUX_DEFAUT`): a default is not a value somebody chose, so it is
+   * never written into the plan. Present = somebody set it, and it travels (C-5).
+   */
+  lm?: number | undefined;
 }
 
 /** A piece of furniture, in FLAT cm (no more per-room array). */
@@ -107,14 +113,25 @@ export interface Meuble {
   off?: number | undefined;
   hs?: number | undefined;
   ratio?: number | undefined;
+  /**
+   * LUMINOUS FLUX, lumens. Absent = this fixture radiates its TYPE’s default
+   * (`circulation/lumiere.ts`, `FLUX_DEFAUT`): a default is not a value somebody chose, so it is
+   * never written into the plan. Present = somebody set it, and it travels (C-5).
+   */
+  lm?: number | undefined;
 }
 
-/** A cell: DERIVED from the walls. Only `name` and `floor` are persisted, by matching. */
+/** A cell: DERIVED from the walls. Only `name`, `floor` and `lux` are persisted, by matching. */
 export interface Cellule {
   id: Id;
   poly: Pt[];
   name: string;
   floor: CellFloor | string;
+  /**
+   * LIGHTING TARGET, lux. Absent = deduced from the room’s NAME (`cibleLux`), which is a guess
+   * about the use; present = somebody stated it, and it wins over the guess.
+   */
+  lux?: number | undefined;
 }
 
 /** The live plan. `cells` is derived; `outline` is not an entity, it's a bare polygon. */
@@ -172,6 +189,7 @@ export interface OuvertureFil {
   hinge: 0 | 1;
   swing?: 1 | -1 | undefined;
   leaf?: OpeningLeaf | undefined;
+  lm?: number | undefined;
 }
 
 /**
@@ -193,6 +211,7 @@ export interface OuvertureFilEntrante {
   hinge?: number | undefined;
   swing?: number | undefined;
   leaf?: number | undefined;
+  lm?: number | undefined;
 }
 
 export interface MeubleFil {
@@ -212,6 +231,7 @@ export interface MeubleFil {
   off?: number | undefined;
   hs?: number | undefined;
   ratio?: number | undefined;
+  lm?: number | undefined;
 }
 
 export interface CelluleFil {
@@ -219,6 +239,7 @@ export interface CelluleFil {
   poly: Pt[];
   name: string;
   floor: CellFloor;
+  lux?: number | undefined;
 }
 
 /** The FLAT plan, as `sanitizeState` recognizes it. */
@@ -254,7 +275,7 @@ export type Op =
   | { kind: "wall.del"; wallId: Id }
   | { kind: "opening.set"; opening: OuverturePartielle }
   | { kind: "opening.del"; openingId: Id }
-  | { kind: "cell.set"; cellId: Id; name?: string | undefined; floor?: CellFloor | string | undefined; poly?: Pt[] | undefined }
+  | { kind: "cell.set"; cellId: Id; name?: string | undefined; floor?: CellFloor | string | undefined; poly?: Pt[] | undefined; lux?: number | undefined }
   | { kind: "cells.replace"; cells: CelluleFil[] }
   | { kind: "piece.set"; piece: MeublePartiel }
   | { kind: "piece.del"; pieceId: Id };

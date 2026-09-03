@@ -31,11 +31,18 @@ export function inAnyCell(x: number, y: number): boolean {
   for (let i = 0; i < cs.length; i++) { if (pointInPoly(x, y, cs[i]!.poly)) return true; }
   return false;
 }
+/**
+ * Index of the cell containing the point, or -1, in a list GIVEN as an argument. The lighting map
+ * (`circulation/lumiere.ts`) walks tens of thousands of grid squares against a cell list it
+ * already holds, and it must stay callable with no `FL` set at all (headless test).
+ */
+export function indexCelluleDans(cells: CelluleFlow[], x: number, y: number): number {
+  for (let i = 0; i < cells.length; i++) { if (pointInPoly(x, y, cells[i]!.poly)) return i; }
+  return -1;
+}
 // index (in flowCtx.cells) of the cell containing the point, or -1
 export function cellIndexAt(x: number, y: number): number {
-  const cs = fcCells();
-  for (let i = 0; i < cs.length; i++) { if (pointInPoly(x, y, cs[i]!.poly)) return i; }
-  return -1;
+  return indexCelluleDans(fcCells(), x, y);
 }
 /** The default depth of an opening, the one `v5OpeningBox` takes implicitly. */
 export const hDefaut = (type: string): number => (TYPEMAP[type] || { h: WALL }).h || WALL;
@@ -46,7 +53,9 @@ export const hDefaut = (type: string): number => (TYPEMAP[type] || { h: WALL }).
 export function buildAptContext(): ContexteFlow {
   const cells: CelluleFlow[] = [], pieces: ObjetFlow[] = [];
   const P: PlanV5 = FL.ctx.etat.plan || ({} as PlanV5);
-  (P.cells || []).forEach((c, i) => cells.push({ poly: c.poly.map(([x, y]) => [x, y] as Pt), ci: i, name: c.name }));
+  (P.cells || []).forEach((c, i) => cells.push({
+    poly: c.poly.map(([x, y]) => [x, y] as Pt), ci: i, name: c.name, lux: c.lux,
+  }));
   // `ci:"env"` = the object doesn't fall into any cell: it's on the outline (front door)
   // or inside a wall's thickness.
   const cellAt = (x: number, y: number): { ci: number | "env"; name: string } => {

@@ -37,6 +37,7 @@ import { CATALOG, KIND_BY_TYPE, KIND_ORDER, catalogueParNature, kindOf } from ".
 import { FL } from "../src/ts/circulation/etat.ts";
 import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
+import { bandeLumiere, carteLumiere, cibleLux, CIBLE_DEFAUT, sourcesLumiere } from "../src/ts/circulation/lumiere.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
 import { meubleWallSnap } from "../src/ts/modele/espace.ts";
 import { oublierAvantAimant, rotationAimantee } from "../src/ts/modele/aimant-memoire.ts";
@@ -1695,6 +1696,132 @@ test("une_fenetre_survit_a_une_coupe_puis_a_un_ressoudage", () => {
   expect(P.walls.length === 1, "une seule paroi après ressoudage, vu " + P.walls.length);
   return expect(P.openings.length === 1 && P.openings[0]!.t0 === 300 && String(P.openings[0]!.wallId) === "w1",
     "la fenêtre est de retour à t0=300 sur w1, vu " + JSON.stringify(P.openings[0]));
+});
+
+// =================================================================================================
+//  LIGHTING: A MAP OF LEVELS, CUT BY THE WALLS (src/ts/circulation/lumiere.ts)
+// =================================================================================================
+// La carte se calcule sur la MÊME grille que Circulation : on passe donc par `analyzeApt()`, qui
+// construit le contexte (`FL.flowCtx`) et la grille, puis on lit `grid.g`.
+const carteDuPlan = (jour: boolean) => {
+  const r = FLOW.analyzeApt();
+  const g = r.grid.g;
+  if (!g) return null;
+  const cells = FL.flowCtx ? FL.flowCtx.cells : [];
+  const pieces = FL.flowCtx ? FL.flowCtx.pieces : [];
+  return { g, cells, carte: carteLumiere(g, sourcesLumiere(pieces, cells, jour), cells) };
+};
+
+test("lumiere_plafonnier_1500lm_dans_une_piece_de_4m_donne_la_moyenne_attendue", () => {
+  // Une pièce carrée de 4 m, un plafonnier de 1 500 lm en son centre, à 2,40 m. La formule est
+  // lm / (4·pi·d²), d en mètres, d² = (dx² + dy² + h²). Intégrée sur le sol praticable, elle vaut
+  // une quinzaine de lux : un plafonnier seul n'éclaire PAS une pièce de 16 m² à la cible de 150.
+  const P: DonneeDynamique = {
+    outline: [[0, 0], [400, 0], [400, 400], [0, 400]],
+    walls: [{ id: "wt", a: [0, 0], b: [400, 0], t: 12, isOutline: true },
+            { id: "wr", a: [400, 0], b: [400, 400], t: 12, isOutline: true },
+            { id: "wb", a: [400, 400], b: [0, 400], t: 12, isOutline: true },
+            { id: "wl", a: [0, 400], b: [0, 0], t: 12, isOutline: true }],
+    openings: [],
+    pieces: [{ id: "L1", type: "ceil", name: "Plafonnier", x: 185, y: 185, w: 30, h: 30, rot: 0, locked: false }],
+    cells: [],
+  };
+  flowPlan(P);
+  const v = carteDuPlan(false);
+  if (!v) return expect(false, "la grille de circulation doit exister");
+  const moy = v.carte.moyennes[0] ?? -1;
+  // RÉFÉRENCE INDÉPENDANTE : la même physique, sur un pas de 1 cm écrit ici, sur la zone que la
+  // grille laisse libre (les cases à moins de wallPad = cs·0,7 = 7 cm d'une paroi sont bloquées).
+  let somme = 0, n = 0;
+  for (let x = 7.5; x < 393; x += 1) {
+    for (let y = 7.5; y < 393; y += 1) {
+      const d2 = ((x - 200) ** 2 + (y - 200) ** 2 + 240 ** 2) / 10000;
+      somme += 1500 / (4 * Math.PI * d2); n++;
+    }
+  }
+  const attendu = somme / n;
+  return expect(Math.abs(moy - attendu) / attendu < 0.10,
+      "la moyenne de la pièce doit être à ±10 % de " + attendu.toFixed(2) + " lx, vue " + moy.toFixed(2))
+      && expect(moy > 10 && moy < 40, "et rester dans l'ordre de grandeur physique, vue " + moy.toFixed(2));
+});
+
+test("lumiere_le_mur_coupe_la_piece_voisine_recoit_zero", () => {
+  // 600x400 coupé en deux par une cloison : un plafonnier posé À GAUCHE n'éclaire pas la droite.
+  const P = SEED_PLAN_V5();
+  P.pieces.push({ id: "L1", type: "ceil", name: "Plafonnier", x: 135, y: 185, w: 30, h: 30, rot: 0, locked: false });
+  flowPlan(P);
+  const v = carteDuPlan(false);
+  if (!v) return expect(false, "la grille de circulation doit exister");
+  const eclairees = v.carte.moyennes.filter((m) => m > 0).length;
+  const nulles = v.carte.moyennes.filter((m) => m === 0).length;
+  return expect(v.cells.length === 2, "deux pièces attendues, vues " + v.cells.length)
+      && expect(eclairees === 1 && nulles === 1,
+          "une pièce éclairée, la voisine à 0, vu " + JSON.stringify(v.carte.moyennes.map((m) => Math.round(m))));
+});
+
+test("lumiere_le_flux_saisi_remplace_le_defaut_et_la_bande_de_la_fiche_suit", () => {
+  // Le `lm` saisi sur le luminaire remplace le défaut de son type, et il est BORNÉ (30 000 lm
+  // demandés valent 20 000). La fiche de la pièce lit ensuite la moyenne contre la cible :
+  // vert au-dessus, orange de 70 à 100 %, rouge en dessous.
+  const P: DonneeDynamique = {
+    outline: [[0, 0], [400, 0], [400, 400], [0, 400]],
+    walls: [{ id: "wt", a: [0, 0], b: [400, 0], t: 12, isOutline: true },
+            { id: "wr", a: [400, 0], b: [400, 400], t: 12, isOutline: true },
+            { id: "wb", a: [400, 400], b: [0, 400], t: 12, isOutline: true },
+            { id: "wl", a: [0, 400], b: [0, 0], t: 12, isOutline: true }],
+    openings: [],
+    pieces: [{ id: "L1", type: "ceil", name: "Plafonnier", x: 185, y: 185, w: 30, h: 30,
+               rot: 0, locked: false, lm: 30000 }],
+    cells: [],
+  };
+  flowPlan(P);
+  const v = carteDuPlan(false);
+  if (!v) return expect(false, "la grille de circulation doit exister");
+  const moy = v.carte.moyennes[0] ?? -1;
+  // 20 000 lm au lieu de 1 500, donc environ 15 lx x 20000/1500 = 200 lx.
+  return expect(moy > 180 && moy < 220, "le flux saisi et borné donne environ 200 lx, vu " + moy.toFixed(1))
+      && expect(bandeLumiere(200, 300) === "bad", "200 lx pour une cible de 300 : rouge")
+      && expect(bandeLumiere(220, 300) === "warn", "220 lx pour une cible de 300 : orange")
+      && expect(bandeLumiere(300, 300) === "ok", "300 lx pour une cible de 300 : vert");
+});
+
+test("lumiere_lm_et_lux_survivent_a_l_aller_retour_serialize_migrate", () => {
+  // C-5, la troisième place: `sanitizeV5Plan` doit RECOPIER les deux champs, sinon Ctrl+Z les
+  // efface sans que rien ne quitte le navigateur. On éprouve les DEUX chemins de `migrate`: le
+  // `plan` imbriqué (qui gagne) et la forme À PLAT du fil, seule, quand il n'y a pas de `plan`.
+  const P: PlanV5 = {
+    outline: [[0, 0], [400, 0], [400, 400], [0, 400]],
+    walls: [{ id: "wt", a: [0, 0], b: [400, 0], t: 12, isOutline: true },
+            { id: "wr", a: [400, 0], b: [400, 400], t: 12, isOutline: true },
+            { id: "wb", a: [400, 400], b: [0, 400], t: 12, isOutline: true },
+            { id: "wl", a: [0, 400], b: [0, 0], t: 12, isOutline: true }],
+    openings: [{ id: "o1", wallId: "wt", t0: 100, w: 90, h: 12, type: "sconce", side: 0,
+                 name: "Applique", lm: 620 } as Ouverture],
+    pieces: [{ id: "L1", type: "ceil", name: "Plafonnier", x: 185, y: 185, w: 30, h: 30,
+               rot: 0, locked: false, lm: 2200 }],
+    cells: [{ id: "c1", poly: [[0, 0], [400, 0], [400, 400], [0, 400]], name: "Cuisine", floor: "tile", lux: 420 }],
+  };
+  // Ce que `app/persistance.ts:serialize()` écrit, à l'identique (le plan imbriqué + la forme du fil).
+  const brut = Object.assign({ setupDone: true, model: "v5" as const, plan: P }, v5StateWire(P, true));
+  const relu = migrate(JSON.parse(JSON.stringify(brut)));
+  const aPlat = { ...brut } as DonneeDynamique;
+  delete aPlat.plan;
+  const reluPlat = migrate(JSON.parse(JSON.stringify(aPlat)));
+  const lus = (e: DonneeDynamique) => e && [e.plan.pieces[0].lm, e.plan.openings[0].lm, e.plan.cells[0].lux];
+  return expect(JSON.stringify(lus(relu)) === "[2200,620,420]",
+          "par le plan imbriqué, lm/lm/lux doivent revenir, vu " + JSON.stringify(lus(relu)))
+      && expect(JSON.stringify(lus(reluPlat)) === "[2200,620,420]",
+          "par la forme à plat du fil aussi, vu " + JSON.stringify(lus(reluPlat)));
+});
+
+test("lumiere_cible_deduite_du_nom_et_le_lux_saisi_gagne", () => {
+  return expect(cibleLux("Cuisine") === 300, "Cuisine -> 300, vu " + cibleLux("Cuisine"))
+      && expect(cibleLux("Kitchen") === 300, "Kitchen -> 300, vu " + cibleLux("Kitchen"))
+      && expect(cibleLux("Bureau") === 500, "Bureau -> 500, vu " + cibleLux("Bureau"))
+      && expect(cibleLux("Salle de bain") === 200, "Salle de bain -> 200, vu " + cibleLux("Salle de bain"))
+      && expect(cibleLux("Entrée") === 100, "Entrée (accentuée) -> 100, vu " + cibleLux("Entrée"))
+      && expect(cibleLux("Atelier") === CIBLE_DEFAUT, "un nom inconnu -> 150, vu " + cibleLux("Atelier"))
+      && expect(cibleLux("Cuisine", 220) === 220, "un lux saisi gagne sur le nom, vu " + cibleLux("Cuisine", 220));
 });
 
 // =================================================================================================

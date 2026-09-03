@@ -103,6 +103,7 @@ export function wsShadowApplyOpInto(m: Miroir, op: Op | null | undefined, wire: 
       if (op.name !== undefined) e["name"] = op.name;
       if (op.floor !== undefined) e["floor"] = op.floor;
       if (op.poly !== undefined) e["poly"] = op.poly.map((p) => [v5R2(p[0]), v5R2(p[1])] as Pt);
+      if (op.lux !== undefined) e["lux"] = op.lux;
       ws5ShadowPut(m.cells, e);
       break;
     }
@@ -201,9 +202,11 @@ export function ws5DiffOps(wire: PlanFil, m: Miroir): Op[] {
     wire.cells.forEach((c) => {
       const prev = m.cells.get(c.id);
       if (prev === undefined) return;
-      const pc = JSON.parse(prev) as { name?: string; floor?: string };
-      if (pc.name !== c.name || pc.floor !== c.floor) {
-        ops.push({ kind: "cell.set", cellId: c.id, name: c.name, floor: c.floor, poly: c.poly });
+      const pc = JSON.parse(prev) as { name?: string; floor?: string; lux?: number };
+      if (pc.name !== c.name || pc.floor !== c.floor || pc.lux !== c.lux) {
+        // `lux` rides the SAME op as the name and the floor: a room's lighting target is metadata
+        // of the room, not geometry, so it must not force a `cells.replace` of the whole flat.
+        ops.push({ kind: "cell.set", cellId: c.id, name: c.name, floor: c.floor, poly: c.poly, lux: c.lux });
       }
     });
   }

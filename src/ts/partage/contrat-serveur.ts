@@ -12,13 +12,13 @@
 // This is the exact line that `tests/rapide.ts`'s startup check caught out on its first run:
 // the copy said nine keys, the server accepts eleven.
 export const PIECE_KEYS = ["id", "type", "name", "x", "y", "w", "h", "rot", "locked", "hinge", "swing",
-  "tr", "dmin", "pair", "hp", "off", "hs", "ratio"] as const;
+  "tr", "dmin", "pair", "hp", "off", "hs", "ratio", "lm"] as const;
 // `free` is still ACCEPTED by the server, and this list must stay set-for-set equal to
 // `ops.ts`'s (`tests/rapide.ts` checks it). No client type carries the field any more (decision
 // 0012): a tab running the old code may still send it, and the server may still store it.
 export const WALL_KEYS = ["id", "a", "b", "t", "free"] as const;
-export const OPENING_KEYS = ["id", "wallId", "t0", "w", "h", "type", "side", "name", "hinge", "swing", "leaf"] as const;
-export const CELL_KEYS = ["id", "poly", "name", "floor"] as const;
+export const OPENING_KEYS = ["id", "wallId", "t0", "w", "h", "type", "side", "name", "hinge", "swing", "leaf", "lm"] as const;
+export const CELL_KEYS = ["id", "poly", "name", "floor", "lux"] as const;
 
 // ---- value domains (ops.ts: OPENING_TYPES / OPENING_SIDES / CELL_FLOORS) -------------------------
 export const OPENING_TYPES = ["door", "sdoor", "window", "sconce", "plug", "rj45"] as const;
@@ -63,6 +63,11 @@ export const THROW_H_MIN = 0, THROW_H_MAX = 400;
  * WHOLE image above its lens, which is past +100 %.
  */
 export const THROW_OFF_MIN = -150, THROW_OFF_MAX = 250;
+// LIGHTING. `lm` = the luminous flux a fixture radiates (0 = off, 20 000 lm is a stadium light);
+// `lux` = the level a room aims for (0 = no opinion, 2000 lx is an operating theatre). Both are
+// bounded like `tr`: the server refuses what is DANGEROUS, the client keeps what is sensible.
+export const LM_MIN = 0, LM_MAX = 20000;
+export const LUX_MIN = 0, LUX_MAX = 2000;
 
 export const TYPE_RE = /^[a-z0-9_-]{1,32}$/;
 export const ID_RE = /^[A-Za-z0-9_.:-]{1,80}$/;

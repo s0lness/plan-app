@@ -1883,6 +1883,30 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   throws(() => P({ ratio: "16:9" }), "format as a string rejected");
 }
 {
+  // LIGHTING: `lm` on a fixture (piece OR opening), `lux` on a room. Bounded like `tr`, and a
+  // finite number outside the range is REFUSED rather than clamped: 1e9 lumens is a bug on the
+  // sending side, and storing 20000 instead would hide it.
+  const L = (over: DonneeDynamique) => sanitizeState(v5State({ pieces: [Object.assign({
+    id: "pl", type: "ceil", name: "Plafonnier", x: 0, y: 0, w: 30, h: 30, rot: 0, locked: false,
+  }, over)] })).pieces[0];
+  ok(L({ lm: 1500 }).lm === 1500, "luminous flux 1500 lm kept");
+  ok(L({ lm: 0 }).lm === 0, "0 lm kept: a fixture switched off is a choice");
+  ok(L({}).lm === undefined, "lm ABSENT stays absent: a fixture nobody set radiates its type's default");
+  ok(L({ lm: 1500.6 }).lm === 1501, "lm rounded to an integer: no float in the fingerprint");
+  throws(() => L({ lm: 1e9 }), "a flux of 1e9 lumens is refused, not clamped");
+  throws(() => L({ lm: -1 }), "a negative flux rejected");
+  throws(() => L({ lm: "1500" }), "flux as a string rejected");
+  throws(() => L({ lm: { v: 1 } }), "flux as an object rejected");
+  const O = (over: DonneeDynamique) => sanitizeState(v5State({ openings: [opening(over)] })).openings[0];
+  ok(O({ lm: 400 }).lm === 400, "a wall light's 400 lm kept (an opening is a light source too)");
+  throws(() => O({ lm: 1e9 }), "an opening's flux of 1e9 lumens is refused too");
+  const C = (over: DonneeDynamique) => sanitizeState(v5State({ cells: [cell(over)] })).cells[0];
+  ok(C({ lux: 300 }).lux === 300, "a room's 300 lx target kept");
+  ok(C({}).lux === undefined, "lux ABSENT stays absent: a room nobody asked has no opinion");
+  throws(() => C({ lux: 1e9 }), "a target of 1e9 lux refused");
+  throws(() => C({ lux: "300" }), "a target as a string rejected");
+}
+{
   // free (wall): 0, 1 and nothing else (WALL_FREE). ABSENT stays absent, same rule as `leaf`
   // above: a wall that never opted in did not "choose" to reach through, it does so by DEFAULT,
   // and writing 0 everywhere would move the fingerprint of every existing plan for nothing.

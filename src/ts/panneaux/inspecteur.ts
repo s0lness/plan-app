@@ -36,8 +36,10 @@ import { v5OpeningDepthMax, v5Seg } from "../modele/murs.ts";
 import { v5ResolveOpening } from "../modele/edition.ts";
 import { RATIO_DEFAUT, coupeVerticale, phraseCoupe, projection, verdictProjection } from "../modele/projection.ts";
 import {
-  IMAGE_RATIOS, THROW_H_MAX, THROW_H_MIN, THROW_OFF_MAX, THROW_OFF_MIN,
+  IMAGE_RATIOS, LM_MAX, LM_MIN, THROW_H_MAX, THROW_H_MIN, THROW_OFF_MAX, THROW_OFF_MIN,
 } from "../partage/contrat-serveur.ts";
+import { estLumiere, fluxDe } from "../circulation/lumiere.ts";
+import type { ObjetFlow } from "../circulation/etat.ts";
 import { openingWallInfo, rotatePieceWithChairs } from "../gestes/guides.ts";
 import { oublierAvantAimant } from "../modele/aimant-memoire.ts";
 import { cur, delSel, dupliquerSelection, flipWallMountSide } from "../gestes/selection-actions.ts";
@@ -271,6 +273,24 @@ function syncInspector(ctx: Contexte): void {
       }
     }
   }
+  // LIGHT FIXTURE: the flux on its box, and what it means when the field is left empty.
+  const lightRow = $("iLightRow");
+  if (lightRow) {
+    const estLum = estLumiere(p.type);
+    lightRow.hidden = !estLum;
+    if (estLum) {
+      const lm = $("iLm") as HTMLInputElement | null;
+      const val = (p as unknown as { lm?: number }).lm;
+      if (lm && document.activeElement !== lm) lm.value = val === undefined ? "" : String(val);
+      const out = $("iLightOut");
+      if (out) {
+        const effectif = Math.round(fluxDe(p as unknown as ObjetFlow));
+        out.textContent = val === undefined
+          ? "Default for this fixture: " + effectif + " lm."
+          : effectif + " lm on the lighting map.";
+      }
+    }
+  }
   // HOW THE WINDOW OPENS. The row only exists on a window: a door already has its direction and
   // its hinge, a wall-mounted object has no leaf at all.
   const leafRow = $("iLeafRow");
@@ -495,6 +515,25 @@ export function brancherInspecteur(ctx: Contexte): void {
       const p = vue(cur(ctx)); if (!p || p.type !== "projector") return;
       pushHistory(ctx);
       (p as unknown as { tr?: number }).tr = Math.round(v * 100);
+      v5Touch(ctx); render(ctx); syncInspector(ctx); ctx.crochets.persister?.();
+    },
+  });
+  // THE FLUX OF A LIGHT FIXTURE. Clearing it puts the fixture back on its type's default: an
+  // absent `lm` is not a fixture set to zero (C-5), which is why `clear` deletes the key.
+  numField($("iLm"), {
+    label: "The luminous flux", unit: "lm", optional: true,
+    bounds: () => ({ min: LM_MIN, max: LM_MAX }),
+    get: () => { const p = vue(cur(ctx)) as unknown as { lm?: number } | null; return p && p.lm !== undefined ? p.lm : null; },
+    set: (v: number) => {
+      const p = vue(cur(ctx)); if (!p || !estLumiere(p.type)) return;
+      pushHistory(ctx);
+      (p as unknown as { lm?: number }).lm = Math.round(v);
+      v5Touch(ctx); render(ctx); syncInspector(ctx); ctx.crochets.persister?.();
+    },
+    clear: () => {
+      const p = vue(cur(ctx)); if (!p || !estLumiere(p.type)) return;
+      pushHistory(ctx);
+      delete (p as unknown as { lm?: number }).lm;
       v5Touch(ctx); render(ctx); syncInspector(ctx); ctx.crochets.persister?.();
     },
   });

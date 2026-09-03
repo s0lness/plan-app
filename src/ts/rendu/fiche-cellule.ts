@@ -11,6 +11,8 @@ import { v5BoutLibre } from "../modele/edition.ts";
 import { v5SignedArea } from "../modele/aires.ts";
 import { fmtM2 } from "../noyau/nombres.ts";
 import { $ } from "../noyau/dom.ts";
+import { FL } from "../circulation/etat.ts";
+import { bandeLumiere, cibleLux, lumiereCourante } from "../circulation/lumiere.ts";
 
 /** THE ROOM'S OWN CARD: name, flooring, area. Nothing about a wall lives here any more. */
 export function syncCellCard(ctx: Contexte): void {
@@ -34,6 +36,24 @@ export function syncCellCard(ctx: Contexte): void {
   // same format as the chip and the toolbar (R-12).
   const area = $("rcArea");
   if (area) area.textContent = "Area " + fmtM2(v5SignedArea(c.poly));
+  // HOW LIT IT IS, recomputed on every render exactly like the area (R-13): a level that survives
+  // the fixture you just moved is worse than no level at all. The map is `null` until the first
+  // circulation pass has built a grid, and the line then stays EMPTY rather than reading "0 lx".
+  const ligne = $("rcLux") as HTMLInputElement | null;
+  if (ligne && document.activeElement !== ligne) ligne.value = c.lux === undefined ? "" : String(c.lux);
+  const out = $("rcLight");
+  if (out) {
+    const carte = lumiereCourante();
+    const cells = FL.flowCtx ? FL.flowCtx.cells : [];
+    const k = cells.findIndex((x) => x.ci === (ctx.etat.plan.cells || []).indexOf(c));
+    const moy = carte && k >= 0 ? carte.moyennes[k] : undefined;
+    const cible = cibleLux(c.name, c.lux);
+    if (moy === undefined) { out.textContent = ""; out.className = "rc-area rc-light"; }
+    else {
+      out.textContent = "Light " + Math.round(moy) + " lx avg, target " + cible;
+      out.className = "rc-area rc-light " + bandeLumiere(moy, cible);
+    }
+  }
 }
 
 /**

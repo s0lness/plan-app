@@ -5,8 +5,9 @@
 
 import type { Contexte } from "../app/contexte.ts";
 import { v5SelectedCell, v5Touch } from "../app/contexte.ts";
-import { FLOORS } from "../partage/contrat-serveur.ts";
+import { FLOORS, LUX_MAX, LUX_MIN } from "../partage/contrat-serveur.ts";
 import { $ } from "../noyau/dom.ts";
+import { numField } from "../noyau/champ-numerique.ts";
 import { syncCellCard } from "../rendu/fiche-cellule.ts";
 import { render } from "../rendu/rendu.ts";
 import { pushHistory } from "../historique/pile.ts";
@@ -48,6 +49,25 @@ export function brancherFicheCellule(ctx: Contexte): void {
     const c = v5SelectedCell(ctx);
     const el = $("rcName");
     if (c && el) renommerCelluleEnLigne(ctx, String(c.id), el);
+  });
+
+  // THE ROOM'S OWN LIGHTING TARGET. Same guard as every other numeric field: clearing it RESETS
+  // the target to the one deduced from the name (it is an optional setting), and a value outside
+  // 0..2000 lx is refused and SAID, never silently defaulted.
+  numField($("rcLux"), {
+    label: "Light target", unit: "lx", optional: true,
+    bounds: () => ({ min: LUX_MIN, max: LUX_MAX }),
+    get: () => { const c = v5SelectedCell(ctx); return c && c.lux !== undefined ? c.lux : null; },
+    set: (v: number) => {
+      const c = v5SelectedCell(ctx); if (!c) return;
+      pushHistory(ctx); c.lux = Math.round(v);
+      v5Touch(ctx); syncCellCard(ctx); render(ctx); save(ctx);
+    },
+    clear: () => {
+      const c = v5SelectedCell(ctx); if (!c) return;
+      pushHistory(ctx); c.lux = undefined;
+      v5Touch(ctx); syncCellCard(ctx); render(ctx); save(ctx);
+    },
   });
 
   // The sheet had no way to close: opened by a click on a label, it just stayed there.

@@ -162,12 +162,14 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         if (op.name !== undefined) c.name = op.name;
         if (op.floor !== undefined && estSolConnu(op.floor)) c.floor = op.floor;
         if (op.poly !== undefined) c.poly = op.poly.map((pt) => [pt[0], pt[1]] as Pt);
+        if (op.lux !== undefined) c.lux = op.lux;
       } else if (op.poly !== undefined) {
         P.cells.push({
           id: String(op.cellId),
           poly: op.poly.map((pt) => [pt[0], pt[1]] as Pt),
           name: String(op.name || "Room"),
           floor: estSolConnu(op.floor) ? op.floor : "parquet",
+          ...(op.lux === undefined ? {} : { lux: op.lux }),
         });
       }
       break;
@@ -181,8 +183,8 @@ function ws5ApplyRemoteOp(ctx: Contexte, fil: Fil, op: Op): boolean {
         const ex = keep.get(String(c.id));
         const poly = (c.poly || []).map((pt) => [pt[0], pt[1]] as Pt);
         const floor = estSolConnu(c.floor) ? c.floor : "parquet";
-        if (ex) { ex.poly = poly; ex.name = c.name; ex.floor = floor; P.cells.push(ex); }
-        else P.cells.push({ id: String(c.id), poly, name: String(c.name || "Room"), floor });
+        if (ex) { ex.poly = poly; ex.name = c.name; ex.floor = floor; ex.lux = c.lux; P.cells.push(ex); }
+        else P.cells.push({ id: String(c.id), poly, name: String(c.name || "Room"), floor, ...(c.lux === undefined ? {} : { lux: c.lux }) });
       });
       break;
     }

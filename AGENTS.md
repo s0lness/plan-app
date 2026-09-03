@@ -411,6 +411,8 @@ still with zero JS errors. No suite sees this any more: they all seed `localStor
 | `THROW_H_MIN` / `THROW_H_MAX` | 0 … 400 cm | `hp` (projector lens above the floor), `hs` (screen bottom edge above the floor) | 4 m clears the tallest ceiling anyone lives under, and rejects a typo |
 | `THROW_OFF_MIN` / `THROW_OFF_MAX` | −150 … +250 % | `off`, vertical offset in % of the image HEIGHT | **signed on purpose**: a ceiling mount throws downward (negative), and an ultra short throw under its screen puts the WHOLE image above its lens (past +100). Any `Math.max(0, …)` on this field's path is a bug, not a safeguard. |
 | `IMAGE_RATIOS` | 169, 1610, 2351 | `ratio`, the screen's image format (16:9, 16:10, 2.35:1) | integer codes, so no float ever enters the content fingerprint; absent reads as 16:9 |
+| `LM_MIN` / `LM_MAX` | 0 … 20 000 lm | `piece.lm` / `opening.lm`, a fixture's luminous flux | 0 = switched off, and 20 000 lm is already a stadium floodlight; out of range is REFUSED, not clamped, so a sender's bug shows |
+| `LUX_MIN` / `LUX_MAX` | 0 … 2000 lx | `cell.lux`, the room's lighting target | 2000 lx is an operating theatre; absent = deduced from the room's name (`cibleLux`, `circulation/lumiere.ts`) |
 | `OPENING_LEAVES` | 0, 1, 2 | window leaf count | only the three rendered opening shapes are accepted |
 | `CELL_FLOORS` | `parquet`, `herringbone`, `tile`, `plain` | computed-cell floor | mirrors the client floor catalogue |
 | `GUEST_NAME_MAX` | 40 | guest display name | bounds untrusted identity text sent to peers |

@@ -105,6 +105,15 @@
       </span>
     </div>
   </div>
+  <!-- LIGHT FIXTURE: the flux written on its box. Empty = this fixture radiates its type's
+       default, which the note below spells out rather than leaving to be guessed. -->
+  <div class="insp-proj" id="iLightRow" hidden>
+    <div class="field">
+      <label for="iLm">Luminous flux</label>
+      <div class="in"><input id="iLm" type="number" min="0" max="20000" step="50" placeholder="-"><span class="unit">lm</span></div>
+    </div>
+    <p class="proj-out" id="iLightOut"></p>
+  </div>
   <!-- No angle slider (decision 0013): the rotation handle on the selection is the one path for a
        free rotation, this row carries buttons only. -->
   <div class="rotrow">

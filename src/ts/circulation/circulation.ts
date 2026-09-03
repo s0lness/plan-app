@@ -16,7 +16,7 @@
 // state of the panel: the engine must run even when nobody is looking.
 
 import type { Contexte } from "../app/contexte.ts";
-import type { Constat, SurlignagePinch } from "./etat.ts";
+import type { Constat, GrilleGlobale, SurlignagePinch } from "./etat.ts";
 import { FL, poserContexteFlow, scoreFromCounts } from "./etat.ts";
 import { $ } from "../noyau/dom.ts";
 import { numField } from "../noyau/champ-numerique.ts";
@@ -29,6 +29,8 @@ import { gesteActif } from "../gestes/sortie.ts";
 import { aptCmToVp, aptFlowSig, hDefaut, pieceAABB, rectGap, sizeFlowCanvas } from "./contexte.ts";
 import { cellCenterCm } from "./grille.ts";
 import { analyzeApt } from "./regles.ts";
+import { ciblesDes, lumiereCourante } from "./lumiere.ts";
+import type { CarteLumiere } from "./lumiere.ts";
 
 /** `$` without the fallback: the html/03 fragment is always there, exactly as in the old client. */
 const E = (id: string): HTMLElement => $(id) as HTMLElement;
@@ -73,7 +75,18 @@ function flowButtonTitle(): string {
   if (!anyAptPieces()) return "Circulation: add furniture to check the layout";
   return parts.length ? "Circulation: " + parts.join(", ") : "Circulation: nothing to report";
 }
-function renderFlow(): void {
+/** The panel's two boxes and its Day / Night pair, put back the way the settings say. */
+function syncFlowLayers(): void {
+  const o = FL.ctx.etat.opts;
+  const cbCirc = $("flowLayerCirc") as HTMLInputElement | null;
+  const cbLight = $("flowLayerLight") as HTMLInputElement | null;
+  if (cbCirc) cbCirc.checked = o.circLayer !== false;
+  if (cbLight) cbLight.checked = !!o.light;
+  $("flowDay")?.classList.toggle("pri", !!o.day);
+  $("flowNight")?.classList.toggle("pri", !o.day);
+}
+
+export function renderFlow(): void {
   const s = scoreOf(), band = bandOf(s);
   const has = anyAptPieces();
   const pill = E("flowPill"), ps = pillState();
@@ -82,6 +95,7 @@ function renderFlow(): void {
   else { pill.hidden = true; pill.textContent = ""; }
   E("btnFlow").title = flowButtonTitle();
   if (E("flowpanel").hidden) return;
+  syncFlowLayers();
   E("flowNum").textContent = has ? String(s) : "–";
   E("flowNum").style.color = has ? band.color : "var(--faint)";
   E("flowBand").textContent = has ? band.label : "";
@@ -163,7 +177,12 @@ function drawOverlay(): void {
   // shade clearance across the WHOLE apartment (one grid): the panel and the overlay are the
   // SAME state since decision 0015 (`Show circulation` was a separate button, now the Circulation
   // button's own click paints this too).
-  if (FL.ctx.etat.opts.flow) {
+  // THE LIGHTING MAP, under the circulation shading when both are on (they rarely are: the two
+  // boxes exist so you read one at a time). Warm white where the room reaches its target, dark
+  // grey where it doesn't, and HATCHED below half the target: colour alone would leave the two
+  // ends of the scale indistinguishable to whoever doesn't separate them.
+  if (FL.ctx.etat.opts.light) drawLight(ctx, g, SC, M);
+  if (FL.ctx.etat.opts.flow && FL.ctx.etat.opts.circLayer) {
     for (let gy = 0; gy < g.gh; gy++) for (let gx = 0; gx < g.gw; gx++) {
       const i = gy * g.gw + gx; if (g.blocked[i]) continue;
       const width = clear[i]! * 2;
@@ -192,6 +211,49 @@ function drawOverlay(): void {
     if (f) drawFindingHi(ctx, f, M);
   }
 }
+// ---- the lighting layer ----
+// THREE BANDS AND A HATCH, no continuous gradient: a gradient reads as "a bit more, a bit less"
+// and the question asked is a yes/no one, "is this room lit enough". Warm white at or above the
+// target, dark grey under it, and BELOW HALF the target the square is hatched as well: colour
+// alone hides the worst end of the scale from whoever doesn't separate warm from grey.
+// The hatch is drawn ONCE, through a clip built from the dark squares, not stroke by stroke.
+function drawLight(ctx: CanvasRenderingContext2D, g: NonNullable<GrilleGlobale["g"]>, SC: number, M: typeof aptCmToVp): void {
+  const carte: CarteLumiere | null = lumiereCourante();
+  if (!carte) return;
+  const cells = FL.flowCtx ? FL.flowCtx.cells : [];
+  const cibles = ciblesDes(cells);
+  const cs = g.cs, cote = cs * SC + 0.5;
+  const sombres: Array<[number, number]> = [];
+  for (let gy = 0; gy < g.gh; gy++) for (let gx = 0; gx < g.gw; gx++) {
+    const i = gy * g.gw + gx;
+    const k = carte.ci[i]!;
+    if (k < 0) continue;
+    const cible = cibles[k] || 1;
+    const r = carte.lux[i]! / cible;
+    if (r >= 1) ctx.fillStyle = "rgba(255,236,190,.46)";
+    else if (r >= 0.7) ctx.fillStyle = "rgba(255,236,190,.24)";
+    else if (r >= 0.5) ctx.fillStyle = "rgba(64,66,72,.16)";
+    else { ctx.fillStyle = "rgba(64,66,72,.28)"; sombres.push([gx, gy]); }
+    const p0 = M(g.ox + gx * cs, g.oy + gy * cs);
+    ctx.fillRect(p0.x, p0.y, cote, cote);
+  }
+  if (!sombres.length) return;
+  const vw = FL.ctx.viewport.clientWidth, vh = FL.ctx.viewport.clientHeight;
+  ctx.save();
+  ctx.beginPath();
+  for (const [gx, gy] of sombres) {
+    const p0 = M(g.ox + gx * cs, g.oy + gy * cs);
+    ctx.rect(p0.x, p0.y, cote, cote);
+  }
+  ctx.clip();
+  ctx.strokeStyle = "rgba(45,47,52,.42)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let d = -vh; d < vw; d += 8) { ctx.moveTo(d, 0); ctx.lineTo(d + vh, vh); }
+  ctx.stroke();
+  ctx.restore();
+}
+
 // apt-space AABB of a piece by id. Everything is already in apartment cm (furniture AND openings).
 function aptAABBById(id: string): ReturnType<typeof pieceAABB> | null {
   const p = pieceById(FL.ctx, id); if (p) return pieceAABB(p);
@@ -372,6 +434,18 @@ export function brancherCirculation(ctx: Contexte): void {
 
   E("btnFlow").addEventListener("click", () => setFlowOpen(!ctx.etat.opts.flow));
   E("flowClose").addEventListener("click", () => setFlowOpen(false));
+
+  // ---- the two overlays, and the hour of the day -------------------------------------------
+  // These are PERSONAL settings (D-7), so they only ever go through `save(ctx)`, never an op.
+  // Nothing here re-analyzes: neither the shading nor the lighting map changes a single finding,
+  // so a repaint of the overlay is the whole job.
+  const cbCirc = $("flowLayerCirc") as HTMLInputElement | null;
+  const cbLight = $("flowLayerLight") as HTMLInputElement | null;
+  cbCirc?.addEventListener("change", () => { ctx.etat.opts.circLayer = !!cbCirc.checked; save(ctx); drawOverlay(); });
+  cbLight?.addEventListener("change", () => { ctx.etat.opts.light = !!cbLight.checked; save(ctx); drawOverlay(); });
+  const setJour = (on: boolean): void => { ctx.etat.opts.day = on; save(ctx); syncFlowLayers(); drawOverlay(); ctx.crochets.syncInspector?.(); render(ctx); };
+  $("flowDay")?.addEventListener("click", () => setJour(true));
+  $("flowNight")?.addEventListener("click", () => setJour(false));
   // TV inches: same guard as dimension fields. Clearing the field RESETS the rule
   // to its default (it's an optional setting), a value outside 10..120 inches is refused
   // and stated, never silently defaulted.
