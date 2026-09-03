@@ -112,6 +112,12 @@ export function v5PieceWire(p: Meuble): MeubleFil {
     ...(p.tr === undefined ? {} : { tr: Math.round(p.tr) }),
     ...(p.dmin === undefined ? {} : { dmin: Math.round(p.dmin) }),
     ...(p.pair === undefined ? {} : { pair: String(p.pair) }),
+    // The vertical cut, same rule again. `off` is SIGNED: `Math.round` and nothing else, no
+    // `Math.max(0, …)` anywhere on the way out.
+    ...(p.hp === undefined ? {} : { hp: Math.round(p.hp) }),
+    ...(p.off === undefined ? {} : { off: Math.round(p.off) }),
+    ...(p.hs === undefined ? {} : { hs: Math.round(p.hs) }),
+    ...(p.ratio === undefined ? {} : { ratio: Math.round(p.ratio) }),
   };
 }
 

@@ -90,10 +90,23 @@ export interface Meuble {
    *          fingerprint: two clients cannot diverge over a rounding.
    *   `dmin` minimum focus distance, cm. Absent = we don't claim to know.
    *   `pair` identifier of the paired projection screen.
+   *
+   * THE VERTICAL CUT, same rule: nothing derived is stored.
+   *   `hp`   height of the LENS above the floor, cm (projector). Absent = not stated.
+   *   `off`  vertical offset, SIGNED, in % of the image HEIGHT (projector). Absent = 0. A
+   *          ceiling mount is negative, an ultra short throw is past +100: this is the field
+   *          that keeps the geometry from ever assuming the lens is under the image.
+   *   `hs`   height of the BOTTOM of the screen above the floor, cm (projection screen).
+   *   `ratio` image format, as an integer code (`IMAGE_RATIOS`, `partage/contrat-serveur.ts`): 169, 1610,
+   *          2351. Absent = 16:9. An integer for the same reason as `tr`.
    */
   tr?: number | undefined;
   dmin?: number | undefined;
   pair?: string | undefined;
+  hp?: number | undefined;
+  off?: number | undefined;
+  hs?: number | undefined;
+  ratio?: number | undefined;
 }
 
 /** A cell: DERIVED from the walls. Only `name` and `floor` are persisted, by matching. */
@@ -195,6 +208,10 @@ export interface MeubleFil {
   tr?: number | undefined;
   dmin?: number | undefined;
   pair?: string | undefined;
+  hp?: number | undefined;
+  off?: number | undefined;
+  hs?: number | undefined;
+  ratio?: number | undefined;
 }
 
 export interface CelluleFil {

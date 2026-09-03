@@ -9,8 +9,8 @@
 
 import { clamp, WALL } from "../noyau/nombres.ts";
 import {
-  COORD_MAX, estSolConnu, ID_RE, MAX_ENTITIES, NAME_MAX, OPENING_H_MAX, PIECE_WH_MAX,
-  POLY_MAX_PTS, WALL_T_MAX, WALL_T_MIN,
+  COORD_MAX, estFormatConnu, estSolConnu, ID_RE, MAX_ENTITIES, NAME_MAX, OPENING_H_MAX, PIECE_WH_MAX,
+  POLY_MAX_PTS, THROW_H_MAX, THROW_H_MIN, THROW_OFF_MAX, THROW_OFF_MIN, WALL_T_MAX, WALL_T_MIN,
 } from "../partage/contrat-serveur.ts";
 import { TYPEMAP } from "../catalogue/catalogue.ts";
 import { pointInPoly } from "../geometrie/polygones.ts";
@@ -191,6 +191,17 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       tr: q["tr"] != null && isFinite(Number(q["tr"])) ? Math.max(0, Number(q["tr"])) : undefined,
       dmin: q["dmin"] != null && isFinite(Number(q["dmin"])) ? Math.max(0, Number(q["dmin"])) : undefined,
       pair: q["pair"] != null ? String(q["pair"]).slice(0, NAME_MAX) : undefined,
+      // THE VERTICAL CUT (`hp`/`off` on the projector, `hs`/`ratio` on the screen). Same rule,
+      // and the same trap: a field read here and nowhere else is erased by the next Ctrl+Z.
+      // `off` is SIGNED, so it is clamped on BOTH sides and never floored at 0; `ratio` is one
+      // of three codes and anything else falls back to absent, which reads as 16:9.
+      hp: q["hp"] != null && isFinite(Number(q["hp"]))
+        ? clamp(Number(q["hp"]), THROW_H_MIN, THROW_H_MAX) : undefined,
+      off: q["off"] != null && isFinite(Number(q["off"]))
+        ? clamp(Number(q["off"]), THROW_OFF_MIN, THROW_OFF_MAX) : undefined,
+      hs: q["hs"] != null && isFinite(Number(q["hs"]))
+        ? clamp(Number(q["hs"]), THROW_H_MIN, THROW_H_MAX) : undefined,
+      ratio: estFormatConnu(Math.round(Number(q["ratio"]))) ? Math.round(Number(q["ratio"])) : undefined,
     });
   });
   // A2: a `pair` made against a piece's RAW (ill-formed) id follows the replacement, exactly like

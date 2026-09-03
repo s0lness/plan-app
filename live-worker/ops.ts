@@ -19,6 +19,10 @@ export interface Piece {
   tr?: number;
   dmin?: number;
   pair?: string;
+  hp?: number;
+  off?: number;
+  hs?: number;
+  ratio?: number;
 }
 
 export interface Wall {
@@ -107,6 +111,10 @@ export const PIECE_KEYS = new Set([
   // paired screen id. The server doesn't know the catalog, so it can't require only a projector
   // carries these (G-18: server bounds the dangerous, client bounds the sensible).
   "tr", "dmin", "pair",
+  // THE VERTICAL CUT, same family and same rule. `hp` lens height above the floor, `off` vertical
+  // offset in % of the image height (SIGNED, and wide: a ceiling mount is negative, an ultra short
+  // throw goes past +100), `hs` bottom of the screen above the floor, `ratio` image format code.
+  "hp", "off", "hs", "ratio",
 ]);
 
 // ---- the "wall-partition" model, the only one ----
@@ -131,6 +139,16 @@ export const WALL_FREE = new Set([0, 1]);
 export const THROW_RATIO_MIN = 10, THROW_RATIO_MAX = 1000;
 /** Minimum focus distance, cm. 0 = not provided. */
 export const THROW_DMIN_MIN = 0, THROW_DMIN_MAX = 2000;
+/** `hp` lens height and `hs` screen-bottom height above the floor, cm. 400 = a very tall ceiling. */
+export const THROW_H_MIN = 0, THROW_H_MAX = 400;
+/**
+ * `off`, vertical offset in % of the image height, SIGNED. Wide on purpose: a ceiling mount is
+ * negative, and an ultra short throw sitting under its screen throws the WHOLE image above its
+ * lens, which is past +100 %.
+ */
+export const THROW_OFF_MIN = -150, THROW_OFF_MAX = 250;
+/** Image format codes: 169 = 16:9, 1610 = 16:10, 2351 = 2.35:1 (mirrors IMAGE_RATIOS on the client). */
+export const IMAGE_RATIOS = new Set([169, 1610, 2351]);
 // Allowed floor coverings for a cell (mirrors FLOORS on the client).
 export const CELL_FLOORS = new Set(["parquet", "herringbone", "tile", "plain"]);
 // v5 geometric bounds (cm).
@@ -431,6 +449,30 @@ function validatePiece(p: Partial<Piece>, prev?: Map<string, Piece> | Piece | nu
     if (pair === null || pair === "") out.pair = "";
     else if (!isStr(pair) || !ID_RE.test(pair)) throw new OpError("piece_pair");
     else out.pair = pair;
+  }
+  // hp / hs: heights above the floor. off: a SIGNED percentage, so the lower bound is negative
+  // and `Math.max(0, ...)` would be a bug here, not a safeguard. ratio: one of three codes, an
+  // unknown one is REFUSED rather than folded back to 16:9 (a silent fallback would let a typo
+  // become the screen's format on every peer).
+  const hp = pick("hp");
+  if (hp !== undefined) {
+    if (!isFiniteNum(hp) || hp < THROW_H_MIN || hp > THROW_H_MAX) throw new OpError("piece_hp");
+    out.hp = Math.round(hp);
+  }
+  const hs = pick("hs");
+  if (hs !== undefined) {
+    if (!isFiniteNum(hs) || hs < THROW_H_MIN || hs > THROW_H_MAX) throw new OpError("piece_hs");
+    out.hs = Math.round(hs);
+  }
+  const off = pick("off");
+  if (off !== undefined) {
+    if (!isFiniteNum(off) || off < THROW_OFF_MIN || off > THROW_OFF_MAX) throw new OpError("piece_off");
+    out.off = Math.round(off);
+  }
+  const ratio = pick("ratio");
+  if (ratio !== undefined) {
+    if (!isFiniteNum(ratio) || !IMAGE_RATIOS.has(Math.round(ratio))) throw new OpError("piece_ratio");
+    out.ratio = Math.round(ratio);
   }
   // swing: bounded string ("1"/"-1") or number. Same bound as on openings.
   const swing = pick("swing");

@@ -246,7 +246,7 @@ ajouterFichier("export-appartement", "export ENVELOPPÉ {app,version,savedAt,not
 // `free`, `hinge`, `swing` (déjà couverts, mais absents des autres fixtures figées) : sans ce
 // document le corpus ne peut pas prouver que ces champs survivent une lecture.
 ajouterFichier("fixture-plan-champs-recents",
-  "v5 murs-seuls INVENTÉ : porte leaf/tr/dmin/pair/free/hinge/swing (C-5)",
+  "v5 murs-seuls INVENTÉ : porte leaf/tr/dmin/pair/hp/off/hs/ratio/free/hinge/swing (C-5)",
   path.join(FIXTURES, "plan-champs-recents.json"));
 
 // ---- 3b. the household's REAL backups (outside the repo, cannot be reconstructed) ----

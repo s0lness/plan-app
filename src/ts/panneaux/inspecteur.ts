@@ -34,7 +34,10 @@ import { numField, syncBounds } from "../noyau/champ-numerique.ts";
 import type { Bornes } from "../noyau/champ-numerique.ts";
 import { v5OpeningDepthMax, v5Seg } from "../modele/murs.ts";
 import { v5ResolveOpening } from "../modele/edition.ts";
-import { projection, verdictProjection } from "../modele/projection.ts";
+import { RATIO_DEFAUT, coupeVerticale, phraseCoupe, projection, verdictProjection } from "../modele/projection.ts";
+import {
+  IMAGE_RATIOS, THROW_H_MAX, THROW_H_MIN, THROW_OFF_MAX, THROW_OFF_MIN,
+} from "../partage/contrat-serveur.ts";
 import { openingWallInfo, rotatePieceWithChairs } from "../gestes/guides.ts";
 import { oublierAvantAimant } from "../modele/aimant-memoire.ts";
 import { cur, delSel, dupliquerSelection, flipWallMountSide } from "../gestes/selection-actions.ts";
@@ -48,6 +51,20 @@ import { save } from "../app/persistance.ts";
 const DIM_MIN = 10;
 /** cm; live-worker/ops.ts, PIECE_WH_MAX. */
 const DIM_MAX = 3000;
+
+/**
+ * THE THREE MOUNTINGS, AND THEY ARE NOT A FOURTH FIELD. "Table / Ceiling / Short throw" writes
+ * a typical `hp` and `off` and stops there: nothing about the mounting is persisted, so `hp` and
+ * `off` remain the only truth and a hand-typed value is never contradicted by a button. The
+ * ceiling one throws DOWNWARD (negative offset) and the short throw sits UNDER its screen with
+ * the whole image above the lens (offset past +100), which is exactly why the offset field is
+ * signed and its range wide.
+ */
+const MONTAGES: ReadonlyArray<{ id: string; hp: number; off: number }> = [
+  { id: "iMount0", hp: 80, off: 10 },
+  { id: "iMount1", hp: 230, off: -10 },
+  { id: "iMount2", hp: 40, off: 120 },
+];
 
 /**
  * The two families have the same field NAMES (`w`, `h`, `name`) but not the same shape: an
@@ -140,6 +157,7 @@ function syncInspector(ctx: Contexte): void {
   const iH = $("iH") as HTMLInputElement | null;
   const iWallPos = $("iWallPos") as HTMLInputElement | null;
   syncBounds(iW); syncBounds(iH); syncBounds(iWallPos);
+  syncBounds($("iHp")); syncBounds($("iOff")); syncBounds($("iHs"));
   if (iW && document.activeElement !== iW) iW.value = String(p.w);
   if (iH && document.activeElement !== iH) iH.value = String(p.h);
   // Objects driven by the wall (openings + sconce/outlet): no manual rotation.
@@ -177,9 +195,24 @@ function syncInspector(ctx: Contexte): void {
     const estProj = p.type === "projector";
     projRow.hidden = !estProj;
     if (estProj) {
-      const pj = p as unknown as { tr?: number; dmin?: number; pair?: string };
+      const pj = p as unknown as { tr?: number; dmin?: number; pair?: string; hp?: number; off?: number };
       const tr = $("iTr") as HTMLInputElement | null;
       const dm = $("iDmin") as HTMLInputElement | null;
+      const hp = $("iHp") as HTMLInputElement | null;
+      const of = $("iOff") as HTMLInputElement | null;
+      if (hp && document.activeElement !== hp) hp.value = pj.hp == null ? "" : String(pj.hp);
+      // `off` is SIGNED and 0 is a real answer (a lens dead centre on the image), so the test is
+      // `== null` and not a truthiness test: `pj.off ? …` would blank a deliberate zero.
+      if (of && document.activeElement !== of) of.value = pj.off == null ? "" : String(pj.off);
+      // The three MOUNTING buttons only PREFILL: none of them is persisted, so the one lit is the
+      // one whose pair of numbers is currently in the fields, and none is lit otherwise.
+      for (const m of MONTAGES) {
+        const b = $(m.id) as HTMLButtonElement | null;
+        if (!b) continue;
+        b.setAttribute("aria-pressed", String(pj.hp === m.hp && (pj.off || 0) === m.off));
+        b.disabled = lk;
+        b.style.opacity = lk ? ".45" : "";
+      }
       // The ratio is TYPED as 1.50 and STORED as 150: an integer can't drift on a rounding in the
       // content hash, but nobody writes "150" on a spec sheet.
       if (tr && document.activeElement !== tr) tr.value = pj.tr ? String(pj.tr / 100) : "";
@@ -193,16 +226,48 @@ function syncInspector(ctx: Contexte): void {
         sel.disabled = !ecrans.length;
       }
       const out = $("iProjOut");
+      const vert = $("iProjVert");
       if (out) {
-        if (!pj.tr) out.textContent = "Enter the throw ratio to see the beam.";
-        else {
+        if (!pj.tr) {
+          out.textContent = "Enter the throw ratio to see the beam.";
+          if (vert) { vert.textContent = ""; vert.hidden = true; }
+        } else {
           const ec = pj.pair ? (ctx.etat.plan.pieces || []).find((q) => String(q.id) === String(pj.pair)) : null;
           const pr = projection(p as never, ec || null);
           const v = verdictProjection(pr);
           out.textContent = `${Math.round(pr.distance)}cm → ${Math.round(pr.largeur)}cm image`
             + (pr.versEcran ? "" : " (no screen aimed at)") + (v ? ` · ${v}` : "");
           out.classList.toggle("bad", !!v);
+          // THE VERTICAL CUT, IN ONE SENTENCE. No section drawing in this first pass: what the
+          // owner needs to read is how tall the image is, at what height it lands, and whether it
+          // spills off the screen.
+          if (vert) {
+            const c = coupeVerticale(pr, p as never, ec || null);
+            vert.textContent = phraseCoupe(c, pr.largeur);
+            vert.classList.toggle("bad", c.deborde);
+            vert.hidden = false;
+          }
         }
+      }
+    }
+  }
+  // THE PROJECTION SCREEN's own two fields. The format is a property of the SCREEN, not of the
+  // projector: a projector fills whatever it is aimed at.
+  const scrRow = $("iScreenRow");
+  if (scrRow) {
+    const estEcran = p.type === "pscreen";
+    scrRow.hidden = !estEcran;
+    if (estEcran) {
+      const sc = p as unknown as { hs?: number; ratio?: number };
+      const hsEl = $("iHs") as HTMLInputElement | null;
+      if (hsEl && document.activeElement !== hsEl) hsEl.value = sc.hs == null ? "" : String(sc.hs);
+      const courant = Number(sc.ratio) || RATIO_DEFAUT;
+      for (const r of IMAGE_RATIOS) {
+        const b = $("iRatio" + r) as HTMLButtonElement | null;
+        if (!b) continue;
+        b.setAttribute("aria-pressed", String(r === courant));
+        b.disabled = lk;
+        b.style.opacity = lk ? ".45" : "";
       }
     }
   }
@@ -444,6 +509,59 @@ export function brancherInspecteur(ctx: Contexte): void {
       v5Touch(ctx); render(ctx); syncInspector(ctx); ctx.crochets.persister?.();
     },
   });
+  // THE VERTICAL CUT. `hp` on the projector, `hs` on the screen: the same bound, because they
+  // measure the same thing, a height above the same floor.
+  const champHauteur = (id: string, cle: "hp" | "hs", type: string, label: string): void => {
+    numField($(id), {
+      label, unit: "cm", optional: true,
+      bounds: () => ({ min: THROW_H_MIN, max: THROW_H_MAX }),
+      get: () => { const p = vue(cur(ctx)) as unknown as Record<string, number> | null; return p ? p[cle] ?? null : null; },
+      set: (v: number) => {
+        const p = vue(cur(ctx)); if (!p || p.type !== type) return;
+        pushHistory(ctx);
+        (p as unknown as Record<string, number>)[cle] = Math.round(v);
+        v5Touch(ctx); render(ctx); syncInspector(ctx); ctx.crochets.persister?.();
+      },
+    });
+  };
+  champHauteur("iHp", "hp", "projector", "The lens height");
+  champHauteur("iHs", "hs", "pscreen", "The screen's bottom edge");
+  // The offset is SIGNED and its range is deliberately wide: a ceiling mount is negative, and an
+  // ultra short throw under its screen goes past +100 %.
+  numField($("iOff"), {
+    label: "The offset", unit: "%", optional: true,
+    bounds: () => ({ min: THROW_OFF_MIN, max: THROW_OFF_MAX }),
+    get: () => { const p = vue(cur(ctx)) as unknown as { off?: number } | null; return p ? p.off ?? null : null; },
+    set: (v: number) => {
+      const p = vue(cur(ctx)); if (!p || p.type !== "projector") return;
+      pushHistory(ctx);
+      (p as unknown as { off?: number }).off = Math.round(v);
+      v5Touch(ctx); render(ctx); syncInspector(ctx); ctx.crochets.persister?.();
+    },
+  });
+  for (const m of MONTAGES) {
+    $(m.id)?.addEventListener("click", () => {
+      const p = vue(cur(ctx));
+      if (!p || p.locked || p.type !== "projector") return;
+      pushHistory(ctx);
+      const pj = p as unknown as { hp?: number; off?: number };
+      pj.hp = m.hp; pj.off = m.off;
+      v5Touch(ctx); render(ctx); syncInspector(ctx); ctx.crochets.persister?.();
+    });
+  }
+  for (const r of IMAGE_RATIOS) {
+    $("iRatio" + r)?.addEventListener("click", () => {
+      const p = vue(cur(ctx));
+      if (!p || p.locked || p.type !== "pscreen") return;
+      pushHistory(ctx);
+      // 16:9 is WRITTEN, not left absent, even though absent already reads as 16:9. C-5: an
+      // absent key means "no opinion", so deleting the field to go back to 16:9 would emit
+      // nothing and the peer would keep 2.35:1. Same reasoning as `pair` cleared to "".
+      (p as unknown as { ratio?: number }).ratio = r;
+      v5Touch(ctx); render(ctx); syncInspector(ctx); ctx.crochets.persister?.();
+    });
+  }
+
   $("iPair")?.addEventListener("change", () => {
     const p = vue(cur(ctx)); if (!p || p.type !== "projector") return;
     const sel = $("iPair") as HTMLSelectElement | null; if (!sel) return;

@@ -24,7 +24,7 @@ import { floorPatternDefs } from "./sol.ts";
 import { resolveColor, withAlpha } from "./couleurs.ts";
 import { pieceIconSVG } from "./icones.ts";
 import { doorArcSVG, windowArcSVG } from "./arc-porte.ts";
-import { polygoneFaisceau, projection } from "../modele/projection.ts";
+import { ECART_ALERTE, ecartLargeur, polygoneFaisceau, projection, texteEcart } from "../modele/projection.ts";
 import { renderPieces } from "./meubles.ts";
 import { isSel } from "./selection.ts";
 import type { CandidatEtiquetteCellule } from "./etiquettes-disposition.ts";
@@ -339,6 +339,22 @@ function renderFaisceaux(ctx: Contexte, layer: HTMLElement, bb: BBox, S: number)
     body += `<line x1="${X(pr.ox)}" y1="${Y(pr.oy)}" x2="${X(pr.ox + pr.ux * pr.distance)}"`
       + ` y2="${Y(pr.oy + pr.uy * pr.distance)}" stroke="${withAlpha(col, 0.35)}" stroke-width="1"`
       + ` stroke-dasharray="3 5"/>`;
+    // THE IMAGE WIDTH, WRITTEN AT THE FAR END OF THE BEAM, so at the screen's own height when one
+    // is matched. R-1: the text is HORIZONTAL, never rotated, whatever the projector's angle, so
+    // a device turned 180° does not print its measurement upside down. The gap to the screen is a
+    // second, SIGNED line under it: "+12 cm" says the image overflows, "−30 cm" that it falls
+    // short, and neither reads as a bare number.
+    const fx = X(pr.ox + pr.ux * pr.distance), fy = Y(pr.oy + pr.uy * pr.distance);
+    const ecart = ecartLargeur(pr);
+    const alerte = ecart != null && Math.abs(ecart) > ECART_ALERTE;
+    const encre = resolveColor("var(--ink)") || "#2b2f2e";
+    const rouge = resolveColor("var(--danger)");
+    const etiquette = (dy: number, txt: string, fill: string): string =>
+      `<text x="${fx}" y="${fy + dy}" text-anchor="middle" dominant-baseline="central"`
+      + ` font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11" font-weight="600"`
+      + ` fill="${fill}" style="paint-order:stroke" stroke="#ffffff" stroke-width="3">${escapeHtml(txt)}</text>`;
+    body += etiquette(ecart == null ? 0 : -7, `${Math.round(pr.largeur)} cm`, encre);
+    if (ecart != null) body += etiquette(7, texteEcart(ecart), alerte ? rouge : encre);
   }
   const svg = document.createElementNS(SVGNS, "svg");
   svg.setAttribute("class", "v5beams");
