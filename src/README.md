@@ -43,7 +43,6 @@ repository and is available in the history of the private repository.
 | `fil/` | Identity, pseudo-wire, mirrors, sending, receiving, presence, acknowledgements, REST. |
 | `circulation/` | Engine state, apartment context, grid, rules, fixes, and Circulation panel. |
 | `exportation/` | JSON import/export, master SVG, PNG, printing, and furniture list. |
-| `sonde*.ts` | `window.__plan` surface reserved for browser suites; every entry must have a consumer. |
 | `types-globaux.d.ts` | Declarations for browser surfaces that do not come from modules. |
 | `package.json` | Provides `"type":"module"` so Node loads the `.ts` files used by browserless suites. |
 
@@ -76,5 +75,5 @@ not a local convenience.
 ## Verify
 
 `node build.ts --check` proves that the committed artifact matches the source. The fast loop is
-`node tests/rapide.ts`; type checking is `node_modules/.bin/tsc --noEmit`. Changes to data,
-synchronization, or geometry then go through the pre-deploy barrier, `node tests/all.ts`.
+`node tests/rapide.ts`; type checking is `node_modules/.bin/tsc --noEmit`. The whole barrier,
+typing included, is `node tests/all.ts` and takes about twenty seconds: run it on every change.
