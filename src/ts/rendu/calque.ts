@@ -18,7 +18,7 @@ import { bboxOfPoly, pointInPoly, poleOfInaccessibility, polyArea } from "../geo
 import { v5OpeningBox } from "../modele/murs.ts";
 import { v5BoutJoint, v5IndexAreteContour, v5MurDeTravers, v5WallMergeCandidate } from "../modele/edition.ts";
 import { WALL, escapeHtml, safeDim, v5R2 } from "../noyau/nombres.ts";
-import { SVGNS, cssId } from "../noyau/dom.ts";
+import { SVGNS } from "../noyau/dom.ts";
 import { aptToScreen, evtApt } from "./vue.ts";
 import { floorPatternDefs } from "./sol.ts";
 import { resolveColor, withAlpha } from "./couleurs.ts";
@@ -223,6 +223,7 @@ export function renderOuvertures(ctx: Contexte, layer: HTMLElement, bb: BBox, S:
   const seen: Record<string, 1> = {};
   // UN SEUL PARCOURS DU CALQUE, au lieu d'un `querySelector` par ouverture (`index-noeuds.ts`).
   const index = indexerParId(layer, '.piece[data-op="1"]');
+  const epoque = S + "|" + bb.minX + "|" + bb.minY + "|";
   (P.openings || []).forEach((op) => {
     const t = TYPEMAP[op.type];
     if (!t || !pieceVisible(op, ctx.etat.opts)) return;
@@ -246,6 +247,14 @@ export function renderOuvertures(ctx: Contexte, layer: HTMLElement, bb: BBox, S:
     }
     seen[String(op.id)] = 1;
     const w = box.w, h = box.h, rot = box.rot;
+    // MEME REGLE QUE POUR UN MEUBLE (`rendu/meubles.ts`): une ouverture n'est reecrite que si son
+    // dessin a change. Sa boite vient du MUR (`v5OpeningBox`), donc signer la boite signe aussi le
+    // mur qui la porte: bouger la cloison bouge la signature de ses trente ouvertures.
+    const sig = epoque + box.cx + "," + box.cy + "," + w + "," + h + "," + rot
+      + "|" + op.type + "|" + (isSel(ctx, op.id) ? 1 : 0)
+      + "|" + (op.hinge ? 1 : 0) + (Number(op.swing) < 0 ? "-" : "+") + (op.leaf || 0);
+    if (el.dataset["sig"] === sig && !el.classList.contains("peer-ghost")) return;
+    el.dataset["sig"] = sig;
     // 7, ET PLUS 8: l'etage libere sert a l'etiquette de piece, qui doit passer SOUS les commandes
     // du mur (9) sans pour autant passer sous les fenetres, ce qu'elle ne faisait pas avant. Rien
     // d'autre ne vit entre la bande de mur (6) et les commandes, donc l'ouverture ne change de
@@ -372,11 +381,17 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
   });
   const obstacles = obstaclesMeubles(P.pieces || [], ctx.etat.opts, S, bb);
   const places = disposerEtiquettesCellules(candidats, obstacles);
+  // UN SEUL PARCOURS DU CALQUE pour toutes les etiquettes, au lieu d'une requete par cellule.
+  const index = new Map<string, HTMLElement>();
+  layer.querySelectorAll<HTMLElement>(".ov-name[data-c]").forEach((n) => {
+    const k = n.dataset["c"];
+    if (k != null && !index.has(k)) index.set(k, n);
+  });
   (P.cells || []).forEach((c) => {
     const id = String(c.id);
     const pos = places.get(id) || null;
-    let el = layer.querySelector<HTMLElement>(`.ov-name[data-c="${cssId(c.id)}"]`);
-    if (!pos) { if (el) el.remove(); return; } // YIELDS: no spot clears every obstacle
+    let el = index.get(id) || null;
+    if (!pos) { if (el) { el.remove(); index.delete(id); } return; } // YIELDS: no spot clears every obstacle
     if (!el) {
       el = document.createElement("div");
       el.className = "ov-name ov-name-center";
@@ -387,17 +402,22 @@ export function renderEtiquettesCellules(ctx: Contexte, layer: HTMLElement, bb: 
         ctx.gestes.choisirCellule?.(String(noeud.dataset["c"]), true);
       });
       layer.appendChild(el);
+      index.set(id, el);
     }
     seen[id] = 1;
+    // Une etiquette qui ne bouge pas, ne change pas de nom et ne prend ni ne perd le focus n'a
+    // rien a reecrire. Le nom vient EN DERNIER: c'est le seul champ libre.
+    const sig = pos.x + "," + pos.y + "|" + (String(ctx.ihm.selCell) === id ? 1 : 0) + "|" + (c.name || "");
+    if (el.dataset["sig"] === sig) return;
+    el.dataset["sig"] = sig;
     el.textContent = c.name || "";
     el.classList.toggle("focused", String(ctx.ihm.selCell) === String(c.id));
     el.style.left = pos.x + "px";
     el.style.top = pos.y + "px";
     el.style.right = "auto";
   });
-  layer.querySelectorAll<HTMLElement>(".ov-name[data-c]").forEach((n) => {
-    if (!seen[String(n.dataset["c"])]) n.remove();
-  });
+  // Le balayage relit l'INDEX deja construit: le calque n'est parcouru qu'une fois par image.
+  index.forEach((n, id) => { if (!seen[id]) n.remove(); });
 }
 
 /**

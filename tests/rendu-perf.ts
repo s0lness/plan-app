@@ -8,6 +8,10 @@
 // selecteur par image sur le plan genere ici, et `drawHandles` refaisait trois `walls.find` plus
 // un `find` par arete de contour a chaque image.
 //
+// Puis, une fois les requetes supprimees, la depense restante etait le travail lui-meme: une image
+// de glisser bouge UN meuble et reecrivait les deux cents autres. Chaque tuile porte desormais une
+// signature (`data-sig`) et n'est reecrite que si son dessin change.
+//
 //   node tests/rendu-perf.ts [chemin/vers/app.html]
 //
 //   rendu_complet_reste_sous_le_plafond   `render()` sur 200 meubles, 30 ouvertures, 12 murs
@@ -15,6 +19,8 @@
 //   image_de_glisser_reste_sous_le_plafond  ce que `gestes/meuble.ts` appelle par image
 //   poignees_seules_restent_sous_le_plafond `drawHandles` avec un mur selectionne
 //   le_dom_peint_est_inchange              l'empreinte du calque peint, invariante de l'optimisation
+//   repeindre_a_chaud_vaut_repeindre_a_froid  modifier puis repeindre = repeindre a froid, a l'octet
+//   selectionner_puis_deselectionner_se_voit  la selection change le dessin d'une tuile, pas le plan
 //
 // LES BORNES SONT LARGES, DELIBEREMENT. Cette machine fait tourner jusqu'a six worktrees a la
 // fois: une borne serree echouerait sur le build du voisin, pas sur une regression. Ce qui est
@@ -137,14 +143,67 @@ const CORPS = `
   // ---- la preuve d'equivalence --------------------------------------------------------------
   // Le calque REPEINT, normalise puis condense. Ce qui compte n'est pas le nombre mais son
   // invariance: le meme plan, la meme vue, doivent donner le meme DOM avant et apres.
+  function empreinteCalque() {
+    var c = document.querySelector(".v5layer");
+    var s = (c ? c.outerHTML : "").replace(/\\s+/g, " ").trim();
+    var h = 5381;
+    for (var z = 0; z < s.length; z++) h = ((h * 33) ^ s.charCodeAt(z)) >>> 0;
+    return { len: s.length, h: h, s: s };
+  }
+  // Le point de divergence, pas seulement le verdict: c'est lui qui NOMME la tuile restee vieille.
+  function premiereDifference(x, y) {
+    var i = 0; while (i < x.length && i < y.length && x[i] === y[i]) i++;
+    return { i: i, chaud: x.slice(i, i + 160), froid: y.slice(i, i + 160) };
+  }
   __plan.clearSel();
   __plan.setZoom(0.5);
+  // ON PART D'UN CALQUE NEUF, et c'est ce qui rend les deux empreintes comparables OCTET PAR
+  // OCTET. Un calque reconcilie garde l'ordre de CREATION de ses noeuds: l'etiquette d'une cellule
+  // du plan par defaut, nee avant les 200 meubles, reste devant eux pour toujours. Cet ordre est
+  // sans effet sur ce qui est peint (tout est en position absolue avec un z-index explicite), mais
+  // il suffit a faire mentir une comparaison de chaines. Repartir de zero l'annule.
+  var vieux = document.querySelector(".v5layer");
+  if (vieux) vieux.remove();
   __plan.render();
-  var calque = document.querySelector(".v5layer");
-  var brut = calque ? calque.outerHTML : "";
-  var norme = brut.replace(/\\s+/g, " ").trim();
-  var h = 5381;
-  for (var z = 0; z < norme.length; z++) h = ((h * 33) ^ norme.charCodeAt(z)) >>> 0;
+  var froidInitial = empreinteCalque();
+
+  // LA SECONDE EMPREINTE, celle que seul un cache peut casser. Une tuile qui n'est PAS remise a
+  // jour ne se voit pas sur un rendu neuf: elle se voit quand on MODIFIE le plan puis qu'on
+  // repeint. Le meme etat, repeint a chaud (par-dessus le DOM existant) et a froid (calque jete,
+  // tout reconstruit), doit rendre exactement le meme DOM. Les modifications choisies ne creent ni
+  // ne retirent d'attribut (deplacement, taille, rotation, nom, verrou): l'ordre des attributs
+  // dans outerHTML reste donc comparable entre les deux chemins.
+  var a = __plan.plan.pieces[3], b = __plan.plan.pieces[17], c2 = __plan.plan.pieces[42];
+  a.x += 37; a.y -= 21;
+  b.name = "Renomme";
+  c2.w += 26; c2.rot = (c2.rot + 45) % 360; c2.locked = true;
+  var o0 = __plan.plan.openings[5];
+  o0.t0 += 15;
+  __plan.v5Touch();
+  __plan.render();
+  var chaud = empreinteCalque();
+  document.querySelector(".v5layer").remove();   // plus rien a reconcilier: tout est reconstruit
+  __plan.render();
+  var froid = empreinteCalque();
+
+  // LA SELECTION PASSE PAR LA MEME PORTE, et c'est ce qui la rend fragile: elle ne change rien au
+  // plan, seulement au dessin d'une tuile. Une signature qui l'oublierait laisserait le clic sans
+  // effet visible, ce qu'aucune mesure de temps ne dirait.
+  var idSel = String(__plan.plan.pieces[9].id);
+  __plan.selReplace(idSel); __plan.render();
+  var noeudSel = document.querySelector('.piece[data-id="' + __plan.cssId(idSel) + '"]');
+  var marque = { sel: !!noeudSel && noeudSel.classList.contains("sel"), poignees: __plan.rszHandleCount(idSel) };
+  // PUIS LE CAS QUI NE CHANGE RIEN D'AUTRE: passer la selection d'un objet a un autre. Le plan ne
+  // bouge pas, le nombre de selectionnes ne bouge pas: SEULES les deux tuiles concernees changent
+  // de dessin. C'est le champ propre a la tuile, et lui seul, qui les fait repeindre.
+  var idAutre = String(__plan.plan.pieces[10].id);
+  __plan.selReplace(idAutre); __plan.render();
+  var noeudAutre = document.querySelector('.piece[data-id="' + __plan.cssId(idAutre) + '"]');
+  marque.selLache = !!noeudSel && noeudSel.classList.contains("sel");
+  marque.selPris = !!noeudAutre && noeudAutre.classList.contains("sel");
+  __plan.clearSel(); __plan.render();
+  marque.selApres = !!noeudSel && noeudSel.classList.contains("sel");
+  marque.poigneesApres = __plan.rszHandleCount(idSel);
 
   return {
     rendu: rendu, vue: vue, glisser: glisser, poignees: poignees,
@@ -154,8 +213,12 @@ const CORPS = `
     nbOuvertures: __plan.plan.openings.length,
     nbMurs: __plan.plan.walls.length,
     nbCellules: __plan.plan.cells.length,
-    domLen: norme.length,
-    domHash: h
+    domLen: froidInitial.len,
+    domHash: froidInitial.h,
+    chaudLen: chaud.len, chaudHash: chaud.h,
+    froidLen: froid.len, froidHash: froid.h,
+    ecart: premiereDifference(chaud.s, froid.s),
+    marque: marque
   };
 `;
 
@@ -193,11 +256,14 @@ for (const cle of ["rendu", "vue", "glisser", "poignees"]) {
   console.log(`        ${cle.padEnd(9)} med ${String(m(cle).med).padStart(8)} ms   p95 ${String(m(cle).p95).padStart(8)} ms`);
 }
 console.log(`        calque peint: ${nb("domLen")} caracteres, empreinte ${nb("domHash")}`);
+console.log(`        apres modification: a chaud ${nb("chaudHash")}, a froid ${nb("froidHash")}`);
 
-// LES BORNES. Mesure du 2026-09-02 sur cette machine chargee, apres optimisation: render 2,9 ms,
-// pan 2,7 ms, image de glisser 3,3 ms, poignees 0,25 ms (medianes). Avant: 5,0 / 4,7 / 5,5 / 0,58.
-// Les plafonds ci-dessous sont au-dessus du chiffre AVANT: ils ne gardent pas le gain, ils gardent
-// l'ordre de grandeur contre une regression franche (un querySelector qui revient, un tri par image).
+// LES BORNES. Mesure du 2026-09-03, apres la signature par tuile: render 1,0 ms, pan 0,7 ms, image
+// de glisser 1,4 ms, poignees 0,3 ms (medianes). Avant la signature, sur la meme machine et dans la
+// meme heure: 3,1 / 2,5 / 4,0 / 0,4. Les plafonds ci-dessous sont bien au-dessus du chiffre AVANT:
+// ils ne gardent pas le gain, ils gardent l'ordre de grandeur contre une regression franche (un
+// querySelector qui revient, un tri par image). Ce qui garde le gain, c'est le rapport du lot; ce
+// qui garde la JUSTESSE, c'est `repeindre_a_chaud_vaut_repeindre_a_froid`, plus bas.
 verifier("rendu_complet_reste_sous_le_plafond", () =>
   m("rendu").med < 40 || `render() median doit rester sous 40 ms, vu ${m("rendu").med} ms`);
 verifier("vue_pan_reste_sous_le_plafond", () =>
@@ -218,6 +284,35 @@ verifier("le_dom_peint_est_inchange", () => {
   if (s.bands !== 12) return `12 bandes de cloison attendues, vu ${s.bands}`;
   if (c.move !== 1 || c.del !== 1 || c.split !== 1)
     return `un mur selectionne porte deplacer/supprimer/couper, vu ${JSON.stringify(c)}`;
+  return true;
+});
+
+// CE QUE SEUL UN CACHE PEUT CASSER. Une tuile qui n'est pas remise a jour ne se voit pas sur un
+// rendu neuf; elle se voit quand on modifie le plan puis qu'on repeint PAR-DESSUS le DOM existant.
+// Un rendu a chaud et un rendu a froid du MEME etat doivent rendre le meme calque, a l'octet.
+verifier("repeindre_a_chaud_vaut_repeindre_a_froid", () => {
+  if (nb("chaudLen") < 10000) return `le calque doit etre peint, vu ${nb("chaudLen")} caracteres`;
+  if (nb("chaudHash") !== nb("froidHash") || nb("chaudLen") !== nb("froidLen"))
+    return `apres modification, le rendu a chaud (${nb("chaudLen")} car., ${nb("chaudHash")}) `
+      + `differe du rendu a froid (${nb("froidLen")} car., ${nb("froidHash")}): une tuile n'a pas ete remise a jour`
+      + "\n  ECART " + JSON.stringify(v["ecart"]);
+  return true;
+});
+
+// SELECTIONNER NE CHANGE QUE LE DESSIN D'UNE TUILE, jamais le plan: c'est le cas que la signature
+// a le plus de facilite a oublier, et le seul qu'aucune mesure de temps ne rattraperait.
+verifier("selectionner_puis_deselectionner_se_voit", () => {
+  const m = v["marque"] as unknown as {
+    sel: boolean; poignees: number; selLache: boolean; selPris: boolean;
+    selApres: boolean; poigneesApres: number;
+  };
+  if (!m.sel) return "la tuile selectionnee doit porter `.sel` apres un rendu";
+  // 4 et non 8: a ce zoom la tuile est sous `RSZ_COMPACT_PX`, donc G-20 ne garde que les coins.
+  if (m.poignees !== 4) return `4 poignees de redimension attendues (G-20, tuile compacte), vu ${m.poignees}`;
+  if (m.selLache) return "changer de selection doit RETIRER `.sel` de la tuile lachee";
+  if (!m.selPris) return "changer de selection doit POSER `.sel` sur la tuile prise";
+  if (m.selApres) return "`.sel` doit partir au rendu qui suit la deselection";
+  if (m.poigneesApres !== 0) return `0 poignee attendue apres deselection, vu ${m.poigneesApres}`;
   return true;
 });
 

@@ -140,6 +140,12 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
   const seen: Record<string, 1> = {};
   const S = ctx.vue.scale;
   const lst = (ctx.etat.plan && ctx.etat.plan.pieces) || [];
+  // CE QUI VAUT POUR TOUTES LES TUILES, calcule une fois: l'echelle et l'origine du calque (elles
+  // fixent chaque position en pixels), l'affichage des noms, et le fait que la selection soit
+  // UNIQUE (c'est ce qui decide des poignees de redimension). Une tuile n'a donc qu'a signer ce qui
+  // lui appartient en propre.
+  const epoque = S + "|" + bb.minX + "|" + bb.minY + "|" + (ctx.etat.opts.labels ? 1 : 0)
+    + "|" + (ctx.selection.ids.size === 1 ? 1 : 0) + "|";
 
   // G-9: from LARGEST to smallest; on equal area, array order breaks the tie.
   const rang = new Array<number>(lst.length);
@@ -174,8 +180,28 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
       container.appendChild(el);
       index.set(String(p.id), el);
     }
-    const nds = noeuds(el);
     seen[String(p.id)] = 1;
+    // UNE TUILE N'EST REECRITE QUE SI SON DESSIN A CHANGE. Une image de glisser bouge UN meuble et
+    // repeignait les deux cents autres: meme styles, memes classes, memes enfants reecrits a
+    // l'identique. La signature dit tout ce dont le corps ci-dessous depend; ce qui n'y figure pas
+    // ne doit pas y etre lu. Le nom vient EN DERNIER, parce qu'il est le seul champ libre: un "|"
+    // tape par l'utilisateur ne peut alors se confondre avec aucun separateur.
+    const bat = p as typeof p & { hinge?: unknown; swing?: unknown };
+    const estPrimaire = (String(p.id) === ctx.selection.primaire);
+    const sig = epoque + p.x + "," + p.y + "," + p.w + "," + p.h + "," + p.rot
+      + "|" + p.type + "|" + (rang[i] ?? 0)
+      + "|" + (isSel(ctx, p.id) ? 1 : 0) + (estPrimaire ? 1 : 0) + (p.locked ? 1 : 0)
+      + "|" + (bat.hinge ? 1 : 0) + (Number(bat.swing) < 0 ? "-" : "+")
+      + "|" + p.name;
+    // LE FANTOME D'UN PAIR EST ECRIT PAR-DESSUS LA TUILE, hors modele (`fil/reception.ts` deplace
+    // le noeud et pose `.peer-ghost`). Tant qu'il est la, la tuile ne ressemble plus a sa
+    // signature: elle se reecrit a chaque image, exactement comme avant, et c'est le rendu qui
+    // rend l'objet a sa place quand le fantome expire.
+    if (el.dataset["sig"] === sig && !el.classList.contains("peer-ghost")) return;
+    // Pose AVANT le corps, qui n'a plus aucune sortie conditionnelle a partir d'ici: tout ce que
+    // la signature annonce est ecrit dans la foulee.
+    el.dataset["sig"] = sig;
+    const nds = noeuds(el);
     const lx = (p.x - bb.minX) * S, ly = (p.y - bb.minY) * S;
     // A FLOOR COVERING IS PAINTED UNDER THE WALLS. `renderFond` draws the floors and the wall bands
     // in two separate svg layers precisely so that a rug can sit between them: a rug lies on the
@@ -195,10 +221,9 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     el.classList.toggle("opening", !!t.opening);
     // The rotation handle floats 24 px ABOVE the piece: placed on every piece of furniture, its
     // invisible box was stealing the neighbors' pointerdowns. Only the PRIMARY piece carries one.
-    const isSelPiece = (String(p.id) === ctx.selection.primaire);
     const rh = nds.rh;
-    if (rh) rh.style.display = (wallMount || !isSelPiece) ? "none" : "";
-    const showRsz = isSelPiece && ctx.selection.ids.size === 1 && !wallMount && !p.locked;
+    if (rh) rh.style.display = (wallMount || !estPrimaire) ? "none" : "";
+    const showRsz = estPrimaire && ctx.selection.ids.size === 1 && !wallMount && !p.locked;
     const hasRsz = el.dataset["rszon"] === "1";
     if (showRsz && !hasRsz) {
       el.dataset["rszon"] = "1";
@@ -249,8 +274,8 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     // `hinge` and `swing` are NOT furniture fields: `sanitizeV5Plan` only keeps them on
     // an OPENING (a door was a piece of furniture in v4, that is the legacy still carried by
     // `PIECE_KEYS` server-side). Only ORPHAN wall-mounted objects from an old plan land here,
-    // and they may carry them: they are read without lying to the type.
-    const bat = p as typeof p & { hinge?: unknown; swing?: unknown };
+    // and they may carry them: they are read without lying to the type (`bat`, lu plus haut pour
+    // la signature de la tuile).
     if (p.type === "door") {
       const sg = (Number(bat.swing) < 0) ? -1 : 1;
       let darc = nds.darc;
@@ -283,7 +308,6 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     const lab = nds.lab, dim = nds.dim;
     if (!wrap || !lab || !dim) return;
     const small = Math.min(pw, ph);
-    const sel = (String(p.id) === ctx.selection.primaire);
     // R-2: NO NAME ON A WALL-MOUNTED OBJECT (the icon already says what it is).
     // R-3: AND NO CATALOG NAME, only a CHOSEN name is written.
     const labelOk = !isWallMount(p.type) && !!ctx.etat.opts.labels && small >= 46 && isChosenName(p);
@@ -299,7 +323,7 @@ export function renderPieces(ctx: Contexte, container: HTMLElement, bb: BBox): v
     lab.style.display = showName ? "" : "none";
     lab.textContent = (p.locked ? "🔒 " : "") + p.name;
     el.style.cursor = p.locked ? "default" : "";
-    const showDim = sel && !isWallMount(p.type);
+    const showDim = estPrimaire && !isWallMount(p.type);
     dim.style.display = showDim ? "" : "none";
     dim.textContent = `${p.w}×${p.h}`;
     wrap.style.display = (showName || showDim) ? "" : "none";

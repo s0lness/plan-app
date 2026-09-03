@@ -23,6 +23,7 @@
 //   shift_ctrl_lasso_montre_le_cumul     adding to an existing selection is visible during the gesture
 //   echap_rend_tout_a_l_etat_d_avant     Escape cancels instead of committing, no orphan marks
 //   la_selection_ne_reordonne_pas_la_pile  the paint rank does not move (recent fix)
+//   le_marquage_vif_a_sa_propre_classe   the live mark is `.sel-vif`, never `.sel`, and nothing survives the release
 import type { VerdictSonde } from "./_types.ts";
 import fs from "node:fs";
 import os from "node:os";
@@ -402,8 +403,9 @@ await test("echap_rend_tout_a_l_etat_d_avant", async () => {
 //  8. la_selection_ne_reordonne_pas_la_pile
 // =============================================================================
 // Recent fix not to break: painting goes from the LARGEST to the smallest and `stackedAt` sorts
-// on `data-paint`, precisely because `.piece.sel` bumps to `z-index:50`. Live marking sets the
-// SAME class: it must therefore change nothing about the paint rank, neither during nor after.
+// on `data-paint`, precisely because `.piece.sel` bumps to `z-index:50`. Live marking paints the
+// SAME thing (`.sel-vif`): it must therefore change nothing about the paint rank, neither during
+// nor after.
 await test("la_selection_ne_reordonne_pas_la_pile", async () => {
   await repos();
   const rangs = () => J(`(function(){var o={};
@@ -429,6 +431,57 @@ await test("la_selection_ne_reordonne_pas_la_pile", async () => {
     return {decroissant:ok, ouverturesDessous:ouv};})()`);
   ok(ordre.decroissant, "la peinture doit rester du plus GRAND au plus petit");
   ok(ordre.ouverturesDessous, "les ouvertures doivent rester au rang -1 (toujours sous le mobilier)");
+});
+
+// =============================================================================
+//  9. le_marquage_vif_a_sa_propre_classe
+// =============================================================================
+// `.sel` appartient au RENDU, qui ne reecrit une tuile que si sa signature a change
+// (`rendu/meubles.ts`). Un geste qui ecrirait `.sel` laisserait donc, apres coup, une marque
+// qu'aucun rendu ne viendrait plus contredire: la tuile serait sautee et mentirait. Le lasso ecrit
+// `.sel-vif`, et `.lasso-vif` sur le calque efface la selection acquise le temps du geste, sinon
+// un objet LACHE par le rectangle resterait marque jusqu'au relachement.
+await test("le_marquage_vif_a_sa_propre_classe", async () => {
+  await repos();
+  // Une selection ACQUISE d'abord, hors du chemin du lasso: c'est elle qui doit s'effacer pendant
+  // le geste, et c'est elle qui prouve que les deux marques ne se confondent pas.
+  const dejaId = await J(`(function(){var p=__plan.plan.pieces[0]; __plan.selReplace(p.id); __plan.render();
+    document.activeElement&&document.activeElement.blur(); return String(p.id);})()`);
+  await pause(150);
+  const A = await departVide(), B = await coinBas();
+  if (!ok(A, "point de départ vide introuvable")) return;
+  await M("mouseMoved", A.x, A.y, { button: "none", buttons: 0 });
+  await M("mousePressed", A.x, A.y);
+  await M("mouseMoved", B.x, B.y); await pause(220);
+  const pendant = await J(`(function(){
+    var vifs=[...document.querySelectorAll(".piece.sel-vif")].map(function(e){return String(e.dataset.id);});
+    var deja=document.querySelector('.piece[data-id="'+__plan.cssId(${JSON.stringify(dejaId)})+'"]');
+    return {
+      vifs: vifs.length,
+      classeCalque: !!document.querySelector(".lasso-vif"),
+      // aucune tuile ne doit avoir recu la classe sel du geste: seules celles que le MODELE tient
+      selDuModele: [...document.querySelectorAll(".piece.sel")].map(function(e){return String(e.dataset.id);}).sort(),
+      dejaGardeSel: !!deja && deja.classList.contains("sel"),
+      dejaEstVif: !!deja && deja.classList.contains("sel-vif"),
+      dejaOmbre: deja ? getComputedStyle(deja).boxShadow : "?"
+    };})()`);
+  ok(pendant.vifs > 0, "le lasso doit marquer en vif ce qu'il attrape");
+  ok(pendant.classeCalque, "le calque doit porter `.lasso-vif` pendant le geste");
+  ok(JSON.stringify(pendant.selDuModele) === JSON.stringify([dejaId]),
+    `le geste ne doit JAMAIS ecrire \`.sel\`: vu ${JSON.stringify(pendant.selDuModele)}`);
+  ok(pendant.dejaGardeSel, "la selection acquise garde sa classe `.sel`, le geste n'y touche pas");
+  ok(!pendant.dejaEstVif, "un lasso SANS modificateur remplace: l'objet d'avant n'est plus vif");
+  ok(pendant.dejaOmbre === "none",
+    `un objet lache par le lasso ne doit plus montrer d'anneau, vu ${pendant.dejaOmbre}`);
+  await M("mouseReleased", B.x, B.y, { buttons: 0 }); await pause(250);
+  const apres = await J(`(function(){return {
+    vifs: document.querySelectorAll(".sel-vif").length,
+    classeCalque: !!document.querySelector(".lasso-vif")};})()`);
+  ok(apres.vifs === 0, "aucune marque vive ne survit au relachement");
+  ok(!apres.classeCalque, "`.lasso-vif` doit partir avec le geste");
+  const d = await dump();
+  ok(d.manquants.length === 0 && d.enTrop.length === 0,
+    "apres le relachement, l'ecran et le modele doivent coincider exactement");
 });
 
 // ---- verdict -----------------------------------------------------------------------------------
