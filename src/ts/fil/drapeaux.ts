@@ -19,8 +19,6 @@ export const SYNC_URL = "/api/plan";
 export const PLANS_URL = "/api/plans";
 /** Owner-side sharing (batch 4, docs/decisions/0004-partage-par-lien.md): create, list, revoke. */
 export const INVITES_URL = "/api/invites";
-/** The feedback drop ("retour-utilisateur"): reachable from EITHER door, see functions/api/feedback.ts. */
-export const FEEDBACK_URL = "/api/feedback";
 /** The versions the live plan set aside (`conflict`), held by the Durable Object and relayed by
  *  functions/api/orphans.ts. HOUSEHOLD DOOR ONLY: a discarded version is a piece of the household's
  *  plan, so a guest gets a 403 here and must never be offered a button that leads to one. */

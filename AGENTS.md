@@ -435,7 +435,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - D1 `plan` (uuid `<d1_database_id>`, get your own from the Cloudflare dashboard), `plans` table with one `main` row
   (`data` JSON, increasing `rev`, `updated_at`, `updated_by`). Bound to the Pages project as `DB`
   (production + preview), configured through the REST API (no wrangler here).
-- **Eight network entry points, not one more.** Five are HOUSEHOLD-ONLY; the other three exist
+- **Seven network entry points, not one more.** Five are HOUSEHOLD-ONLY; the other two exist
   because of the guest door, and `functions/_middleware.ts` decides which door may reach which
   route (`docs/decisions/0004-partage-par-lien.md`). **Each route also refuses an unrecognized door
   ITSELF**, it does not lean on that choke point: every direct-import test in this repository calls
@@ -448,9 +448,8 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 | --- | --- | --- | --- |
 | `/api/plan` | `GET` | Read the household floor plan. | `{data, rev, updatedAt, updatedBy}` · missing row = `{data:null, rev:0}` |
 | `/api/plan` | `PUT` | Write the floor plan through FALLBACK (realtime down). | `{state, rev}` = compare-and-swap: **409** with the winning revision, author, AND state if the row moved. `{state}` alone = BLIND write, the old contract, kept for a tab opened before deployment. |
-| `/api/err` | `POST` | Collect an uncaught client JS error in D1 for remote diagnosis. | HOUSEHOLD ONLY. Free-form body, response without useful content. **429** past 5 per hour and per author (the same rate limiter as `/api/feedback`, the same function: an error in a render path fires on every frame, and the retention sweep bounds only what is KEPT). |
+| `/api/err` | `POST` | Collect an uncaught client JS error in D1 for remote diagnosis. | HOUSEHOLD ONLY. Free-form body, response without useful content. **429** past 5 per hour and per author (`functions/debit.ts`'s shared counter: an error in a render path fires on every frame, and the retention sweep bounds only what is KEPT). |
 | `/api/orphans` | `GET` | Read back the versions the LIVE plan set aside (a `conflict`). | HOUSEHOLD ONLY. Relays the Durable Object's `GET /orphans` → `{orphans:[{at, by, rev, data}], live}`. Unreachable object = `{orphans:[], live:false}`, never an error: it is asked while a conflict banner is already up. |
-| `/api/feedback` | `POST` | A free-text note from inside the app, no account. | BOTH DOORS, deliberately: a visitor on a shared link must be able to report something too. **429** past 5 per hour and per IP. Who and which plan come from the DOOR, never from the body. |
 | `/ws` | `GET` + `Upgrade` | Open the realtime wire. | Pass-through: adds `X-Plan-Email`, `X-Plan-Id`, `X-Plan-Guest`, `X-Plan-Name`, `X-Plan-Guest-Id`, `X-Plan-Token` and `X-Plan-Expires` (always SET, never conditionally, so a caller cannot forge them) and forwards to the `PlanRoom` Durable Object (binding `ROOM`). **426** without an `Upgrade` header. **403** off a recognized door, checked here as well as in the middleware. |
 | `/api/invite` | `POST` | GUEST DOOR ONLY. Trade the link's `#k=` token for a session. | `{token, name?}` → `{planId, planName, role, name}` + an `HttpOnly; Secure; SameSite=Strict` cookie. Unknown, revoked, expired and deleted-plan all answer the SAME **404**, so a probe never learns it guessed a real token. |
 | `/api/invites` | `GET` `POST` `DELETE` | HOUSEHOLD DOOR ONLY. Create, list and revoke a plan's links. | 20 live invites per plan max (**409**), revoke is idempotent (**200** even for an unknown token, same reason as the 404 above). |
@@ -646,8 +645,8 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   to the same corner: they can no longer overlap. The `.side-spacer` spacer pushes them downward and
   collapses when they no longer fit; on a short screen they sit side by side (`css/17`).
 - **The rail footer is `position:sticky`**: the "File" menu is the only access to Undo, Redo, Save
-  to file, Open from file, Furniture list, Export as PNG, Print / PDF, Remove all furniture, and
-  Feedback (decision 0015); it must never end up at the bottom of a 3 000 px rail.
+  to file, Open from file, Furniture list, Export as PNG, Print / PDF, and Remove all furniture
+  (decision 0015); it must never end up at the bottom of a 3 000 px rail.
 - **A resize that breaks framing reframes** (`js/46`): compare the current transform against the OLD
   viewport size (stored), so reframing happens only if the floor plan fit before and no longer fits
   afterward. The view of someone who deliberately moved closer stays intact.
@@ -1012,9 +1011,6 @@ Decision [0015](docs/decisions/0015-sept-boutons-et-des-curseurs.md), lot 6 of
   `Options.overlay` is gone from the client (same treatment as `snap` before it, decision
   0011/0012: an old saved value is read and dropped, `cleanOpts`, never written back); every place
   that read `opts.overlay` now reads `opts.flow`.
-- **Feedback (✉) left the bar for the File menu**, last entry, plain text instead of an icon
-  (`#btnFeedback` keeps its id, only its parent changed): it is reached often enough to deserve a
-  menu line, not often enough to deserve a permanent icon next to Circulation.
 - **The cursor-say bubble ("/", FigJam-style) is gone entirely.** `fil/dire.ts` (the floating box),
   its keyboard shortcut, its CSS (`.say-box`, `.pc-say`), and the code that painted a peer's live
   text next to their cursor are all removed; the outgoing `cursor` message no longer carries a

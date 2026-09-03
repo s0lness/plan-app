@@ -246,7 +246,7 @@ export function brancherClavier(ctx: Contexte): void {
   window.addEventListener("keydown", (e) => {
     const tgt = (e.target || {}) as HTMLElement;
     const typing = /INPUT|TEXTAREA|SELECT/.test(tgt.tagName || "") || tgt.isContentEditable;
-    // ESCAPE CLOSES THE OPEN DIALOG, whatever it is (Plans, Help, Furniture list, Share, Feedback,
+    // ESCAPE CLOSES THE OPEN DIALOG, whatever it is (Plans, Help, Furniture list, Share,
     // file transfer), even from a field inside it. Two are kept out: the outline wizard (`#setup`,
     // there is no plan to go back to) and the guest's name step (`#inviteNameDlg`, nobody reaches
     // the wire unnamed). A field that already consumed Escape (an in-place rename) has called

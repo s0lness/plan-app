@@ -113,7 +113,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/plan-abime.ts",              chrome: 2 },
   { f: "tests/porte-invitee.ts",           chrome: 2 },   // the guest door in a real browser: token capture, name step, dead end, local-only
   { f: "tests/partage-navigateur.ts",      chrome: 2 },   // the Share button in a real browser: household door, silent-return fix, local-only self-heal
-  { f: "tests/retour-navigateur.ts",       chrome: 2 },   // the Feedback button in a real browser: both doors, server received it, text survives a failed send
   { f: "tests/interactions.ts",            chrome: 1 },
   { f: "tests/outil-mur-geste.ts",        chrome: 1 },   // real mouse + keyboard: click-click chain, double-click and Escape, the floor lassoes, a selected wall carries its own buttons and its own card (never the room's)
   { f: "tests/jonction-glisser-mur-geste.ts", chrome: 1 }, // real mouse: three hand-drawn walls, drag the shared one, junctions hold, one Ctrl+Z restores all three
@@ -148,7 +147,6 @@ const SUITES: EntreeSuite[] = [
   { f: "tests/no-dead-selectors.ts",       chrome: 0 },                        // CSS classes taken by src/ts
   { f: "tests/porte.ts",                   chrome: 0 },   // door + identity: functions/porte.ts, no browser
   { f: "tests/invitation.ts",              chrome: 0 },   // the invite: functions/api/invite(s).ts, no browser
-  { f: "tests/retour.ts",                  chrome: 0 },   // the feedback drop: functions/api/feedback.ts, no browser
   { f: "tests/carte-og.ts",                chrome: 0 },   // the link preview card: functions/_middleware.ts, no browser
   { f: "tests/identite-fil.ts",            chrome: 0 },   // wire identity, client side: src/ts/fil/etat.ts + mesure/curseur-pair.ts, no browser
   { f: "tests/invite-fil.ts",              chrome: 0 },   // guest client pure logic: token-from-hash, storage key per mode, duplicate-name display, no browser

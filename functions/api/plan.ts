@@ -94,7 +94,7 @@ const porteRefusee = () => new Response(JSON.stringify({ error: "porte_refusee" 
  * `updated_by` column, an Access address, in clear. `functions/_middleware.ts` does keep that host
  * out in production, and that is exactly why the hole was invisible, every direct-import test in
  * this codebase calls this file with no middleware at all, which is the shape any future caller
- * could take too. Same discipline as `functions/api/invites.ts` and `functions/api/feedback.ts`.
+ * could take too. Same discipline as `functions/api/invites.ts`.
  */
 const porteConnue = (porte: Porte): boolean => porte === "foyer" || porte === "invite";
 

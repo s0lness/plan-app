@@ -350,6 +350,17 @@ await test("middleware_invite_laisse_passer_le_fil", async () => {
   return true;
 });
 
+await test("middleware_invite_refuse_api_feedback", async () => {
+  // Le retour utilisateur a quitté l'app (decision 0022) : `/api/feedback` n'existe plus DU TOUT,
+  // donc la porte invitée ne doit plus le laisser passer, comme n'importe quel autre chemin
+  // `/api/` non nommé dans sa surface.
+  const r = requeteVers("https://share.example.com/api/feedback", { Host: "share.example.com" });
+  const { appel, next } = fauxNext();
+  const res = await middleware(ctx(r, ENV_INVITE, next));
+  return expect(res.status === 403, "doit répondre 403, vu " + res.status)
+      && expect(!appel.appelee, "next() ne doit PAS être appelé pour /api/feedback sur la porte invite");
+});
+
 await test("middleware_invite_refuse_api_plans", async () => {
   const r = requeteVers("https://share.example.com/api/plans", { Host: "share.example.com" });
   const { appel, next } = fauxNext();
@@ -497,10 +508,10 @@ await test("err_refuse_la_porte_inconnue_et_la_porte_invitee", async () => {
   return true;
 });
 
-await test("err_borne_le_debit_comme_le_retour_utilisateur", async () => {
-  // La MÊME fonction que functions/api/feedback.ts, jamais une seconde copie : une erreur dans un
-  // chemin de rendu part à chaque image, et la purge de rétention ne borne que ce qui est GARDÉ,
-  // jamais le nombre d'écritures demandées à D1.
+await test("err_borne_le_debit_via_le_compteur_partage", async () => {
+  // functions/debit.ts, jamais une copie locale : une erreur dans un chemin de rendu part à
+  // chaque image, et la purge de rétention ne borne que ce qui est GARDÉ, jamais le nombre
+  // d'écritures demandées à D1.
   const { env, lignes } = fauxDbErreurs();
   const envoyer = () => errPost({
     request: requetePour("https://plan.example.com/api/err", "plan.example.com", "POST", { msg: "boucle" },

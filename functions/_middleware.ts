@@ -6,9 +6,8 @@
 //
 // Three verdicts now exist (`porte.ts`): `"foyer"` (unchanged since batch 1a, full access),
 // `"invite"` (no Access, no household identity, a valid invite token is the only credential),
-// and `"inconnue"` (refused outright). The guest door reaches exactly four routes: the token
-// exchange (`/api/invite`), the plan it names (`/api/plan`), the realtime wire (`/ws`), and the
-// feedback drop (`/api/feedback`, "retour-utilisateur": a visitor can flag something too),
+// and `"inconnue"` (refused outright). The guest door reaches exactly three routes: the token
+// exchange (`/api/invite`), the plan it names (`/api/plan`), and the realtime wire (`/ws`),
 // because that is the entire guest product. Every other route under `/api/` (`/api/plans`,
 // `/api/invites`, `/api/err`) stays 403 here, the same way `/api/plans` was already unreachable
 // off the household door before this feature existed.
@@ -117,12 +116,10 @@ export const onRequest: PagesFunction<Env> = async ({ request, next, env }) => {
 
   if (porte === "invite") {
     // A NAMED surface, not "everything except the owner routes": the token exchange, the plan it
-    // unlocks, the wire, and the feedback drop. `/api/plan`, `/api/feedback` and `/ws` here are
-    // UNVALIDATED passes, the invite token itself is checked downstream, by the route that can
-    // actually read D1 (`functions/api/feedback.ts` re-derives the plan from the session cookie,
-    // exactly like `/api/plan` and `/ws` already do).
-    const surfaceInvite = chemin === "/api/invite" || chemin === "/api/plan" ||
-      chemin === "/api/feedback" || surLeFil;
+    // unlocks, and the wire. `/api/plan` and `/ws` here are UNVALIDATED passes, the invite token
+    // itself is checked downstream, by the route that can actually read D1 (`functions/api/plan.ts`
+    // and `functions/ws.ts` both re-derive the plan from the session cookie).
+    const surfaceInvite = chemin === "/api/invite" || chemin === "/api/plan" || surLeFil;
     if (chemin.startsWith("/api/") && !surfaceInvite) return refuse("porte_refusee");
     return avecCarteOg(await next(propre), request);
   }
