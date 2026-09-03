@@ -61,10 +61,6 @@ function surPanneauDeroulant(viewport: HTMLElement, cible: EventTarget | null): 
   return false;
 }
 
-let rubberLive = false;
-/** Test probe: is a lasso in progress? */
-export const lassoVivant = (): boolean => rubberLive;
-
 /** Starts a pan from a client point. The VIEW persists nothing (G-2). */
 function startPan(ctx: Contexte, e: PointerEvent): void {
   const r0 = ctx.viewport.getBoundingClientRect();
@@ -92,7 +88,7 @@ function startPan(ctx: Contexte, e: PointerEvent): void {
  * THIS: the rest of the chain already accepts them (`delSel` deletes them, the clipboard
  * copies them, a group drag ignores them, since an opening has no free x/y).
  */
-export function piecesInClientRect(
+function piecesInClientRect(
   ctx: Contexte,
   rect: { left: number; top: number; right: number; bottom: number },
 ): string[] {
@@ -166,7 +162,7 @@ function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
     lastPt = { x: ev.clientX, y: ev.clientY };
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
     if (!banding && Math.hypot(dx, dy) >= RUBBER_THRESH) {
-      banding = true; rubberLive = true;
+      banding = true;
       // La classe et le premier marquage tombent DANS LA MEME IMAGE: attendre le rAF ferait
       // clignoter la selection d'avant, effacee par `.lasso-vif` et pas encore reposee en vif.
       ctx.canvas.classList.add("lasso-vif");
@@ -196,7 +192,6 @@ function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
   const up = (ev?: Event | null): void => {
     window.removeEventListener("pointermove", move);
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    rubberLive = false;
     if (rb) { rb.hidden = true; rb.removeAttribute("style"); rb.hidden = true; }
     if (annule) { terminerVif(); return; }
     // The shared exit can call `up` WITHOUT an event (pointercancel, focus loss, the watchdog):

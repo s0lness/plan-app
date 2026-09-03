@@ -25,7 +25,7 @@ import { brancherTransfert } from "./transfert.ts";
 
 let furniCopyTimer: ReturnType<typeof setTimeout> | undefined;
 
-export function openFurni(ctx: Contexte): void {
+function openFurni(ctx: Contexte): void {
   const furniBody = $("furniBody"), furniEl = $("furni");
   if (furniBody) furniBody.innerHTML = furnitureListHTML(ctx);
   if (furniEl) furniEl.hidden = false;

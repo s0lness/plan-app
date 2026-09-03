@@ -17,7 +17,7 @@ const clean = (v: unknown): string | null => {
   return s.length >= 4 ? s : null;
 };
 
-export function v5DeviceTag(): string {
+function v5DeviceTag(): string {
   if (v5_tag) return v5_tag;
   const srv = _tagServeur ? clean(_tagServeur()) : null;
   if (srv) return (v5_tag = srv);

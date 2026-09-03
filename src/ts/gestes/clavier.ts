@@ -59,14 +59,6 @@ interface ItemClip {
 let planClip: { items: ItemClip[]; verrous: number } | null = null;
 let clipPasteAttendu = 0;
 
-export function planClipInfo(): { n: number; verrous: number; muraux: number } | null {
-  return planClip ? {
-    n: planClip.items.length, verrous: planClip.verrous,
-    muraux: planClip.items.filter((i) => i.mural).length,
-  } : null;
-}
-export function planClipReset(): boolean { planClip = null; return true; }
-
 /** APARTMENT center of a selected object, furniture or wall-mounted (anchor and offsets). */
 function clipCenterOf(ctx: Contexte, id: string): { x: number; y: number; piece?: Meuble; opening?: Ouverture } | null {
   const p = pieceById(ctx, id);

@@ -73,7 +73,7 @@ function flowButtonTitle(): string {
   if (!anyAptPieces()) return "Circulation: add furniture to check the layout";
   return parts.length ? "Circulation: " + parts.join(", ") : "Circulation: nothing to report";
 }
-export function renderFlow(): void {
+function renderFlow(): void {
   const s = scoreOf(), band = bandOf(s);
   const has = anyAptPieces();
   const pill = E("flowPill"), ps = pillState();

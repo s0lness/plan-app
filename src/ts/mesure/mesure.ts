@@ -42,8 +42,6 @@ let measures: Segment[] = [];       // validated segments (apartment cm)
 let measurePend: PointMesure | null = null;   // first point placed, waiting for the second
 let measureCur: PointMesure | null = null;    // last snapped cursor point (the live rubber band)
 
-export const mesuresPosees = (): Segment[] => measures;
-
 /** Tolerance in cm equivalent to ~14 screen px at the current zoom (6 cm minimum, zoomed-out view). */
 function measureTol(ctx: Contexte): number { return Math.max(6, 14 / (ctx.vue.scale || 1)); }
 

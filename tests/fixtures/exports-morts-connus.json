@@ -1,5 +1,0 @@
-{
-  "quoi": "Exports de src/ts que personne n'appelle. Dette ANTERIEURE a tests/exports-morts.ts.",
-  "regle": "Cette liste ne peut que RETRECIR. Refiger pour faire taire la suite, c'est rendre la suite inutile.",
-  "morts": []
-}

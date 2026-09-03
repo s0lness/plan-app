@@ -127,7 +127,7 @@ export function v5SelectCell(ctx: Contexte, id: unknown, openCard?: boolean): vo
  * on its own, with nobody's hand on it, is not the kind of thing the drawing alone explains
  * (decision 0014, "l'app se tait" keeps this one, unlike a gesture's own visible result).
  */
-export function bornerLesMeubles(ctx: Contexte): number {
+function bornerLesMeubles(ctx: Contexte): number {
   const bilan = v5ClampPieces(ctx.etat.plan);
   if (bilan.message) toast(bilan.message);
   return bilan.perdus;
@@ -1019,7 +1019,7 @@ export interface OptionsTrace {
  * The message names the true culprit when it is the SNAP that pulled the stroke onto a partition
  * it was still far from (2, 5, 10 cm): otherwise the gesture just seems to evaporate.
  */
-export function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | null): Mur | null {
+function v5TryCreateWall(ctx: Contexte, a: Pt, b: Pt, o?: OptionsTrace | null): Mur | null {
   // A WALL KEEPS THE ENDS YOU DREW, and that is now true of EVERY wall, not just of the ones the
   // tool made (decision 0012). It used to need a `free` flag set here, because otherwise each end
   // was pushed to the first barrier beyond it and a 60 cm stub shot across the room to the facade.

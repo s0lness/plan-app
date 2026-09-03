@@ -281,7 +281,7 @@ let inspEdited = false;
  * anymore, neither empty, nor negative, nor out of bounds. The clamp that follows now only serves
  * as a last frontier for programmatic calls (test probe, keyboard shortcut).
  */
-export function setDim(ctx: Contexte, which: string, val: unknown): void {
+function setDim(ctx: Contexte, which: string, val: unknown): void {
   const p = vue(cur(ctx));
   if (!p || p.locked) return;
   if (!inspEdited) { inspEdited = true; pushHistory(ctx); }

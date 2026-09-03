@@ -117,7 +117,7 @@ export function clearCursorGuides(): void { const ov = $("cursorGuides"); if (ov
  * px), reusing the measuring tape's thread and chip. Replaces the previous frame; a null `ax`
  * clears it.
  */
-export function drawCursorGuides(ctx: Contexte, ax: number | null, ay?: number): void {
+function drawCursorGuides(ctx: Contexte, ax: number | null, ay?: number): void {
   const ov = $("cursorGuides"); if (!ov) return;
   ov.innerHTML = "";
   if (!measureMode() || ax == null) return;
