@@ -31,7 +31,7 @@ export interface Ecran {
   x: number; y: number; w: number; h: number; rot?: number | undefined;
   /** Height of the BOTTOM of the screen above the floor, cm. Absent = not stated. */
   hs?: number | undefined;
-  /** Image format, encoded as an integer (see `RATIOS`). Absent = 16:9. */
+  /** Image format, encoded as an integer (see `IMAGE_RATIOS`, `partage/contrat-serveur.ts`). Absent = 16:9. */
   ratio?: number | undefined;
 }
 
@@ -55,12 +55,6 @@ export interface Projection {
 /** Default throw ratio when the spec sheet has not been entered: 1.50, the common case. */
 export const TR_DEFAUT = 150;
 
-/**
- * THE THREE IMAGE FORMATS, AS INTEGERS. Same reason as `tr`: a float in a persisted field is a
- * float in the content fingerprint, and two clients must never diverge over a rounding. 169 is
- * 16:9, 1610 is 16:10, 2351 is 2.35:1 (scope).
- */
-export const RATIOS = [169, 1610, 2351] as const;
 /** 16:9 when nobody has said otherwise: it is what a projector throws by default. */
 export const RATIO_DEFAUT = 169;
 

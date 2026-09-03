@@ -1863,6 +1863,24 @@ function lienPerturbe(room: PlanRoom, ws: unknown, {
   ok(P({ pair: "" }).pair === "", "empty pair clears the pairing");
   throws(() => P({ pair: { id: "x" } }), "pair as an object rejected");
   throws(() => P({ pair: "a b c" }), "pair with spaces rejected (same grammar as any id)");
+  // THE VERTICAL CUT. `hp`/`hs` are heights above the floor; `off` is a SIGNED percentage, so
+  // the negative side (a ceiling mount) must go THROUGH, not be clamped to zero; `ratio` is one
+  // of three codes and an unknown one is refused rather than folded back to 16:9.
+  ok(P({ hp: 120 }).hp === 120, "lens height above the floor kept");
+  ok(P({ hp: 230 }).hp === 230, "a ceiling mount at 230 cm is an ordinary value");
+  throws(() => P({ hp: 1e9 }), "an absurd lens height is rejected, not stored");
+  throws(() => P({ hp: -1 }), "a lens under the floor rejected");
+  throws(() => P({ hp: "120" }), "lens height as a string rejected");
+  ok(P({ off: -40 }).off === -40, "a NEGATIVE offset survives: it is what a ceiling mount is");
+  ok(P({ off: 120 }).off === 120, "an offset past +100 survives: it is what an ultra short throw is");
+  throws(() => P({ off: -400 }), "offset below the floor rejected");
+  throws(() => P({ off: 400 }), "offset above the ceiling rejected");
+  ok(P({ hs: 90 }).hs === 90, "screen bottom height kept");
+  throws(() => P({ hs: 1e9 }), "an absurd screen height is rejected, not stored");
+  ok(P({ ratio: 2351 }).ratio === 2351, "2.35:1 kept");
+  ok(P({ ratio: 1610 }).ratio === 1610, "16:10 kept");
+  throws(() => P({ ratio: 43 }), "an unknown format code is rejected, not folded back to 16:9");
+  throws(() => P({ ratio: "16:9" }), "format as a string rejected");
 }
 {
   // free (wall): 0, 1 and nothing else (WALL_FREE). ABSENT stays absent, same rule as `leaf`

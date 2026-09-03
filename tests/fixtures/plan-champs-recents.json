@@ -14,9 +14,9 @@
   ],
   "pieces": [
     {"id": "p1", "type": "projector", "name": "Videoprojecteur", "x": 50, "y": 50, "w": 35, "h": 30,
-     "rot": 0, "locked": false, "tr": 150, "dmin": 60, "pair": "p2"},
+     "rot": 0, "locked": false, "tr": 150, "dmin": 60, "pair": "p2", "hp": 230, "off": -40},
     {"id": "p2", "type": "pscreen", "name": "Ecran de projection", "x": 550, "y": 50, "w": 200, "h": 10,
-     "rot": 90, "locked": false}
+     "rot": 90, "locked": false, "hs": 90, "ratio": 169}
   ],
   "cells": []
 }

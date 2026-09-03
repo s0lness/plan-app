@@ -11,7 +11,8 @@
 // permissive than we are, which is the right direction for the asymmetry (G-18).
 // This is the exact line that `tests/rapide.ts`'s startup check caught out on its first run:
 // the copy said nine keys, the server accepts eleven.
-export const PIECE_KEYS = ["id", "type", "name", "x", "y", "w", "h", "rot", "locked", "hinge", "swing", "tr", "dmin", "pair"] as const;
+export const PIECE_KEYS = ["id", "type", "name", "x", "y", "w", "h", "rot", "locked", "hinge", "swing",
+  "tr", "dmin", "pair", "hp", "off", "hs", "ratio"] as const;
 // `free` is still ACCEPTED by the server, and this list must stay set-for-set equal to
 // `ops.ts`'s (`tests/rapide.ts` checks it). No client type carries the field any more (decision
 // 0012): a tab running the old code may still send it, and the server may still store it.
@@ -31,6 +32,13 @@ export const OPENING_SIDES = [0, 1] as const;
  * don't change appearance until someone sets them.
  */
 export const OPENING_LEAVES = [0, 1, 2] as const;
+/**
+ * THE THREE IMAGE FORMATS a projection screen can carry, as INTEGER codes: 169 is 16:9, 1610 is
+ * 16:10, 2351 is 2.35:1. Integers for the same reason as `tr`: a float in a persisted field is a
+ * float in the content fingerprint, and two clients must never diverge over a rounding. Absent
+ * means 16:9, so no screen already placed changes shape.
+ */
+export const IMAGE_RATIOS = [169, 1610, 2351] as const;
 export const CELL_FLOORS = ["parquet", "herringbone", "tile", "plain"] as const;
 
 // ---- bounds (ops.ts) ---------------------------------------------------------------------------
@@ -47,6 +55,14 @@ export const MAX_ENTITIES = 2000;
 export const SWING_MAX = 80;
 export const THROW_RATIO_MIN = 10, THROW_RATIO_MAX = 1000;
 export const THROW_DMIN_MIN = 0, THROW_DMIN_MAX = 2000;
+/** `hp` (lens above the floor) and `hs` (bottom of the screen above the floor), cm. */
+export const THROW_H_MIN = 0, THROW_H_MAX = 400;
+/**
+ * `off`, the vertical offset in % of the image height, SIGNED. The range is wide on purpose:
+ * a ceiling mount is negative, and an ultra short throw sitting under its screen throws the
+ * WHOLE image above its lens, which is past +100 %.
+ */
+export const THROW_OFF_MIN = -150, THROW_OFF_MAX = 250;
 
 export const TYPE_RE = /^[a-z0-9_-]{1,32}$/;
 export const ID_RE = /^[A-Za-z0-9_.:-]{1,80}$/;
@@ -55,6 +71,7 @@ export const ID_RE = /^[A-Za-z0-9_.:-]{1,80}$/;
 export type OpeningType = (typeof OPENING_TYPES)[number];
 export type OpeningSide = (typeof OPENING_SIDES)[number];
 export type OpeningLeaf = (typeof OPENING_LEAVES)[number];
+export type ImageRatio = (typeof IMAGE_RATIOS)[number];
 export type CellFloor = (typeof CELL_FLOORS)[number];
 export type OpeningKey = (typeof OPENING_KEYS)[number];
 export type WallKey = (typeof WALL_KEYS)[number];
@@ -67,4 +84,12 @@ export const FLOORS: ReadonlySet<string> = new Set<string>(CELL_FLOORS);
 
 export function estSolConnu(v: unknown): v is CellFloor {
   return typeof v === "string" && FLOORS.has(v);
+}
+
+/** The three image formats, as a set, for the same reason and with the same shape as `FLOORS`. */
+export const FORMATS: ReadonlySet<number> = new Set<number>(IMAGE_RATIOS);
+
+/** An image format code we recognize. Anything else reads as absent, which is 16:9. */
+export function estFormatConnu(v: unknown): v is ImageRatio {
+  return typeof v === "number" && FORMATS.has(v);
 }

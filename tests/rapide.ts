@@ -31,6 +31,7 @@ import {
   // shared contract, verified below against the server
   OPENING_TYPES, OPENING_SIDES, CELL_FLOORS, OPENING_KEYS, WALL_KEYS, PIECE_KEYS, CELL_KEYS,
   NAME_MAX, OPENING_H_MAX, OPENING_W_MAX, PIECE_WH_MAX, WALL_T_MIN, WALL_T_MAX,
+  IMAGE_RATIOS, THROW_H_MIN, THROW_H_MAX, THROW_OFF_MIN, THROW_OFF_MAX,
 } from "../src/ts/noyau.ts";
 import { CATALOG, KIND_BY_TYPE, KIND_ORDER, catalogueParNature, kindOf } from "../src/ts/catalogue/catalogue.ts";
 import { FL } from "../src/ts/circulation/etat.ts";
@@ -95,6 +96,11 @@ const sanitizeState = (state: unknown) => sanitizeStateReel(state as PlanState);
   memeEnsemble("WALL_KEYS", WALL_KEYS, SRV.WALL_KEYS);
   memeEnsemble("PIECE_KEYS", PIECE_KEYS, SRV.PIECE_KEYS);
   memeEnsemble("CELL_KEYS", CELL_KEYS, SRV.CELL_KEYS);
+  memeEnsemble("IMAGE_RATIOS", IMAGE_RATIOS, SRV.IMAGE_RATIOS);
+  memeNombre("THROW_H_MIN", THROW_H_MIN, SRV.THROW_H_MIN);
+  memeNombre("THROW_H_MAX", THROW_H_MAX, SRV.THROW_H_MAX);
+  memeNombre("THROW_OFF_MIN", THROW_OFF_MIN, SRV.THROW_OFF_MIN);
+  memeNombre("THROW_OFF_MAX", THROW_OFF_MAX, SRV.THROW_OFF_MAX);
   memeNombre("NAME_MAX", NAME_MAX, SRV.NAME_MAX);
   memeNombre("OPENING_H_MAX", OPENING_H_MAX, SRV.OPENING_H_MAX);
   memeNombre("OPENING_W_MAX", OPENING_W_MAX, SRV.OPENING_W_MAX);
@@ -652,6 +658,9 @@ test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
     a: [10, 20], b: [130, 20], t: 15, free: 1,
     t0: 5, w: 20, h: 8, side: 1, name: "Contrat", hinge: 1, swing: -1, leaf: 2,
     x: 33, y: 44, rot: 90, locked: true, tr: 150, dmin: 60, pair: "ecran1",
+    // The vertical cut. `off` is NEGATIVE here on purpose: a ceiling mount is the case a
+    // `Math.max(0, …)` on the way in or out would silently flatten.
+    hp: 230, off: -40, hs: 90, ratio: 2351,
     poly: [[0, 0], [10, 0], [10, 10], [0, 10]], floor: "tile",
   };
   const entiteDepuisCles = (cles: readonly string[], overrides: Record<string, DonneeDynamique>): Record<string, DonneeDynamique> => {
