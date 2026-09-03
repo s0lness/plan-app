@@ -77,7 +77,7 @@ export interface MetriquesMarqueur {
 }
 
 // Must stay in sync with wallMountMarker() above (SAME bounds).
-export function wallMountMarkerMetrics(w: number): MetriquesMarqueur {
+function wallMountMarkerMetrics(w: number): MetriquesMarqueur {
   const stem = clamp(w * 0.9, 9, 14);
   const symR = clamp(w * 0.42, 4, 6.5);
   const hw = Math.max(2.4, symR * 0.55);

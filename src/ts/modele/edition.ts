@@ -1299,49 +1299,6 @@ export function v5WallMergeCandidate(P: PlanV5 | null | undefined, wallId: Id, b
   return trouve;
 }
 
-/**
- * OU CETTE FACADE SE RESSOUDE: L'INDEX DU SOMMET PLAT, ou -1.
- *
- * Une facade coupee n'est pas deux murs poses cote a cote, c'est UN SOMMET DE PLUS dans le polygone
- * du contour (`v5CouperContour`). La ressouder n'est donc pas une fusion de murs, c'est retirer ce
- * sommet, et `v5WallMergeCandidate` ne peut pas repondre ici: il refuse categoriquement une facade,
- * parce que fusionner deux murs DERIVES ne survivrait pas au prochain `v5SyncOutlineWalls`.
- *
- * La regle est la meme que pour deux cloisons, transposee au polygone: les deux aretes qui se
- * rejoignent en ce sommet doivent CONTINUER l'une l'autre (en repartant du sommet, elles pointent
- * en sens opposes), et rien d'autre ne doit tenir ce point, sinon on enterrerait une jonction dans
- * la nouvelle facade. Un contour de trois sommets n'a rien a donner: il cesserait d'etre un polygone.
- */
-export function v5SommetPlatDeFacade(
-  P: PlanV5 | null | undefined,
-  wallId: Id,
-  bout: "a" | "b",
-): number {
-  const w = v5WallById(P, wallId);
-  const O = P?.outline || [];
-  if (!P || !w || !w.isOutline || O.length <= 3) return -1;
-  const pt = w[bout];
-  for (let i = 0; i < O.length; i++) {
-    const v = O[i]!;
-    if (Math.hypot(v[0] - pt[0], v[1] - pt[1]) > JOINT_TOL) continue;
-    const p = O[(i - 1 + O.length) % O.length]!, n = O[(i + 1) % O.length]!;
-    const dep = (q: Pt): Pt => {
-      const dx = q[0] - v[0], dy = q[1] - v[1], L = Math.hypot(dx, dy) || 1e-9;
-      return [dx / L, dy / L];
-    };
-    const u = dep(p), z = dep(n);
-    if (Math.abs(u[0] * z[1] - u[1] * z[0]) > COLIN_TOL) return -1;
-    if (u[0] * z[0] + u[1] * z[1] > -0.9) return -1;
-    // Une cloison qui vient mourir sur ce sommet en fait une jonction a trois.
-    for (const x of P.walls || []) {
-      if (x.isOutline) continue;
-      if (closestOnSeg(v[0], v[1], x.a[0], x.a[1], x.b[0], x.b[1]).dist <= JOINT_TOL) return -1;
-    }
-    return i;
-  }
-  return -1;
-}
-
 /** Welds `wallId` to the neighbour meeting its `bout` end. The merged wall keeps `wallId`. */
 export function v5WallMergeAt(P: PlanV5 | null | undefined, wallId: Id, bout: "a" | "b"): { refus: string } | { id: Id } {
   const f = v5WallMergeCandidate(P, wallId, bout);
