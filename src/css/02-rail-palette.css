@@ -119,7 +119,8 @@
 
   /* room chips (multi-room) */
   .rooms{display:flex;flex-direction:column;gap:6px;margin-bottom:9px}
-  .room-chip .rc-name{cursor:pointer}
+  /* text cursor, not the chip's own pointer: this span alone renames on a double-click */
+  .room-chip .rc-name{cursor:text}
   .room-chip{position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;
     padding:8px 10px;background:var(--panel-2);border:1.5px solid var(--line);border-radius:var(--radius-chip);
     cursor:pointer;user-select:none;transition:border-color .12s,background .12s;text-align:left}

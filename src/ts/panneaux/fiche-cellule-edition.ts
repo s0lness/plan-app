@@ -8,10 +8,10 @@ import { v5SelectedCell, v5Touch } from "../app/contexte.ts";
 import { FLOORS } from "../partage/contrat-serveur.ts";
 import { $ } from "../noyau/dom.ts";
 import { syncCellCard } from "../rendu/fiche-cellule.ts";
-import { renderRoomChips } from "../rendu/puces-rail.ts";
 import { render } from "../rendu/rendu.ts";
 import { pushHistory } from "../historique/pile.ts";
 import { save } from "../app/persistance.ts";
+import { renommerCelluleEnLigne } from "./renommer-en-ligne.ts";
 
 /**
  * The floor no longer belongs to a room: it's a property of the currently selected CELL. Read
@@ -39,20 +39,15 @@ export function brancherFicheCellule(ctx: Contexte): void {
     });
   });
 
-  // The name: history COALESCED per focus session, the same rule the inline label rename applies
-  // (`panneaux/renommer-en-ligne.ts`). One entry per keystroke made "undo" unusable (one character
-  // per step). `rcName` is the LAST field of this kind left in a panel (decision 0013): a piece of
-  // furniture and a plan both rename on a double-click of their own label now.
-  const nom = $("rcName") as HTMLInputElement | null;
-  let rcEdited = false;
-  nom?.addEventListener("focus", () => { rcEdited = false; });
-  nom?.addEventListener("blur", () => { rcEdited = false; });
-  nom?.addEventListener("input", () => {
-    const c = v5SelectedCell(ctx); if (!c) return;
-    if (!rcEdited) { rcEdited = true; pushHistory(ctx); }
-    // 80 = the length the shared plan RETAINS (live-worker/ops.ts, NAME_MAX).
-    c.name = nom.value.slice(0, 80);
-    v5Touch(ctx); render(ctx); renderRoomChips(ctx);
+  // The name is now a TITLE, not a field: `rcName` renames on a double-click, the same ONE path
+  // as the label on the plan and the rail's chip (decision 0013, extended: a room's name is
+  // editable everywhere it's shown, and the three spots share `renommerCelluleEnLigne`, not
+  // three copies of it).
+  $("rcName")?.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+    const c = v5SelectedCell(ctx);
+    const el = $("rcName");
+    if (c && el) renommerCelluleEnLigne(ctx, String(c.id), el);
   });
 
   // The sheet had no way to close: opened by a click on a label, it just stayed there.

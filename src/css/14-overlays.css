@@ -57,6 +57,10 @@
     display:flex;align-items:baseline;justify-content:space-between;gap:8px;
     border-bottom:1px solid var(--line);padding-bottom:5px}
   .furni-room h3 .fa{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+  /* A ROOM'S NAME renames from here too, double-click, same as the plan, the room card and the
+     rail (`renommerCelluleEnLigne`); "Outside any room" carries no `.furni-name` (nothing to
+     rename), so it keeps the plain pointer of the modal around it. */
+  .furni-room h3 .furni-name{cursor:text}
   .furni-tbl{width:100%;border-collapse:collapse;font-size:13px}
   .furni-tbl td{padding:3px 0;vertical-align:baseline}
   .furni-tbl td.q{width:36px;font-family:var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}

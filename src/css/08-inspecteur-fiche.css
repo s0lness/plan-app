@@ -45,10 +45,14 @@
   .insp-leaf .lbl{font-size:11px;color:var(--faint);flex:none}
   .insp-leaf .seg{display:flex;gap:4px;flex:1}
   .insp-leaf .seg .btn{flex:1}
-  /* The rename field SITS ON TOP of the label. It lives in the viewport, above the layer, so
-     it survives renders that rebuild the labels underneath it. `translate(-50%,-50%)`
-     centers it on the computed point, like the label it replaces. */
-  .label-edit{position:absolute;transform:translate(-50%,-50%);z-index:400;
+  /* The rename field SITS ON TOP of the name it replaces. It lives in the viewport, above the
+     layer, so it survives renders that rebuild the labels underneath it. `position:fixed` (not
+     `absolute`): the name being renamed can live OUTSIDE the canvas viewport too (the room
+     card's title, the rail's chip), so the field is positioned in BROWSER coordinates, the same
+     ones `getBoundingClientRect()` already hands the caller, rather than relative to the
+     viewport's own box. `translate(-50%,-50%)` centers it on the computed point, like the name
+     it replaces. */
+  .label-edit{position:fixed;transform:translate(-50%,-50%);z-index:400;
     font-family:inherit;font-size:12px;font-weight:600;text-align:center;color:var(--ink);
     background:var(--room-bg);border:1.5px solid var(--accent);border-radius:3px;
     padding:2px 6px;box-shadow:var(--shadow);outline:none}
@@ -114,11 +118,12 @@
     border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--shadow);padding:14px}
   .rc-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
   .rc-head .sw{width:12px;height:12px;border-radius:3px;flex:none;background:var(--accent)}
-  .rc-head input{flex:1;min-width:0;border:0;background:transparent;font-size:14px;font-weight:600;color:var(--ink);padding:2px 0;border-bottom:1px solid transparent}
-  .rc-head input:focus{outline:none;border-bottom-color:var(--accent)}
-  /* THE WALL CARD'S TITLE: "Wall" or "Facade", read-only (a wall has no name to type), so a
-     span at the same size and weight as the room's own editable name, not an input. */
+  /* SAME SPAN for the room's own name (`#rcName`, editable) and the wall card's title
+     (`#wcTitle`, "Wall" or "Facade", read-only: a wall has no name to type). Only the room's
+     own name gets the text cursor: renaming happens on a double-click, the same ONE path as
+     the label on the plan and the chip in the rail (`renommerCelluleEnLigne`). */
   .rc-title{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--ink);padding:2px 0}
+  #rcName{cursor:text}
   .rc-lbl{font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
   /* The area is NOT a section label: putting it in capitals displayed « SURFACE
      15,12 M² », and « M² » is not a unit. */

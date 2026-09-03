@@ -22,6 +22,7 @@ import { clearSel } from "../rendu/selection.ts";
 import { furnitureListHTML, furnitureListText } from "./liste-mobilier.ts";
 import { clearPrint, exportPNG, printPlan } from "./impression.ts";
 import { brancherTransfert } from "./transfert.ts";
+import { renommerCelluleEnLigne } from "../panneaux/renommer-en-ligne.ts";
 
 let furniCopyTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -44,6 +45,18 @@ export function brancherExport(ctx: Contexte): void {
   furniClose?.addEventListener("click", closeFurni);
   furniEl?.addEventListener("pointerdown", (e) => { if (e.target === furniEl) closeFurni(); });
   furniEl?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Escape") { e.stopPropagation(); closeFurni(); } });
+  // A ROOM'S NAME is a section heading here too (`.furni-name[data-cell-id]`, never on the
+  // orphan "Outside any room" section, which has no cell to rename): the SAME ONE path as the
+  // plan's label, the room card and the rail's chip (`renommerCelluleEnLigne`). This snapshot
+  // isn't part of the render pipeline (built once by `openFurni`), so `apres` patches this one
+  // heading in place rather than going stale until the modal is reopened.
+  $("furniBody")?.addEventListener("dblclick", (e) => {
+    const span = (e.target as HTMLElement | null)?.closest<HTMLElement>(".furni-name[data-cell-id]");
+    const id = span?.dataset["cellId"];
+    if (!span || !id) return;
+    e.preventDefault();
+    renommerCelluleEnLigne(ctx, id, span, (nom) => { span.textContent = nom; });
+  });
   furniCopy?.addEventListener("click", () => {
     const txt = furnitureListText(ctx);
     const flash = (): void => {

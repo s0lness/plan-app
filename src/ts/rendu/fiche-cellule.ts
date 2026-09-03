@@ -22,8 +22,8 @@ export function syncCellCard(ctx: Contexte): void {
   // then falls back to the first one; the identifier is realigned so the sheet, the rail's chip
   // and the plan's label all point to the same room.
   if (String(ctx.ihm.selCell) !== String(c.id)) ctx.ihm.selCell = String(c.id);
-  const nom = $("rcName") as HTMLInputElement | null;
-  if (nom && document.activeElement !== nom) nom.value = c.name || "";
+  const nom = $("rcName");
+  if (nom) nom.textContent = c.name || "";
   const sols = $("rcFloor");
   if (sols) {
     sols.querySelectorAll<HTMLElement>(".floor-opt").forEach((b) => {

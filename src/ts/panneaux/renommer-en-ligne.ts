@@ -1,12 +1,17 @@
-// src/ts/panneaux/renommer-en-ligne.ts: RENAMING ON THE LABEL ITSELF, not the panel's name field:
-// looking away to a side panel while double-clicking a label means already losing sight of the object.
+// src/ts/panneaux/renommer-en-ligne.ts: RENAMING ON THE NAME ITSELF, WHEREVER IT'S SHOWN, not a
+// panel's name field: looking away to a side panel while double-clicking a name means already
+// losing sight of the object. A room's name is renamed from FOUR spots by the same ONE function
+// (`renommerCelluleEnLigne`, no second copy): its label on the plan, the room card's title
+// (`#rcName`, `panneaux/fiche-cellule-edition.ts`), the rail's chip (`rendu/puces-rail.ts`), and
+// a piece of furniture's own label answers the same way via `renommerMeubleEnLigne`.
 //
 // THE FIELD DOES NOT LIVE IN THE LAYER: labels (`renderPieces`, `renderEtiquettesCellules`) are
 // REBUILT on every render, which can fire for any reason (a peer's op, circulation analysis, a
 // hover), so an `<input>` dropped into the layer
 // would be destroyed mid-word. It's placed in the VIEWPORT, on top, at the label's SCREEN
-// position, so renders pass underneath without touching it. Price: it doesn't follow zoom/pan, so
-// it closes and VALIDATES on the first wheel tick or view drag.
+// position (`position:fixed`, so this holds whether the target itself is inside the canvas
+// viewport or in a side panel), so renders pass underneath without touching it. Price: it
+// doesn't follow zoom/pan, so it closes and VALIDATES on the first wheel tick or view drag.
 
 import type { Contexte } from "../app/contexte.ts";
 import { pieceById, v5Touch } from "../app/contexte.ts";
@@ -33,19 +38,29 @@ interface Cible {
   valeur: string;
   /** Writes the new name. Returns `true` if something changed. */
   ecrire: (nom: string) => boolean;
+  /** Runs AFTER a successful write, once `render(ctx)` already ran: for a caller whose own
+   *  display isn't part of the render pipeline (the furniture list's modal snapshot, built once
+   *  by `openFurni` and never resynced by `render()`), so its own copy of the name doesn't go
+   *  stale until the modal is reopened. */
+  apres?: (nom: string) => void;
 }
 
 function ouvrir(ctx: Contexte, c: Cible): void {
   fermerRenommage(true);
   const vp = ctx.viewport;
-  const vr = vp.getBoundingClientRect();
   const inp = document.createElement("input");
   inp.type = "text";
   inp.className = "label-edit";
   inp.maxLength = NAME_MAX;
   inp.value = c.valeur;
-  inp.style.left = (c.rect.left - vr.left + c.rect.width / 2) + "px";
-  inp.style.top = (c.rect.top - vr.top + c.rect.height / 2) + "px";
+  // BROWSER coordinates, not "relative to `vp`'s own box": a room's name is now renamed
+  // wherever it's shown, including OUTSIDE the canvas viewport (the room card's title, the
+  // rail's chip), not just on the plan's own label. `.label-edit` is `position:fixed`
+  // (08-inspecteur-fiche.css), so `c.rect`'s client coordinates place it correctly no matter
+  // which of the three it came from. It still gets APPENDED to `vp`: that's what keeps it
+  // riding above a render that rebuilds the plan's own labels underneath it (see file top).
+  inp.style.left = (c.rect.left + c.rect.width / 2) + "px";
+  inp.style.top = (c.rect.top + c.rect.height / 2) + "px";
   // The width follows the label, with a floor: a short name must not produce a
   // three-pixel field where you cannot see what you're typing.
   inp.style.width = Math.max(96, Math.round(c.rect.width) + 24) + "px";
@@ -70,6 +85,7 @@ function ouvrir(ctx: Contexte, c: Cible): void {
       v5Touch(ctx);
       render(ctx);
       ctx.crochets.persister?.();
+      c.apres?.(nom);
     } else render(ctx);
   };
   _fermer = finir;
@@ -105,8 +121,10 @@ export function renommerMeubleEnLigne(ctx: Contexte, id: string, etiquette: HTML
   });
 }
 
-/** Rename a CELL, on its label. */
-export function renommerCelluleEnLigne(ctx: Contexte, id: string, etiquette: HTMLElement): void {
+/** Rename a CELL, on its label. `apres` (optional): see `Cible.apres`. */
+export function renommerCelluleEnLigne(
+  ctx: Contexte, id: string, etiquette: HTMLElement, apres?: (nom: string) => void,
+): void {
   const P = ctx.etat.plan;
   const c = (P.cells || []).find((q) => String(q.id) === String(id));
   if (!c) return;
@@ -120,6 +138,8 @@ export function renommerCelluleEnLigne(ctx: Contexte, id: string, etiquette: HTM
       c.name = nom;
       return true;
     },
+    // `exactOptionalPropertyTypes`: an explicit `undefined` is not the same as an absent key.
+    ...(apres ? { apres } : {}),
   });
 }
 

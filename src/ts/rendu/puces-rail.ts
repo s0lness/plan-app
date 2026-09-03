@@ -8,6 +8,7 @@ import type { Contexte } from "../app/contexte.ts";
 import { v5SignedArea } from "../modele/aires.ts";
 import { fmtM2 } from "../noyau/nombres.ts";
 import { $ } from "../noyau/dom.ts";
+import { renommerCelluleEnLigne } from "../panneaux/renommer-en-ligne.ts";
 
 function roomChipsSig(ctx: Contexte): string {
   const P = ctx.etat.plan;
@@ -37,6 +38,7 @@ export function renderRoomChips(ctx: Contexte, force?: boolean): void {
     const nm = document.createElement("span");
     nm.className = "rc-name";
     nm.textContent = c.name || "";
+    nm.title = "Double-click to rename";
     const ar = document.createElement("span");
     ar.className = "rc-area";
     ar.textContent = fmtM2(v5SignedArea(c.poly));
@@ -49,6 +51,13 @@ export function renderRoomChips(ctx: Contexte, force?: boolean): void {
     chip.addEventListener("click", pick);
     chip.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); }
+    });
+    // The chip's name renames the same ONE way as the label on the plan and the room card's
+    // title: `renommerCelluleEnLigne`, not a fourth copy of it. `stopPropagation` keeps the
+    // chip's own click (select the room) from also firing on this second click of the pair.
+    nm.addEventListener("dblclick", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      renommerCelluleEnLigne(ctx, String(c.id), nm);
     });
     el.appendChild(chip);
   });

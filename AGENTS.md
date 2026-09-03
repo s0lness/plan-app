@@ -969,8 +969,11 @@ the doubt about which one was "the real one". Each of those actions now keeps ON
   angle slider and its readout are gone from the inspector, and so is the double-click that used to
   rotate a piece (or flip a door's leaf) everywhere except its label. **R keeps ONE meaning**:
   flipping a wall light / outlet / RJ45 to the other face; it no longer rotates free furniture.
-- **Renaming**: a double-click on the object's own label (meuble, cell, plan), landing the field
-  ON the label (`panneaux/renommer-en-ligne.ts`). The inspector's Name field is gone. An OPENING
+- **Renaming**: a double-click on the object's own name, landing the field ON that name
+  (`panneaux/renommer-en-ligne.ts`). A piece of furniture and a plan rename from their one label
+  each; a ROOM renames from any of the four spots that show its name (the label on the plan, the
+  room card's title, the rail's chip, the furniture list's section heading), all four sharing the
+  same `renommerCelluleEnLigne`, no second copy. The inspector's Name field is gone. An OPENING
   has neither a label to double-click (R-2, no name is painted on it) nor a Name field any more: it
   keeps whatever name it already carries, it just can no longer be retyped from the interface.
 - **Duplicating**: the inspector's Duplicate button and `Ctrl+D`, ONE function

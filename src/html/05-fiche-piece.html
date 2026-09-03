@@ -6,9 +6,9 @@
 <div class="roomcard" id="roomCard" hidden>
   <div class="rc-head">
     <span class="sw"></span>
-    <!-- 80 = the length the shared plan KEEPS (live-worker/ops.ts, NAME_MAX). Beyond that it
-         truncates silently: without this cap, the screen shows a name the peer will never see. -->
-    <input id="rcName" type="text" maxlength="80" aria-label="Room name">
+    <!-- A TITLE, not a field: renaming happens on a double-click, the same one path as the
+         label on the plan and the chip in the rail (`renommerCelluleEnLigne`, decision 0013). -->
+    <span class="rc-title" id="rcName" title="Double-click to rename"></span>
     <!-- The card had no way to close: once opened, it stayed there. -->
     <button class="flow-x" id="rcClose" type="button" title="Close the card" aria-label="Close the card">×</button>
   </div>

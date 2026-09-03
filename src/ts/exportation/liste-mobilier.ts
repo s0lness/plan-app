@@ -95,9 +95,14 @@ function groupPieces(list: readonly ObjetListe[] | null | undefined): { furn: Li
   return { furn: rows(furn), open: rows(open) };
 }
 
-/** The HTML of a section, THE ONLY ONE: the screen (modal) and printing both call it. */
+/** The HTML of a section, THE ONLY ONE: the screen (modal) and printing both call it. The name
+ *  carries `data-cell-id` for a REAL room only (never the "Outside any room" orphan, `ri ===
+ *  "__orphan__"`, which has no cell to rename): the screen modal (`exportation.ts`) uses it to
+ *  wire the same double-click rename as the plan's label, the room card and the rail's chip
+ *  (`renommerCelluleEnLigne`). Printing renders the SAME markup; the attribute is inert there. */
 function furnitureSectionHTML(sec: SectionListe): string {
-  let h = `<div class="furni-room"><h3><span>${escapeHtml(sec.name)}</span><span class="fa">${fmtM2(sec.area * 10000)} · ${sec.total} piece${sec.total > 1 ? "s" : ""}</span></h3>`;
+  const nomAttrs = sec.ri === "__orphan__" ? "" : ` class="furni-name" data-cell-id="${escapeHtml(sec.ri)}" title="Double-click to rename"`;
+  let h = `<div class="furni-room"><h3><span${nomAttrs}>${escapeHtml(sec.name)}</span><span class="fa">${fmtM2(sec.area * 10000)} · ${sec.total} piece${sec.total > 1 ? "s" : ""}</span></h3>`;
   if (sec.furn.length) {
     h += `<table class="furni-tbl"><tbody>`;
     sec.furn.forEach((x) => { h += `<tr><td class="q">×${x.n}</td><td>${escapeHtml(x.name)}</td><td class="d">${x.w}×${x.h}</td></tr>`; });
