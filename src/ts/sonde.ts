@@ -242,12 +242,16 @@ export function installerSonde(ctx: Contexte, fil: Fil): void {
     // "selected but invisible". The two lists must be IDENTICAL, always (G-11).
     selDump(): SelDump {
       const modele = [...ctx.selection.ids].map(String).sort();
-      const ecran = [...ctx.canvas.querySelectorAll<HTMLElement>(".piece.sel")]
+      // CE QUE L'ECRAN MARQUE, selon qui tient le crayon: le rendu ecrit `.sel`, un lasso en cours
+      // ecrit `.sel-vif` et efface `.sel` le temps du geste (`.lasso-vif`). Lire `.sel` pendant un
+      // lasso rendrait la selection d'AVANT, que l'ecran ne montre plus.
+      const vif = lassoVivant();
+      const ecran = [...ctx.canvas.querySelectorAll<HTMLElement>(vif ? ".piece.sel-vif" : ".piece.sel")]
         .map((e) => String(e.dataset["id"])).sort();
       const fam = (id: string): string => pieceById(ctx, id) ? "meuble" : (v5OpeningById(ctx, id) ? "ouverture" : "?");
       return {
         modele, ecran,
-        bandeVive: lassoVivant(),
+        bandeVive: vif,
         familles: modele.map(fam),
         famillesEcran: ecran.map(fam),
         manquants: modele.filter((id) => ecran.indexOf(id) < 0),

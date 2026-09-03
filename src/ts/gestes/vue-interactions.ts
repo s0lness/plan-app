@@ -116,6 +116,13 @@ export function piecesInClientRect(
  * used to show only itself, you were dragging blind. The mark is EXACTLY that of an acquired
  * selection, not a third state: what the screen shows during the gesture is what you'll get on
  * release, and the rectangle alone already says the gesture is in progress.
+ *
+ * LE MARQUAGE VIF PORTE SA PROPRE CLASSE, ET C'EST CE QUI LE REND COMPATIBLE AVEC UN RENDU QUI
+ * SAUTE DES TUILES. `.sel` appartient au rendu, qui ne reecrit une tuile que si sa signature a
+ * change (`rendu/meubles.ts`): un geste qui ecrirait `.sel` laisserait, apres coup, une marque
+ * qu'aucun rendu ne viendrait plus contredire. Le geste ecrit donc `.sel-vif`, hors signature, et
+ * `.lasso-vif` pose sur le calque efface le temps du geste la selection acquise: pendant le lasso,
+ * `.sel-vif` dit SEUL ce qui est attrape.
  */
 function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
   // CTRL/CMD OR SHIFT ADD to the selection; an unmodified lasso REPLACES it. The lasso is back to
@@ -126,18 +133,26 @@ function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
   const sx = e.clientX, sy = e.clientY;
   const rb = $("rubber");
   let banding = false, lastPt = { x: sx, y: sy };
-  // `avant` = the selection FROM BEFORE the gesture (the nodes already carry it on screen); `vifs` = what
-  // carries the mark at this instant. We only touch the difference between the two.
+  // `avant` = the selection FROM BEFORE the gesture; `vifs` = what carries the LIVE mark at this
+  // instant. We only touch the difference between the two.
   const avant = new Set([...ctx.selection.ids].map(String));
-  let vifs = new Set(avant);
+  let vifs = new Set<string>();
   let annule = false, raf = 0;
   const noeud = (id: string): HTMLElement | null =>
     ctx.canvas.querySelector<HTMLElement>(`.piece[data-id="${cssId(id)}"]`);
   const marquer = (ids: string[]): void => {
     const veut = new Set(ids.map(String));
-    vifs.forEach((id) => { if (!veut.has(id)) { const n = noeud(id); if (n) n.classList.remove("sel"); } });
-    veut.forEach((id) => { if (!vifs.has(id)) { const n = noeud(id); if (n) n.classList.add("sel"); } });
+    vifs.forEach((id) => { if (!veut.has(id)) { const n = noeud(id); if (n) n.classList.remove("sel-vif"); } });
+    veut.forEach((id) => { if (!vifs.has(id)) { const n = noeud(id); if (n) n.classList.add("sel-vif"); } });
     vifs = veut;
+  };
+  // LA FIN DU GESTE BALAIE LE CALQUE, pas seulement les noeuds retenus: un rendu survenu pendant le
+  // lasso (un pair qui bouge un meuble) peut avoir recree une tuile, et une marque vive orpheline
+  // survivrait a un rendu qui ne la possede pas. Un seul balayage, a la fin, jamais par image.
+  const terminerVif = (): void => {
+    vifs = new Set();
+    ctx.canvas.classList.remove("lasso-vif");
+    ctx.canvas.querySelectorAll<HTMLElement>(".sel-vif").forEach((n) => n.classList.remove("sel-vif"));
   };
   const vifDe = (ex: number, ey: number): string[] => {
     const rect = {
@@ -150,7 +165,13 @@ function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
   const move = (ev: PointerEvent): void => {
     lastPt = { x: ev.clientX, y: ev.clientY };
     const dx = ev.clientX - sx, dy = ev.clientY - sy;
-    if (!banding && Math.hypot(dx, dy) >= RUBBER_THRESH) { banding = true; rubberLive = true; }
+    if (!banding && Math.hypot(dx, dy) >= RUBBER_THRESH) {
+      banding = true; rubberLive = true;
+      // La classe et le premier marquage tombent DANS LA MEME IMAGE: attendre le rAF ferait
+      // clignoter la selection d'avant, effacee par `.lasso-vif` et pas encore reposee en vif.
+      ctx.canvas.classList.add("lasso-vif");
+      marquer(vifDe(ev.clientX, ev.clientY));
+    }
     if (!banding) return;
     if (rb) {
       const x0 = Math.min(sx, ev.clientX) - vr.left, y0 = Math.min(sy, ev.clientY) - vr.top;
@@ -168,14 +189,16 @@ function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
   const cancel = (): void => {
     annule = true;
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    marquer([...avant]);
+    // `.sel` n'a jamais ete touche: retirer le marquage vif REND l'ecran a l'etat d'avant, sans
+    // avoir a le reconstituer.
+    terminerVif();
   };
   const up = (ev?: Event | null): void => {
     window.removeEventListener("pointermove", move);
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
     rubberLive = false;
     if (rb) { rb.hidden = true; rb.removeAttribute("style"); rb.hidden = true; }
-    if (annule) { marquer([...avant]); return; }
+    if (annule) { terminerVif(); return; }
     // The shared exit can call `up` WITHOUT an event (pointercancel, focus loss, the watchdog):
     // we then fall back to the last position seen by move.
     const pe = ev as PointerEvent | null | undefined;
@@ -188,14 +211,16 @@ function startRubberOrClick(ctx: Contexte, e: PointerEvent): void {
       let primaire: string | null = null;
       for (const id of ctx.selection.ids) primaire = id;   // the last one inserted wins
       ctx.selection.primaire = primaire;
-      // `render()` reapplies the class from `isSel`: the live marks and the acquired selection
-      // reconcile here, in a single paint, and nothing can stay marked by mistake.
+      // Le marquage vif s'efface AVANT le rendu, qui repose `.sel` depuis `isSel`: les deux
+      // marques ne se croisent jamais, et rien ne peut rester marque par erreur.
+      terminerVif();
       render(ctx);
       if (ctx.selection.primaire != null) ctx.crochets.openInspector?.();
       else ctx.crochets.hideInspector?.();
       return;
     }
     // a click (no band): simple deselection
+    terminerVif();
     clearSel(ctx); ctx.crochets.hideInspector?.(); render(ctx);
   };
   window.addEventListener("pointermove", move);
