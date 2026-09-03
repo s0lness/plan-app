@@ -584,6 +584,17 @@ function idMap<T extends { id: string }>(list: T[] | null | undefined): Map<stri
   return m;
 }
 function openingMap(plan: PlanState | null | undefined): Map<string, Opening> { return idMap(plan && plan.openings); }
+
+// Upsert that REPLACES the list instead of writing into it: `list[i] = e` and `list.push(e)` both
+// mutate the array the caller already held, which is exactly what `applyOpUndoable` must be able
+// to hand back. Copying a few hundred references costs under a microsecond; a deep copy of the
+// plan cost 392.
+function putEntity<T extends { id: string }>(list: T[], i: number, e: T): T[] {
+  const out = list.slice();
+  if (i >= 0) out[i] = e;
+  else out.push(e);
+  return out;
+}
 // The four indexes of a v5 plan already in the database: what "absent field = no opinion" consults.
 function prevMaps(plan: PlanState | null | undefined) {
   if (!plan || typeof plan !== "object") return null;
@@ -729,6 +740,41 @@ export function opWire(op: Operation): Operation {
   return sortie as unknown as Operation;
 }
 
+/** What takes an op back: it puts the plan's own fields back the way they were. */
+export type OpUndo = () => void;
+
+/**
+ * ---- APPLYING WITHOUT COPYING THE PLAN -------------------------------------------------------
+ * `applyOp` writes INTO the plan it is given, so the server used to hand it a
+ * `structuredClone(this.plan)`: 392 us of the 887 us an op cost on a 300-piece floor plan, paid on
+ * EVERY op, to carry a guarantee only a refusal ever uses.
+ *
+ * The guarantee stays, at O(number of top-level fields). Two properties make it exact:
+ *  - **an op never writes before it has finished validating**, which is the invariant the
+ *    atomicity corpus already covers (`live-worker/test-local.ts`, `V5_BAD`);
+ *  - **an op never mutates a list or an entity in place**: it REPLACES the whole list
+ *    (`putEntity`, `filter`, `map`), and the validators return brand-new entities.
+ * So a shallow copy of the plan's own fields (7 keys) describes the previous state completely,
+ * and restoring it is a complete rollback. The nested arrays it points to are still the ones from
+ * before, untouched.
+ *
+ * The caller keeps its `plan` reference: this is what lets the Durable Object hold `this.plan`
+ * across an op that is applied, then taken back because the plan grew too big or storage refused
+ * it. Without a rollback there, a refused op would stay on screen for every peer.
+ */
+export function applyOpUndoable(plan: PlanState, op: Operation): OpUndo {
+  const avant = { ...plan } as Record<string, unknown>;
+  const cible = plan as unknown as Record<string, unknown>;
+  const undo: OpUndo = () => {
+    for (const k of Object.keys(cible)) if (!(k in avant)) Reflect.deleteProperty(cible, k);
+    Object.assign(cible, avant);
+  };
+  // Belt and braces: today no op writes then throws, and the corpus says so. If one ever does,
+  // it is taken back here rather than left half-applied in the shared plan.
+  try { applyOp(plan, op); } catch (e) { undo(); throw e; }
+  return undo;
+}
+
 export function applyOp(plan: PlanState, op: Operation): PlanState {
   if (!op || typeof op !== "object") throw new OpError("op_obj");
   if (op.kind === "plan5.replace") {
@@ -784,11 +830,8 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
       // wall already in the database: two people can move one an endpoint, the other the thickness.
       const wall = validateWall(op.wall, idMap(plan.walls));
       const i = plan.walls.findIndex((w) => w.id === wall.id);
-      if (i >= 0) plan.walls[i] = wall;
-      else {
-        if (plan.walls.length >= MAX_ENTITIES) throw new OpError("walls_max");
-        plan.walls.push(wall);
-      }
+      if (i < 0 && plan.walls.length >= MAX_ENTITIES) throw new OpError("walls_max");
+      plan.walls = putEntity(plan.walls, i, wall);
       return plan;
     }
     case "wall.del": {
@@ -806,11 +849,8 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
       const wallIds = new Set(plan.walls.map((w) => w.id));
       const opening = validateOpening(op.opening, wallIds, openingMap(plan));
       const i = plan.openings.findIndex((o) => o.id === opening.id);
-      if (i >= 0) plan.openings[i] = opening;
-      else {
-        if (plan.openings.length >= MAX_ENTITIES) throw new OpError("openings_max");
-        plan.openings.push(opening);
-      }
+      if (i < 0 && plan.openings.length >= MAX_ENTITIES) throw new OpError("openings_max");
+      plan.openings = putEntity(plan.openings, i, opening);
       return plan;
     }
     case "opening.del": {
@@ -838,11 +878,8 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
         floor: op.floor !== undefined ? op.floor : (cur ? cur.floor : "parquet"),
       };
       const cell = validateCell(draft);
-      if (i >= 0) plan.cells[i] = cell;
-      else {
-        if (plan.cells.length >= MAX_ENTITIES) throw new OpError("cells_max");
-        plan.cells.push(cell);
-      }
+      if (i < 0 && plan.cells.length >= MAX_ENTITIES) throw new OpError("cells_max");
+      plan.cells = putEntity(plan.cells, i, cell);
       return plan;
     }
     case "cells.replace": {
@@ -860,11 +897,8 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
       // piece of furniture get merged instead of the last one overwriting the other's field.
       const piece = validatePiece(op.piece, idMap(plan.pieces));
       const i = plan.pieces.findIndex((p) => p.id === piece.id);
-      if (i >= 0) plan.pieces[i] = piece;
-      else {
-        if (plan.pieces.length >= MAX_ENTITIES) throw new OpError("pieces_max");
-        plan.pieces.push(piece);
-      }
+      if (i < 0 && plan.pieces.length >= MAX_ENTITIES) throw new OpError("pieces_max");
+      plan.pieces = putEntity(plan.pieces, i, piece);
       return plan;
     }
     case "piece.del": {
