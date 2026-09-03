@@ -52,10 +52,12 @@
      ones `getBoundingClientRect()` already hands the caller, rather than relative to the
      viewport's own box. `translate(-50%,-50%)` centers it on the computed point, like the name
      it replaces. */
+  /* IN PLACE, INVISIBLE AS A FIELD: no border, no background, no shadow, no padding. Font,
+     colour and alignment are copied from the label at open time (`renommer-en-ligne.ts`), the
+     label is hidden underneath; only the caret and the selection say it is being edited. */
   .label-edit{position:fixed;transform:translate(-50%,-50%);z-index:400;
-    font-family:inherit;font-size:12px;font-weight:600;text-align:center;color:var(--ink);
-    background:var(--room-bg);border:1.5px solid var(--accent);border-radius:3px;
-    padding:2px 6px;box-shadow:var(--shadow);outline:none}
+    background:transparent;border:0;border-radius:0;padding:0;margin:0;box-shadow:none;outline:none;
+    line-height:inherit}
   /* The rail's title IS the plan's name. An identifier pill next to a generic title
      said the same thing twice, and neither one said what you're looking at. */
   .plan-name{cursor:text}

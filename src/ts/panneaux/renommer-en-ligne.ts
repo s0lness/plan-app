@@ -35,6 +35,9 @@ function fermerRenommage(valider: boolean): void { _fermer?.(valider); }
 interface Cible {
   /** The label's SCREEN rectangle, to place the field exactly on top of it. */
   rect: DOMRect;
+  /** The label element itself: the field borrows its typography and hides it while typing, so
+   *  what the person sees is the name turning editable IN PLACE, not a box landing on it. */
+  el: HTMLElement;
   valeur: string;
   /** Writes the new name. Returns `true` if something changed. */
   ecrire: (nom: string) => boolean;
@@ -61,9 +64,18 @@ function ouvrir(ctx: Contexte, c: Cible): void {
   // riding above a render that rebuilds the plan's own labels underneath it (see file top).
   inp.style.left = (c.rect.left + c.rect.width / 2) + "px";
   inp.style.top = (c.rect.top + c.rect.height / 2) + "px";
-  // The width follows the label, with a floor: a short name must not produce a
-  // three-pixel field where you cannot see what you're typing.
-  inp.style.width = Math.max(96, Math.round(c.rect.width) + 24) + "px";
+  // IN PLACE MEANS INVISIBLE AS A FIELD: same font, size, weight, colour and alignment as the
+  // label it replaces, the label's own width plus a little room to type, and the label hidden
+  // underneath. What the person sees is the name turning editable, not a box landing on it.
+  const cs = getComputedStyle(c.el);
+  inp.style.font = cs.font;
+  inp.style.letterSpacing = cs.letterSpacing;
+  inp.style.color = cs.color;
+  inp.style.textAlign = cs.textAlign;
+  inp.style.width = Math.max(24, Math.round(c.rect.width) + 12) + "px";
+  inp.style.height = Math.round(c.rect.height) + "px";
+  const visibiliteAvant = c.el.style.visibility;
+  c.el.style.visibility = "hidden";
   vp.appendChild(inp);
   inp.focus();
   inp.select();
@@ -77,6 +89,7 @@ function ouvrir(ctx: Contexte, c: Cible): void {
     // and a name is truncated at 80 server-side (`ops.ts`, `NAME_MAX`) regardless.
     const nom = inp.value.trim().slice(0, NAME_MAX);
     inp.remove();
+    c.el.style.visibility = visibiliteAvant;
     _fermer = null;
     window.removeEventListener("wheel", surVue, true);
     window.removeEventListener("pointerdown", surDehors, true);
@@ -109,6 +122,7 @@ export function renommerMeubleEnLigne(ctx: Contexte, id: string, etiquette: HTML
   const avant = String(p.name || "");
   ouvrir(ctx, {
     rect: etiquette.getBoundingClientRect(),
+    el: etiquette,
     valeur: avant,
     ecrire: (nom) => {
       if (!nom || nom === avant) return false;
@@ -131,6 +145,7 @@ export function renommerCelluleEnLigne(
   const avant = String(c.name || "");
   ouvrir(ctx, {
     rect: etiquette.getBoundingClientRect(),
+    el: etiquette,
     valeur: avant,
     ecrire: (nom) => {
       if (!nom || nom === avant) return false;
