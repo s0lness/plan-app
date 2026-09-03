@@ -792,6 +792,74 @@ function fakeRoom({ d1Row = null, d1Fail = false, storageFail = false, planId = 
   ok(f.sent.some((m) => m.t === "err" && m.reason === "persist_fail"), "persistance KO : client prevenu");
   ok(!f.sent.some((m) => m.t === "op"), "persistance KO : aucun echo aux pairs");
 }
+
+// ---- A REFUSAL THAT LANDS *AFTER* THE WRITE PUTS THE PLAN BACK, FOR EVERY KIND OF OP ------------
+// The Durable Object no longer applies an op to a `structuredClone` of the floor plan (392 us of
+// the 887 an op cost on 300 pieces of furniture): it writes into the LIVE plan and takes the write
+// back with the rollback `applyOpUndoable` returns. `applyOp` itself never writes before it has
+// finished validating (the atomicity corpus above), so the rollback exists for the TWO refusals
+// that come after a successful `applyOp`: the plan grew past the storage ceiling, and storage
+// refused the write. What must be observable is the same as before: the fingerprint after the
+// refusal is the one from before, byte for byte, and the wire keeps working.
+async function refusApresEcriture(etat: DonneeDynamique, op: DonneeDynamique, raison: string,
+  suite: DonneeDynamique, vuSuite: (plan: DonneeDynamique) => boolean, label: string) {
+  const f = fakeRoom({ d1Row: { data: JSON.stringify(etat) } });
+  await f.room.ensureLoaded();
+  const fpAvant = planFp(f.room.plan);
+  const avant = JSON.stringify(f.room.plan);
+  const putReel = f.room.storage.put;
+  if (raison === "persist_fail") f.room.storage.put = async () => { throw new Error("storage plein"); };
+  await messageSocket(f.room, f.ws, JSON.stringify({ t: "op", op }));
+  const e = f.sent.find((m: DonneeDynamique) => m.t === "err");
+  ok(e && e.reason === raison, label + " : refuse (" + raison + "), vu " + JSON.stringify(e));
+  ok(planFp(f.room.plan) === fpAvant, label + " : empreinte du plan inchangee");
+  ok(JSON.stringify(f.room.plan) === avant, label + " : plan intact octet pour octet");
+  ok(f.room.opCount === 0, label + " : compteur d'ops intact");
+  ok(!f.sent.some((m: DonneeDynamique) => m.t === "op"), label + " : aucun echo aux pairs");
+  // And the next op applies normally: a rollback that left the plan unusable would be worse.
+  f.room.storage.put = putReel;
+  await messageSocket(f.room, f.ws, JSON.stringify({ t: "op", op: suite }));
+  ok(vuSuite(f.room.plan) && f.room.opCount === 1, label + " : l'op suivante s'applique");
+}
+// One op per kind, each one ACCEPTED by the validator, refused only by the persistence behind it.
+const pSuite = { kind: "piece.set", piece: piece({ id: "pSuite", x: 5, y: 5 }) };
+const vuPSuite = (p: DonneeDynamique) => p.pieces.some((x: DonneeDynamique) => x.id === "pSuite");
+for (const [label, op] of [
+  ["piece.set", { kind: "piece.set", piece: piece({ id: "p2", x: 300 }) }],
+  ["piece.del", { kind: "piece.del", pieceId: "p1" }],
+  ["wall.set", { kind: "wall.set", wall: wall({ id: "w2", a: [1, 1], b: [50, 1] }) }],
+  // wall.del writes TWO lists (the wall, then its openings, by cascade).
+  ["wall.del", { kind: "wall.del", wallId: "w1" }],
+  ["opening.set", { kind: "opening.set", opening: opening({ id: "o2", t0: 300 }) }],
+  ["opening.del", { kind: "opening.del", openingId: "o1" }],
+  ["outline.set", { kind: "outline.set", outline: [[0, 0], [900, 0], [900, 700], [0, 700]] }],
+  ["cell.set", { kind: "cell.set", cellId: "c1", name: "Chambre", floor: "tile" }],
+  ["cells.replace", { kind: "cells.replace", cells: [cell({ id: "cA" }), cell({ id: "cB", name: "Cuisine" })] }],
+  // plan5.replace also DELETES the keys of a shape we no longer read: the rollback puts them back.
+  ["plan5.replace", { kind: "plan5.replace", plan: v5State({ pieces: [piece({ id: "pZ" })] }) }],
+] as [string, DonneeDynamique][]) {
+  await refusApresEcriture(v5State(), op, "persist_fail", pSuite, vuPSuite, label);
+}
+// The other refusal that lands after the write: the ceiling protecting the DO's storage. It can
+// only be reached from a plan ALREADY near the ceiling (a payload big enough to tip an ordinary
+// plan over is refused earlier, on the frame's own size). We fill one coarsely then finely, so the
+// headroom left is far smaller than what the op below adds.
+{
+  const cells: DonneeDynamique[] = [];
+  let i = 0;
+  for (const pts of [2000, 200]) {
+    for (;;) {
+      cells.push({ id: "cg" + (i++), poly: bigPoly(pts), name: "n", floor: "parquet" });
+      if (planTooBig(v5State({ cells }) as PlanState)) { cells.pop(); i--; break; }
+    }
+  }
+  const auRas = v5State({ cells });
+  ok(!planTooBig(auRas as PlanState), "plan de reference juste sous le plafond");
+  await refusApresEcriture(auRas, { kind: "cell.set", cellId: "c1", poly: bigPoly(2000) }, "too_big",
+    { kind: "piece.del", pieceId: "p1" },
+    (p: DonneeDynamique) => !p.pieces.some((x: DonneeDynamique) => x.id === "p1"), "cell.set au plafond");
+}
+
 // ---- TECHNICAL IDENTITY IS THE DEVICE, NOT THE EMAIL ADDRESS -----------------------------------
 // The household has two accounts, but one person has several devices (the computer and the
 // phone, behind a single Access identity). The server already assigned a per-SOCKET label but

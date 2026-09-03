@@ -46,6 +46,13 @@ empreintes ne bougent pas, ce que `compat-donnees` vérifie sur 1 069 cas figés
   l'annuler demanderait un inverse par sorte d'op, soit un mécanisme neuf dans le chemin le plus
   critique du serveur, pour un lot dont la consigne est de retirer. À mesurer à part si le plan de
   quelqu'un grossit vraiment.
+  **Repris et fait le 2026-09-03** : il n'a pas fallu d'inverse par sorte d'op. `applyOp` ne
+  écrivait déjà jamais avant d'avoir fini de valider (c'est ce que prouve le corpus d'atomicité),
+  et il ne mutait plus rien en place une fois les quatre `list[i] = e` / `list.push(e)` passés au
+  remplacement de liste (`putEntity`) : une copie PLATE des champs du plan (sept clés) décrit donc
+  l'état d'avant en entier. `applyOpUndoable` la prend et rend le retour arrière, que les deux seuls
+  refus postérieurs à l'écriture appellent (plafond de taille, storage qui refuse). Mesuré ici :
+  1090 -> 504 us par op sur un plan de 300 meubles.
 - **Coaliser `persistPlan` sur un `setTimeout(0)` ou l'alarme.** AGENTS.md fait de « l'accusé dit
   appliqué ET persisté » une règle : une coalescence rendrait l'accusé menteur pendant la fenêtre.
 - **Minifier le CSS pour de bon** (fusion des lignes, raccourcis de couleurs, suppression du dernier
