@@ -768,6 +768,27 @@ await test("plan_neuf_se_lit_comme_une_ligne_absente", async () => {
       && expect(JSON.parse(String(ligne.data)) === null, "la colonne doit porter « aucun plan », vu " + JSON.stringify(ligne.data));
 });
 
+await test("plan_copie_depuis_un_autre_porte_les_memes_octets_et_repart_a_rev_0", async () => {
+  const { db, env } = base();
+  db.prepare("INSERT OR REPLACE INTO plans(id,name,data,rev,updated_at,updated_by) VALUES('main','Maison',?1,7,'2026-09-03T00:00:00Z','x@example.com')")
+    .run(JSON.stringify({ outline: [[0, 0], [100, 0], [100, 100], [0, 100]], walls: [], openings: [], pieces: [], cells: [] }));
+  const res = await plansPost({
+    request: req("https://plan.example.com/api/plans", { method: "POST", host: HOTE_FOYER, body: { name: "Variante", from: "main" } }),
+    env,
+  } as unknown as Parameters<typeof plansPost>[0]);
+  const cree = await res.json<DonneeDynamique>();
+  if (!expect(res.status === 200 && cree.ok === true, "la copie doit réussir, vu " + res.status + " " + JSON.stringify(cree))) return false;
+  const src = db.prepare("SELECT data FROM plans WHERE id='main'").get() as DonneeDynamique;
+  const dst = db.prepare("SELECT data, rev FROM plans WHERE id=?1").get(cree.id) as DonneeDynamique;
+  const absent = await plansPost({
+    request: req("https://plan.example.com/api/plans", { method: "POST", host: HOTE_FOYER, body: { name: "Rien", from: "nexistepas" } }),
+    env,
+  } as unknown as Parameters<typeof plansPost>[0]);
+  return expect(String(dst.data) === String(src.data), "les octets doivent être ceux de la source")
+      && expect(Number(dst.rev) === 0, "et la copie repart à rev 0, vu " + JSON.stringify(dst.rev))
+      && expect(absent.status === 404, "une source inconnue rend 404 sans rien créer, vu " + absent.status);
+});
+
 await test("plan_colonne_data_sql_null_se_lit_comme_une_ligne_absente", async () => {
   // `plans.data` est `TEXT NOT NULL` en production (live-worker/schema.sql), donc cette ligne-là
   // n'existe pas aujourd'hui. On relâche la contrainte ICI, dans la base du test, pour prouver que

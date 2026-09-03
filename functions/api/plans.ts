@@ -121,10 +121,20 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // for it (and for an SQL NULL, the day there is one), and the Durable Object's cold load must
   // read it as an empty plan rather than an unreadable one.
   const PLAN_VIDE = "null";
+  // A FORK IS THE OTHER GESTURE: `from` names an existing plan whose bytes are copied verbatim
+  // into the new row (rev 0, its own history from here on). Unknown source: 404, nothing created.
+  let data = PLAN_VIDE;
+  if (body.from !== undefined) {
+    const from = String(body.from).trim().toLowerCase();
+    if (!PLAN_ID_RE.test(from)) return json({ error: "bad_plan_id" }, 400);
+    const src = await env.DB.prepare("SELECT data FROM plans WHERE id=?1").bind(from).first<{ data: string | null }>();
+    if (!src) return json({ error: "source_not_found", from }, 404);
+    data = src.data == null ? PLAN_VIDE : String(src.data);
+  }
   const now = new Date().toISOString();
   await env.DB
     .prepare("INSERT INTO plans(id,name,data,rev,updated_at,updated_by) VALUES(?1,?2,?3,0,?4,?5)")
-    .bind(id, nom, PLAN_VIDE, now, identiteFoyer(request, porteDe(request, env)))
+    .bind(id, nom, data, now, identiteFoyer(request, porteDe(request, env)))
     .run();
   return json({ ok: true, id, name: nom });
 };

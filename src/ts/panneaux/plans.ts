@@ -69,6 +69,7 @@ function peindre(): void {
       <span class="pname" data-id="${escapeHtml(p.id)}" title="Double-click to rename">${escapeHtml(p.name)}</span>
       <span class="pmeta">${vide ? "empty" : quand}</span>
       <button class="btn sm pshare" data-id="${escapeHtml(p.id)}" title="Share this plan by link">Share</button>
+      <button class="btn sm pfork" data-id="${escapeHtml(p.id)}" title="Duplicate this plan and open the copy">Copy</button>
       ${ici ? `<span class="pcur" title="This is the plan on screen">Current</span>`
             : `<button class="btn sm popen" data-id="${escapeHtml(p.id)}">Open</button>`}
       ${p.id === "main" ? "" : `<button class="flow-x pdel" data-id="${escapeHtml(p.id)}" title="Delete this plan">×</button>`}
@@ -135,6 +136,26 @@ async function creer(): Promise<void> {
     // very first startup. Nothing is copied from the current plan.
     ouvrirPlan(j.id);
   } catch (_) { dire("Could not create the plan: check your connection."); }
+}
+
+/** FORK: a new plan born from another's bytes, opened right away. Its name says where it comes from. */
+async function dupliquer(id: string): Promise<void> {
+  const p = _plans.find((q) => q.id === id);
+  const nom = ((p ? p.name : id) + " (copy)").slice(0, 60);
+  try {
+    const r = await fetch(PLANS_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: nom, from: id }),
+    });
+    const j = await r.json() as { ok?: boolean; id?: string; error?: string; max?: number };
+    if (!r.ok || !j.ok || !j.id) {
+      dire(j.error === "too_many_plans" ? `That is the ${j.max}-plan limit.`
+         : "Could not copy the plan: check your connection.");
+      return;
+    }
+    ouvrirPlan(j.id);
+  } catch (_) { dire("Could not copy the plan: check your connection."); }
 }
 
 async function supprimer(id: string): Promise<void> {
@@ -248,6 +269,8 @@ export function brancherPlans(ctx: Contexte): void {
     }
     const open = t?.closest<HTMLElement>(".popen");
     if (open) { ouvrirPlan(String(open.dataset["id"])); return; }
+    const fork = t?.closest<HTMLElement>(".pfork");
+    if (fork) { void dupliquer(String(fork.dataset["id"])); return; }
     const del = t?.closest<HTMLElement>(".pdel");
     if (del) { void supprimer(String(del.dataset["id"])); return; }
   });
