@@ -53,7 +53,9 @@ export const hDefaut = (type: string): number => (TYPEMAP[type] || { h: WALL }).
 export function buildAptContext(): ContexteFlow {
   const cells: CelluleFlow[] = [], pieces: ObjetFlow[] = [];
   const P: PlanV5 = FL.ctx.etat.plan || ({} as PlanV5);
-  (P.cells || []).forEach((c, i) => cells.push({ poly: c.poly.map(([x, y]) => [x, y] as Pt), ci: i, name: c.name }));
+  (P.cells || []).forEach((c, i) => cells.push({
+    poly: c.poly.map(([x, y]) => [x, y] as Pt), ci: i, name: c.name, lux: c.lux,
+  }));
   // `ci:"env"` = the object doesn't fall into any cell: it's on the outline (front door)
   // or inside a wall's thickness.
   const cellAt = (x: number, y: number): { ci: number | "env"; name: string } => {

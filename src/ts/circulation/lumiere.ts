@@ -19,6 +19,7 @@
 // two ARE persisted, bounded, and travel (C-5).
 
 import type { CelluleFlow, Grille, ObjetFlow } from "./etat.ts";
+import { FL } from "./etat.ts";
 import { indexCelluleDans } from "./contexte.ts";
 import { clamp, WALL } from "../noyau/nombres.ts";
 
@@ -36,13 +37,13 @@ export const LUX_MIN = 0, LUX_MAX = 2000;
 export const FLUX_DEFAUT: Record<string, number> = { ceil: 1500, sconce: 400, lamp: 900 };
 
 /** A window is a DAY source: 2000 lm per metre of opening width, and only in Day mode. */
-export const FLUX_FENETRE_PAR_M = 2000;
+const FLUX_FENETRE_PAR_M = 2000;
 
 /**
  * HEIGHT OF THE SOURCE ABOVE THE FLOOR, cm. It is what keeps the level finite directly under a
  * fixture: the distance used is the SLANT distance, `dx^2 + dy^2 + height^2`.
  */
-export const HAUTEUR_CM: Record<string, number> = { ceil: 240, sconce: 180, lamp: 150, window: 120 };
+const HAUTEUR_CM: Record<string, number> = { ceil: 240, sconce: 180, lamp: 150, window: 120 };
 
 /** Target when the room's name says nothing and nobody typed a `lux`. */
 export const CIBLE_DEFAUT = 150;
@@ -78,6 +79,11 @@ export function cibleLux(nom: unknown, lux?: number | undefined): number {
     for (const m of mots) if (s.includes(m)) return cible;
   }
   return CIBLE_DEFAUT;
+}
+
+/** The target of every cell of a context, in the same order: what the map is READ against. */
+export function ciblesDes(cells: CelluleFlow[]): number[] {
+  return cells.map((c) => cibleLux(c.name, c.lux));
 }
 
 /** Does this catalogue type emit light? A window only does so by day, which `sourcesLumiere` knows. */
@@ -188,6 +194,43 @@ export function carteLumiere(g: Grille, sources: SourceLumiere[], cells: Cellule
   }
   const moyennes = cells.map((_, k) => (compte[k] ? somme[k]! / compte[k]! : 0));
   return { lux, ci, moyennes };
+}
+
+// =================================================================================================
+//  THE MAP OF THE PLAN ON SCREEN, cached like the analysis itself
+// =================================================================================================
+// It lives HERE and not in `circulation/circulation.ts` because the room sheet (`rendu/`) reads it
+// too, and that module already imports the renderer: routing the sheet through it would close a
+// loop between the two. `lumiere.ts` imports no rendering at all, so both sides can read it.
+//
+// The signature is the circulation one PLUS what circulation ignores and lighting does not: the
+// fluxes typed on the fixtures, the rooms' names and targets, and Day/Night. Without that, moving
+// nothing and typing 3000 lm would repaint the same map.
+
+let _lumSig = "";
+let _lum: CarteLumiere | null = null;
+
+function lumiereSig(): string {
+  const P = FL.ctx && FL.ctx.etat ? FL.ctx.etat.plan : null;
+  let s = FL.aptCacheSig || "";
+  (P?.pieces || []).forEach((p) => { if (p.lm !== undefined) s += "|P" + p.id + ":" + p.lm; });
+  (P?.openings || []).forEach((o) => { if (o.lm !== undefined) s += "|O" + o.id + ":" + o.lm; });
+  (P?.cells || []).forEach((c) => { s += "|C" + c.id + ":" + c.name + ":" + (c.lux === undefined ? "" : c.lux); });
+  return s + "|day=" + (FL.ctx && FL.ctx.etat.opts.day ? 1 : 0);
+}
+
+/** The current map, or `null` while no grid has been built (nothing analyzed yet). */
+export function lumiereCourante(): CarteLumiere | null {
+  const g = FL.lastGrid ? FL.lastGrid.g : null;
+  const ctxFlow = FL.flowCtx;
+  if (!g || !ctxFlow) return null;
+  const sig = lumiereSig();
+  if (sig !== _lumSig || !_lum) {
+    const jour = !!(FL.ctx && FL.ctx.etat.opts.day);
+    _lum = carteLumiere(g, sourcesLumiere(ctxFlow.pieces, ctxFlow.cells, jour), ctxFlow.cells);
+    _lumSig = sig;
+  }
+  return _lum;
 }
 
 /** Where a level sits against its target: green / orange / red, the room sheet's three bands. */

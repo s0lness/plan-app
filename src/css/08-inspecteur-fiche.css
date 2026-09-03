@@ -124,6 +124,13 @@
      15,12 M² », and « M² » is not a unit. */
   .rc-area{font-family:var(--mono);font-size:12.5px;color:var(--ink);font-variant-numeric:tabular-nums;
     margin-bottom:10px}
+  /* The lighting line reads like the area, and its COLOUR is the verdict: at target, within 70%,
+     or below. Empty (no room analyzed yet) it takes no vertical space at all. */
+  .rc-light{color:var(--muted)}
+  .rc-light:empty{display:none}
+  .rc-light.ok{color:#3f7a4f}
+  .rc-light.warn{color:#b8860b}
+  .rc-light.bad{color:var(--danger)}
   .rc-floor{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
   .rc-warn{margin:0 0 10px;font-size:11px;color:var(--danger);display:none}
   .rc-warn.on{display:block}

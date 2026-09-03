@@ -611,6 +611,8 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 | `NAME_MAX` | 80 | `piece.name`, `opening.name`, `cell.name`, `room.name`, `room.floor`, `envelope.floor` | the field physically rejects the 81st keystroke |
 | `THROW_RATIO_MIN` / `THROW_RATIO_MAX` | 10 … 1000 (ratio × 100) | projector throw ratio | covers ratios from 0.10 to 10.0 |
 | `THROW_DMIN_MIN` / `THROW_DMIN_MAX` | 0 … 2000 cm | projector minimum focus distance | zero means not provided; 20 m catches a typo without rejecting a home |
+| `LM_MIN` / `LM_MAX` | 0 … 20 000 lm | `piece.lm` / `opening.lm`, a fixture's luminous flux | 0 = switched off, and 20 000 lm is already a stadium floodlight; out of range is REFUSED, not clamped, so a sender's bug shows |
+| `LUX_MIN` / `LUX_MAX` | 0 … 2000 lx | `cell.lux`, the room's lighting target | 2000 lx is an operating theatre; absent = deduced from the room's name (`cibleLux`, `circulation/lumiere.ts`) |
 | `OPENING_LEAVES` | 0, 1, 2 | window leaf count | only the three rendered opening shapes are accepted |
 | `CELL_FLOORS` | `parquet`, `herringbone`, `tile`, `plain` | computed-cell floor | mirrors the client floor catalogue |
 | `GUEST_NAME_MAX` | 40 | guest display name | bounds untrusted identity text sent to peers |

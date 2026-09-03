@@ -36,7 +36,7 @@ import { CATALOG, KIND_BY_TYPE, KIND_ORDER, catalogueParNature, kindOf } from ".
 import { FL } from "../src/ts/circulation/etat.ts";
 import { analyzeApt } from "../src/ts/circulation/regles.ts";
 import { buildAptContext } from "../src/ts/circulation/contexte.ts";
-import { carteLumiere, cibleLux, CIBLE_DEFAUT, sourcesLumiere } from "../src/ts/circulation/lumiere.ts";
+import { bandeLumiere, carteLumiere, cibleLux, CIBLE_DEFAUT, sourcesLumiere } from "../src/ts/circulation/lumiere.ts";
 import { oublierPhotoCellules, photoCellules, photographierCellules } from "../src/ts/modele/photo-cellules.ts";
 import { meubleWallSnap } from "../src/ts/modele/espace.ts";
 import { oublierAvantAimant, rotationAimantee } from "../src/ts/modele/aimant-memoire.ts";
@@ -1663,6 +1663,32 @@ test("lumiere_le_mur_coupe_la_piece_voisine_recoit_zero", () => {
   return expect(v.cells.length === 2, "deux pièces attendues, vues " + v.cells.length)
       && expect(eclairees === 1 && nulles === 1,
           "une pièce éclairée, la voisine à 0, vu " + JSON.stringify(v.carte.moyennes.map((m) => Math.round(m))));
+});
+
+test("lumiere_le_flux_saisi_remplace_le_defaut_et_la_bande_de_la_fiche_suit", () => {
+  // Le `lm` saisi sur le luminaire remplace le défaut de son type, et il est BORNÉ (30 000 lm
+  // demandés valent 20 000). La fiche de la pièce lit ensuite la moyenne contre la cible :
+  // vert au-dessus, orange de 70 à 100 %, rouge en dessous.
+  const P: DonneeDynamique = {
+    outline: [[0, 0], [400, 0], [400, 400], [0, 400]],
+    walls: [{ id: "wt", a: [0, 0], b: [400, 0], t: 12, isOutline: true },
+            { id: "wr", a: [400, 0], b: [400, 400], t: 12, isOutline: true },
+            { id: "wb", a: [400, 400], b: [0, 400], t: 12, isOutline: true },
+            { id: "wl", a: [0, 400], b: [0, 0], t: 12, isOutline: true }],
+    openings: [],
+    pieces: [{ id: "L1", type: "ceil", name: "Plafonnier", x: 185, y: 185, w: 30, h: 30,
+               rot: 0, locked: false, lm: 30000 }],
+    cells: [],
+  };
+  flowPlan(P);
+  const v = carteDuPlan(false);
+  if (!v) return expect(false, "la grille de circulation doit exister");
+  const moy = v.carte.moyennes[0] ?? -1;
+  // 20 000 lm au lieu de 1 500, donc environ 15 lx x 20000/1500 = 200 lx.
+  return expect(moy > 180 && moy < 220, "le flux saisi et borné donne environ 200 lx, vu " + moy.toFixed(1))
+      && expect(bandeLumiere(200, 300) === "bad", "200 lx pour une cible de 300 : rouge")
+      && expect(bandeLumiere(220, 300) === "warn", "220 lx pour une cible de 300 : orange")
+      && expect(bandeLumiere(300, 300) === "ok", "300 lx pour une cible de 300 : vert");
 });
 
 test("lumiere_lm_et_lux_survivent_a_l_aller_retour_serialize_migrate", () => {

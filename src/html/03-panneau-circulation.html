@@ -11,6 +11,18 @@
       </div>
       <div class="flow-checking" id="flowChecking"></div>
     </div>
+    <!-- THE TWO OVERLAYS THIS PANEL DRIVES. The Circulation button already opens the panel and
+         paints the walkable floor (decision 0015); these boxes only say WHICH of the two layers
+         you are reading, since the shaded floor and the lighting map would fight over the same
+         squares. Day / Night decides whether the windows count as light sources. -->
+    <div class="flow-tv flow-layers">
+      <label><input type="checkbox" id="flowLayerCirc"> Circulation</label>
+      <label><input type="checkbox" id="flowLayerLight"> Light</label>
+      <span class="daynight">
+        <button type="button" class="btn sm" id="flowNight">Night</button>
+        <button type="button" class="btn sm" id="flowDay">Day</button>
+      </span>
+    </div>
     <div class="flow-tv">
       TV screen
       <span class="in"><input id="flowTv" type="number" min="10" max="120" step="1" placeholder="-"><span class="unit">in</span></span>

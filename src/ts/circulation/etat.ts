@@ -37,6 +37,8 @@ export interface CelluleFlow {
   poly: Pt[];
   ci: number;
   name: string;
+  /** the room's OWN lighting target, when somebody typed one; absent = deduced from the name */
+  lux?: number | undefined;
 }
 
 export interface ContexteFlow {

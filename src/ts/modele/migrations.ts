@@ -284,11 +284,24 @@ export interface Options {
    * the other sorts by room, without either one forcing the other.
    */
   palBy: "room" | "kind";
+  /**
+   * THE TWO OVERLAYS THE CIRCULATION PANEL DRIVES, and the hour of the day the second one assumes.
+   *   `circLayer` the shaded walkable floor. Decision 0015 made it a state of the Circulation
+   *               button; it stays ON by default, so opening the panel still paints it, and the
+   *               box only exists so it can be taken OFF while reading the lighting map.
+   *   `light`     the lighting map (`circulation/lumiere.ts`).
+   *   `day`       Day = the windows count as sources; Night = the fixtures alone.
+   * All three describe a SCREEN, not the flat: they never cross over (D-7).
+   */
+  circLayer: boolean;
+  light: boolean;
+  day: boolean;
 }
 
 const DEFAULT_OPTS: Options = {
   labels: true, flow: false, tvIn: null, collapsedCats: [],
   layFurn: true, layLight: true, layPlug: true, palBy: "room",
+  circLayer: true, light: false, day: false,
 };
 
 export function cleanOpts(opts: Partial<Options> | null | undefined): Options {
@@ -300,5 +313,10 @@ export function cleanOpts(opts: Partial<Options> | null | undefined): Options {
   // An unknown value (old setting, hand-edited file) falls back to the default instead of
   // breaking the palette's construction.
   if (o.palBy !== "kind") o.palBy = "room";
+  // The three lighting/overlay switches are booleans: an old save, or a hand-edited file, carries
+  // whatever it carries, and `!!` is what keeps the panel's boxes from rendering "undefined".
+  o.circLayer = o.circLayer !== false;
+  o.light = !!o.light;
+  o.day = !!o.day;
   return o;
 }
