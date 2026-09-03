@@ -86,8 +86,8 @@ export function estSolConnu(v: unknown): v is CellFloor {
   return typeof v === "string" && FLOORS.has(v);
 }
 
-/** The three image formats, as a set, for the same reason and with the same shape as `FLOORS`. */
-export const FORMATS: ReadonlySet<number> = new Set<number>(IMAGE_RATIOS);
+/** The three image formats, as a set. Local: `estFormatConnu` is the only reader it needs. */
+const FORMATS: ReadonlySet<number> = new Set<number>(IMAGE_RATIOS);
 
 /** An image format code we recognize. Anything else reads as absent, which is 16:9. */
 export function estFormatConnu(v: unknown): v is ImageRatio {

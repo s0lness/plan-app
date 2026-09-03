@@ -59,7 +59,7 @@ export const TR_DEFAUT = 150;
 export const RATIO_DEFAUT = 169;
 
 /** Width over height, from the integer code. An unknown code falls back to 16:9, it never throws. */
-export function aspect(ratio?: number | undefined): number {
+function aspect(ratio?: number | undefined): number {
   const r = Number(ratio) || RATIO_DEFAUT;
   if (r === 1610) return 16 / 10;
   if (r === 2351) return 2.35;

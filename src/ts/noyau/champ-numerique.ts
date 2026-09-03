@@ -85,7 +85,10 @@ export function numField(el: HTMLElement | null, cfg: ConfigChamp): void {
     }
     const n = parseInt(s, 10);
     const pourquoi = (): string => { const r = cfg.raison ? cfg.raison() : ""; return r ? (" " + r) : ""; };
-    if (n > max || n < 0) {
+    // `Math.min(0, min)` and not `0`: a SIGNED field (the projector's vertical offset, min -150)
+    // must let a negative through, and a field whose min is 0 or more keeps exactly the previous
+    // behaviour, a negative is refused on the spot rather than treated as a value still growing.
+    if (n > max || n < Math.min(0, min)) {
       refuse(`${label()} must stay between ${min} and ${max} ${unite}: ${n} is refused.` + pourquoi());
       return "refus";
     }

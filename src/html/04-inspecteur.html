@@ -60,7 +60,50 @@
       <label for="iPair">Aimed at</label>
       <select id="iPair"></select>
     </div>
+    <!-- MOUNTING PREFILLS, IT DOES NOT STORE. A projector is on a table, on the CEILING, or a
+         short throw sitting under its screen: three very different pairs of numbers, and typing
+         them from scratch every time is what stops people entering them at all. The buttons write
+         `hp` and `off` and nothing else, so those two fields stay the only truth: change one by
+         hand afterwards and no button contradicts you. -->
+    <div class="insp-leaf">
+      <span class="lbl">Mounting</span>
+      <span class="seg" role="group" aria-label="Where the projector sits">
+        <button class="btn sm" id="iMount0" title="On a table or a shelf, lens roughly at eye level">Table</button>
+        <button class="btn sm" id="iMount1" title="Hung from the ceiling, throwing downward">Ceiling</button>
+        <button class="btn sm" id="iMount2" title="Ultra short throw, on a unit right under the screen">Short throw</button>
+      </span>
+    </div>
+    <div class="insp-grid">
+      <div class="field">
+        <label for="iHp">Lens height</label>
+        <div class="in"><input id="iHp" type="number" min="0" max="400" step="1"><span class="unit">cm</span></div>
+      </div>
+      <div class="field">
+        <label for="iOff">Offset</label>
+        <div class="in"><input id="iOff" type="number" min="-150" max="250" step="1"><span class="unit">%</span></div>
+      </div>
+    </div>
     <p class="proj-out" id="iProjOut"></p>
+    <p class="proj-out" id="iProjVert"></p>
+  </div>
+  <!-- PROJECTION SCREEN. The format lives HERE and not on the projector: it is the screen that
+       has a shape, the projector only fills it. Both fields feed the vertical cut read on the
+       projector's own sheet. -->
+  <div class="insp-proj" id="iScreenRow" hidden>
+    <div class="insp-grid" style="grid-template-columns:1fr">
+      <div class="field">
+        <label for="iHs">Bottom edge</label>
+        <div class="in"><input id="iHs" type="number" min="0" max="400" step="1"><span class="unit">cm</span></div>
+      </div>
+    </div>
+    <div class="insp-leaf">
+      <span class="lbl">Format</span>
+      <span class="seg" role="group" aria-label="Image format">
+        <button class="btn sm" id="iRatio169" data-ratio="169" title="16:9, the usual one">16:9</button>
+        <button class="btn sm" id="iRatio1610" data-ratio="1610" title="16:10">16:10</button>
+        <button class="btn sm" id="iRatio2351" data-ratio="2351" title="2.35:1, cinema scope">2.35:1</button>
+      </span>
+    </div>
   </div>
   <!-- No angle slider (decision 0013): the rotation handle on the selection is the one path for a
        free rotation, this row carries buttons only. -->
