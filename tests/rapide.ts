@@ -51,6 +51,9 @@ import { cleanName as cleanNameFn } from "../functions/nom.ts";
 import { porteDe } from "../functions/porte.ts";
 import { cleanCursorSay, cleanGuestName } from "../live-worker/ops.ts";
 import { hoteAutorise } from "../live-worker/worker.ts";
+import {
+  coupeVerticale, ecartLargeur, hauteurImage, phraseCoupe, projection, texteEcart,
+} from "../src/ts/modele/projection.ts";
 import { migrate } from "../src/ts/modele/etat.ts";
 import { rescueUnreadable } from "../src/ts/modele/filets.ts";
 import { V5_RESCUE_KEY } from "../src/ts/noyau/nombres.ts";
@@ -539,6 +542,88 @@ test("v5_sanitize_defensive", () => {
       && expect(v.dropped.pieces === 1 && v.dropped.w <= 3000 && v.dropped.h >= 1 && v.dropped.rot === 5,
          "piece fields must be clamped/normalised: " + JSON.stringify(v.dropped))
       && expect(v.dropped.cells === 1 && v.dropped.floor === "parquet", "unknown floor must fall back to parquet");
+});
+
+// -- THE PROJECTOR'S VERTICAL CUT -----------------------------------------------------------------
+// A projector on a table, one on the CEILING and an ULTRA SHORT THROW go through the same three
+// lines: the lens is at `hp`, the image centre at `hp + off·H`, and nothing anywhere supposes the
+// lens sits under the image. The bench places the device at the origin facing +y, so the lens
+// exits at (17.5, 30) and a screen centred `d` further away is exactly `d` away.
+const projBanc = (o: Record<string, number>): { x: number; y: number; w: number; h: number; rot: number } & Record<string, number> =>
+  ({ x: 0, y: 0, w: 35, h: 30, rot: 0, ...o });
+const ecranBanc = (d: number, w: number, extra: Record<string, number> = {}): { x: number; y: number; w: number; h: number; rot: number } & Record<string, number> =>
+  ({ x: 17.5 - w / 2, y: 30 + d - 5, w, h: 10, rot: 0, ...extra });
+
+test("projecteur_hauteur_d_image_et_bornes_verticales", () => {
+  const ecarts: string[] = [];
+  const dit = (nom: string, vu: number | null, attendu: number | null): void => {
+    const ok = vu == null || attendu == null ? vu === attendu : Math.abs(vu - attendu) < 0.01;
+    if (!ok) ecarts.push(nom + " : attendu " + attendu + ", vu " + vu);
+  };
+  // The format decides the height, and the three codes are the three formats.
+  dit("h 16:9", hauteurImage(320, 169), 180);
+  dit("h 16:10", hauteurImage(320, 1610), 200);
+  dit("h 2.35:1", hauteurImage(235, 2351), 100);
+  dit("h defaut", hauteurImage(320, undefined), 180);
+
+  // CEILING: the device hangs at 230 cm and throws DOWNWARD, so the offset is negative and the
+  // image lands BELOW the lens. A calculation that assumed the lens under the image would put it
+  // through the ceiling.
+  const plafond = projBanc({ tr: 100, hp: 230, off: -50 });
+  const ecranP = ecranBanc(320, 320, { hs: 60 });
+  const prP = projection(plafond, ecranP);
+  const cP = coupeVerticale(prP, plafond, ecranP);
+  dit("plafond largeur", prP.largeur, 320);
+  dit("plafond hauteur", cP.hauteur, 180);
+  dit("plafond bas", cP.bas, 50);
+  dit("plafond haut", cP.haut, 230);
+  dit("plafond ecran bas", cP.ecranBas, 60);
+  dit("plafond ecran haut", cP.ecranHaut, 240);
+  dit("plafond deborde bas", cP.debordeBas, 10);
+  dit("plafond deborde haut", cP.debordeHaut, 0);
+
+  // ULTRA SHORT THROW: ratio 0.25, 40 cm from the wall, lens UNDER the screen, the WHOLE image
+  // above it. `bas > hp` is the assertion the owner asked for in so many words.
+  const ust = projBanc({ tr: 25, hp: 40, off: 120 });
+  const ecranU = ecranBanc(40, 160, { hs: 100 });
+  const prU = projection(ust, ecranU);
+  const cU = coupeVerticale(prU, ust, ecranU);
+  dit("ust largeur", prU.largeur, 160);
+  dit("ust hauteur", cU.hauteur, 90);
+  dit("ust bas", cU.bas, 103);
+  dit("ust haut", cU.haut, 193);
+
+  // `hp` absent: we do not claim a height, but the image size is still known.
+  const muet = projBanc({ tr: 100 });
+  const cM = coupeVerticale(projection(muet, ecranP), muet, ecranP);
+  dit("sans hp hauteur", cM.hauteur, 180);
+
+  return expect(cU.bas != null && cU.bas > 40, "une ultra courte focale projette AU-DESSUS de son objectif")
+      && expect(cM.bas === null && cM.haut === null, "sans hp, aucune hauteur n'est affirmee")
+      && expect(cP.deborde === true, "l'image qui descend sous l'ecran doit etre signalee")
+      && expect(phraseCoupe(cP, prP.largeur)
+           === "Image 320 × 180 cm, from 50 to 230 cm above the floor; screen from 60 to 240: 10 cm below the screen",
+           "phrase de coupe inattendue : " + phraseCoupe(cP, prP.largeur))
+      && expect(ecarts.length === 0, "coupe verticale :\n         " + ecarts.join("\n         "));
+});
+
+test("projecteur_ecart_image_ecran_signe", () => {
+  const p = projBanc({ tr: 100 });
+  const etroit = ecranBanc(320, 300);
+  const large = ecranBanc(320, 350);
+  const eE = ecartLargeur(projection(p, etroit));
+  const eL = ecartLargeur(projection(p, large));
+  // Pile: the ceiling projector above, with the screen bottom brought up to the image bottom.
+  const pile = projBanc({ tr: 100, hp: 230, off: -50 });
+  const ecranPile = ecranBanc(320, 320, { hs: 50 });
+  const cFit = coupeVerticale(projection(pile, ecranPile), pile, ecranPile);
+  return expect(eE === 20, "image 320 sur ecran 300 : +20, vu " + eE)
+      && expect(eL === -30, "image 320 sur ecran 350 : -30, vu " + eL)
+      && expect(ecartLargeur(projection(p, null)) === null, "sans ecran, aucun ecart n'est affirme")
+      && expect(texteEcart(20) === "+20 cm" && texteEcart(-30) === "−30 cm",
+           "l'ecart s'ecrit toujours signe : " + texteEcart(20) + " / " + texteEcart(-30))
+      && expect(cFit.deborde === false && phraseCoupe(cFit, 320).endsWith(": fits the screen"),
+           "une image pile sur l'ecran doit le dire : " + phraseCoupe(cFit, 320));
 });
 
 test("v5_sanitize_garde_les_champs_recents_au_second_passage", () => {
