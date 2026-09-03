@@ -1665,6 +1665,35 @@ test("lumiere_le_mur_coupe_la_piece_voisine_recoit_zero", () => {
           "une pièce éclairée, la voisine à 0, vu " + JSON.stringify(v.carte.moyennes.map((m) => Math.round(m))));
 });
 
+test("lumiere_lm_et_lux_survivent_a_l_aller_retour_serialize_migrate", () => {
+  // C-5, la troisième place: `sanitizeV5Plan` doit RECOPIER les deux champs, sinon Ctrl+Z les
+  // efface sans que rien ne quitte le navigateur. On éprouve les DEUX chemins de `migrate`: le
+  // `plan` imbriqué (qui gagne) et la forme À PLAT du fil, seule, quand il n'y a pas de `plan`.
+  const P: PlanV5 = {
+    outline: [[0, 0], [400, 0], [400, 400], [0, 400]],
+    walls: [{ id: "wt", a: [0, 0], b: [400, 0], t: 12, isOutline: true },
+            { id: "wr", a: [400, 0], b: [400, 400], t: 12, isOutline: true },
+            { id: "wb", a: [400, 400], b: [0, 400], t: 12, isOutline: true },
+            { id: "wl", a: [0, 400], b: [0, 0], t: 12, isOutline: true }],
+    openings: [{ id: "o1", wallId: "wt", t0: 100, w: 90, h: 12, type: "sconce", side: 0,
+                 name: "Applique", lm: 620 } as Ouverture],
+    pieces: [{ id: "L1", type: "ceil", name: "Plafonnier", x: 185, y: 185, w: 30, h: 30,
+               rot: 0, locked: false, lm: 2200 }],
+    cells: [{ id: "c1", poly: [[0, 0], [400, 0], [400, 400], [0, 400]], name: "Cuisine", floor: "tile", lux: 420 }],
+  };
+  // Ce que `app/persistance.ts:serialize()` écrit, à l'identique (le plan imbriqué + la forme du fil).
+  const brut = Object.assign({ setupDone: true, model: "v5" as const, plan: P }, v5StateWire(P, true));
+  const relu = migrate(JSON.parse(JSON.stringify(brut)));
+  const aPlat = { ...brut } as DonneeDynamique;
+  delete aPlat.plan;
+  const reluPlat = migrate(JSON.parse(JSON.stringify(aPlat)));
+  const lus = (e: DonneeDynamique) => e && [e.plan.pieces[0].lm, e.plan.openings[0].lm, e.plan.cells[0].lux];
+  return expect(JSON.stringify(lus(relu)) === "[2200,620,420]",
+          "par le plan imbriqué, lm/lm/lux doivent revenir, vu " + JSON.stringify(lus(relu)))
+      && expect(JSON.stringify(lus(reluPlat)) === "[2200,620,420]",
+          "par la forme à plat du fil aussi, vu " + JSON.stringify(lus(reluPlat)));
+});
+
 test("lumiere_cible_deduite_du_nom_et_le_lux_saisi_gagne", () => {
   return expect(cibleLux("Cuisine") === 300, "Cuisine -> 300, vu " + cibleLux("Cuisine"))
       && expect(cibleLux("Kitchen") === 300, "Kitchen -> 300, vu " + cibleLux("Kitchen"))

@@ -159,6 +159,9 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       // through `serialize()` then `migrate()` (`historique/pile.ts`), so undoing anything lost
       // whether a window was fixed or opened. Same unpacking as `v5AdoptOpening`.
       leaf: o["leaf"] != null ? ((Number(o["leaf"]) | 0) as 0 | 1 | 2) : undefined,
+      // `lm` (luminous flux of a wall light or a window): same rule again, absent stays absent.
+      // The server bounds it on write (`LM_MIN`/`LM_MAX`); here we only refuse what isn't a number.
+      lm: o["lm"] != null && isFinite(Number(o["lm"])) ? Math.max(0, Number(o["lm"])) : undefined,
     });
   });
 
@@ -191,6 +194,8 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       tr: q["tr"] != null && isFinite(Number(q["tr"])) ? Math.max(0, Number(q["tr"])) : undefined,
       dmin: q["dmin"] != null && isFinite(Number(q["dmin"])) ? Math.max(0, Number(q["dmin"])) : undefined,
       pair: q["pair"] != null ? String(q["pair"]).slice(0, NAME_MAX) : undefined,
+      // `lm` (luminous flux of a ceiling light or a floor lamp): same rule as `tr` above.
+      lm: q["lm"] != null && isFinite(Number(q["lm"])) ? Math.max(0, Number(q["lm"])) : undefined,
     });
   });
   // A2: a `pair` made against a piece's RAW (ill-formed) id follows the replacement, exactly like
@@ -216,6 +221,9 @@ export function sanitizeV5Plan(p: unknown): PlanV5 | null {
       poly,
       name: String(c["name"] || "Room").slice(0, NAME_MAX),
       floor: estSolConnu(c["floor"]) ? c["floor"] : "parquet",
+      // `lux` (the room's lighting target): absent stays absent, otherwise a re-read would write
+      // "this room aims for 150" onto every room that had merely never been asked.
+      lux: c["lux"] != null && isFinite(Number(c["lux"])) ? Math.max(0, Number(c["lux"])) : undefined,
     });
   });
 

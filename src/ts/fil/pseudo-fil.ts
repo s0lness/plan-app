@@ -7,7 +7,7 @@
 // `JSON.stringify` strings, so reordering a key would re-emit every entity in the plan.
 
 import { clamp, v5R2, WALL } from "../noyau/nombres.ts";
-import { estSolConnu, NAME_MAX, OPENING_H_MAX, OPENING_W_MAX, PIECE_WH_MAX, WALL_T_MAX, WALL_T_MIN } from "../partage/contrat-serveur.ts";
+import { estSolConnu, LM_MAX, LM_MIN, LUX_MAX, LUX_MIN, NAME_MAX, OPENING_H_MAX, OPENING_W_MAX, PIECE_WH_MAX, WALL_T_MAX, WALL_T_MIN } from "../partage/contrat-serveur.ts";
 import { TYPEMAP } from "../catalogue/catalogue.ts";
 import { v5WallLen } from "../modele/murs.ts";
 import type {
@@ -66,6 +66,10 @@ export function v5OpeningWire(plan: PlanV5 | null | undefined, o: Ouverture): Ou
   // A casement window needs its direction, just like a door. Without this, `swing` does not cross
   // the network and the arc opens on the wrong side for the peer.
   if (o.type === "window" && o.leaf) out.swing = Number(o.swing) < 0 ? -1 : 1;
+  // `lm` follows the SAME rule as `leaf`: absent as long as nobody has set it. A wall light
+  // radiates its type's default flux until then, and writing that default onto every opening of
+  // every plan would claim a choice nobody made.
+  if (o.lm !== undefined) out.lm = clamp(Math.round(o.lm), LM_MIN, LM_MAX);
   return out;
 }
 
@@ -92,6 +96,7 @@ export function v5AdoptOpening<T>(o: T): T | Ouverture {
     hinge: (hp & 1) ? 1 : 0,
     swing: Number(src.swing) < 0 ? -1 : 1,
     ...(src.leaf === undefined ? {} : { leaf: (Number(src.leaf) | 0) as 0 | 1 | 2 }),
+    ...(src.lm === undefined ? {} : { lm: Number(src.lm) }),
   };
 }
 
@@ -112,6 +117,7 @@ export function v5PieceWire(p: Meuble): MeubleFil {
     ...(p.tr === undefined ? {} : { tr: Math.round(p.tr) }),
     ...(p.dmin === undefined ? {} : { dmin: Math.round(p.dmin) }),
     ...(p.pair === undefined ? {} : { pair: String(p.pair) }),
+    ...(p.lm === undefined ? {} : { lm: clamp(Math.round(p.lm), LM_MIN, LM_MAX) }),
   };
 }
 
@@ -121,6 +127,8 @@ function v5CellWire(c: Cellule): CelluleFil {
     poly: c.poly.map((p) => [v5R2(p[0]), v5R2(p[1])] as Pt),
     name: String(c.name || ""),
     floor: estSolConnu(c.floor) ? c.floor : "parquet",
+    // `lux`: the room's own lighting target. Absent = deduced from the name, so absent it stays.
+    ...(c.lux === undefined ? {} : { lux: clamp(Math.round(c.lux), LUX_MIN, LUX_MAX) }),
   };
 }
 

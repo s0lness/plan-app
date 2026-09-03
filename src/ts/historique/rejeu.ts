@@ -82,12 +82,14 @@ export function histApplyOp(P: PlanV5 | null | undefined, op: Op | null | undefi
         if (op.name !== undefined) c.name = op.name;
         if (op.floor !== undefined) c.floor = op.floor;
         if (op.poly !== undefined) c.poly = op.poly.map((p) => [p[0], p[1]] as Pt);
+        if (op.lux !== undefined) c.lux = op.lux;
       } else if (op.poly !== undefined) {
         L("cells").push({
           id: String(op.cellId),
           poly: op.poly.map((p) => [p[0], p[1]] as Pt),
           name: String(op.name || "Room"),
           floor: op.floor || "parquet",
+          ...(op.lux === undefined ? {} : { lux: op.lux }),
         });
       }
       break;
@@ -98,6 +100,7 @@ export function histApplyOp(P: PlanV5 | null | undefined, op: Op | null | undefi
         poly: (c.poly || []).map((p) => [p[0], p[1]] as Pt),
         name: String(c.name || ""),
         floor: c.floor || "parquet",
+        ...(c.lux === undefined ? {} : { lux: c.lux }),
       }));
       break;
     case "piece.set": {

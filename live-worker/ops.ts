@@ -19,6 +19,7 @@ export interface Piece {
   tr?: number;
   dmin?: number;
   pair?: string;
+  lm?: number;
 }
 
 export interface Wall {
@@ -41,6 +42,7 @@ export interface Opening {
   hinge?: number;
   swing?: string | number;
   leaf?: number;
+  lm?: number;
 }
 
 export interface Cell {
@@ -48,6 +50,7 @@ export interface Cell {
   poly: Point[];
   name: string;
   floor: string;
+  lux?: number;
 }
 
 /**
@@ -81,6 +84,7 @@ export interface Operation {
   poly?: Point[];
   name?: string;
   floor?: string | number;
+  lux?: number;
 }
 
 export interface CursorMessage {
@@ -107,6 +111,9 @@ export const PIECE_KEYS = new Set([
   // paired screen id. The server doesn't know the catalog, so it can't require only a projector
   // carries these (G-18: server bounds the dangerous, client bounds the sensible).
   "tr", "dmin", "pair",
+  // LIGHT FIXTURE: `lm`, the luminous flux it radiates. Absent = the client falls back on its
+  // type's default; the server doesn't know the catalog, so it only bounds the number.
+  "lm",
 ]);
 
 // ---- the "wall-partition" model, the only one ----
@@ -118,8 +125,11 @@ export const WALL_KEYS = new Set(["id", "a", "b", "t",
 export const OPENING_KEYS = new Set(["id", "wallId", "t0", "w", "h", "type", "side", "name", "hinge", "swing",
   // `leaf`: HOW a window opens. Absent/0 = fixed (no swing arc), 1 = one leaf, 2 = double window.
   // Absent default is what makes the addition safe: nothing changes appearance until set.
-  "leaf"]);
-export const CELL_KEYS = new Set(["id", "poly", "name", "floor"]);
+  "leaf",
+  // `lm`: a wall light and a window are openings, and both are light sources.
+  "lm"]);
+// `lux`: the room's own lighting target. Absent = the client deduces it from the room's name.
+export const CELL_KEYS = new Set(["id", "poly", "name", "floor", "lux"]);
 // Types of opening/fixture that can be placed on a wall (mirrors the client catalog).
 export const OPENING_TYPES = new Set(["door", "sdoor", "window", "sconce", "plug", "rj45"]);
 // Faces of a wall: strictly binary. 0 = left normal of the a->b segment, 1 = the other face
@@ -131,6 +141,10 @@ export const WALL_FREE = new Set([0, 1]);
 export const THROW_RATIO_MIN = 10, THROW_RATIO_MAX = 1000;
 /** Minimum focus distance, cm. 0 = not provided. */
 export const THROW_DMIN_MIN = 0, THROW_DMIN_MAX = 2000;
+/** Luminous flux of a light fixture, lumens. 0 = off; 20 000 lm is already a stadium floodlight. */
+export const LM_MIN = 0, LM_MAX = 20000;
+/** A room's lighting target, lux. 0 = no opinion; 2000 lx is an operating theatre. */
+export const LUX_MIN = 0, LUX_MAX = 2000;
 // Allowed floor coverings for a cell (mirrors FLOORS on the client).
 export const CELL_FLOORS = new Set(["parquet", "herringbone", "tile", "plain"]);
 // v5 geometric bounds (cm).
@@ -426,6 +440,13 @@ function validatePiece(p: Partial<Piece>, prev?: Map<string, Piece> | Piece | nu
     if (!isFiniteNum(dmin) || dmin < THROW_DMIN_MIN || dmin > THROW_DMIN_MAX) throw new OpError("piece_dmin");
     out.dmin = Math.round(dmin);
   }
+  // lm: bounded integer, same shape as `tr`. A finite number outside 0..20000 is REFUSED, not
+  // clamped: a flux of 1e9 is a bug on the sending side, and silently storing 20000 would hide it.
+  const lm = pick("lm");
+  if (lm !== undefined) {
+    if (!isFiniteNum(lm) || lm < LM_MIN || lm > LM_MAX) throw new OpError("piece_lm");
+    out.lm = Math.round(lm);
+  }
   const pair = pick("pair");
   if (pair !== undefined) {
     if (pair === null || pair === "") out.pair = "";
@@ -574,6 +595,12 @@ function validateOpening(o: Partial<Opening>, wallIds: Set<string> | null, prev?
     if (n === null || !OPENING_LEAVES.has(n)) throw new OpError("opening_leaf");
     out.leaf = n;
   }
+  // `lm`: same bound and same refusal as on a piece. A wall light is an opening here.
+  const olm = pick("lm");
+  if (olm !== undefined) {
+    if (!isFiniteNum(olm) || olm < LM_MIN || olm > LM_MAX) throw new OpError("opening_lm");
+    out.lm = Math.round(olm);
+  }
   return out;
 }
 
@@ -618,6 +645,10 @@ function validateCell(c: Partial<Omit<Cell, "floor">> & { floor?: string | numbe
   const floor = pick("floor");
   if (floor !== undefined && (!isStr(floor) || !CELL_FLOORS.has(floor))) throw new OpError("cell_floor");
   const name = pick("name");
+  // `lux`: the room's lighting target. Bounded like `lm`, and ABSENT stays absent: a room that was
+  // never asked has no opinion, and writing 150 everywhere would move every plan's fingerprint.
+  const lux = pick("lux");
+  if (lux !== undefined && (!isFiniteNum(lux) || lux < LUX_MIN || lux > LUX_MAX)) throw new OpError("cell_lux");
   return {
     id: c.id,
     poly: poly.map((pt) => [pt[0], pt[1]]),
@@ -625,6 +656,9 @@ function validateCell(c: Partial<Omit<Cell, "floor">> & { floor?: string | numbe
     // down all ten cells at once, so ten rooms disappeared for the peer.
     name: name === undefined ? "" : cleanName(name, "cell_name"),
     floor: isStr(floor) ? floor : "parquet",
+    // LAST, and in the SAME position as `v5CellWire` puts it: the emission mirror compares
+    // `JSON.stringify` strings, so a key in a different place re-emits every cell of the plan.
+    ...(lux === undefined ? {} : { lux: Math.round(lux as number) }),
   };
 }
 
@@ -720,7 +754,7 @@ export const OP_KEYS: Record<string, string[]> = {
   "wall.del": ["wallId"],
   "opening.set": ["opening"],
   "opening.del": ["openingId"],
-  "cell.set": ["cellId", "name", "floor", "poly"],
+  "cell.set": ["cellId", "name", "floor", "poly", "lux"],
   "cells.replace": ["cells"],
   /** COMPLETE replacement: conversion, import, undo of a whole snapshot. */
   "plan5.replace": ["plan"],
@@ -876,6 +910,8 @@ function applyOpV5(plan: PlanState, op: Operation): PlanState {
         poly: op.poly !== undefined ? op.poly : cur.poly,
         name: op.name !== undefined ? op.name : (cur ? cur.name : ""),
         floor: op.floor !== undefined ? op.floor : (cur ? cur.floor : "parquet"),
+        // C-5: an absent `lux` is "no opinion", so the value already stored stays.
+        ...(op.lux !== undefined ? { lux: op.lux } : (cur && cur.lux !== undefined ? { lux: cur.lux } : {})),
       };
       const cell = validateCell(draft);
       if (i < 0 && plan.cells.length >= MAX_ENTITIES) throw new OpError("cells_max");
