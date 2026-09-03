@@ -19,6 +19,12 @@ export const wallSnapReach = (scale: number): number => Math.min(150, Math.max(6
  * attracts only when its back is a dozen screen pixels from the face, 6-20cm depending on zoom. */
 export const meubleSnapReach = (scale: number): number => Math.min(20, Math.max(6, 12 / (scale || 1)));
 
+/** Types that LIVE against a wall: they keep the opening's long reach (60 to 150 cm), because
+ *  "the radiator does not really snap" with the short one; everything else gets the short reach. */
+const TYPES_AU_MUR = new Set(["radiateur"]);
+export const porteeAimantMeuble = (type: string, scale: number): number =>
+  TYPES_AU_MUR.has(type) ? wallSnapReach(scale) : meubleSnapReach(scale);
+
 export const NO_WALL_MSG = "No wall nearby: bring the cursor closer to a wall to place this fitting.";
 
 /**

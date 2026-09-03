@@ -410,6 +410,12 @@ export function pieceIconSVG(type: string, w: number, h: number, opts?: OptionsI
       g += ci(w * 0.64, yy, bd, withAlpha(col, 0.7), "none", 0);
     }
   }
+  else if (type === "toybox") {
+    // toy chest: a box with its lid line near the back, one clasp at the front
+    g += rr(sw, sw, w - 2 * sw, h - 2 * sw, Math.min(w, h) * 0.08, fill, col, sw);
+    g += ln(sw * 1.6, h * 0.30, w - sw * 1.6, h * 0.30, withAlpha(col, 0.45), swThin);
+    g += rr(w / 2 - Math.max(2, w * 0.05), h * 0.30 - Math.max(1.5, h * 0.06), Math.max(4, w * 0.10), Math.max(3, h * 0.12), 1, withAlpha(col, 0.7), "none", 0);
+  }
   else if (type === "crib") {
     // crib: slatted cabinet (short strokes all around the perimeter) + inset mattress
     g += rr(sw, sw, w - 2 * sw, h - 2 * sw, Math.min(w, h) * 0.08, fill, col, sw);

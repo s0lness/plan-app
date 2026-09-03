@@ -19,7 +19,7 @@ import { TYPEMAP, isWallMount, layerOf } from "../catalogue/catalogue.ts";
 import { $, COARSE } from "../noyau/dom.ts";
 import { WALL, clamp, safeDim } from "../noyau/nombres.ts";
 import { v5Seg } from "../modele/murs.ts";
-import { NO_WALL_MSG, meubleSnapReach, meubleWallSnap, wallSnapReach } from "../modele/espace.ts";
+import { NO_WALL_MSG, meubleWallSnap, porteeAimantMeuble, wallSnapReach } from "../modele/espace.ts";
 import { autoName, mk } from "../modele/creation.ts";
 import {
   v5FlushPlaceNarrowed, v5NearestWall, v5PlaceWallMount, v5WallMountSide,
@@ -189,7 +189,7 @@ export function placeNewPieceAt(
   // THE WALL MAGNET, at drop time too (same mechanism and reach as the drag): dropped with its back
   // near a wall, a piece of furniture lands flush against it, oriented with the wall, rather than a
   // few centimetres off.
-  const aimante = meubleWallSnap(P, p, meubleSnapReach(ctx.vue.scale));
+  const aimante = meubleWallSnap(P, p, porteeAimantMeuble(p.type, ctx.vue.scale));
   if (aimante) { p.x = aimante.x; p.y = aimante.y; p.rot = aimante.rot; }
   v5Touch(ctx);
   selReplace(ctx, p.id); render(ctx); ctx.crochets.openInspector?.();

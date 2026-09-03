@@ -13,7 +13,7 @@ import { pieceById, v5Touch, v5OpeningById } from "../app/contexte.ts";
 import { TYPEMAP, isWallMount } from "../catalogue/catalogue.ts";
 import { cssId } from "../noyau/dom.ts";
 import { v5OpeningBox } from "../modele/murs.ts";
-import { meubleSnapReach, meubleWallSnap, wallSnapReach } from "../modele/espace.ts";
+import { meubleWallSnap, porteeAimantMeuble, wallSnapReach } from "../modele/espace.ts";
 import { oublierAvantAimant, rotationAimantee } from "../modele/aimant-memoire.ts";
 import { v5MoveOpeningTo } from "../modele/edition.ts";
 import { dockedChairs, snapChairToTable, TABLE_TYPES } from "./contraintes.ts";
@@ -230,7 +230,7 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
         const aim = meubleWallSnap(
           ctx.etat.plan,
           { x: primaire.x0 + dax, y: primaire.y0 + day, w: p.w, h: p.h },
-          meubleSnapReach(ctx.vue.scale), ev.altKey,
+          porteeAimantMeuble(p.type, ctx.vue.scale), ev.altKey,
         );
         if (aim) { dax = aim.x - primaire.x0; day = aim.y - primaire.y0; }
       }
@@ -287,7 +287,7 @@ export function startPieceDrag(ctx: Contexte, e: PointerEvent, p0: Meuble, _resu
     // BACK (same reach as an opening, `wallSnapReach`) the piece snaps to it, back flush against
     // the face, oriented with the wall. Out of reach it is left exactly where the hand put it.
     const aimante = snapped
-      ? null : meubleWallSnap(ctx.etat.plan, p, meubleSnapReach(ctx.vue.scale), libre);
+      ? null : meubleWallSnap(ctx.etat.plan, p, porteeAimantMeuble(p.type, ctx.vue.scale), libre);
     if (aimante) { p.x = aimante.x; p.y = aimante.y; }
     // DETACHED FROM THE WALL, IT TURNS BACK: `rotationAimantee` applies the magnet's rotation
     // while snapped, and hands back whatever this piece had before the magnet first took it,
