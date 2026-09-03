@@ -64,7 +64,7 @@ export interface ApercuMural {
   by: number;
 }
 
-export function wallMountPreviewApt(
+function wallMountPreviewApt(
   P: PlanV5 | null | undefined,
   type: string,
   ax: number,
@@ -148,7 +148,7 @@ export function unstackGroup(ctx: Contexte, list: Meuble[], pts: { x: number; y:
   return true;
 }
 
-export function placeNewPieceAt(
+function placeNewPieceAt(
   ctx: Contexte,
   type: string,
   apt: { x: number; y: number } | null,

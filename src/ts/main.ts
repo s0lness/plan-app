@@ -29,7 +29,6 @@ import { $, el } from "./noyau/dom.ts";
 import { aptBBox, aptToScreen, brancherRendu, fitView, renderView } from "./rendu/vue.ts";
 import { render } from "./rendu/rendu.ts";
 import { renderRoomChips } from "./rendu/puces-rail.ts";
-import { installerSonde } from "./sonde.ts";
 import { installerToasts } from "./app/toast.ts";
 import { save } from "./app/persistance.ts";
 import { beginGesture, brancherSortieGestes, endGesture } from "./gestes/sortie.ts";
@@ -244,7 +243,6 @@ function amorcer(): { ctx: Contexte; fil: Fil } {
   // household's plan.
   const fil = brancherFil(ctx);
 
-  installerSonde(ctx, fil);
   return { ctx, fil };
 }
 

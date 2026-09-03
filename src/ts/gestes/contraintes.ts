@@ -19,7 +19,7 @@ import type { Meuble, PlanV5, Pt } from "../partage/plan.ts";
 // real (> INSET_TOL) so plans with furniture already flush against walls don't visibly jump.
 
 /** 6cm: furniture face rests here, off the wall centerline */
-export const WALL_INSET = WALL / 2;
+const WALL_INSET = WALL / 2;
 /** don't nudge for <1cm of penetration (avoid jitter / legacy jumps) */
 const INSET_TOL = 1;
 

@@ -27,7 +27,7 @@ export { EMBEDDED };
 const exportPayload = (ctx: Contexte): string =>
   JSON.stringify({ app: "room-planner", version: 4, savedAt: new Date().toISOString(), state: serialize(ctx) }, null, 2);
 
-export function importPlan(ctx: Contexte, text: unknown): boolean {
+function importPlan(ctx: Contexte, text: unknown): boolean {
   let ns: ReturnType<typeof migrate>;
   try {
     const obj: unknown = JSON.parse(String(text));

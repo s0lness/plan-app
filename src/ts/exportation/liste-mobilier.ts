@@ -44,7 +44,7 @@ interface SectionBrute {
   list: ObjetListe[];
 }
 
-export function buildFurnitureData(ctx: Contexte): SectionListe[] {
+function buildFurnitureData(ctx: Contexte): SectionListe[] {
   const P = ctx.etat.plan || ({} as Contexte["etat"]["plan"]);
   const cells: Cellule[] = P.cells || [];
   const secs: SectionBrute[] = cells.map((c) => ({

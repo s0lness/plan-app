@@ -301,7 +301,6 @@ function wsModelConflict(fil: Fil): void {
     sessionStorage.setItem("plan-model-reload", "1");
   } catch (_) { /* sessionStorage refused: we reload anyway, once */ }
   toast("The shared plan changed model: reloading…");
-  if ((window as unknown as { __PLAN_TEST__?: unknown }).__PLAN_TEST__) return;   // probes do not reload
   setTimeout(() => { try { location.reload(); } catch (_) { /* nothing */ } }, 400);
 }
 

@@ -72,13 +72,3 @@ export function toast(msg: string, opts?: OptionsToast): boolean {
   reveille();
   return true;
 }
-
-/** Test probes. */
-export function toastText(): string | null {
-  const el = _viewport?.querySelector<HTMLElement>(".app-toast");
-  return (el && !el.hidden) ? el.textContent : null;
-}
-export function clearToast(): void {
-  const el = _viewport?.querySelector<HTMLElement>(".app-toast");
-  if (el) el.remove();
-}

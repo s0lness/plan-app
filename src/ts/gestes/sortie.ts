@@ -42,16 +42,9 @@ let _ctx: Contexte | null = null;
 export function brancherSortieGestes(ctx: Contexte): void { _ctx = ctx; }
 
 export const gesteActif = (): boolean => gestureActive;
-export const gesteArme = (): boolean => !!gFinish;
 
 function gPoke(): void { gSeen = Date.now(); }
 export function gestureStale(): boolean { return !!gSeen && (Date.now() - gSeen) > GESTURE_IDLE_MS; }
-
-/** Test probe: artificially age the current gesture to exercise the watchdog. */
-export function vieillirGeste(ms?: number | null): boolean {
-  gSeen = Date.now() - (ms == null ? GESTURE_IDLE_MS + 1 : ms);
-  return gestureStale();
-}
 
 /**
  * During a gesture, `save()` skips the local write and the sync bookkeeping, and `render()`
@@ -177,9 +170,6 @@ export function fileEtatDistant(st: unknown, opts?: unknown): void {
   gQueuedState = st; gQueuedStateOpts = opts ?? null;
 }
 export function fileOpDistante(op: { kind?: string }): void { gQueuedOp = op; }
-export function fileEnAttente(): { state: boolean; op: string | null } {
-  return { state: !!gQueuedState, op: gQueuedOp ? String(gQueuedOp.kind) : null };
-}
 
 function flushQueuedRemote(): void {
   const st = gQueuedState, so = gQueuedStateOpts, op = gQueuedOp;

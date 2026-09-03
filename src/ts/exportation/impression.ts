@@ -68,7 +68,7 @@ export function exportPNG(ctx: Contexte): Promise<RenduPNG> {
   });
 }
 
-export function preparePrint(ctx: Contexte): void {
+function preparePrint(ctx: Contexte): void {
   const plan = $("printPlan"), furni = $("printFurni");
   if (plan) plan.innerHTML = `<h2>Apartment plan</h2>` + buildMasterSVG(ctx, { title: "" });
   // The printed list is THE SAME as the modal's: one single table factory (`liste-mobilier.ts`),

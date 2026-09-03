@@ -45,8 +45,7 @@ Why it is built this way, not just how to work in it: `docs/decisions/`.
 
 - **An unreadable floor plan does not pretend to be a floor plan.** When the rescue blob is written,
   `setupDone` falls back to false: the application SAYS SO (banner + wizard) and **can no longer
-  publish anything** to the shared floor plan (`putableState` requires `setupDone===true`). Covered
-  by `tests/plan-abime.ts`.
+  publish anything** to the shared floor plan (`putableState` requires `setupDone===true`).
 - **`index.html` is a PRODUCT, not a source.** The source lives in `src/` and is assembled again
   by `node build.ts`. Never edit `index.html` by hand: the next build will overwrite the change.
   It is COMMITTED (Pages serves the root statically, without a build).
@@ -80,19 +79,14 @@ plan/
 ```
 edit src/ts/…
 node build.ts                    # builds index.html, THE DELIVERABLE
-node tests/rapide.ts             # THE FAST LOOP, without a browser, < 1 s
-node tests/all.ts                # THE PRE-DEPLOY BARRIER: see `node tests/all.ts --list`
+node tests/all.ts                # THE BARRIER: two typing passes + six suites, ~20 s
 git add -A && git commit && git push
 ```
-`tests/all.ts` is the ONLY pre-deploy barrier launcher. It gives every suite a private `%TEMP%`,
-kills the Chrome tree living inside it on exit, and deletes the folder. Never run the browser
-suites manually in sequence.
-
-- `node tests/all.ts --list` lists the suites · `run model-v5` runs only one (name filter)
-- `--jobs N` forces concurrency · `--seq` serializes · `--repeat 5` replays the entire barrier
-- The `--legacy` flag, which used to replay the 24 suites that accept an application path against
-  the archived pre-cutover build, was removed along with that archive: it is not part of this
-  repository.
+`tests/all.ts` runs no browser at all: the two `tsc --noEmit` passes, then `rapide`,
+`compat-donnees`, `harnais-graine`, `porte`, `invitation` and `live-worker/test-local`, in
+sequence, one line each, nonzero exit code as soon as one fails. Each suite also runs on its own
+(`node tests/rapide.ts`). Why there is nothing else:
+`docs/decisions/0023-les-tests-repartent-de-zero.md`.
 
 ### What `node build.ts` produces, and where the old client lives
 
@@ -102,12 +96,10 @@ node build.ts --dev              # index.dev.html: inline sourcemap, never commi
 node build.ts --check            # rewrites nothing; exits 1 if index.html differs from the source
 node build.ts --out X.html       # builds elsewhere for comparison
 npm run typecheck                # client config + tools config; also run by tests/all.ts
-node tests/boot-vierge.ts        # starts without a JS error
 ```
 
 `npm run typecheck` runs both `tsc --noEmit` and
-`tsc --noEmit -p tsconfig.outils.json`; `tests/all.ts` runs the same two passes as its `typecheck`
-pseudo-suite.
+`tsc --noEmit -p tsconfig.outils.json`; `tests/all.ts` opens with the same two passes.
 
 - `--next` and `--legacy` are rejected by `build.ts`: `src/js` no longer exists, and the archived
   pre-cutover build is not part of this repository.
@@ -128,12 +120,9 @@ pseudo-suite.
   binary. Bun can replace esbuild for a parse check, never `tsc` for type checking.
 
 ### Two speeds of verification
-- **FAST path**, VISUAL or COSMETIC change (color, margin, label, icon, panel order): fix it, take
-  ONE before/after screenshot, run `node build.ts`, push. Do not write a lasting test for the
-  occasion, and do not sweep the suites.
-- **FULL path**, `node tests/all.ts`, only when the change touches **DATA** (model, serialization,
-  migration, storage), **SYNCHRONIZATION** (realtime wire, ops, D1 fallback, conflicts), or
-  **GEOMETRY** (walls, cells, openings, outline, gestures that modify them).
+- **FAST path**, `node tests/all.ts`: twenty seconds, so it is the default, on every change.
+- **FULL path**, the OWNER in Chrome: the gestures, the rendering and the two-device round trip are
+  verified by hand, on the real apartment. No agent runs a browser here any more.
 
 ### A NEW TEST IS SEEN RED BEFORE IT IS SEEN GREEN
 Write the test, then **remove the fix and run it**. If it still passes, it does not test the defect,
@@ -174,193 +163,9 @@ what the guarded path returns, and check that the caller accepts it.
   commit away from being published as a label-collision fixture. What reproduces a defect best is
   often exactly what may not be published.
 
-### The pre-deploy barrier runs at LOW PRIORITY, and why (measured on 2026-08-05)
-
-**EVERY FIGURE IN THIS SECTION DESCRIBES A HARNESS THAT NO LONGER EXISTS.** The current suite list
-comes from `node tests/all.ts --list`. What survives here is the reasoning about scheduler
-fairness, the `--jobs` default, and the second-chance retry.
-
-`PLAN_TESTS_PRIORITE=normale node tests/all.ts` restores normal priority for the barrier. This is
-the measurement instrument used to REPLAY the comparison, not a comfort setting.
-`PLAN_SEM_CLIENT` may name the local TypeScript client for the machine-wide browser permit pool.
-When it is unset or cannot be imported, the barrier warns once and runs without that optional cap.
-
-<details><summary>Obsolete measurements from the former harness</summary>
-
-Continuous monitoring of the workstation for 6 h identified the two `tests/all.ts` runs as the
-**two worst moments of the day** for machine responsiveness: the system run queue reached 260 then
-324 waiting threads on 12 cores, and keyboard input lagged in **every** application, not only here.
-
-**CPU use was only 52-58% during those peaks.** Free cycles REMAIN: the problem is **scheduler
-fairness**, not saturation. **Do NOT lower `--jobs` for this**: that would treat saturation that
-does not exist and cost minutes per run for nothing. Puppeteer suites spend most of their time
-waiting for page loads, so they legitimately exceed a concurrency ceiling calculated from CPU alone.
-
-**What is applied** in `tests/all.ts`: each suite is lowered to `BELOW_NORMAL` at launch
-(`os.setPriority`), **and** one PowerShell watcher repeatedly lowers (every 1,5 s) the barrier's
-`chrome.exe` processes.
-
-**Why the watcher, despite intuition.** Priority class inheritance IS NOT ENOUGH on Windows.
-Measured process by process: the suite's node process, the browser process, `utility`, and
-`crashpad-handler` inherit it correctly (base priority 6), but **Chrome resets the priority of its
-renderers itself** (8 visible page, 4 hidden page) **and of its `gpu-process`** (10). Lowering only
-node creates a **priority inversion** (the CDP driver falls below the renderers it drives) and costs
-2,6 times as much time. Measured across 8 × `tests/interactions.ts`:
-
-| setting | duration | average run queue | keyboard jitter p95 |
-|---|---|---|---|
-| normal priority | 71 s | 325 | 63 ms |
-| node only lowered | 181 s | 254 | 28 ms |
-| **entire tree lowered** (selected) | **113 s** | **158** | **15 ms** |
-
-**Guard**, the same as for killing orphans: the filter is the **path** of the barrier's private
-folders (`<TEMP>/plan-run-…`), never the process name. The user's browser cannot be slowed down.
-A process already below `BELOW_NORMAL` (a hidden-page renderer, which Chrome sets to 4) is never raised.
-
-**The old figures, 4 tasks = 885 s / 8 tasks = 524 s, are OBSOLETE**: they predate the workstation
-fixes of 2026-08-05 (CPU capped at ~2700 MHz, 8 of 12 cores parked). The full barrier was measured
-again the same day, 12 cores, 28 suites, 4479 checks **on the old client** (4495 since the switch:
-`compat-donnees` rises from 1064 to 1080 in differential mode). The "foreign" column counts suites
-from ANOTHER agent session running at the same time: that noise dominates everything else.
-
-| run | tasks | foreign | duration | queue avg/p95 | keyboard jitter p95/p99 |
-|---|---|---|---|---|---|
-| without the fix | 8 | ~1,9 | 564 s | 193 / 338 | 37 / 61 ms |
-| without the fix | 8 | ~4,0 | 386 s | 167 / 268 | 29 / 61 ms |
-| **with** | 8 | ~1,9 | 572 s | 162 / 304 | **17 / 32 ms** |
-| **with** | 8 | ~0 | **334 s** | 115 / 218 | **15 / 18 ms** |
-| **with** | 10 | 0 | 311 s | 152 / 252 | 15 / 20 ms |
-| **with** | 6 | ~1,8 | 393 s | 116 / 214 | 16 / 20 ms |
-
-What we can state: **keyboard jitter is cut in half or better in every comparable pair**, and the
-run queue falls by one third. What we CANNOT state: that the fix affects duration. A second agent
-session weighs more than the fix AND the `--jobs` setting combined, and there was no window long
-enough with the machine to ourselves to decide. Usable reference: **334 s with 8 tasks on a clean
-machine**, versus the 524 s reported by the old figure.
-
-**PER-RUN DURATION REFERENCE, AFTER THE SWITCH** (2026-08-05, 8 tasks, 12 cores, barrier alone on
-the machine):
-
-| target | runs | duration per run | checks |
-|---|---|---|---|
-| **typed client** (`index.html`, default) | `--repeat 3` | 287,8 s · 293,3 s · **289,7 s** | 4495/4495, 28/28 suites |
-| **old client** (`--legacy`) | 1 | **275,0 s** | 4479/4479, 28/28 suites |
-
-That is ~290 s per run on the served client, 14,8 min for all three. **The old "~5,5 min" figure is
-worthless now**, as is 334 s: that was a single run on the old client, before the four fixes in
-`c1b7fe1`. What we can say about the typed/old difference: **it is ~15 s, in favor of the OLD
-client**, from one `--legacy` run versus three. That is noise at this scale, not a cost of the typed
-client. More importantly, barrier time is dominated by Chrome and waiting for page loads, not by
-the client's JS. The three longest suites make up a full run by themselves
-(`model-v5-modele-defaut` ~226 s, `gestes-precision` ~201 s, `model-v5-fil-serveur` ~188 s): look
-there to save time, not in `--jobs`.
-
-</details>
-
-### One browser per suite (measured on 2026-08-17 and 2026-08-18)
-
-Six suites had each copied the same harness: build a page, `spawnSync` a whole headless Chrome on
-it with `--dump-dom` and a brand-new profile, read the verdict back. That was **159 cold starts per
-barrier run** (`model-v5-*` 54, `run` 29, `collab-annuler` 34, `deux-appareils` 24, `collab-accuses`
-13, `curseur-dire-deux-appareils` 5), each under a FIXED `spawnSync` timeout. On a busy machine a
-cold start passed that bound, Chrome was killed before rendering, and a whole suite reported `0/11`
-without a word about the code. `tests/_navigateur.ts` replaced it: one Chrome per suite driven over
-CDP, a case is a `Page.navigate`, and the verdict is awaited as a CONDITION under a bound that
-calibrates itself on the suite's median. Why, and what was rejected:
-`docs/decisions/0006-un-navigateur-par-suite.md`.
-
-Same machine, same parallelism (8 tasks), same priority setting, the converted suites INSIDE the
-barrier (two others, `model-v5-ancien-plan` and `model-v5-conversion-rendu`, have since been
-retired along with the read path they measured, decision 0021):
-
-| suite | before | after |
-|---|---|---|
-| `model-v5-modele-defaut` | 542,7 s | 8,6 s |
-| `model-v5-fil-serveur` | 334,4 s | 3,8 s |
-| `collab-accuses` | 301,1 s | 2,4 s |
-| `model-v5-edition` | 274,5 s | 5,9 s |
-
-Whole barrier, `PLAN_TESTS_PRIORITE=normale`, machine otherwise idle: **before, it had NOT finished
-after 600 s**; **after, 421,8 s, every registered suite and check was green**. See
-`node tests/all.ts --list` for the current list. Two suites
-(`partage-navigateur`, `retour-navigateur`) still needed the sequential second chance, which is the
-known instability, not a defect.
-
-**AND THE LOW-PRIORITY SETTING HAS BECOME THE FIRST COST, which is a reversal.** It was measured
-against browsers that lived less than a second each; against a browser that lives for a whole
-suite, pinning the tree at `BELOW_NORMAL` starves the page for the entire run. Measured the same
-day on the five `model-v5` suites in parallel: **24,2 s at normal priority, 137,5 s with the
-lowering**, i.e. every suite roughly forty times slower. Making the watcher idempotent (never
-re-lowering a PID it already handled) does NOT recover it: 197,8 s, so the cost is the low priority
-itself and not the fight with Chrome raising its renderers back. The default is LEFT AS IS in this
-batch: what the lowering buys is the owner's keyboard comfort, it was decided from a jitter
-measurement, and reversing it needs its own measurement rather than a duration argument. Replay
-with `node tests/all.ts model-v5` against `PLAN_TESTS_PRIORITE=normale node tests/all.ts model-v5`.
-
-**The concurrency optimum did not move enough to change the default.** 10 tasks took 311 s versus
-334 s with 8, a 7% difference, over one run each; that is within this machine's noise. The default
-remains `floor(cœurs × 2/3)` = 8, which matches the ceiling measured elsewhere on this workstation
-(wake latency stays flat through 10 tasks, then doubles at 12).
-
-**Resolved issue** (commit `c1b7fe1`, before the switch): the isolated failures seen at low priority
-were not caused by low priority, they were **four cases measuring something other than their name**
-(`repli-d1-live` × 2, `apercu-pose`, `garde-fous`). No product code was touched: the returned-database
-assertion required two things and the loop waited for only one; the chip was read over two round
-trips while `_writeChip` resets the generic title between them; the fixed 250 ms pause in
-`apercu-pose` raced the drawer closing; and CDP typing in `garde-fous` committed "2" before "00"
-arrived because `numField` applies after a 220 ms typing pause. **Wait for a CONDITION everywhere,
-never for a duration**: a longer `sleep` only moves the load threshold where it fails again. A red
-negative control exists for each of the four, and `apercu-pose` dropped from 52,5 s to 12,6 s along
-the way. If a case becomes unstable again, apply this rule, do not extend a delay.
-
-<details><summary>Suite details (what each one covers)</summary>
-
-All are launched with `node tests/all.ts <filtre>`. "Chrome" says how many browsers the suite opens:
-this is what caps barrier concurrency.
-
-**Four of these suites do NOT read the artifact, they read `src/ts` directly**: `rapide`,
-`harnais-graine`, `no-dead-selectors`, and `compat-donnees`. Under the now-removed `--legacy` mode,
-they were counted as `absent` with their real reason: the archived client had no source in this
-repository.
-
-| Suite | Chrome | Covers |
-| --- | --- | --- |
-| `tests/rapide.ts` | 0 | THE WORK LOOP, < 1 s: cells, server bounds, field-by-field diff, undo, and Circulation. All client code is imported from `src/ts`. |
-| `tests/compat-donnees.ts` | 0 | **THE DATA COMPATIBILITY ORACLE**. Reads the corpus again and compares its fingerprints with `tests/fixtures/empreintes-compat.json`. `--b <dir>` compares two module directories; the barrier uses only the frozen reference. `--figer` remains a deliberate act. A private corpus can be pointed at with `--corpus <dir>` (a directory outside the repository), and its fingerprints stay with it. |
-| `tests/harnais-graine.ts` | 0 | Deterministic seeded harness: convergence and undo/redo round trip, client code imported from `src/ts`, real server imported from `live-worker/`. |
-| `tests/no-dead-selectors.ts` | 0 | Static: no CSS class without a consumer in `src/ts` or `src/html`. |
-| `live-worker/test-local.ts` | 0 | 657 SERVER assertions: validator, ops, Durable Object, D1 fallback, sequence, deduplication by `(tag, n)`, and the guest wire (per-recipient redaction, the `name` message, refused `plan5.replace`, the rate cap, revoke closing sockets). |
-| `tests/porte.ts` | 0 | THE DOOR: the `HOUSEHOLD_HOSTS` / `GUEST_HOST` allowlists and their `*.` wildcard, the ONE `who()`, and the middleware's refusals. |
-| `tests/invitation.ts` | 0 | THE INVITE: token redemption and its single 404, the session cookie, the owner's create/list/revoke, and the guest door's effect on `/api/plan` and `/ws`. |
-| `tests/identite-fil.ts` | 0 | WHO A NAME BELONGS TO: `displayName` / `personColor` / `wsSameAccount` including guest-vs-guest, and the proof that a name of `<img onerror=…>` renders as TEXT. |
-| `tests/run.ts` | 1 | 29 general regression tests on the deliverable. |
-| `tests/model-v5-*.ts` (7 suites) | 1 each | 74 tests: walls-only model, server rejection, D1 fallback. Filter: `all.ts model-v5`. |
-| `tests/boot-vierge.ts` | 1 | THE NUMBER ONE TRAP: the page mounts without a JS error, with a blank profile THEN a seeded floor plan. |
-| `tests/interactions.ts` | 1 | 6 REAL MOUSE tests (CDP): gestures, view, remote op, rail, openings, wheel routed to the panel under the pointer. |
-| `tests/garde-fous.ts` | 1 | 9 REAL MOUSE + KEYBOARD tests: input, panels, bounds, messages. |
-| `tests/gestes-perte-de-travail.ts` | 1 | 7 REAL MOUSE tests: SILENT work loss. |
-| `tests/gestes-usage-reel.ts` | 1 | 10 REAL MOUSE tests: ordinary use (selection, round trips, stacks). |
-| `tests/gestes-precision.ts` | 1 | 7 REAL MOUSE tests: click target and idempotence, up to 300 objects. |
-| `tests/apercu-pose.ts` | 1 | 10 REAL MOUSE + REAL FINGER tests: what is being placed is VISIBLE during the gesture (actually painted background, icon, targeted wall, rejection). |
-| `tests/ouverture-redim.ts` | 1 | 11 REAL MOUSE tests: resize an opening from its handle (opposite edge fixed, wall/neighbor/server bounds, and STATED). |
-| `tests/outil-mur-geste.ts` | 1 | 9 REAL MOUSE + KEYBOARD tests: the click-click wall chain, double-click and Escape, the floor lassoes instead of drawing, a selected wall carries three controls at most and its sheet carries the rest. |
-| `tests/selection-visible.ts` | 1 | 7 REAL MOUSE tests: the lasso also takes OPENINGS, and what it catches is marked DURING the gesture, without writing anything. |
-| `tests/faces-pose-copie.ts` | 1 | Faces of a wall-mounted object: placement, copy, side change. |
-| `tests/textes-lisibles.ts` | 1 | 5 tests, NO UPSIDE-DOWN TEXT: the semicircle rule across every text family, screen + PNG + print. |
-| `tests/deux-appareils.ts` | 1 | 24 tests, TWO DEVICES behind one address: replay log, presence, cursors, undone server rejection, banners. |
-| `tests/collab-annuler.ts` | 1 | 34 tests, realtime wire: fingerprint, identifiers, field-by-field diff, server mirror, new household, two-person UNDO, receive-time bounds, announced disappearance, banner throttling. **Also checks that no visible text contains an em dash.** |
-| `tests/collab-accuses.ts` | 1 | 13 tests, LOSSY TRANSPORT: the REAL `PlanRoom` runs in the page, frames are lost / delayed / reordered; acknowledgement, acknowledged mirror, retransmission, reconnection. |
-| `tests/plan-abime.ts` | 2 | 13 tests, slow GET: a damaged device does not overwrite the household floor plan. |
-| `tests/repli-conflit.ts` | 2 | 24 tests, TWO DEVICES WRITE THROUGH FALLBACK AT THE SAME TIME: PUT compare-and-swap, 409 rejection, set-aside version. `--avant` replays the measurement against HEAD's `index.html` and Function. |
-| `tests/repli-d1-live.ts` | 3 | 21 tests, two browsers, realtime down (touches synchronization). |
-
-</details>
-
 - `node build.ts --check` rewrites nothing and exits 1 if `index.html` no longer matches `src/ts`:
   run it before a commit to detect a hand-edited `index.html`.
 - `node build.ts --out X.html` builds elsewhere (comparisons, trials).
-- Browser suites use the repository's `index.html` by default, so **the served client**; another
-  path can be passed as an argument for comparison builds.
 - **Windows trap**: this repository has `core.autocrlf=true`. `build.ts` writes LF, `git checkout`
   rewrites CRLF. The contents remain identical to git; `build.ts --check` normalizes line endings
   before comparing. Do not be alarmed by `M index.html` with no content diff.
@@ -377,16 +182,11 @@ repository.
   repository: use `rg` to find the named symbol in `src/ts/`.
 
 ## Blank startup (the number one trap)
-The file has already had three temporal dead zone initialization errors. Reordering modules brings
-them back, and **the test suites do not see them** (they all seed `localStorage`). After every move
-in `src/manifest.json`:
-```
-node tests/boot-vierge.ts                                    # repository index.html
-node tests/boot-vierge.ts --plan ~/.claude/jobs/d745c367/tmp/backup-rev246.json --png /tmp/boot
-```
-Pass 1: blank profile, no `localStorage`, no server floor plan (`file://` disables synchronization).
-The "The outline of the flat" modal must open, with zero JS errors. Pass 2: a real floor plan is
-seeded, furniture must render, with zero JS errors. `--png` writes the screenshots.
+The file has already had three temporal dead zone initialization errors, and reordering modules
+brings them back. **PROBE A BLANK FIRST LAUNCH BY HAND** after every move in `src/manifest.json`:
+open `index.html` in a profile with no `localStorage`, check that the "The outline of the flat"
+modal opens with zero JS errors, then seed a real floor plan and check that the furniture renders,
+still with zero JS errors. No suite sees this any more: they all seed `localStorage`.
 
 ## Deployment
 - Cloudflare Pages, project `plan-app`, git-connected to `<owner>/plan-app`, branch `main`, without a build
@@ -462,7 +262,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   responds **409** with the winning revision, author, AND state. A PUT WITHOUT `rev` remains accepted:
   that is the old contract, for a tab opened before deployment. The Worker snapshot still always
   writes without an expected revision (its file has not yet been converted, see
-  `docs/collab-etat-de-l-art.md`). Covered by `tests/repli-conflit.ts`.
+  `docs/collab-etat-de-l-art.md`).
 - **A rejection is READ BACK, never rewritten** (js/41). The rejected version is set aside under
   `room-planner-v4-conflit` (the last 5), announced by a persistent banner with a
   "Recover my version" button (file reimportable through "Load a plan…"), and `Ctrl+Z`
@@ -474,7 +274,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - **This REST FALLBACK is the only safety net when the Worker goes down**: its PUT must accept BOTH
   the walls-only form (`outline`/`walls`/`plan`). The guard it once carried accepted only `rooms`,
   so it rejected 100% of the writes from the live model, the chip said "slow sync", and the two
-  people silently diverged. Covered by `tests/repli-d1-live.ts`.
+  people silently diverged.
 - **The synchronization chip must never lie.** States: `live ✓` (WS), `slow sync` (D1 fallback),
   `not saved` (reads work, WRITES do not), `offline`, `local` (detached tab). A successful
   GET probe does not prove that writing works: `putFailed` prevents the chip from repainting
@@ -483,7 +283,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   debounced by one second and did not wait for the boot GET: a change made early on a slow page
   published what that device thought it had. The lock is released by the FIRST successful read
   (`syncBoot` or `pollPull`), never by a failure: until the household floor plan has been seen, it
-  must not be overwritten. Covered by `tests/plan-abime.ts`.
+  must not be overwritten.
 - **The first adoption of the server floor plan REFRAMES the view, later ones do not**
   (`adoptServerState`, js/41). A new device frames the default apartment (420×360) before the real
   floor plan arrives: without reframing it overflows the viewport. A later adoption arrives while
@@ -511,7 +311,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   essential because if the LAST op in a burst is lost, no later op reveals the gap. On reconnection,
   work still in flight is placed back over the adopted state (otherwise adoption silently erased it).
   The server deduplicates by `(tag, n)` over a sliding window of 64 numbers, IN MEMORY, never in
-  storage: losing this table is harmless (ops are idempotent). Covered by `tests/collab-accuses.ts`.
+  storage: losing this table is harmless (ops are idempotent).
   **The `pong` safety net did NOT cover this case**: it compares the fingerprint announced by the
   server with the previous one, but an outbound op lost on the way changes nothing on the server.
   It catches a missed INBOUND message, never a lost OUTBOUND op.
@@ -529,8 +329,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   `peer`, `op`, `cursor`, and `drag`; `wsPeers` and `wsCursors` are indexed by DEVICE. Rendering
   keeps the PERSON's name and color; my other device is distinguished by an outline
   (`.peer-dot.self`), the "your other device" tooltip, and the "Other device" cursor label.
-  A server WITHOUT `tag` makes the client fall back to email, exactly as before. Covered by
-  `tests/deux-appareils.ts`.
+  A server WITHOUT `tag` makes the client fall back to email, exactly as before.
 - **A REJECTION CANNOT LEAVE THE SCREEN LYING.** The client numbers its ops (`n`) and retains,
   before sending, the INVERSE op derived from the mirror; the server returns this number in its
   `err`. On rejection, the local change is UNDONE through the ordinary receive path, so local state
@@ -572,8 +371,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   once (deleting a single window remains possible). A rejection does more than retain: the mirror
   follows the server, so the `save()` triggered just after **republishes** the wall and its openings,
   and a rejected op **does not enter the undo log** (otherwise the first Ctrl+Z would replay it).
-  Divergence is resolved from ABOVE, by returning to the other person what they lost. Covered by
-  `tests/collab-annuler.ts`.
+  Divergence is resolved from ABOVE, by returning to the other person what they lost.
 - **The app is silent unless a message exists to say why a gesture had no effect, or that
   something the person cannot see happened to their work** (decision 0014, "l'app se tait"): no
   confirmations, no information already visible in the drawing, no tips.
@@ -584,8 +382,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
 - **Ctrl+Z undoes only its author's work.** History is a stack of past SHARED states: ops received
   from peers since a snapshot was taken are replayed over it during undo, and the undo is published
   by DIFF, never as `plan5.replace`. A `plan5.replace` received from a peer (import, conversion)
-  clears history: no snapshot describes a past of this floor plan anymore. Covered by
-  `tests/collab-annuler.ts`.
+  clears history: no snapshot describes a past of this floor plan anymore.
 - Check without an account: the API is behind Access (curl → 302 login). The API token cannot create
   an Access service token (10000); check through the D1 row (REST query) after a real site visit.
 
@@ -631,8 +428,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   change (depth follows DOWN, never up, and this is stated on release). It does NOT apply on read
   (`sanitizeV5Plan`, js/02) or when receiving an op (js/43): do not silently adjust someone else's
   saved floor plan. Recorded on 2026-08-04 from the production floor plan (rev 268) and the pre-switch
-  backup: 0 openings beyond their wall, all thicknesses are 12 cm. Covered by
-  `tests/garde-fous.ts` (`profondeur_bornee_par_le_mur`).
+  backup: 0 openings beyond their wall, all thicknesses are 12 cm.
 - **`[hidden]{display:none!important}`** (`css/01`). The browser stylesheet has zero specificity:
   the smallest class rule (`.dims{display:grid}`) repainted a block that was meant to be hidden.
   Never "fix" this kind of case with one more `.x[hidden]{display:none}`.
@@ -694,8 +490,8 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   software convention (text FOLLOWS the tilted object, folded into the readable semicircle): it was
   rejected on the real floor plan, with « Table » written vertically across the dining area and
   unreadable at a glance. `setLabelSpin` (js/00) therefore CANCELS inherited rotation, with no special
-  cases; `readableAngle`/`labelSpin` no longer had consumers and were removed. Verified across 24
-  orientations by `tests/textes-lisibles.ts` (measured angle = 0 everywhere, screen + PNG + print).
+  cases; `readableAngle`/`labelSpin` no longer had consumers and were removed. Verified at the time across 24
+  orientations, measured angle = 0 everywhere, screen + PNG + print.
 
 ## Gestures: ONE exit point
 - Every gesture (drag furniture, rotate, resize, drag a wall / vertex / edge / opening,
@@ -706,7 +502,7 @@ seeded, furniture must render, with zero JS errors. `--png` writes the screensho
   deciding not to write.
 - Why: `gestureActive` makes `save()` return immediately. A gesture that never ended made the
   application **mute** (no local write, no send, no op) and lost ALL session work on reload, without
-  a message. Covered by `tests/interactions.ts`.
+  a message.
 - The **VIEW is not the floor plan**: pan, zoom, pinch, "Fit", and window resizing go through
   **`renderView()`**, which repaints without persisting anything (before: 40 serializations and
   854 KB written for one pan). Never call `render()` for a simple `vScale`/`vOx`/`vOy` change.
@@ -738,7 +534,7 @@ vertex). Measured again after: work per frame 3,5 ms median before, 4,7 ms after
   `v5DedupeWalls` while dragging. A partition pushed onto another one overlaps it exactly for a few
   frames, and deduplication DELETES a wall and re-homes its openings. Furniture bounding stays on
   the final geometry too, for the reason above.
-- Covered by `tests/sol-suit-la-main-geste.ts` (real mouse). Both negative controls exist and they
+- Both negative controls existed and they
   are NOT the same: the floor case goes red without the per-frame rebuild; the name case goes red
   with the per-frame rebuild but WITHOUT the photo ("Chambre d'Elise" comes back as "Room 2").
 
@@ -760,7 +556,7 @@ Four rules born from a real-use session where a simple click rewrote the floor p
   so the same hand position always gives back the same placement.
 - **AN OBJECT HIDDEN UNDER ANOTHER REMAINS REACHABLE.** Clicking the same spot again moves down one
   step in the stack (`pickStacked`, js/12, shared with openings from js/54), and says so.
-Covered by `tests/gestes-usage-reel.ts` (9 tests, real mouse).
+
 
 ## THE WALL IS A TOOL, THE FLOOR IS A LASSO
 Decision [0010](docs/decisions/0010-le-mur-est-un-outil-le-sol-un-lasso.md), which reverses PR #25
@@ -853,8 +649,7 @@ Accepted loss: a COLLINEAR follower with nothing else holding it DETACHES instea
 visible gap is honest and undoable; a diagonal wall looks like a normal room until someone measures
 it. Both owner reports that led here, the reasoning, and what was rejected (the parametric carry of
 PR #17, and intersection alone) are in `docs/decisions/0005-un-suiveur-ne-bascule-jamais.md`.
-Covered by `tests/jonction-glisser-mur.ts`, whose `aucun_mur_ne_bascule_jamais` sweeps EVERY wall of
-EVERY case in the suite for a direction change: that is the invariant, not one example of it.
+The invariant to hold is a sweep of EVERY wall for a direction change, not one example of it.
 
 ## A CROOKED WALL IS SQUARED UP BY A BUTTON, NEVER BY A MAGNET AND NEVER IN SILENCE
 Owner's report: "the vertical wall on the right is slightly off, i want a way to make it
@@ -903,14 +698,12 @@ merely carries no button.
 - Facades are out of scope: a facade is DERIVED from the outline, squaring it up would mean moving a
   polygon vertex, which is the vertex's gesture and not this wall's.
 - The three thresholds are covered without a browser by the model's own suites; the sheet button
-  itself is covered by `tests/outil-mur-geste.ts` (it stays hidden on a wall that is already
-  square). The measurements above were taken with `tests/mur-droit-geste.ts`, removed with the
-  hover controls it was written against (decision 0010).
+  itself (it stays hidden on a wall that is already square) is a Chrome check, by hand.
 - Squaring up no longer stretches anything, in either direction (decision 0012).
 
 ## A click lands on what is visible, and repeating gives EXACTLY the same number
 Four rules born from a second real-use session (1 500 gestures, real floor plan then 300 objects).
-Covered by `tests/gestes-precision.ts` (7 tests, real mouse).
+
 - **PAINT FROM LARGEST TO SMALLEST** (`renderPieces`, js/12). Paint order followed ARRAY order: a
   6 m² rug added after an armchair covered it completely and made it impossible to grab. Measured
   with 300 objects: 20 gestures out of 30 moved furniture other than the target. Paint rank is also
