@@ -208,7 +208,10 @@ still with zero JS errors. No suite sees this any more: they all seed `localStor
   project, an unset variable means the door never closes. Set it BEFORE adding any hostname.
   Functions are bound to the PROJECT, not to a hostname, so `/api/plan`, `/api/plans`, `/api/err`
   and `/ws` answer on every hostname the project serves. See `docs/decisions/0004-partage-par-lien.md`.
-- **Guest door closed on 30/10/2026** (Sylve's decision): `plans.sylve.org` removed (Pages domain + CNAME) and `GUEST_HOST` unset on the Pages project, so the app now serves only `plan.sylve.org` behind Access and "invite" is gone. The code still supports a guest door: setting `GUEST_HOST` again reopens it.
+- **Guest door closed on 30/10/2026** (owner decision): its Pages domain and CNAME were removed,
+  and `GUEST_HOST` was unset on the Pages project. Only the household hostname behind Access is
+  served now, so the `"invite"` door verdict is unreachable. The code still supports a guest door:
+  configuring a guest hostname and setting `GUEST_HOST` again reopens it.
 - **`GUEST_HOST` is the ONE hostname of the guest door**, the one Access does NOT cover. Unset, the
   `"invite"` verdict can never occur and the guest door simply does not exist, which is the state
   the repository ships in. It is checked only AFTER the household allowlist misses, so a host named

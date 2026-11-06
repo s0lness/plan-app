@@ -65,22 +65,23 @@ npm run build            # regenerate index.html, the deliverable
 npm run build -- --check # fail if index.html no longer matches the source
 npm run typecheck        # client, tools and server, both configurations
 node tests/rapide.ts     # the fast loop, no browser, under a second
+node tests/all.ts        # the complete browserless barrier, about twenty seconds
 ```
 
 Never edit `index.html` by hand: it is built from `src/` and the next build
 overwrites it.
 
-For a change touching data, geometry or synchronization, run the whole
-pre-deploy barrier, which is the project's only gate:
+Run the whole pre-deploy barrier for every change. It is the project's only
+gate:
 
 ```
-node tests/all.ts        # current list: node tests/all.ts --list
+node tests/all.ts
 ```
 
-Most suites drive a real Chrome and currently expect it at the standard Windows
-install path, so on macOS or Linux the browser suites will not start yet. The
-browserless ones (`rapide`, `compat-donnees`, `harnais-graine`, `exports-morts`,
-`no-dead-selectors`, `live-worker/test-local`) run anywhere.
+It runs two TypeScript checks followed by six browserless suites: `rapide`,
+`compat-donnees`, `harnais-graine`, `porte`, `invitation`, and
+`live-worker/test-local`. Gestures and rendering are checked manually in Chrome
+by the owner.
 
 ## Deploying
 
@@ -113,7 +114,8 @@ d1 list`).
   an incomplete file would delete them.
 - `build.ts` rejects `--next`. The `--legacy` flag was removed along with the
   archived pre-cutover build, which is not part of this repository.
-- Run tests through `tests/all.ts`, never suite by suite.
+- Use `tests/all.ts` as the delivery barrier; run an individual suite only for a
+  focused development loop.
 - Node runs `.ts` files directly here, without `tsx` or Bun.
 - `core.autocrlf=true`; `build.ts --check` normalizes LF and CRLF.
 
